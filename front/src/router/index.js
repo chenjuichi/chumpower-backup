@@ -9,7 +9,9 @@ import LoginRegister from '@/views/LoginRegister.vue';
 
 const routes = [
   //{ path: '/', name: 'Home', component: Home },
+  { path: '/home', name: 'Home', component: Home },
   { path: '/', name: 'LoginRegister', component: LoginRegister },
+  { path: '/', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
   { path: '/about', name: 'About', component: About },
   { path: '/a', name: 'a', component: A },
   { path: '/b', name: 'b', component: B },

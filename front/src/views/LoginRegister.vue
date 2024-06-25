@@ -1,23 +1,44 @@
 <template>
-<div class="page_contain">
+
   <div class="wrapper" :class="{ active: isActive }">
-      <!--<img id="sourceImage" :src="imageSrc" alt="Source Image">-->
       <canvas id="canvas" class="logo_img" />
     <h2 class="text-right">Welcome</h2>
     <div class="form-wrapper login">
-      <form @submit.prevent="handleLogin">
-        <h2>Login</h2>
-        <div class="input-box">
-          <input type="email" v-model="loginEmail" placeholder="Email" required>
-        </div>
-        <div class="input-box">
-          <input type="password" v-model="loginPassword" placeholder="Password" required>
-        </div>
+        <h2>登入</h2>
+        <v-text-field
+          id="loginEmpID"
+          label="工號"
+          name="EmpID"
+          prepend-icon="mdi-account"
+          color="white"
+          v-model='loginEmpID'
+        />
+
+        <div class="login-name">{{ loginName }}</div>
+
+        <v-text-field
+          id="loginPassword"
+          label="密碼"
+          name="Password"
+          prepend-icon="mdi-lock"
+          color="white"
+          :append-icon="eyeShow ? 'mdi-eye-off' : 'mdi-eye'"
+          @click:append="() => (eyeShow = !eyeShow)"
+          :type="eyeShow ? 'password' : 'text'"
+          v-model='loginPassword'
+          @keyup.enter="signin"
+        />
+        <div>
         <button type="submit">Login</button>
-        <div class="sign-link">
-          <p>Don't have an account? <a href="#" @click.prevent="registerActive">Register</a></p>
+          <p>
+            Don't have an account?
+            <v-btn color="primary" variant="outlined" @click="register" name="registerButton">
+              <i class="fa-regular fa-id-card"></i>註冊
+            </v-btn>
+          </p>
         </div>
-      </form>
+
+
     </div>
     <div class="form-wrapper register">
       <form @submit.prevent="handleRegister">
@@ -39,33 +60,60 @@
     </div>
   </div>
   <img id="sourceImage" :src="imageSrc" alt="Source Image" style="display: none;">
-</div>
+
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router';
 
-import pet from '../assets/pet4-rb.png';
+//=== data ===
+const router = useRouter();
+const eyeShow = ref(true)
 
-const home_url = pet;
 const isActive = ref(false)
-const loginEmail = ref('')
-const loginPassword = ref('')
-const registerName = ref('')
-const registerEmail = ref('')
-const registerPassword = ref('')
 const imageSrc = ref(require('../assets/pet4-rb.png'))
 
+const loginEmpID = ref('')
+const loginName = ref('姓名')
+const loginPassword = ref('')
+const loginOK = ref(false)       //true: 登入成功
+const registerOK = ref(false)    //true: 註冊成功
 
-//const imageSrc = ref(null)
-//imageSrc.value = require('../assets/pet4-rb.png');
+const loginedUser = ref({
+  emp_id: null,         //工號
+  emp_name: null,       //姓名
+  emp_dep_name: null,   //部門名稱
+  emp_perm: 0,          //權限id
+  password: '',         //密碼
+})
 
+const registerUser = ref ({
+  empID: null,              //工號
+  name: null,               //姓名
+  dep: null,                //部門名稱
+  password: null,           //密碼
+  confirmPassword: null,    //密碼確認
+})
 
 //=== mounted ===
 onMounted(() => {
   replaceImageColor();
 });
 
+
+//=== method ===
+const signin = ()  => {
+  console.log("---click_signin---");
+
+  //this.removeLoginUser();
+
+  let isAuthenticated=true;
+  //this.setAuthenticated(isAuthenticated);
+  //this.setLoginUser();
+  //this.$router.push('/navbar');
+  router.push('/home');
+}
 
 const registerActive = () => {
   isActive.value = true
@@ -77,10 +125,14 @@ const loginActive = () => {
 
 const handleLogin = () => {
   console.log('Login', loginEmail.value, loginPassword.value)
+
+  router.push('/home');
 }
 
 const handleRegister = () => {
   console.log('Register', registerName.value, registerEmail.value, registerPassword.value)
+
+  router.push('/home');
 }
 
 const replaceImageColor = () => {
@@ -89,47 +141,7 @@ const replaceImageColor = () => {
   const sourceImage = document.getElementById('sourceImage');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
-  /*
-  sourceImage.onload = function() {
-    canvas.width = sourceImage.width;
-    canvas.height = sourceImage.height;
-    ctx.drawImage(sourceImage, 0, 0);
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    const OLD_COLOR = '#ffffff';
-    const NEW_COLOR = '#54880e';
-
-    //const oldColor = { r: 2, g: 100, b: 206 }; // #0264ce
-    //const newColor = { r: 90, g: 150, b: 204 }; // #5a96cc
-    // 解析舊颜色和新颜色
-    const oldColor = {
-      r: parseInt(OLD_COLOR.substr(1, 2), 16),
-      g: parseInt(OLD_COLOR.substr(3, 2), 16),
-      b: parseInt(OLD_COLOR.substr(5, 2), 16)
-    };
-
-    const newColor = {
-      r: parseInt(NEW_COLOR.substr(1, 2), 16),
-      g: parseInt(NEW_COLOR.substr(3, 2), 16),
-      b: parseInt(NEW_COLOR.substr(5, 2), 16)
-    };
-
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] === oldColor.r && data[i + 1] === oldColor.g && data[i + 2] === oldColor.b) {
-        data[i] = newColor.r;
-        data[i + 1] = newColor.g;
-        data[i + 2] = newColor.b;
-      }
-    }
-
-
-
-    //將圖像資料放回畫布上
-    ctx.putImageData(imageData, 0, 0);
-  };
-  */
   sourceImage.onload = function() {
     canvas.width = sourceImage.width;
     canvas.height = sourceImage.height;
@@ -161,19 +173,51 @@ const replaceImageColor = () => {
 <style lang="scss" scoped>
 @import url('https://fonts.googleapis.com/css?family=Noto+Sans+TC:400,500&display=swap&subset=chinese-traditional');
 
-.page_contain {
-  position: fixed;
-  left: 0px;
+//icon的顏色及位置
+:deep(i.mdi-account) {
+  color: blue !important;
+  left: 10px !important;
+}
 
-  padding: 60px 0px 0px;
-  width: 100vw;           // 視窗寬度
-  margin: 0;
+p.login-name {
+  color: white;
+  font-weight: 200;
+  position: relative;
+  right: 38px !important;
+  height: 60px;
+}
+
+button[name="registerButton"] {
+  width:100px !important;
+  font-size: 14px !important;
+  height: 24px !important;
+}
+
+//icon的顏色及位置
+:deep(i.mdi-lock) {
+  color: blue !important;
+  left: 10px !important;
+}
+
+//text field內label的顏色及位置
+:deep(.v-label.v-field-label) {
+  left:15px !important;
+  top: 15px !important;
+  color: white;
+}
+
+:deep(div.v-input) {
+  height: 60px !important;
+}
+:deep(div.v-input__details) {
+  height: 0px !important;
 }
 
 .wrapper {
     position: relative;
+    top: 10px;
     width: 800px;
-    height: 100vh;
+    height: 95vh;
     background: linear-gradient(90deg, #54880e, #f2f2f2);
     border-radius: 50px;
     box-shadow: 0 0 60px rgba(0, 0, 0, .3);
@@ -262,6 +306,9 @@ canvas {
 
 .form-wrapper {
     z-index: 2;
+    //
+
+    //
 }
 
 .wrapper .form-wrapper.login {

@@ -32,7 +32,8 @@
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
           <v-btn color="primary" variant="outlined" style="position: relative; left: -100px;" @click="addItem">
-            <v-icon left dark>mdi-plus</v-icon>新增資料</v-btn>
+            <v-icon left dark>mdi-plus</v-icon>新增資料
+          </v-btn>
         </v-toolbar>
       </template>
 

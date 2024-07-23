@@ -20,6 +20,22 @@
       <div class="collapse navbar-collapse" id="navbarNav">
         <!-- 左側 -->
         <ul class="navbar-nav">
+        <!--
+          <li class="nav-item" v-if="navLinks.link1.isEnabled">
+            <router-link class="nav-link my-nav-link-text" to="/home">Home</router-link>
+          </li>
+          <li class="nav-item" v-if="navLinks.link2.isEnabled">
+            <router-link class="nav-link my-nav-link-text" to="/about">About</router-link>
+          </li>
+        -->
+
+          <li class="nav-item">
+            <router-link :to="navLinks.link1.to" class="nav-link my-nav-link-text" :class="{ 'disabled-link': !navLinks.link1.isEnabled }">
+              <!-- {{ navLinks.link1.text || 'router link 尚未命名' }} -->
+              Home
+            </router-link>
+          </li>
+
           <li class="nav-item dropdown" @mouseenter="showDropdown('product_info')" @mouseleave="hideDropdown('product_info')">
             <span class="nav-link my-nav-link-text">在製品生產資訊<i class="fas fa-angle-down" style="position: relative; left: 5px;"></i></span>
             <div class="dropdown-menu" :class="{ show: dropdownOpen.product_info }">
@@ -28,11 +44,7 @@
             </div>
           </li>
 
-          <li class="nav-item">
-            <router-link :to="navLinks.link1.to" class="nav-link my-nav-link-text" :class="{ 'disabled-link': !navLinks.link1.isEnabled }">
-              備料清單資訊
-            </router-link>
-          </li>
+
 
           <li class="nav-item">
             <router-link :to="navLinks.link2.to" class="nav-link my-nav-link-text" :class="{ 'disabled-link': !navLinks.link2.isEnabled }">

@@ -1,0 +1,137 @@
+import time
+import datetime
+import pytz
+
+from flask import Blueprint, jsonify, request
+import pymysql
+from sqlalchemy import exc
+from sqlalchemy import func
+from sqlalchemy import distinct
+
+from database.tables import User, Permission, Setting, Session
+
+from werkzeug.security import generate_password_hash
+
+from operator import itemgetter, attrgetter   # 2023-08-27  add
+
+updateTable = Blueprint('updateTable', __name__)
+
+# ------------------------------------------------------------------
+
+@updateTable.route("/updatePassword", methods=['POST'])
+def update_password():
+    print("updatePassword....")
+
+    request_data = request.get_json()
+    userID = request_data['empID']
+    newPassword = request_data['newPassword']
+
+    s = Session()
+    s.query(User).filter(User.emp_id == userID).update(
+      {'password': generate_password_hash(newPassword, method='scrypt')}
+    )
+
+    s.commit()
+    s.close()
+
+    return jsonify({
+      'status': True,
+    })
+
+
+# update user's setting from user table some data
+@updateTable.route("/updateSetting", methods=['POST'])
+def update_setting():
+    print("updateSetting....")
+
+    request_data = request.get_json()
+    print("request_data:", request_data)
+
+    userID = request_data['empID']
+    new_isSee = request_data['see_is_ok']
+    new_lastRoutingName = request_data['lastRoutingName']
+    new_items_per_page = request_data['items_per_page']
+
+    s = Session()
+    # 修改user的設定資料
+    _user = s.query(User).filter_by(emp_id=userID).first()
+    s.query(Setting).filter(Setting.id == _user.setting_id).update(
+      {'items_per_page': new_items_per_page, 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee}
+    )
+
+    s.query(User).filter(User.emp_id == userID).update({'isOnline': False})  # false:user已經登出(logout)
+
+    s.commit()
+    s.close()
+
+    return jsonify({
+      'status': True,
+    })
+
+
+# from user table update some data by id
+@updateTable.route("/updateUser", methods=['POST'])
+def update_user():
+    print("updateUser....")
+    request_data = request.get_json()
+
+    _emp_id = request_data['emp_id']
+    _emp_name = request_data['emp_name']
+
+    return_value = True  # true: 資料正確, 註冊成功
+    if _emp_id == "" or _emp_name == "":
+        return_value = False  # false: 資料不完全 註冊失敗
+
+
+    s = Session()
+
+    if return_value:
+        s.query(User).filter(User.emp_id == _emp_id).update(
+            #{"emp_name": _emp_name, "dep_id": department.id})
+            {"emp_name": _emp_name, })
+        s.commit()
+
+    s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+
+
+# from reagent table update some data by id
+@ updateTable.route("/updatePermissions", methods=['POST'])
+def update_permissions():
+  print("updatePermissions....")
+
+  request_data = request.get_json()
+
+  _id = request_data['perm_empID']
+
+  _system = request_data['perm_checkboxForSystem']
+  _admin = request_data['perm_checkboxForAdmin']
+  _member = request_data['perm_checkboxForMember']
+
+  return_value = True  # true: 資料正確, 註冊成功
+  if _id == "":
+      return_value = False  # false: 資料不完全 註冊失敗
+
+  s = Session()
+  if return_value:
+      # 以最高權限寫入資料庫
+      if _member:
+          _p_id = 4
+      if _admin:
+          _p_id = 3
+      if _system:
+          _p_id = 2
+
+      s.query(User).filter(User.emp_id == _id).update(
+          {"perm_id": _p_id})
+
+      s.commit()
+
+  s.close()
+
+  return jsonify({
+      'status': return_value
+  })

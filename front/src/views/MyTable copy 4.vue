@@ -33,7 +33,10 @@
       v-model:page="pagination.page"
       itemsPerPageText="每頁的資料筆數"
       disableItemsPerPage="false"
-
+      v-model:sort-by="pagination.sortBy"
+      v-model:sort-desc="pagination.sortDesc"
+      @update:sort-by="onSortByChange"
+      @update:sort-desc="onSortDescChange"
       :style="['margin-bottom: 5px', tableStyle]"
 
     >
@@ -158,8 +161,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed, onMounted, onBeforeMount, nextTick, onBeforeUnmount, defineComponent } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, reactive, watch, onMounted, onBeforeMount, computed, nextTick, onBeforeUnmount, defineComponent } from 'vue';
 import axios from 'axios';
 import { myMixin } from '../mixins/common.js';
 
@@ -177,9 +179,6 @@ const props = defineProps({
 });
 
 //=== data ===
-const currentUser = ref(null);
-const route = useRoute();
-
 const snackbar = ref(false);
 const snackbar_color = ref('red accent-2');
 const snackbar_info = ref('');
@@ -282,6 +281,81 @@ const filterOptions = (input) => {
   );
 };
 
+//*
+const toggleSort = (field) => {
+  if (sortBy.value[0] === field) {
+    sortDesc.value[0] = !sortDesc.value[0];
+  } else {
+    sortBy.value = [field];
+    sortDesc.value = [false]; // Default to ascending order
+  }
+  // Call Vuetify's sorting update
+  onSortByChange(sortBy.value[0]);
+};
+/*
+const toggleSort = (field) => {
+  if (sortBy.value[0] === field) {
+    sortDesc.value[0] = !sortDesc.value[0];
+  } else {
+    sortBy.value = [field];
+    sortDesc.value = [false]; // 預設為升冪排序
+  }
+  reSort(field, sortDesc.value[0] ? 'desc' : 'asc');
+};
+*/
+/* ok
+const onSortByChange = (newSortBy) => {
+  sortBy.value = [newSortBy];
+  reSort(newSortBy, sortDesc.value[0] ? 'desc' : 'asc');
+};
+*/
+//const onSortDescChange = (newSortDesc) => {
+//  sortDesc.value = [newSortDesc];
+//  reSort(sortBy.value[0], newSortDesc ? 'desc' : 'asc');
+//};
+
+const onSortDescChange = (sortDesc) => {
+  console.log('onSortDescChange()...');
+
+  pagination.value.sortDesc = sortDesc;
+};
+
+const onSortByChange = (sortBy) => {
+  console.log('onSortByChange()...');
+
+  if (!sortBy || !sortBy[0]) {
+    console.warn('Invalid sortBy value...');
+    return;
+  }
+  console.log("sortBy:", sortBy, sortBy[0])
+
+  pagination.value.sortBy = sortBy;
+
+  if (sortBy[0].key === 'deptId') {
+
+    if (sortBy[0].order === 'asc') {  //目前為升冪
+      sortDesc.value = true;          //降冪排序
+      sortBy[0].order = 'desc'
+    } else {
+      sortDesc.value = false;         //升冪排序
+      sortBy[0].order = 'asc'
+    }
+  }
+};
+
+const reSort = (key, flag) => {
+  sortBy.value = [key];
+  sortDesc.value = [flag === 'desc'];
+
+  desserts.value.sort((a, b) => {
+    if (flag === 'asc') {
+      return a[key] > b[key] ? 1 : -1;
+    } else if (flag === 'desc') {
+      return a[key] < b[key] ? 1 : -1;
+    }
+    return 0;
+  });
+};
 /* grace
 const onSortByChange = (sortBy) => {
   console.log("sortBy:", sortBy, sortBy[0], sortDesc.value)
@@ -402,8 +476,25 @@ const addItem = () => {
   //addObj.isReadOnly = false;
   last_counter.value++;
   // 插入空白行在第一行
-  desserts.value.unshift(addObj);
+  //desserts.value.unshift(addObj);
+  // Determine insertion index based on current sorting order
+  ////const sortDirection = pagination.value.sortDesc ? -1 : 1;
+  ////const insertIndex = sortDirection === 1 ? 0 : desserts.value.length;
 
+  // Determine insertion index based on current sorting order
+  let insertIndex = 0;
+  //if (pagination.value.sortDesc[0]) {
+  if (sortDesc.value) {
+    // For descending order, insert at the end of the first page
+    insertIndex = desserts.value.findIndex(item => item.deptId > addObj.deptId);
+    if (insertIndex === -1) {
+      insertIndex = desserts.value.length;
+    }
+  }
+  console.log("pagination.value.sortDesc:", pagination.value, pagination.value.sortDesc[0])
+  console.log("insertIndex:", insertIndex)
+
+  desserts.value.splice(insertIndex, 0, addObj);
   totalItems.value = desserts.value.length;
 
   totalItems.value = desserts.value.length;
@@ -629,23 +720,9 @@ watch(list_table_is_ok, (val) => {
 
 //=== mounted ===
 onMounted(() => {
-  console.log("MyTable, mounted()...");
-
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
-  console.log("current routeName:", routeName.value);
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
-
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-
-  console.log("currentUser:", currentUser.value);
-
 });
 
 //=== computed ===
-const routeName = computed(() => route.name);
-
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0'
 }));

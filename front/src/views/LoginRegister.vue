@@ -1,5 +1,4 @@
 <template>
-
   <div class="wrapper" :class="{ active: isActive }">
       <canvas id="canvas" class="logo_img" />
     <h2 class="text-right">Welcome</h2>
@@ -28,15 +27,15 @@
           v-model='loginPassword'
           @keyup.enter="signin"
         />
-        <div>
+
         <button type="submit">Login</button>
           <p>
             Don't have an account?
-            <v-btn color="primary" variant="outlined" @click="register" name="registerButton">
+            <v-btn color="primary" variant="outlined" @click="registerActive" name="registerButton">
               <i class="fa-regular fa-id-card"></i>註冊
             </v-btn>
           </p>
-        </div>
+
 
 
     </div>
@@ -307,7 +306,9 @@ canvas {
 .form-wrapper {
     z-index: 2;
     //
-
+    height: calc(100%);
+    display: flex;
+    flex-direction: column;
     //
 }
 

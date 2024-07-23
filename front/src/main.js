@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import router from './router'
+import { router } from './router'
 import store from './store'
 
 // Vuetify
@@ -31,7 +31,8 @@ app.use(vuetify, {
     icons: {
       defaultSet: 'mdi',
       sets: {
-        mdi, fa,
+        mdi,
+        fa,
       },
 	}
 })

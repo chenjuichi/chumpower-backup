@@ -1,10 +1,10 @@
 <template>
   <div class="container">
     <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+    <v-snackbar v-model="snackbar" location="top right" :timeout="snackbar_timeout" :color="snackbar_color">
       {{ snackbar_info }}
       <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
+        <v-btn :color="snackbar_icon_color" @click="snackbar = false">
           <v-icon dark>mdi-close-circle</v-icon>
         </v-btn>
       </template>
@@ -42,7 +42,7 @@
           <v-text-field
             label="工號"
 
-            @update:focused ="setupListUsers"
+            @update:focused ="listUsers"
             prepend-icon="mdi-account"
             v-model="loginUser.loginEmpID"
             :rules="[requiredRule, empIDRule]"
@@ -85,10 +85,9 @@
             登入
           </v-btn>
         </div>
-        <p class="mark_texts">員工註冊 <a href="#" @click.prevent="togglePanel">註冊</a></p>
+        <p class="mark_texts">員工註冊 <a href="#" @click.prevent="toggleSignUp">註冊</a></p>
 
         <!--<div v-if="openMenu" class="floating-menu-wrapper">-->
-      <!--
         <div v-if="false" class="floating-menu-wrapper">
           <v-menu>
             <template v-slot:activator="{ props }">
@@ -111,10 +110,8 @@
             </v-card>
           </v-menu>
         </div>
-      -->
       </div>
     </transition>
-
     <!--註冊-->
     <transition name="slide-in-right">
       <div v-if="signUp" class="sign-up">
@@ -125,8 +122,7 @@
             prepend-icon="mdi-account"
             v-model="registerUser.empID"
             :rules="[requiredRule, empIDRule]"
-
-            @update:focused ="checkUsers"
+            @blur="checkUsers"
             @keypress="handleKeyDown"
             ref="registerEmpIDInput"
             style="width: 100% !important; max-width: 183px !important;"
@@ -179,41 +175,29 @@
             @keydown.tab.prevent="handlePasswordConfirmTab"
             style="width: 100% !important; max-width: 183px !important;"
           />
-          <v-btn ref="registerButton" type="submit" color="primary" class="btns" id="register" @click="userRegister">
+          <v-btn ref="registerButton" type="submit" color="primary" class="btns" id="register" @click="register">
             <i class="fa-solid fa-user-plus fa-fade" style="color: #63E6BE;"></i>
             註冊
           </v-btn>
         </div>
-        <p class="lg_mark_texts">員工登入 <a href="#" @click.prevent="togglePanel">登入</a></p>
+        <p class="lg_mark_texts">員工登入 <a href="#" @click.prevent="toggleSignUp">登入</a></p>
       </div>
     </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, onMounted, onBeforeMount, onBeforeUnmount } from 'vue';
-import { useRouter } from 'vue-router';
-//import axios from 'axios';
+import { ref, reactive, defineComponent, watch, onMounted, onBeforeMount, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import axios from 'axios';
 import { Vue3Marquee } from 'vue3-marquee';
-import { routerLinks } from '../router/index.js';
-import { myMixin } from '../mixins/common.js';
-
-//import { listDepartments, listUsers, register, login, showSnackbar, setupListUsersWatcher } from '../mixins/api.js';
-//import { departments, snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../mixins/api.js';
-
-import { apiOperation, showSnackbar, setupListUsersWatcher }  from '../mixins/crud.js';
-import { departments }  from '../mixins/crud.js';
-import { snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../mixins/crud.js';
-
-// 使用 apiOperation 函式來建立 API 請求
-const listDepartments = apiOperation('get', '/listDepartments');
-const listUsers = apiOperation('get', '/listUsers');
-const register = apiOperation('post', '/register');
-const login = apiOperation('post', '/login');
+import { routerLinks } from '../../router/index.js';
+import { myMixin } from '../../mixins/common.js';
+import { authModule, eventBus } from '../../mixins/enentBus.js';
 
 //=== component name ==
 defineComponent({
-  name: 'LoginForm2'
+  name: 'LoginForm'
 });
 
 // === mix ==
@@ -225,22 +209,34 @@ const company_name = ref('銓寶工業股份有限公司')
 //const designer_name = ref('財團法人精密機械研究發展中心設計')
 const pmcLogoSrc = ref(require('../assets/pmc_logo.png')); // PMC logo 圖像
 
-//const snackbar = ref(false);
-//const snackbar_info = ref('');
-//const snackbar_color = ref('red accent-2');
-//const snackbar_icon_color = ref('#adadad');
-//const snackbar_timeout = ref(2000);
+const snackbar = ref(false);
+const snackbar_color = ref('red accent-2');
+const snackbar_info = ref('');
+const snackbar_icon_color = ref('#adadad');
+const snackbar_timeout = ref(2000);
 
 const isRegisterUserFocused = ref(false);
 const isLoginUserFocused = ref(false);
 
-//const openMenu = ref(false);
+const openMenu = ref(false);
 const signUp = ref(false);
+const departments = ref([]);
+const temp_desserts = ref([]);
 const foundDessert = ref(null);
 const eyeShow = ref(true);
 const eyeShow1 = ref(true);
 
+const list_table_is_ok = ref(false);
+const get_table_is_ok = ref(false);
+
 const helloArray = ['公告欄: 測試...測試...', '部門A:', '訊息', , '部門B:', '訊息',, '部門C:', '訊息',]
+
+const loginUser = reactive({
+  loginEmpID:  '',
+  loginName: '',
+  loginPassword: ''
+});
+
 const registerUser = reactive({
   empID: '',
   name: '',
@@ -261,14 +257,28 @@ const link2 = reactive ({
 });
 const emit = defineEmits(['setLinks']);
 
-//const loginEmpIDInput = ref(null);
+const loginEmpIDInput = ref(null);
 const registerEmpIDInput = ref(null);
 
 const passwordInput = ref(null);
 const loginButton = ref(null);
 const registerButton = ref(null);
 const registerPasswordInput = ref(null);
-
+/*
+const user_data = reactive({
+  dep: '',
+  empID: '',
+  isOnline: false,
+  name: '',
+  password: '',
+  perm: 3,
+  perm_name: 'member',
+  setting_items_per_page: 10,
+  setting_lastRoutingName: '',
+  setting_message: '',
+  setting_routingPriv: '',
+});
+*/
 let myIdField = null;
 let loginEmpID_max_length = 5;
 
@@ -281,10 +291,9 @@ onMounted(() => {
   replaceImageColor();  //處理企業圖像
 
   myIdField = document.getElementById("loginEmpID");
-  //if (myIdField) {
-  //  myIdField.addEventListener('keydown', handleKeyDown);
-  //}
-  myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
+  if (myIdField) {
+    myIdField.addEventListener('keydown', handleKeyDown);
+  }
 
   loginEmpIDInput.value.focus();   // 元件掛載時聚焦在工號欄位
 
@@ -294,20 +303,57 @@ onMounted(() => {
 onBeforeUnmount(() => {
   console.log("LoginForm, destroyed()...")
 
-  //if (myIdField) {
-  //  myIdField.removeEventListener('keydown', handleKeyDown);
-  //}
-  myIdField && (myIdField.removeEventListener('keydown', handleKeyDown));
+  if (myIdField) {
+    myIdField.removeEventListener('keydown', handleKeyDown);
+  }
 });
 
+
 //=== watch ===
-setupListUsersWatcher();
-
+watch(list_table_is_ok, (val) => {
+  if (val) {
+    temp_desserts.value.sort((a, b) => a.emp_id - b.emp_id);  //升冪排序
+    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
+    if (foundDessert.value) {
+      loginUser.loginName = foundDessert.value.emp_name;
+    } else {
+      if (loginUser.loginEmpID !='') {
+        snackbar_info.value = '錯誤, 找不到工號' + loginUser.loginEmpID + '!';
+        snackbar.value = true;
+      }
+      loginEmpIDInput.value.focus();
+    }
+    list_table_is_ok.value = false;
+  }
+});
+/*
+watch(get_table_is_ok, (val) => {
+  if (val) {
+    user_data = temp_user_data;
+    console.log("login user:",user_data);
+    signInUser(user_data);
+    get_table_is_ok.value = false;
+  }
+});
+*/
 //=== computed ===
+/*
+const foundDessert = computed(() => {
 
+});
+*/
 //=== mounted ===
+onMounted(() => {
+   console.log("LoginForm, mounted()...");
+});
 
 //=== unmounted ===
+/*
+onUnmounted(() => {
+  console.log("LoginForm, onUnmounted()...")
+
+});
+*/
 
 //=== created ===
 onBeforeMount(() => {
@@ -321,58 +367,61 @@ onBeforeMount(() => {
 const initialize = () => {
   console.log("initialize()...")
 
-  //listDepartments();
-
-  listUsers();
-  //setupListUsersWatcher();
   listDepartments();
 };
 
-const setupListUsers = (focused) => {
+const listDepartments = () => {
+  console.log("listDepartments()...")
+
+  const path = '/listDepartments';
+  axios.get(path)
+  .then((res) => {
+    departments.value=[...res.data.departments];
+  })
+  .catch((error) => {
+    console.error(error);
+    snackbar_info.value = '錯誤! API連線問題...';
+    snackbar.value = true;
+  });
+};
+
+const listUsers = (focused) => {
   if (!focused) { // 當失去焦點時
-    console.log("setupListUsers()...");
+    console.log("listUsers()...");
 
     isLoginUserFocused.value=false;
 
-    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
-    //console.log("foundDessert:",foundDessert.value);
-    if (foundDessert.value) {
-      loginUser.loginName = foundDessert.value.emp_name;
-    } else {
-        //console.log("step, not found...", loginUser.loginEmpID);
-        if (loginUser.loginEmpID !== '') {
-        let temp_info = snackbar_info.value = '錯誤, 找不到工號' + loginUser.loginEmpID + '!';
-        showSnackbar(temp_info, 'red accent-2');
-
-        loginUser.loginEmpID = '';
-      }
-      loginEmpIDInput.value.focus();
-    }
+    list_table_is_ok.value = false;
+    const path = '/listUsers';
+    axios.get(path)
+    .then((res) => {
+      temp_desserts.value = res.data.users;
+      console.log("GET ok, total records:", res.data.users.length);
+      list_table_is_ok.value = true;
+    })
+    .catch((error) => {
+      console.error(error);
+      snackbar_info.value = '錯誤! API連線問題...';
+      snackbar.value = true;
+    });
   } else {
-    isLoginUserFocused.value = true;
+    isLoginUserFocused.value=true
   }
 };
 
-const checkUsers = (focused) => {
-  if (!focused) { // 當失去焦點時
-    console.log("checkUser()...");
+const checkUsers = () => {
+  console.log("checkUser(), not focused");
 
-    isRegisterUserFocused.value=false;
-    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
-    console.log("foundDessert:",foundDessert.value);
-    if (foundDessert.value) {
-      console.log("step, found...", registerUser.empID);
-      if (registerUser.empID !='') {
-        let temp_info = snackbar_info.value = '錯誤, 工號' + registerUser.empID + '重複!';
-        showSnackbar(temp_info, 'red accent-2');
-
-        registerUser.empID = '';
-      }
-      registerEmpIDInput.value.focus();
+  isRegisterUserFocused.value=true;
+  foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
+  if (foundDessert.value) {
+    if (registerUser.empID !='') {
+      snackbar_info.value = '錯誤, 工號' + registerUser.empID + '重複!';
+      snackbar.value = true;
     }
-  } else {
-    isRegisterUserFocused.value=true;
+    registerEmpIDInput.value.focus();
   }
+
 };
 
 const focusPasswordInput = (event) => {
@@ -380,45 +429,51 @@ const focusPasswordInput = (event) => {
   passwordInput.value.focus();
 };
 
+//const focusRegisterPassword = async (focused) => {
 const focusRegisterPassword = (focused) => {
-  //if (!focused) { // 當失去焦點時
-  //  registerPasswordInput.value.focus();
-  //}
-  !focused && (registerPasswordInput.value.focus());  // 當失去焦點時
+  if (!focused) { // 當失去焦點時
+    //await nextTick();
+    registerPasswordInput.value.focus();
+  }
 };
 
 const handleMenuUpdate = (menuState) => {
-  console.log('handleMenuUpdate(),', menuState);
-  //if (!menuState) { // 當菜單關閉，focus到密碼欄位
-  //  focusRegisterPassword();
-  //}
-  !menuState && (focusRegisterPassword());  //當菜單關閉，focus到密碼欄位
+  console.log('Menu state updated:', menuState);
+  if (!menuState) { // 當菜單關閉，focus到密碼欄位
+    focusRegisterPassword();
+  }
 };
 
 const handleModelValueUpdate = (newValue) => {
-  console.log('handleModelValueUpdate(),', newValue);
-
+  console.log('Model value updated:', newValue);
   registerUser.dep = newValue;
 };
-
+/*
+const focusLoginButton = (event) => {
+  event.preventDefault();
+  if (event.shiftKey) {
+    passwordInput.value.focus();
+  } else {
+    loginButton.value.$el.focus();
+  }
+};
+*/
 const handlePasswordConfirmTab = (event) => {
   event.preventDefault();
-  //if (event.shiftKey) {
-  //  registerEmpIDInput.value.focus();
-  //} else {
-  //  registerButton.value.$el.focus();
-  //}
-  event.shiftKey ? registerEmpIDInput.value.focus() : registerButton.value.$el.focus();
+  if (event.shiftKey) {
+    registerEmpIDInput.value.focus();
+  } else {
+    registerButton.value.$el.focus();
+  }
 };
 
 const handlePasswordTab = (event) => {
   event.preventDefault();
-  //if (event.shiftKey) {
-  //  loginEmpIDInput.value.focus();
-  //} else {
-  //  loginButton.value.$el.focus();
-  //}
-  event.shiftKey ? loginEmpIDInput.value.focus() : loginButton.value.$el.focus();
+  if (event.shiftKey) {
+    loginEmpIDInput.value.focus();
+  } else {
+    loginButton.value.$el.focus();
+  }
 };
 
 const handleKeyDown = (event) => {
@@ -440,8 +495,8 @@ const handleKeyDown = (event) => {
   }
 };
 
-const togglePanel = () => {
-  console.log("togglePanel()")
+const toggleSignUp = () => {
+  console.log("toggleSignUp()")
 
   isRegisterUserFocused.value=false;
   isLoginUserFocused.value=false;
@@ -485,8 +540,26 @@ const replaceImageColor = () => {
   sourceImage.src = imageSrc.value;
 }
 
-const userRegister = () => {
-  validateFields();       // 輸入資料檢查
+const register = () => {
+  if (
+    !registerUser.empID ||
+    !registerUser.name ||
+    !registerUser.dep ||
+    !registerUser.password ||
+    !registerUser.confirmPassword
+  ) {
+    snackbar_info.value = '所有欄位都需要填!';
+    snackbar_color.value = 'yellow lighten-5';
+    snackbar.value = true;
+    return;
+  }
+
+  if (registerUser.password !== registerUser.confirmPassword) {
+    snackbar_info.value = '密碼與確認密碼不相符合!';
+    snackbar_color.value = 'yellow lighten-5';
+    snackbar.value = true;
+    return;
+  }
 
   const payload = {
     emp_id: registerUser.empID,
@@ -494,10 +567,20 @@ const userRegister = () => {
     dep_name: registerUser.dep,
     password: registerUser.password,
   };
+  axios.post('/register', payload)
+    .then(res => {
+      if (res.data.status) {
 
-  register(payload).then(status => {
-    status && (resetRegisterForm(), togglePanel());
-  });
+        resetRegisterForm();
+        toggleSignUp();
+
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      snackbar_info.value = '錯誤! API連線問題...';
+      snackbar.value = true;
+    });
 };
 
 const resetRegisterForm = () => {
@@ -508,6 +591,14 @@ const resetRegisterForm = () => {
   registerUser.confirmPassword = '';
 };
 
+const menu_1 = () => {
+  router.push('/home');
+}
+
+const menu_2 = () => {
+  router.push('/about');
+}
+
 const userLogin = () => {
   console.log("userLogin()...");
 
@@ -516,11 +607,26 @@ const userLogin = () => {
     password: loginUser.loginPassword,
   };
 
-  login(payload).then(data => {
-    console.log("data:", data);
+  //get_table_is_ok.value = false;
 
-    data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
-  });
+  const path = '/login';
+  axios.post(path, payload)
+    .then(res => {
+      if (res.data.status) {
+        //user_data = res.data.user;
+        console.log("login user:",res.data.user);
+        signInUser(res.data.user);
+        //get_table_is_ok.value = true;
+      } else {
+        snackbar_info.value = res.data.message;
+        snackbar.value = true;
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      snackbar_info.value = '錯誤! API連線問題...';
+      snackbar.value = true;
+    });
 };
 
 const signInUser = (user) => {
@@ -539,23 +645,27 @@ const signInUser = (user) => {
 
   removeLoginUser();
 
+  localStorage.setItem('loginedUser', JSON.stringify(user));  //使用者登入資料
+  //let isAuthenticated = 'true'; // 確保初始值為字串 'true'
+  //localStorage.setItem('Authenticated', isAuthenticated);
+
+  authModule.isAuthenticated = true; // 登入成功, 更新驗證狀態為 true
+
+  // 發布登入成功事件
+  eventBus.emit('userLoggedIn', authModule.isAuthenticated);
+  // route to component
   let router_name = (user.setting_lastRoutingName=='') ? 'Main': user.setting_lastRoutingName;
   console.log("router_name:", router_name);
-
-  localStorage.setItem('loginedUser', JSON.stringify(user));  //使用者登入資料
-  let isAuthenticated = 'true'; // 確保初始值為字串 'true'
-  localStorage.setItem('Authenticated', isAuthenticated);
-
-  //router.push({ name: router_name });
-  const currentState = history.state;
-  router.push({ name: router_name }).then(() => {
-    // 保留現有的歷史狀態
-    history.replaceState(currentState, '', router.resolve({ name: router_name }).href);
-  }).catch(err => {
-    if (err.name !== 'NavigationDuplicated') {
-      throw err;
-    }
-  });
+  router.push({ name: router_name });
+  //const currentState = history.state;
+  //router.push({ name: router_name }).then(() => {
+  //  // 保留現有的歷史狀態
+  //  history.replaceState(currentState, '', router.resolve({ name: router_name }).href);
+  //}).catch(err => {
+  //  if (err.name !== 'NavigationDuplicated') {
+  //    throw err;
+  //  }
+  //});
 };
 
 const removeLoginUser = () => {
@@ -567,18 +677,10 @@ const removeLoginUser = () => {
   }
 };
 
-const validateFields = () => {
-  if (['empID', 'name', 'dep', 'password', 'confirmPassword'].some(field => !registerUser[field])) {
-    showSnackbar('所有欄位都需要填!', 'yellow lighten-5');
-    return;
-  }
+//const rules = {
+//  required: value => !!value || 'Required.',
+//};
 
-  if (registerUser.password !== registerUser.confirmPassword) {
-    showSnackbar('密碼與確認密碼不相符合!', 'yellow lighten-5');
-    return;
-  }
-};
-/*
 const checkEmpty = (field) => {
   console.log("checkEmpty(),", field, loginUser[field]);
 
@@ -587,13 +689,15 @@ const checkEmpty = (field) => {
   else
     openMenu.value=false;
 };
-*/
+
 const requiredRule = value => !!value || '欄位必須輸入資料...';
 const empIDRule = value => /^[0-9]{4,5}$/.test(value) || '工號必須是4或5位數字!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
 
 const nameRule = value => value.length <= 10 || '資料長度太長!';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
 const confirmPasswordRule = value => value === registerUser.password || '密碼不相同!';
+
+//onMounted(initialize);
 </script>
 
 <style lang="scss" scoped>

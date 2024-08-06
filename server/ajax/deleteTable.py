@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 
-from database.tables import User, Spindle, Grid, OutTag, InTag, SpindleRunIn, Session
+from database.tables import User, Session
 
 deleteTable = Blueprint('deleteTable', __name__)
 
@@ -10,20 +10,30 @@ deleteTable = Blueprint('deleteTable', __name__)
 @deleteTable.route("/removeUser", methods=['POST'])
 def remove_user():
     print("removeUser....")
+
     request_data = request.get_json()
     userID = request_data['ID']
-
-    return_value = True  # true: 資料正確, 註冊成功
-    if userID == "":
-        return_value = False  # false: 資料不完全 註冊失敗
-
+    print("userID", userID, type(userID))
     s = Session()
     s.query(User).filter(User.emp_id == userID).update({'isRemoved': False})
-    s.commit()
+    #s.commit()
+    try:
+      s.commit()
+      print("Set data committed successfully")
+    except pymysql.err.IntegrityError as e:
+      print(f"IntegrityError: {e}")
+      s.rollback()
+    except exc.IntegrityError as e:
+      print(f"SQLAlchemy IntegrityError: {e}")
+      s.rollback()
+    except Exception as e:
+      print(f"Exception: {e}")
+      s.rollback()
+
     s.close()
 
     return jsonify({
-        'status': return_value,
+      'status': True,
     })
 
 

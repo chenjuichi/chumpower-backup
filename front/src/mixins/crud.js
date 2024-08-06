@@ -42,23 +42,33 @@ export const apiOperation = (operation, path, payload) => {
     return request
       .then((res) => {
         if (operation === 'get') {    // get 操作
-          if (path === '/listDepartments') {
+          if (path == '/listDepartments') {
             departments.value = [...res.data.departments];
           }
 
-          if (path === '/listUsers') {
+          if (path == '/listUsers') {
             temp_desserts.value = res.data.users;
+            desserts.value = [...temp_desserts.value];
+            //console.log("/listUsers, desserts:", desserts.value)
             list_table_is_ok.value = true;
           }
 
           //list_table_is_ok.value = true;
         } else {    // post 操作
-          if (path === '/register' || '/updatePassword') {
+          console.log("post, path:", path)
+          if (path == '/register' || path == '/register') {
+            console.log("post, register")
             return res.data.status;
           }
 
-          if (path === '/login') {
+          if (path == '/login') {
+            console.log("post, login")
             return res.data;
+          }
+
+          if (path == '/removeUser') {
+            console.log("post, removeUser")
+            return res.data.status;
           }
         }
         // 在這裡可以處理其他操作的回傳值
@@ -85,6 +95,7 @@ export const setupListUsersWatcher = () => {
 };
 
 export const showSnackbar = (message, color) => {
+  console.log("showSnackbar,", message, color)
   snackbar_info.value = message;
   snackbar_color.value = color;
   snackbar.value = true;

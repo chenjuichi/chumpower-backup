@@ -24,6 +24,11 @@ new_perm = Permission(auth_code=auth_code, auth_name=auth_name)
 s.add(new_perm)
 
 auth_code = 3
+auth_name = "staff"
+new_perm = Permission(auth_code=auth_code, auth_name=auth_name)
+s.add(new_perm)
+
+auth_code = 4
 auth_name = "member"
 new_perm = Permission(auth_code=auth_code, auth_name=auth_name)
 s.add(new_perm)

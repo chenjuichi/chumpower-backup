@@ -195,15 +195,15 @@ import { ref, reactive, defineComponent, onMounted, onBeforeMount, onBeforeUnmou
 import { useRouter } from 'vue-router';
 //import axios from 'axios';
 import { Vue3Marquee } from 'vue3-marquee';
-import { routerLinks } from '../router/index.js';
-import { myMixin } from '../mixins/common.js';
+import { routerLinks } from '../../router/index.js';
+import { myMixin } from '../../mixins/common.js';
 
 //import { listDepartments, listUsers, register, login, showSnackbar, setupListUsersWatcher } from '../mixins/api.js';
 //import { departments, snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../mixins/api.js';
 
-import { apiOperation, showSnackbar, setupListUsersWatcher }  from '../mixins/crud.js';
-import { departments }  from '../mixins/crud.js';
-import { snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../mixins/crud.js';
+import { apiOperation, showSnackbar, setupListUsersWatcher }  from '../../mixins/crud.js';
+import { departments }  from '../../mixins/crud.js';
+import { snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
@@ -519,7 +519,13 @@ const userLogin = () => {
   login(payload).then(data => {
     console.log("data:", data);
 
-    data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
+    if (data.status) {
+      signInUser(data.user);
+    } else {
+      //snackbar_info.value = data.message;
+      //snackbar.value = true;
+      showSnackbar(data.message, 'red accent-2');
+    }
   });
 };
 

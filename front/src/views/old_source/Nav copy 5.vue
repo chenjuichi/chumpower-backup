@@ -19,19 +19,13 @@
       </button>
 
       <div class="collapse navbar-collapse" id="navbarNav" style="font-family: 'cwTeXYen', sans-serif;">
-        <!-- 選單 -->
+        <!-- 左側 -->
         <ul class="navbar-nav my-left-nav">
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(0)"
-            @mouseleave="onLeave(0)"
-          >
+          <li class="nav-item dropdown dropdownk">
             <button class="dropbtnk">
               <div :class="{'button-content': isSegment }">
                 <span :class="{'button-title': isSegment }">在製品生產</span>
-                <span class="icon-container">
-                  <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-                </span>
+                <i :class="['fas fa-angle-down' , {'button-icon' : isSegment}]" />
               </div>
             </button>
             <div class="dropdown-contentk">
@@ -40,22 +34,7 @@
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                1.備料區
-              </router-link>
-              <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
-              >
-                2.加工區
-              </router-link>
-
-              <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
-              >
-                3.組裝區
+                1.加工區
               </router-link>
               <router-link
                 to="/c"
@@ -63,22 +42,16 @@
                 :to="navLinks.link2.isEnabled ? '/a' : '#'"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                4.出貨區
+                2.組裝區
               </router-link>
             </div>
           </li>
 
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(1)"
-            @mouseleave="onLeave(1)"
-          >
+          <li class="nav-item dropdown dropdownk">
               <button class="dropbtnk">
                 <div :class="{'button-content': isSegment }">
                   <span :class="{'button-title': isSegment }">備料清單</span>
-                  <span class="icon-container">
-                    <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-                  </span>
+                  <i :class="['fas fa-angle-down', {'button-icon' : isSegment}]" />
                 </div>
               </button>
             <div class="dropdown-contentk">
@@ -100,17 +73,11 @@
             </div>
           </li>
 
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(2)"
-            @mouseleave="onLeave(2)"
-          >
+          <li class="nav-item dropdown dropdownk">
               <button class="dropbtnk">
                 <div :class="{'button-content': isSegment }">
                   <span :class="{'button-title': isSegment }">組裝生產</span>
-                  <span class="icon-container">
-                    <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-                  </span>
+                  <i :class="['fas fa-angle-down', {'button-icon' : isSegment}]" />
                 </div>
               </button>
             <div class="dropdown-contentk">
@@ -140,25 +107,60 @@
             </div>
           </li>
 
+          <!--<li class="nav-item">-->
+            <!--<router-link :to="navLinks.link2.to" class="nav-link my-nav-link-text" :class="{ 'disabled-link': !navLinks.link2.isEnabled }">-->
+              <!-- {{ navLinks.link2.text || 'router link 尚未命名' }} -->
+              <!--組裝區資訊-->
+            <!--</router-link>-->
+          <!--</li>-->
+
+          <!--<li class="nav-item">-->
+            <!--<router-link class="nav-link my-nav-link-text" to="/a">-->
+              <!--組裝區異常填報-->
+            <!--</router-link>-->
+          <!--</li>-->
           <li class="nav-item">
             <router-link class="nav-link my-nav-link-text" to="/c">
               成品入庫
             </router-link>
           </li>
-
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(4)"
-            @mouseleave="onLeave(4)"
-          >
-            <button class="dropbtnk">
-              <div :class="{'button-content': isSegment }">
-                <span :class="{'button-title': isSegment }">加工生產</span>
-                <span class="icon-container">
-                  <i :class="['fas', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-                </span>
-              </div>
-            </button>
+        <!--
+          <li class="nav-item dropdown" @mouseenter="showDropdown('b')" @mouseleave="hideDropdown('b')">
+            <span class="nav-link my-nav-link-text">Item b <i class="fas fa-angle-down"></i></span>
+            <div class="dropdown-menu" :class="{ show: dropdownOpen.b }">
+              <router-link class="dropdown-item my-dropdown-item style='padding-left:20px !important;'" to="/a">SubItem A</router-link>
+              <router-link class="dropdown-item my-dropdown-item style='padding-left:20px !important;'" to="/c">SubItem B</router-link>
+            </div>
+          </li>
+        -->
+        <!--
+          <li class="nav-item dropdown dropdownk">
+            <button class="dropbtnk">Item b<i class="fas fa-angle-down"></i></button>
+            <div class="dropdown-contentk">
+              <router-link
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks.link1.isEnabled ? '/a' : '#'"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+                SubItem A
+              </router-link>
+              <router-link
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks.link1.isEnabled ? '/c' : '#'"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+                SubItem B
+              </router-link>
+            </div>
+          </li>
+        -->
+          <li class="nav-item dropdown dropdownk">
+              <button class="dropbtnk">
+                <div :class="{'button-content': isSegment }">
+                  <span :class="{'button-title': isSegment }">加工生產</span>
+                  <i :class="['fas fa-angle-down', {'button-icon' : isSegment}]" />
+                </div>
+              </button>
             <div class="dropdown-contentk">
               <router-link
                 :to="navLinks.link1.isEnabled ? '/c' : '#'"
@@ -185,18 +187,16 @@
               </router-link>
             </div>
           </li>
-
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(5)"
-            @mouseleave="onLeave(5)"
-          >
+        <!--
+          <li class="nav-item">
+            <router-link class="nav-link my-nav-link-text" to="/c">Item c</router-link>
+          </li>
+        -->
+          <li class="nav-item dropdown dropdownk">
             <button class="dropbtnk">
               <div :class="{'button-content': isSegment }">
                 <span :class="{'button-title': isSegment }">系統設定</span>
-                <span class="icon-container">
-                  <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-                </span>
+                <i :class="['fas fa-angle-down', {'button-icon' : isSegment}]" />
               </div>
             </button>
             <div class="dropdown-contentk">
@@ -241,17 +241,17 @@
               </router-link>
             </div>
           </li>
+        </ul>
 
-          <li
-            class="nav-item dropdown dropdownk"
-            @mouseenter="onHover(6)"
-            @mouseleave="onLeave(6)"
-          >
+        <!--checkbox-->
+        <v-checkbox v-model="localShowFooter" label="Show Footer" class="ml-auto" style="position: relative; right: 80px;" />
+
+        <!-- 右側 -->
+        <ul class="navbar-nav justify-content-end my-right-nav">
+          <li class="nav-item dropdown dropdownk">
             <button class="dropbtnk">
               <em>{{ currentUser ? currentUser.name : '使用者' }}</em>
-              <span class="icon-container">
-                <i :class="['fas', hoveredItems[6] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
-              </span>
+              <i class="fas fa-angle-down" style="position: relative; left: 5px;"></i>
             </button>
             <div class="dropdown-contentk">
               <div class="dropdown-item my-dropdown-item" @click="logout">登出</div>
@@ -261,9 +261,6 @@
             </div>
           </li>
         </ul>
-
-        <!--checkbox-->
-        <v-checkbox v-model="localShowFooter" label="Show Footer" class="ml-auto" style="position: relative; right: 180px;" />
       </div>
     </div>
   </nav>
@@ -277,9 +274,9 @@ import axios from 'axios';
 import { useRoute, useRouter } from 'vue-router'; // Import useRouter
 //import logo from '../assets/BBC-Line-Logo_Blue.png';
 import logo from '../assets/logo.svg';
-import VCheckbox from './VCheckbox.vue';
-import ChangePassword from './changePassword.vue';
-import { myMixin } from '../mixins/common.js';
+import VCheckbox from '../VCheckbox.vue';
+import ChangePassword from '../changePassword.vue';
+import { myMixin } from '../../mixins/common.js';
 
 //=== component name ==
 defineComponent({
@@ -308,14 +305,12 @@ const snackbar = ref(false);
 const snackbar_color = ref('red accent-2');
 const snackbar_info = ref('');
 
-const isHovered = ref(false);
-const isSegment = ref(false);
+const isSegment = ref(false)
 const openDialog = ref(false);
 const home_url = logo;
 const localShowFooter = ref(props.showFooter);
 const dropdownOpen = ref({ b: false, user: false, data_maintain: false, product_info: false });
 
-const hoveredItems = reactive({});
 const dropdownContent = reactive({
   product_info: null,
 })
@@ -324,17 +319,6 @@ const router = useRouter(); // Initialize router
 const route = useRoute(); // Initialize router
 
 //=== method ===
-const onHover = (index) => {
-  //console.log("onHover:", index, hoveredItems[index]);
-  hoveredItems[index] = true;
-  console.log("onHover:", index, hoveredItems[index]);
-};
-
-const onLeave = (index) => {
-  hoveredItems[index] = false;
-  console.log("onLeave:", index, hoveredItems[index]);
-};
-
 const showDropdownk = () => {
   if (dropdownContent.product_info) {
     dropdownContent.product_info.style.display = 'block';
@@ -441,15 +425,6 @@ const setAuthenticated = (isLogin) => {
 onMounted(() => {
   disableBackButton();
   console.log("nav, mounted():",props.navLinks);
-
-  hoveredItems[0]=false;
-  hoveredItems[1]=false;
-  hoveredItems[2]=false;
-  hoveredItems[3]=false;
-  hoveredItems[4]=false;
-  hoveredItems[5]=false;
-  hoveredItems[6]=false;
-
 });
 
 //=== unmounted ===
@@ -492,25 +467,39 @@ watch(localShowFooter, (newValue) => {
   margin-right: 20px;                   // 設置每個 nav-item 之間的間距
 }
 
-.navbar-nav .nav-item:first-child {     // 第1個nav-item設置左側間距
+.navbar-nav .nav-item:first-child {     // 選中navbar-nav內的第一個nav-item並設置左側間距
   margin-left: 40px;
 }
 
 .navbar-nav .nav-item:last-child {
-  left: 210px;                          // 最後1個 nav-item設置右側距離
+  margin-right: 0;                      // 最後一個 nav-item 不需要右側間距
+}
+
+.my-right-nav {
+  position: relative;
+  right: 70px;
+  //right: 450px;
+  top: -8px;
 }
 
 // 確保左側和右側的nav使用相同的對齊方式
-.my-left-nav .dropdownk .dropdown-contentk {
+.my-left-nav .dropdownk .dropdown-contentk,
+.my-right-nav .dropdownk .dropdown-contentk {
   top: 100%;        // 確保dropdown內容在nav-item下方
   margin-top: 0;    // 根據需要調整
   padding: 0;       // 根據需要調整
 }
 
 // 將所有dropdown內容的垂直位置設置為一致
-.my-left-nav .dropdown-contentk {
-  top: calc(100% + 10px);             // 根據需要調整10px，確保垂直對齊
-  margin-top: 10px;
+.my-left-nav .dropdown-contentk,
+.my-right-nav .dropdown-contentk {
+  top: calc(100% + 10px); /* 根據需要調整10px，確保垂直對齊 */
+}
+
+// 如果需要，可以使用margin-top來微調
+.my-left-nav .dropdown-contentk,
+.my-right-nav .dropdown-contentk {
+  margin-top: 10px; /* 根據需要調整 */
 }
 
 
@@ -525,9 +514,9 @@ watch(localShowFooter, (newValue) => {
   font-weight: 700;
   transition: color 0.3s;
   color:rgba(0,0,0,0.65);
-  text-decoration: none;            // 取消所有 nav-link 的下劃線
+  text-decoration: none;  // 取消所有 nav-link 的下劃線
 
-  position: relative;               // 確保dropdown內容相對於父級定位
+  position: relative;     // 確保dropdown內容相對於父級定位
 }
 
 // Dropdown Content (Hidden by Default)
@@ -584,16 +573,10 @@ li.dropdownk {
 
 .button-content {
   display: flex;
-  flex-direction: column;     // 垂直排列
+  flex-direction: column;   // 垂直排列
   //align-items: center;      // 水平居中對齊
-  align-items: flex-start;    // 文字靠左對齊
-  max-width: 60px;            // 最大寬度
-}
-
-.icon-container {
-  width: 20px;                // 根據圖標的實際大小調整
-  display: inline-block;
-  text-align: center;         // 居中對齊圖標
+  align-items: flex-start;  // 文字靠左對齊
+  max-width: 60px;          // 最大寬度
 }
 
 .button-title {

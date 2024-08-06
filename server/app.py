@@ -13,6 +13,7 @@ from ajax.listTable import listTable
 from ajax.getTable import getTable
 from ajax.createTable import createTable
 from ajax.updateTable import updateTable
+from ajax.deleteTable import deleteTable
 
 # --------------------------
 
@@ -33,6 +34,7 @@ app.register_blueprint(listTable)
 app.register_blueprint(getTable)
 app.register_blueprint(createTable)
 app.register_blueprint(updateTable)
+app.register_blueprint(deleteTable)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
 
@@ -108,7 +110,7 @@ if __name__ == '__main__':
   '''
   from werkzeug.serving import make_server
   def run_server():
-      http_server = make_server(host_ip, 6090, app)
+      http_server = make_server(host_ip, 7010, app)
       http_server.serve_forever()
   print("後端應用程式已經啟動...")
   run_server()

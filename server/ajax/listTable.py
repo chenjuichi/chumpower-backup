@@ -67,7 +67,7 @@ def list_users():
           'emp_id': user['emp_id'],
           'emp_name': user['emp_name'],
           'dep_name': user['dep_name'],
-          'emp_perm': perm_item.auth_code,
+          'emp_perm': perm_item.auth_code,    #4, 3, 2, 1
           'emp_lastRoutingName': setting_item.lastRoutingName,
           'routingPriv': setting_item.routingPriv,
         }

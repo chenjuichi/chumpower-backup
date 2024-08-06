@@ -30,6 +30,7 @@ def login():
         print("login user: ", user)
 
         if user.isOnline:
+          print("step1...")
           s.close()
           return jsonify({
             'status': False,          # false: 資料錯誤
@@ -37,6 +38,7 @@ def login():
           })
 
         if not check_password_hash(user.password, password):
+          print("step2...")
           s.close()
           return jsonify({
             'status': False,          # false: 資料錯誤
@@ -64,12 +66,14 @@ def login():
           'setting_lastRoutingName': setting_item.lastRoutingName,
         }
     else:
+      print("step3...")
       s.close()
       return jsonify({
         'status': False,                        # false: 資料錯誤
         'message': '錯誤! 找不到工號' + userID
       })
 
+    print("step4...")
     s.close()
 
     return jsonify({

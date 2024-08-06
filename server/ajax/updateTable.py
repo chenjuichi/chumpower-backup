@@ -77,19 +77,41 @@ def update_user():
 
     _emp_id = request_data['emp_id']
     _emp_name = request_data['emp_name']
+    _dep_name = request_data['dep_name']
+    _emp_perm = request_data['emp_perm']
+    _routingPriv: request_data['routingPriv']
+    _password_reset = request_data['password_reset']
+    newPassword='a12345678'
 
     return_value = True  # true: 資料正確, 註冊成功
     if _emp_id == "" or _emp_name == "":
         return_value = False  # false: 資料不完全 註冊失敗
 
-
     s = Session()
+    user = s.query(User).filter_by(emp_id=_emp_id).first()
+    if user and user.isRemoved:
+      _auth_name = 'member' if _emp_perm == 4 else ('staff' if _emp_perm == 3 else ('admin' if _emp_perm == 2 else ('system' if _emp_perm == 1 else 'member')))
+      s.query(Permission).filter(Permission.id == user['perm_id']).update(
+        {"auth_code": _emp_perm, "auth_name": _auth_name}
+      )
 
-    if return_value:
-        s.query(User).filter(User.emp_id == _emp_id).update(
-            #{"emp_name": _emp_name, "dep_id": department.id})
-            {"emp_name": _emp_name, })
-        s.commit()
+      s.query(Setting).filter(Setting.id == user['setting_id']).update(
+        {"routingPriv": _routingPrive}
+      )
+
+      if _password_reset=='yes':
+        s.query(User).filter(User.emp_id == _emp_id).update({
+          "emp_name": _emp_name,
+          "dep_name": _dep_name,
+          "password": generate_password_hash(newPassword, method='sha256')
+        })
+      else:
+        s.query(User).filter(User.emp_id == _emp_id).update({
+          "emp_name": _emp_name,
+          "dep_name": _dep_name,
+        })
+
+      s.commit()
 
     s.close()
 

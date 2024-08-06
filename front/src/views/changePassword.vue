@@ -1,10 +1,10 @@
 <template>
 <div>
   <!-- Snackbar -->
-  <v-snackbar v-model="snackbar" location="top right" :timeout="snackbar_timeout" :color="snackbar_color">
+  <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
     {{ snackbar_info }}
     <template v-slot:actions>
-      <v-btn :color="snackbar_icon_color" @click="snackbar = false">
+      <v-btn color="#adadad" @click="snackbar = false">
         <v-icon dark>mdi-close-circle</v-icon>
       </v-btn>
     </template>
@@ -75,14 +75,12 @@
 
 <script setup>
 import { ref, computed, watch, defineComponent, onMounted } from 'vue';
-import axios from 'axios';
+//import axios from 'axios';
 import { myMixin } from '../mixins/common.js';
 
-import { apiOperation, showSnackbar }  from '../mixins/crud.js';
+import { apiOperation, showSnackbar, snackbar, snackbar_info, snackbar_color }  from '../mixins/crud.js';
 // 使用 apiOperation 函式來建立 API 請求
 const updatePassword = apiOperation('post', '/register');
-
-
 
 //=== component name ==
 defineComponent({
@@ -110,8 +108,8 @@ const imageSrc = ref(require('../assets/organic-1280537_1280.jpg')); //企業視
 //const snackbar = ref(false);
 //const snackbar_color = ref('');   // default: 'red accent-2'
 //const snackbar_info = ref('');
-const snackbar_icon_color = ref('#adadad');
-const snackbar_timeout = ref(2000);
+//const snackbar_icon_color = ref('#adadad');
+//const snackbar_timeout = ref(2000);
 
 //const dialog = ref(false);
 const localDialog = ref(props.dialog);

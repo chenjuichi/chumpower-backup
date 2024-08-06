@@ -62,7 +62,7 @@ class Permission(BASE):  # 一對多, "一":permission, "多":user
     __tablename__ = 'permission'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # 1:none, 2:system, 3:admin, 4:member
+    # 0:none, 1:system, 2:admin, 3: staff, 4:member
     auth_code = Column(Integer, default=0)
     auth_name = Column(String(10), default='none')
     # 一對多(一)

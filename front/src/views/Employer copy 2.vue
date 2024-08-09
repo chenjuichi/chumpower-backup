@@ -51,21 +51,14 @@
                               label="工號"
                               v-model="editedItem.emp_id"
                               :rules="[requiredRule, empIDRule]"
-                              variant="underlined"
-                              :readonly="formTitle === '編輯資料'"
-                              ref="EmpIDInput"
-                              @update:focused ="checkUsers"
-                              @keypress="handleKeyDown"
+                              variant="underlined" :readonly="formTitle === '編輯資料'"
                             />
                           </v-col>
                           <v-col cols="12" md="4">
                             <v-text-field
                             label="姓名"
                             v-model="editedItem.emp_name"
-                            :rules="[requiredRule, nameRule]"
-
                             variant="underlined"
-
                           />
                           </v-col>
                           <v-col cols="12" md="4">
@@ -74,25 +67,47 @@
                               :items="departments"
                               v-model="editedItem.dep_name"
                               variant="underlined"
-                              style="width: 100% !important; max-width: 183px !important;"
                             />
                           </v-col>
                         </v-row>
-
                         <v-row style="height: 150px; display: flex; justify-content: flex-end; align-items: flex-end;" no-gutters>
-                          <v-btn-toggle v-model="toggle" variant="outlined" divided color="#6200ea" density="compact">
-                            <v-btn v-for="(role, index) in roles" :key="index" :value="role.value" style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;">
-                              <span class="fa-stack fa-2x">
-                                <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
-                                <i :class="role.iconClass" style="color: #EF5350; font-weight: 800; position: absolute; transform: translate(50%, -25%);"></i>
-                              </span>
-                            </v-btn>
-                          </v-btn-toggle>
-                          <pre class="toggle-display" style="font-weight: 700; font-size:15px; position:relative; top: -20px; left: -110px;">
-                            {{ toggle }}
-                          </pre>
-                        </v-row>
+                            <v-btn-toggle
+                              v-model="toggle"
+                              variant="outlined"
+                              divided
+                              color="#6200ea"
+                              density="compact"
 
+                            >
+                              <v-btn style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;" value="系統人員">
+                                <span class="fa-stack fa-2x">
+                                  <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
+                                  <i class="fa-solid fa-1 fa-stack-1x" style="color: #EF5350; font-weight:800; position: absolute; transform: translate(50%, -25%);"></i>
+                                </span>
+                              </v-btn>
+                              <v-btn style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;" value="管理人員" variant="tonal">
+                                <span class="fa-stack fa-2x">
+                                  <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
+                                  <i class="fa-solid fa-2 fa-stack-1x" style="color: #EF5350; font-weight:800; position: absolute; transform: translate(50%, -25%);"></i>
+                                </span>
+                              </v-btn>
+                              <v-btn style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;" value="主管">
+                                <span class="fa-stack fa-2x">
+                                  <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
+                                  <i class="fa-solid fa-3 fa-stack-1x" style="color: #EF5350; font-weight:800; position: absolute; transform: translate(50%, -25%);"></i>
+                                </span>
+                              </v-btn>
+                              <v-btn style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;" value="員工" variant="tonal">
+                                <span class="fa-stack fa-2x">
+                                  <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
+                                  <i class="fa-solid fa-4 fa-stack-1x" style="color: #EF5350; font-weight:800; position: absolute; transform: translate(50%, -25%);"></i>
+                                </span>
+                              </v-btn>
+                            </v-btn-toggle>
+                            <pre class="toggle-display" style="font-weight: 700; font-size:15px; position:relative; top: -20px; left: -110px;">
+                              {{ toggle }}
+                            </pre>
+                        </v-row>
                         <v-row no-gutters align="center" style="top: -40px; position: relative;" v-if="editedIndex != -1">
                           <v-col cols="12" md="3"></v-col>
                           <div style="margin-bottom: 0; font-size: 14px;">
@@ -201,16 +216,14 @@ import { useRoute } from 'vue-router'; // Import useRouter
 
 import { myMixin } from '../mixins/common.js';
 
-import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
-import { departments, desserts }  from '../mixins/crud.js';
-import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
+import { apiOperation, showSnackbar, setupListUsersWatcher }  from '../mixins/crud.js';
+import { departments }  from '../mixins/crud.js';
+import { snackbar, snackbar_info, snackbar_color, desserts } from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
 const listUsers = apiOperation('get', '/listUsers');
 const removeUser = apiOperation('post', '/removeUser');
-const updateUser = apiOperation('post', '/updateUser');
-const register = apiOperation('post', '/register');
 
 //=== component name ==
 defineComponent({
@@ -226,36 +239,26 @@ const props = defineProps({
 });
 
 //=== data ===
-const nameRule = value => value.length <= 10 || '長度太長!';
-const requiredRule = value => !!value || '必須輸入資料!';
-//const empIDRule = value => /^[0-9]{4,5}$/.test(value) || '必須是7或8位數!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
-// 必須是7或8位數，且8位數時首位必須為0!
-//const empIDRule = value => {
-//  const normalizedValue = value.padStart(8, '0');
-//  return /^[0-9]{7,8}$/.test(normalizedValue) && normalizedValue.length === 8 && normalizedValue[0] === '0'
-//    ? true : '必須是7或8位數!';
-//};
-//const empIDRule = value => {
-//  return /^[0-9]{7,8}$/.test(value) && (value.length === 8 ? value[0] === '0' : true)
-//    ? true : '必須是7或8位數!';
-//};
-//const empIDRule = value => {
-//  return /^[0-9]{7,8}$/.test(value) && (value.length === 8 ? value[0] === '0' : true)
-//    ? true
-//    : '必須是7或8位數!';
-//};
-// 驗證規則
-//const empIDRule = value => {
-//  return (value.length === 7 || (value.length === 8 && value[0] === '0'))
-//    ? true : '必須是7或8位數!';
-//};
-const empIDRule = value => {
-  return /^[0-9]{7}$/.test(value) || /^[0-9]{8}$/.test(value) && value[0] === '0'
-    ? true
-    : '必須是7或8(0)位數!';
-};
+const requiredRule = value => !!value || '欄位必須輸入資料...';
+const empIDRule = value => /^[0-9]{4,5}$/.test(value) || '工號必須是4或5位數字!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
+const nameRule = value => value.length <= 10 || '資料長度太長!';
 
-const route = useRoute(); // Initialize router
+const currentUser = ref({});
+const permDialog = ref(false);
+const rightDialog = ref(false);
+const showExplore = ref(false);
+
+const dialog = ref(false);
+const dialogDelete = ref(false);
+const totalItems = ref(0);
+const toggle= ref('');
+
+const pagination = reactive({
+  itemsPerPage: 10, // 預設值, rows/per page
+  page: 1,
+});
+
+//const delete_confirm_string = ref('確定刪除這筆資料? (資料刪除後, 即為離職人員!)');
 
 const headers = [
   { title: '工號', sortable: true, value: 'emp_id' },
@@ -265,6 +268,23 @@ const headers = [
   { title: 'Actions', sortable: false, value: 'actions' },
 ];
 
+const empPermMapping = {
+  4: '員工',
+  3: '主管',
+  2: '管理人員',
+  1: '系統人員',
+};
+
+const roleMappings = {
+  '系統人員': Array.from({ length: 26 }, (_, i) => i + 1),
+  '管理人員': [1, 2, 3, 4, 5, 21, 22, 23, 24, 25],
+  '主管': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+  '員工': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+};
+
+// 暫時的 emp_perm 值
+//const tempEmpPerm = ref(empPermMapping[editedItem.emp_perm]);
+
 const footerOptions = [
   { value: 5, title: '5' },
   { value: 10, title: '10' },
@@ -273,31 +293,68 @@ const footerOptions = [
   { value: -1, title: '全部' }
 ];
 
-const roles = [
-  { value: '系統人員', iconClass: 'fa-solid fa-1' },
-  { value: '管理人員', iconClass: 'fa-solid fa-2' },
-  { value: '主管', iconClass: 'fa-solid fa-3' },
-  { value: '員工', iconClass: 'fa-solid fa-4' },
-];
-
-const EmpID_max_length = 8;       //員工編號最多數字個數
-
-const currentUser = ref({});
-const permDialog = ref(false);
-const rightDialog = ref(false);
-const showExplore = ref(false);
-
-const EmpIDInput = ref(null);
-
-const dialog = ref(false);
-const dialogDelete = ref(false);
-const totalItems = ref(0);
-const toggle= ref('');
-
+const treeViewItems = reactive([
+  {
+    id: 1,
+    name: "在製品生產",
+    children: [
+      { id: 2, name: "1.備料區" },
+      { id: 3, name: "2.加工區" },
+      { id: 4, name: "3.組裝區" },
+      { id: 5, name: "4.出貨區" },
+    ]
+  },
+  {
+    id: 6,
+    name: "備料清單",
+    children: [
+      { id: 7, name: "1.加工區" },
+      { id: 8, name: "2.組裝區" },
+    ]
+  },
+  {
+    id: 9,
+    name: "組裝生產",
+    children: [
+      { id: 10, name: "1.領料生產報工" },
+      { id: 11, name: "2.完成生產報工" },
+      { id: 12, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 13,
+    name: "成品入庫",
+    children: [
+      { id: 14, name: "1.檢料生產報工" },
+      { id: 15, name: "2.完成生產報工" },
+      { id: 16, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 17,
+    name: "加工生產",
+    children: [
+      { id: 18, name: "1.領料生產報工" },
+      { id: 19, name: "2.完成生產報工" },
+      { id: 20, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 21,
+    name: "系統設定",
+    children: [
+      { id: 22, name: "1.機台資料維護" },
+      { id: 23, name: "2.組裝站資料維護" },
+      { id: 24, name: "3.加工異常原因維護" },
+      { id: 25, name: "4.組裝異常原因維護" },
+      { id: 26, name: "5.人員資料維護" },
+    ]
+  },
+]);
+//const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 const treeViewSelection = ref([]);
 const currentSetting = ref(new Array(26).fill(0));
-//const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
-const password_reset = ref('no');
+
 const editedIndex = ref(-1);
 const editedItem = reactive({
   emp_id: '',
@@ -317,41 +374,41 @@ const defaultItem = reactive({
   password_reset: 'no',
 });
 
-const pagination = reactive({
-  itemsPerPage: 10, // 預設值, rows/per page
-  page: 1,
-});
+const password_reset = ref('no');
 
-const snackbar = ref(false);
-const snackbar_info = ref('');
-const snackbar_color = ref('red accent-2');
+const route = useRoute(); // Initialize router
 
 //=== watch ===
 setupListUsersWatcher();
-
-// 監聽輸入值變化，自動補0
-//watch(() => editedItem.emp_id, (newVal) => {
-//  if (newVal.length === 7) {
-//    editedItem.emp_id = newVal.padStart(8, '0');
-//  }
-//});
 
 watch(currentUser, (newUser) => {
   if (newUser.perm < 1) {
     permDialog.value = true;
   }
 });
-
+/*
 watch(toggle, (newVal) => {
-  if (editedIndex.value == -1) {
-    console.log("watch:", toggle.value, newVal);
-
-    // 使用映射表來更新選擇
-    const selection = roleMappings[newVal] || [];
-    updateSelection(selection);
+  console.log("watch:", toggle.value, newVal);
+  if (toggle.value === '系統人員') {
+    updateSelection([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+  } else if (toggle.value === '管理人員') {
+    updateSelection([1, 2, 3, 4, 5, 21, 22, 23, 24, 25]);
+  } else if (toggle.value === '主管') {
+    updateSelection([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
+  } else if (toggle.value === '員工') {
+    updateSelection([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
   }
-});
+}, { deep: true });
+*/
+/*
+watch(toggle, (newVal) => {
+  console.log("watch:", toggle.value, newVal);
 
+  // 使用映射表來更新選擇
+  const selection = roleMappings[newVal] || [];
+  updateSelection(selection);
+}, { deep: true });
+*/
 watch(
   () => editedItem.emp_perm,
   (newValue) => {
@@ -381,10 +438,6 @@ const containerStyle = computed(() => ({
 const routeName = computed(() => route.name);
 
 const validateFields = computed(() => {
-  if (currentUser.value.empID==editedItem.emp_id && currentUser.value.name==editedItem.emp_name) {
-    return true;
-  }
-
   return ['emp_id', 'emp_name', 'dep_name'].some(field => !editedItem[field]);
 });
 
@@ -424,15 +477,6 @@ const initialize = () => {
   listDepartments();
 };
 
-// 輸入框失去焦點時補全0
-const normalizeEmpId = (focused) => {
-  if (!focused) {
-    if (editedItem.emp_id.length == 7) {
-      editedItem.emp_id = editedItem.emp_id.padStart(8, '0');
-    }
-  }
-};
-
 const close = () => {
     console.log("close()");
 
@@ -459,7 +503,7 @@ const save = () => {
     updateItem(editedItem);
     Object.assign(desserts.value[editedIndex.value], editedItem);
   } else {
-    createItem(editedItem);
+    createUser(editedItem);
     desserts.value.push({ ...editedItem });
   }
   close();
@@ -484,32 +528,16 @@ const updateItem = (object) => {  //編輯 user後端table資料
     emp_id: object.emp_id,
     emp_name: object.emp_name,
     dep_name: object.dep_name,
+    //emp_perm: parseInt(getEmpPermKey(toggle)),
     emp_perm: object.emp_perm,
-    routingPriv: currentSetting.value.join(','),          // 轉換為以逗號分隔的字串
+    routingPriv: currentSetting.value,
     password_reset: password_reset.value,
   };
-
+  /*
   updateUser(payload).then(data => {
-    !data && showSnackbar(data.message, 'red accent-2');  // update失敗
+    data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
   });
-};
-
-const createItem = (object) => {
-  console.log("createItem(),", object);
-
-  const defaultPassword='a12345';
-  let payload= {
-    emp_id: object.emp_id,
-    emp_name: object.emp_name,
-    password: defaultPassword,
-    dep_name: object.dep_name,
-    emp_perm: object.emp_perm,
-    routingPriv: currentSetting.value.join(','),    // 轉換為以逗號分隔的字串
-  };
-
-  register(payload).then(status => {
-    status && (editedItem = Object.assign({}, defaultItem));
-  });
+  */
 };
 
 const editItem = (item) => {
@@ -544,16 +572,16 @@ const deleteItemConfirm = () => {
 }
 
 const closeDelete=() => {
-  dialogDelete.value = false;
-}
+    dialogDelete.value = false;
+  }
 
 const permCloseFun = () => {
-  permDialog.value = false;
-}
+    permDialog.value = false;
+  }
 
 const rightCloseFun = () => {
-  rightDialog.value = false;
-}
+    rightDialog.value = false;
+  }
 
 const handleSelect = (node) => {
   if (node.disabled) {
@@ -597,47 +625,6 @@ const removeItem = (id) => {  //依user id來刪除後端table資料
   });
 };
 
-const checkUsers = (focused) => {
-  if (!focused) { // 當失去焦點時
-    console.log("checkUser()...");
-
-    if (editedItem.emp_id.length == 7) {
-      editedItem.emp_id = editedItem.emp_id.padStart(8, '0');
-    }
-
-    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
-    console.log("foundDessert:",foundDessert.value);
-    if (foundDessert.value) {
-      if (editedItem.emp_id !='') {
-        let temp_info = snackbar_info.value = '錯誤, 工號' + editedItem.emp_id + '重複!';
-        showSnackbar(temp_info, 'red accent-2');
-
-        editedItem.emp_id = '';
-      }
-      EmpIDInput.value.focus();
-    }
-  }
-};
-
-const handleKeyDown = (event) => {
-  const inputChar = event.key;
-
-  const caps = event.getModifierState && event.getModifierState('CapsLock');
-  console.log("CapsLock is: ", caps); // true when you press the keyboard CapsLock key
-
-  // 允許左右方向鍵、backspace和delete鍵
-  if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
-    return;
-  }
-
-  const inputValue = event.target.value || ''; // 确保 inputValue 是字符串
-
-  // 使用正規化運算式檢查是否為數字且長度不超過3
-  if (!/^\d$/.test(inputChar) || inputValue.length >= EmpID_max_length) {
-    event.preventDefault();
-  }
-};
-
 // 遞歸處理樹狀結構
 const getSelectedIds = (items, privArray) => {
   let selectedIds = [];
@@ -658,14 +645,6 @@ const getSelectedIds = (items, privArray) => {
   traverse(items);
   return selectedIds;
 }
-
-const showSnackbar = (message, color) => {
-  console.log("showSnackbar,", message, color)
-
-  snackbar_info.value = message;
-  snackbar_color.value = color;
-  snackbar.value = true;
-};
 </script>
 
 <style lang="scss" scoped>
@@ -923,28 +902,4 @@ max-height: 60px;
 .elevation-1.table_border_radius {
   overflow-y: hidden;
 }
-
-:deep(.v-messages .v-messages__message) {
-  white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: none;
-  //width: auto;
-  //position: absolute;
-  //left: 0;
-  //right: 0;
-  width: 200px;
-}
-/*
-.custom-text-field .v-messages__message {
-  white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: none;
-  width: auto;
-  position: absolute;
-  left: 0;
-  right: 0;
-}
-  */
 </style>

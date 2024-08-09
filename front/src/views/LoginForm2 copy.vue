@@ -191,19 +191,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, reactive, defineComponent, onMounted, onBeforeMount, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
-
+//import axios from 'axios';
 import { Vue3Marquee } from 'vue3-marquee';
 import { routerLinks } from '../router/index.js';
 import { myMixin } from '../mixins/common.js';
-//import { empPermMapping, roleMappings, menus } from '../mixins/MenuConstants.js';
-import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants.js';
 
-import eventBus from '../mixins/enentBus.js';
-
-import { departments, temp_desserts, loginUser, loginEmpIDInput}  from '../mixins/crud.js';
-import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
+import { apiOperation, showSnackbar, setupListUsersWatcher }  from '../mixins/crud.js';
+import { departments }  from '../mixins/crud.js';
+import { snackbar, snackbar_info, snackbar_color, temp_desserts, loginUser, loginEmpIDInput } from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
@@ -225,14 +222,34 @@ const company_name = ref('銓寶工業股份有限公司')
 //const designer_name = ref('財團法人精密機械研究發展中心設計')
 const pmcLogoSrc = ref(require('../assets/pmc_logo.png')); // PMC logo 圖像
 
+//const snackbar = ref(false);
+//const snackbar_info = ref('');
+//const snackbar_color = ref('red accent-2');
+//const snackbar_icon_color = ref('#adadad');
+//const snackbar_timeout = ref(2000);
+
 const isRegisterUserFocused = ref(false);
 const isLoginUserFocused = ref(false);
 
+//const openMenu = ref(false);
 const signUp = ref(false);
 const foundDessert = ref(null);
 const eyeShow = ref(true);
 const eyeShow1 = ref(true);
-const popStateHandler = ref(null);
+
+const empPermMapping = {
+  4: '員工',
+  3: '主管',
+  2: '管理人員',
+  1: '系統人員',
+};
+
+const roleMappings = {
+  '系統人員': Array.from({ length: 26 }, (_, i) => i + 1),
+  '管理人員': [1, 2, 3, 4, 5, 21, 22, 23, 24, 25],
+  '主管': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+  '員工': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+};
 
 const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 
@@ -244,8 +261,32 @@ const registerUser = reactive({
   password: '',
   confirmPassword: '',
 });
-const reactiveLinks = reactive(flatItems.value);
 
+const link1 = reactive({
+  text: '在製品生產',
+  to: '',
+  isEnabled: false,
+});
+const link2 = reactive ({
+  text: '1.備料區',
+  to: '/a',
+  isEnabled: false,
+});
+const link3 = reactive ({
+  text: '2.加工區',
+  to: '/b',
+  isEnabled: false,
+});
+const link4 = reactive ({
+  text: '3.組裝區',
+  to: '/c',
+  isEnabled: false,
+});
+const link5 = reactive ({
+  text: '4.出貨區',
+  to: '/d',
+  isEnabled: false,
+});
 const emit = defineEmits(['setLinks']);
 
 //const loginEmpIDInput = ref(null);
@@ -256,10 +297,6 @@ const loginButton = ref(null);
 const registerButton = ref(null);
 const registerPasswordInput = ref(null);
 
-const snackbar = ref(false);
-const snackbar_info = ref('');
-const snackbar_color = ref('red accent-2');
-
 let myIdField = null;
 let loginEmpID_max_length = 8;
 
@@ -269,19 +306,6 @@ const router = useRouter();
 onMounted(() => {
   console.log("LoginForm, onMounted()...")
 
-  // 禁用 BackButton 功能
-  disableBackButton();
-
-  document.addEventListener('keydown', allowBackspaceInInputs);
-  /*
-  window.history.pushState(null, '', window.location.href);
-  popStateHandler.value = (event) => {
-    event.preventDefault();
-    window.history.pushState(null, '', window.location.href);
-  };
-  window.addEventListener('popstate', popStateHandler.value);
-  */
-  //
   replaceImageColor();  //處理企業圖像
 
   myIdField = document.getElementById("loginEmpID");
@@ -294,21 +318,10 @@ onMounted(() => {
 
   console.log("routerLinks:",routerLinks);
 });
-
 //=== destroyed ===
 onBeforeUnmount(() => {
   console.log("LoginForm, destroyed()...")
 
-  // 恢復 BackButton 功能
-  if (popStateHandler.value) {
-    enableBackButton();
-    document.removeEventListener('keydown', allowBackspaceInInputs);
-
-    //window.removeEventListener('popstate', popStateHandler.value);
-    popStateHandler.value = null;
-  }
-
-  //
   //if (myIdField) {
   //  myIdField.removeEventListener('keydown', handleKeyDown);
   //}
@@ -505,7 +518,6 @@ const userRegister = () => {
   let temp_routingPriv = initialSelection.join(',');
   console.log("temp_routingPriv:",temp_routingPriv);
   let temp_perm=parseInt(getEmpPermKey('員工'));
-
   const payload = {
     emp_id: registerUser.empID,
     emp_name: registerUser.name,
@@ -514,6 +526,7 @@ const userRegister = () => {
     routingPriv: temp_routingPriv,
     emp_perm: temp_perm,
   };
+
   register(payload).then(status => {
     status && (resetRegisterForm(), togglePanel());
   });
@@ -554,43 +567,21 @@ const signInUser = (user) => {
     router.push(link2.to);
   }
   */
-  /*
-  //emit('setLinks', { link1, link2, link3, link4, link5 }); // 使用 emit 發送資料
-  //emit('setLinks', reactiveLinks)
-  eventBus.emit('setLinks', reactiveLinks);
+  emit('setLinks', { link1, link2, link3, link4, link5 }); // 使用 emit 發送資料
 
-  removeLocalStorage();
-  */
+  removeLoginUser();
+
   let router_name = (user.setting_lastRoutingName == '') ? 'Main': user.setting_lastRoutingName;
   console.log("router_name:", router_name);
-  let default_routingPriv = initialSelection.join(',');
-  let routingPriv_string = (user.setting_routingPriv == '') ? default_routingPriv : user.setting_routingPriv;
-  //let routingPriv_array = routingPriv_string.split(',').map(Number);
-  let routingPriv_array = routingPriv_string.split(',').map(value => value === '1');
+
+  let routingPriv_string = (user.setting_routingPriv == '') ? '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0': user.setting_routingPriv;
+  let routingPriv_array = routingPriv_string.split(',').map(Number);
   console.log("routingPriv_array:", routingPriv_array);
 
-  // 使用 routingPriv_array 的值更新 reactiveLinks 中每個物件的 isEnabled 屬性
-  reactiveLinks.forEach((link, index) => {
-    if (index < routingPriv_array.length) {
-      link.isEnabled = routingPriv_array[index];
-    }
-  });
-
-  eventBus.emit('setLinks', reactiveLinks);
-  removeLocalStorage();         //清除 localStorage內的值
-
-  Object.assign(loginUser, {    //清除 登入資料
-    loginEmpID: '',
-    loginName: '',
-    loginPassword: ''
-  });
-
-  localStorage.setItem('loginedUser', JSON.stringify(user));  //重新設定使用者登入資料於localStorage
+  localStorage.setItem('loginedUser', JSON.stringify(user));  //使用者登入資料
   let isAuthenticated = 'true'; // 確保初始值為字串 'true'
   localStorage.setItem('Authenticated', isAuthenticated);
 
-  router.replace({ name: router_name });  //啟動router
-  /*
   //router.push({ name: router_name });
   const currentState = history.state;
   router.push({ name: router_name }).then(() => {
@@ -601,10 +592,9 @@ const signInUser = (user) => {
       throw err;
     }
   });
-  */
 };
 
-const removeLocalStorage = () => {
+const removeLoginUser = () => {
   if (localStorage.getItem('loginedUser')) {
     localStorage.removeItem('loginedUser');
   }
@@ -624,17 +614,19 @@ const validateFields = () => {
     return;
   }
 };
+/*
+const checkEmpty = (field) => {
+  console.log("checkEmpty(),", field, loginUser[field]);
 
-const showSnackbar = (message, color) => {
-  console.log("showSnackbar,", message, color)
-
-  snackbar_info.value = message;
-  snackbar_color.value = color;
-  snackbar.value = true;
+  if (loginUser.loginEmpID !== '' && loginUser.loginPassword !== '')
+    openMenu.value=true;
+  else
+    openMenu.value=false;
 };
-
-const requiredRule = value => !!value || '必須輸入資料...';
+*/
+const requiredRule = value => !!value || '欄位必須輸入資料...';
 const empIDRule = value => /^[0-9]{7,8}$/.test(value) || '必須是7或8位數字!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
+
 const nameRule = value => value.length <= 10 || '資料長度太長!';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
 const confirmPasswordRule = value => value === registerUser.password || '密碼不相同!';
@@ -646,30 +638,6 @@ const reverseEmpPermMapping = Object.fromEntries(
 const getEmpPermKey = (permText) => {
   return reverseEmpPermMapping[permText] || '未知';
 };
-//
-const disableBackButton = () => {
-  window.history.pushState(null, '', window.location.href);
-
-  popStateHandler.value = (event) => {
-    window.history.pushState(null, '', window.location.href);
-  };
-
-  window.addEventListener('popstate', popStateHandler.value);
-};
-
-const enableBackButton = () => {
-  window.removeEventListener('popstate', popStateHandler.value);
-};
-
-const allowBackspaceInInputs = (event) => {
-  const target = event.target;
-  const isInputElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
-
-  if (event.key === 'Backspace' && !isInputElement) {
-    event.preventDefault();
-  }
-};
-//
 </script>
 
 <style lang="scss" scoped>

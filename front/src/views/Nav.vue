@@ -1,14 +1,4 @@
 <template>
-  <!-- Snackbar -->
-  <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
-      {{ snackbar_info }}
-      <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
-          <v-icon dark>mdi-close-circle</v-icon>
-        </v-btn>
-      </template>
-    </v-snackbar>
-
 
   <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
     <div class="container-fluid">
@@ -21,231 +11,280 @@
       <div class="collapse navbar-collapse" id="navbarNav" style="font-family: 'cwTeXYen', sans-serif;">
         <!-- 選單 -->
         <ul class="navbar-nav my-left-nav">
+          <!--item1-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(0)"
             @mouseleave="onLeave(0)"
           >
-            <button class="dropbtnk">
+            <button class="dropbtnk" :disabled="navLinks[0].isEnabled">
               <div :class="{'button-content': isSegment }">
-                <span :class="{'button-title': isSegment }">在製品生產</span>
+                <!--item1, menu 1-->
+                <span :class="{'button-title': isSegment }">{{ navLinks[0].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
                 </span>
               </div>
             </button>
             <div class="dropdown-contentk">
+              <!--menu 2-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[1].isEnabled ? navLinks[1].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[1].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                1.備料區
+                {{ navLinks[1].text }}
               </router-link>
+              <!--menu 3-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[2].isEnabled ? navLinks[2].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[2].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                2.加工區
+                {{ navLinks[2].text }}
               </router-link>
-
+              <!--menu 4-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[3].isEnabled ? navLinks[3].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[3].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                3.組裝區
+              {{ navLinks[3].text }}
               </router-link>
+              <!--menu 5-->
               <router-link
-                to="/c"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link2.isEnabled}]"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
+                :to="navLinks[4].isEnabled ? navLinks[4].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[4].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                4.出貨區
+              {{ navLinks[4].text }}
               </router-link>
             </div>
           </li>
-
+          <!--item2-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(1)"
             @mouseleave="onLeave(1)"
           >
-              <button class="dropbtnk">
+              <button class="dropbtnk" :disabled="navLinks[5].isEnabled">
                 <div :class="{'button-content': isSegment }">
-                  <span :class="{'button-title': isSegment }">備料清單</span>
+                  <!--item2, menu 6-->
+                  <span :class="{'button-title': isSegment }">{{ navLinks[5].text }}</span>
                   <span class="icon-container">
                     <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
                   </span>
                 </div>
               </button>
             <div class="dropdown-contentk">
+              <!--menu 7-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link2.isEnabled}]"
+                :to="navLinks[6].isEnabled ? navLinks[6].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[6].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                1.加工區
+                {{ navLinks[6].text }}
               </router-link>
+              <!--menu 8-->
               <router-link
-                to="/c"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[7].isEnabled ? navLinks[7].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[7].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                2.組裝區
+                {{ navLinks[7].text }}
               </router-link>
             </div>
           </li>
-
+          <!--item3-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(2)"
             @mouseleave="onLeave(2)"
           >
-              <button class="dropbtnk">
+              <button class="dropbtnk" :disabled="navLinks[8].isEnabled">
                 <div :class="{'button-content': isSegment }">
-                  <span :class="{'button-title': isSegment }">組裝生產</span>
+                  <!--item3, menu 9-->
+                  <span :class="{'button-title': isSegment }">{{ navLinks[8].text }}</span>
                   <span class="icon-container">
                     <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
                   </span>
                 </div>
               </button>
             <div class="dropdown-contentk">
+              <!--menu 10-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link2.isEnabled}]"
+                :to="navLinks[9].isEnabled ? navLinks[9].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[9].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                1.領料生產報工
+              {{ navLinks[9].text }}
               </router-link>
+              <!--menu 11-->
               <router-link
-                to="/c"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
+                :to="navLinks[10].isEnabled ? navLinks[10].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', { 'disabled-linkk': !navLinks[10].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                2.完成生產報工
+              {{ navLinks[10].text }}
               </router-link>
+              <!--menu 12-->
               <router-link
-                to="/c"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
+                :to="navLinks[11].isEnabled ? navLinks[11].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[11].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                3.異常填報
+                {{ navLinks[11].text }}
               </router-link>
             </div>
           </li>
-
-          <li class="nav-item">
-            <router-link class="nav-link my-nav-link-text" to="/c">
-              成品入庫
-            </router-link>
+          <!--item4-->
+          <li
+            class="nav-item dropdown dropdownk"
+            @mouseenter="onHover(3)"
+            @mouseleave="onLeave(3)"
+          >
+            <button class="dropbtnk" :disabled="navLinks[12].isEnabled">
+              <div :class="{'button-content': isSegment }">
+                <!--item4, menu 13-->
+                <span :class="{'button-title': isSegment }">{{ navLinks[12].text }}</span>
+                <span class="icon-container">
+                  <i :class="['fas', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                </span>
+              </div>
+            </button>
+            <div class="dropdown-contentk">
+              <!--menu 14-->
+              <router-link
+                :to="navLinks[13].isEnabled ? navLinks[13].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[13].isEnabled}]"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+              {{ navLinks[13].text }}
+              </router-link>
+              <!--menu 15-->
+              <router-link
+                :to="navLinks[14].isEnabled ? navLinks[14].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[14].isEnabled}]"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+              {{ navLinks[14].text }}
+              </router-link>
+              <!--menu 16-->
+              <router-link
+                :to="navLinks[15].isEnabled ? navLinks[15].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[15].isEnabled }]"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+                {{ navLinks[15].text }}
+              </router-link>
+            </div>
           </li>
-
+          <!--item5-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(4)"
             @mouseleave="onLeave(4)"
           >
-            <button class="dropbtnk">
+            <button class="dropbtnk" :disabled="navLinks[16].isEnabled">
               <div :class="{'button-content': isSegment }">
-                <span :class="{'button-title': isSegment }">加工生產</span>
+                <!--item5, menu 17-->
+                <span :class="{'button-title': isSegment }">{{ navLinks[16].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
                 </span>
               </div>
             </button>
             <div class="dropdown-contentk">
+              <!--menu 18-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link2.isEnabled}]"
+                :to="navLinks[17].isEnabled ? navLinks[17].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[17].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                1.領料生產報工
+                {{ navLinks[17].text }}
               </router-link>
+              <!--menu 19-->
               <router-link
-                to="/c"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
+                :to="navLinks[18].isEnabled ? navLinks[18].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[18].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                2.完成生產報工
+                {{ navLinks[18].text }}
               </router-link>
+              <!--menu 20-->
               <router-link
-                to="/c"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
-                :to="navLinks.link2.isEnabled ? '/a' : '#'"
+                :to="navLinks[19].isEnabled ? navLinks[19].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[19].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-                3.異常填報
+                {{ navLinks[19].text }}
               </router-link>
             </div>
           </li>
-
+          <!--item6-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(5)"
             @mouseleave="onLeave(5)"
           >
-            <button class="dropbtnk">
+            <button class="dropbtnk" :disabled="navLinks[20].isEnabled">
               <div :class="{'button-content': isSegment }">
-                <span :class="{'button-title': isSegment }">系統設定</span>
+                <!--item6, menu 21-->
+                <span :class="{'button-title': isSegment }">{{ navLinks[20].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
                 </span>
               </div>
             </button>
             <div class="dropdown-contentk">
+              <!--menu 22-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/a' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[21].isEnabled ? navLinks[21].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[21].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              1.機台資料維護
+                {{ navLinks[21].text }}
               </router-link>
-
+              <!--menu 23-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[22].isEnabled ? navLinks[22].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[22].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              2.組裝站資料維護
+                {{ navLinks[22].text }}
               </router-link>
-
+              <!--menu 24-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/a' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[23].isEnabled ? navLinks[23].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[23].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              3.加工異常原因維護
+                {{ navLinks[23].text }}
               </router-link>
-
+              <!--menu 25-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/c' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[24].isEnabled ? navLinks[24].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[24].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              4.組裝異常原因維護
+                {{ navLinks[24].text }}
               </router-link>
-
+              <!--menu 26-->
               <router-link
-                :to="navLinks.link1.isEnabled ? '/employer' : '#'"
-                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks.link1.isEnabled}]"
+                :to="navLinks[25].isEnabled ? navLinks[25].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !navLinks[25].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              5.人員資料維護
+                {{ navLinks[25].text }}
               </router-link>
             </div>
           </li>
-
+          <!--item7-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(6)"
             @mouseleave="onLeave(6)"
+            style="left: 200px;"
           >
             <button class="dropbtnk">
               <em>{{ currentUser ? currentUser.name : '使用者' }}</em>
@@ -260,10 +299,14 @@
               <div class="dropdown-item my-dropdown-item" @click="functionC">功能C</div>
             </div>
           </li>
+          <!--item8-->
+          <li class="nav-item" style="position: relative; left: 190px; font-size: 13px;">
+            <span>剩餘時間: {{ countdown.minutes }}:{{ countdown.seconds }}</span>
+          </li>
         </ul>
 
         <!--checkbox-->
-        <v-checkbox v-model="localShowFooter" label="Show Footer" class="ml-auto" style="position: relative; right: 180px;" />
+        <v-checkbox v-model="localShowFooter" label="Show Footer" class="ml-auto" style="position: relative; right: 200px;" />
       </div>
     </div>
   </nav>
@@ -272,14 +315,21 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed, defineComponent, onBeforeMount, onMounted, onUnmounted } from 'vue';
-import axios from 'axios';
-import { useRoute, useRouter } from 'vue-router'; // Import useRouter
+import { ref, reactive, watch, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
+//import { useRoute, useRouter } from 'vue-router'; // Import useRouter
+import { useRouter } from 'vue-router'; // Import useRouter
 //import logo from '../assets/BBC-Line-Logo_Blue.png';
 import logo from '../assets/logo.svg';
 import VCheckbox from './VCheckbox.vue';
 import ChangePassword from './changePassword.vue';
+import eventBus from '../mixins/enentBus.js';
+
 import { myMixin } from '../mixins/common.js';
+
+import { apiOperation, }  from '../mixins/crud.js';
+
+// 使用 apiOperation 函式來建立 API 請求
+const updateSetting = apiOperation('post', '/updateSetting');
 
 //=== component name ==
 defineComponent({
@@ -293,10 +343,16 @@ const { initAxios } = myMixin();
 const props = defineProps({
   showFooter: Boolean,
 
+  //navLinks: {
+  //  type: Object,
+  //  required: true,
+  //  default: () => ({})
+  //},
+
   navLinks: {
-    type: Object,
+    type: Array,
     required: true,
-    default: () => ({})
+    default: () => []
   },
 });
 
@@ -304,28 +360,99 @@ const props = defineProps({
 const emit = defineEmits(['update:showFooter']);
 
 //=== data ===
-const snackbar = ref(false);
-const snackbar_color = ref('red accent-2');
-const snackbar_info = ref('');
-
-const isHovered = ref(false);
 const isSegment = ref(false);
 const openDialog = ref(false);
 const home_url = logo;
 const localShowFooter = ref(props.showFooter);
-const dropdownOpen = ref({ b: false, user: false, data_maintain: false, product_info: false });
+//const dropdownOpen = ref({ b: false, user: false, data_maintain: false, product_info: false });
 
 const hoveredItems = reactive({});
-const dropdownContent = reactive({
-  product_info: null,
-})
+//const dropdownContent = reactive({
+//  product_info: null,
+//})
 const currentUser = ref(null);
+const popStateHandler = ref(null);
+
+const countdown = ref({
+  minutes: '00',
+  seconds: '00'
+});
+
 const router = useRouter(); // Initialize router
-const route = useRoute(); // Initialize router
+//const route = useRoute(); // Initialize router
+
+//=== mounted ===
+onMounted(() => {
+  console.log("nav, mounted():",props.navLinks);
+
+  // 禁用 BackButton 功能
+  disableBackButton();
+  document.addEventListener('keydown', allowBackspaceInInputs);
+  /*
+  window.history.pushState(null, '', window.location.href);
+  popStateHandler.value = (event) => {
+    event.preventDefault();
+    window.history.pushState(null, '', window.location.href);
+  };
+  window.addEventListener('popstate', popStateHandler.value);
+  */
+  //
+  hoveredItems[0]=false;
+  hoveredItems[1]=false;
+  hoveredItems[2]=false;
+  hoveredItems[3]=false;
+  hoveredItems[4]=false;
+  hoveredItems[5]=false;
+  hoveredItems[6]=false;
+  //
+  eventBus.on('triggerLogout', logout);
+  //
+  eventBus.on('updateCountdown', updateCountdown);
+});
+
+onBeforeUnmount(() => {
+  // 恢復 BackButton 功能
+  if (popStateHandler.value) {
+    enableBackButton();
+    document.removeEventListener('keydown', allowBackspaceInInputs);
+
+    //window.removeEventListener('popstate', popStateHandler.value);
+    popStateHandler.value = null;
+  }
+  //
+  eventBus.off('triggerLogout', logout);
+  //
+  eventBus.off('updateCountdown', updateCountdown);
+});
+
+//=== unmounted ===
+onUnmounted(() => {
+  //enableBackButton();
+});
+
+//=== created ===
+onBeforeMount(() => {
+  let user = localStorage.getItem("loginedUser");
+  console.log("1. nav, created(), user:", user);
+  currentUser.value = user ? JSON.parse(user) : null;
+  //currentUser.value = JSON.parse(localStorage.getItem("loginedUser"));
+  console.log("2. nav, created(), current user:", currentUser.value);
+
+  initAxios();
+});
+
+//=== computed ===
+
+
+//=== watch ===
+watch(localShowFooter, (newValue) => {
+  console.log("Nav.vue, watch(),", newValue)
+
+  emit('update:showFooter', newValue);
+});
 
 //=== method ===
 const onHover = (index) => {
-  //console.log("onHover:", index, hoveredItems[index]);
   hoveredItems[index] = true;
   console.log("onHover:", index, hoveredItems[index]);
 };
@@ -335,96 +462,59 @@ const onLeave = (index) => {
   console.log("onLeave:", index, hoveredItems[index]);
 };
 
-const showDropdownk = () => {
-  if (dropdownContent.product_info) {
-    dropdownContent.product_info.style.display = 'block';
-  }
-};
-
-const hideDropdownk = () => {
-  if (dropdownContent.product_info) {
-    dropdownContent.product_info.style.display = 'none';
-  }
-};
-
-const showDropdown = (item) => {
-  dropdownOpen.value[item] = true;
-};
-
-const hideDropdown = (item) => {
-  dropdownOpen.value[item] = false;
-};
-
-const disableBackButton = () => {
-  window.history.pushState(null, "", window.location.href);
-  window.onpopstate = handlePopState;
-};
-
-const handlePopState = () => {
-  window.history.pushState(null, "", window.location.href);
-};
-
-const enableBackButton = () => {
-  window.onpopstate = null;
-};
-
 const passwordDialog = () => {
-  //console.log("before openDialog:", openDialog.value)
   openDialog.value=true;
-  //console.log("after openDialog:", openDialog.value)
 };
 
 const updateDialog = (newVal) => {
   openDialog.value = newVal;
 };
-
+// 測試用
 const functionB = () => {
   alert("功能B");
 };
-
+// 測試用
 const functionC = () => {
   alert("功能C");
 };
 
+const updateCountdown = (time) => {
+  countdown.value = time;
+};
+
+// 登出功能(儲存user操作資料)
 const logout = () => {
   console.log("logout...");
 
-  updateSetting();
-  const isAuthenticated=false;
-  setAuthenticated(isAuthenticated);
-  removeLoginUser();
-
-  if (router.currentRoute.value.path !== '/') {
-    router.push('/');
-  }
-};
-
-const updateSetting = () => {
-  console.log("updateSetting()...")
-  //console.log("updateSetting(),", routeName)
-
   const userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("userData:", userData)
-  let path='/updateSetting';
   let payload= {
-    items_per_page: userData.setting_items_per_page,
-    see_is_ok: userData.setting_isSee,
+    itemsPerPage: 0,        //0: itemsPerPage不必update, else要update
+    seeIsOk: userData.setting_isSee,
     lastRoutingName: userData.setting_lastRoutingName,
     empID: userData.empID,
   };
-
-  axios.post(path, payload)
-  .then(res => {
-      console.log("update user's setting:", res.data.status);
-  })
-  .catch(err => {
-      console.error(err);
-      snackbar_info.value = '錯誤! API連線問題...';
-      snackbar.value = true;
+  const isAuthenticated = false;
+  updateSetting(payload).then(status => {
+    //status && (setAuthenticated(isAuthenticated), removeLocalStorage(), router.replace({ name: 'LoginRegister' }));
+    console.log("updateSetting status:", status);
+    if (status) {
+      setAuthenticated(isAuthenticated);
+      removeLocalStorage();
+      console.log("Redirecting to LoginRegister...");
+      router.replace({ name: 'LoginRegister' });
+    }
+  }).catch(error => {
+    console.error("Error during logout:", error);
   });
+  //router.replace({ name: 'LoginRegister' });  //啟動router
+  //if (router.currentRoute.value.path !== '/') {
+  //  router.push('/');
+  //}
 };
 
-const removeLoginUser = () => {
+// 清除localStorage內容
+const removeLocalStorage = () => {
   if (localStorage.getItem('loginedUser')) {
     localStorage.removeItem('loginedUser');
   }
@@ -433,49 +523,35 @@ const removeLoginUser = () => {
   }
 };
 
+// 設定localStorage內容
 const setAuthenticated = (isLogin) => {
   localStorage.setItem('Authenticated', isLogin)
 };
 
-//=== mounted ===
-onMounted(() => {
-  disableBackButton();
-  console.log("nav, mounted():",props.navLinks);
+//
+const disableBackButton = () => {
+  window.history.pushState(null, '', window.location.href);
 
-  hoveredItems[0]=false;
-  hoveredItems[1]=false;
-  hoveredItems[2]=false;
-  hoveredItems[3]=false;
-  hoveredItems[4]=false;
-  hoveredItems[5]=false;
-  hoveredItems[6]=false;
+  popStateHandler.value = (event) => {
+    window.history.pushState(null, '', window.location.href);
+  };
 
-});
+  window.addEventListener('popstate', popStateHandler.value);
+};
 
-//=== unmounted ===
-onUnmounted(() => {
-  enableBackButton();
-});
+const enableBackButton = () => {
+  window.removeEventListener('popstate', popStateHandler.value);
+};
 
-//=== created ===
-onBeforeMount(() => {
-  const user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  //currentUser.value = JSON.parse(localStorage.getItem("loginedUser"));
-  console.log("nav, created(), current user:", currentUser.value);
+const allowBackspaceInInputs = (event) => {
+  const target = event.target;
+  const isInputElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
-  initAxios();
-});
-
-//=== computed ===
-//const routeName = computed(() => route.name);
-
-//=== watch ===
-watch(localShowFooter, (newValue) => {
-  console.log("Nav.vue, watch(),", newValue)
-
-  emit('update:showFooter', newValue);
-});
+  if (event.key === 'Backspace' && !isInputElement) {
+    event.preventDefault();
+  }
+};
+//
 </script>
 
 <style lang="scss" scoped>
@@ -502,9 +578,9 @@ watch(localShowFooter, (newValue) => {
 
 // 確保左側和右側的nav使用相同的對齊方式
 .my-left-nav .dropdownk .dropdown-contentk {
-  top: 100%;        // 確保dropdown內容在nav-item下方
-  margin-top: 0;    // 根據需要調整
-  padding: 0;       // 根據需要調整
+  top: 130%;                            // 確保dropdown內容在nav-item下方, 由100%修改為130%
+  margin-top: 0;                        // 根據需要調整
+  padding: 0;                           // 根據需要調整
 }
 
 // 將所有dropdown內容的垂直位置設置為一致
@@ -513,8 +589,7 @@ watch(localShowFooter, (newValue) => {
   margin-top: 10px;
 }
 
-
-// Style The Dropdown Button
+// for the Dropdown Button
 .dropbtnk {
   border: none;
   cursor: pointer;

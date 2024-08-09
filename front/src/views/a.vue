@@ -1,7 +1,7 @@
 <template>
   <div class="page_contain">
     <h1>Welcome</h1>
-    <p>Finance System Home Page.</p>
+    <p>This is Page a</p>
   </div>
 </template>
 

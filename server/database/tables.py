@@ -21,9 +21,9 @@ class User(BASE):
   __tablename__ = 'user'
 
   id = Column(Integer, primary_key=True, autoincrement=True)
-  emp_id = Column(String(5), nullable=False)              #員工編號 5碼
+  emp_id = Column(String(8), nullable=False)              #員工編號 8碼
   emp_name = Column(String(10), nullable=False)           #員工姓名
-  dep_name = Column(String(12), nullable=False)           #部門名稱
+  dep_name = Column(String(20), nullable=False)           #部門名稱
   password = Column(String(255))                          #預設值 a12345
   perm_id = Column(Integer, ForeignKey('permission.id'))  # 一對多(多)
   setting_id = Column(Integer, ForeignKey('setting.id'))  # 一對多(多)
@@ -93,7 +93,7 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
     items_per_page = Column(Integer, default=10)            # 每頁顯示行數, default=10
     isSee = Column(String(1), default=text("0"))            # 0:user沒有看公告資料
     message = Column(String(30))                            # 訊息
-    routingPriv = Column(String(70), default=text("1,1,1,1,0,0,1,1"))
+    routingPriv = Column(String(70), default=text("0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0"))
     lastRoutingName = Column(String(70), default=text(""))  # user最後瀏覽的網頁routing name, max 3 個, 以,分隔
     _user = relationship('User', backref='setting')         # 一對多(一 )
     create_at = Column(DateTime, server_default=func.now())

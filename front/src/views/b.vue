@@ -1,7 +1,7 @@
 <template>
   <div class="page_contain">
-    <h1>This is B Page</h1>
-    <p>Welcome to the B Page.</p>
+    <h1>Welcome</h1>
+    <p>This is Page b</p>
   </div>
 </template>
 

@@ -48,16 +48,21 @@ def update_setting():
     print("request_data:", request_data)
 
     userID = request_data['empID']
-    new_isSee = request_data['see_is_ok']
+    new_isSee = request_data['seeIsOk']
     new_lastRoutingName = request_data['lastRoutingName']
-    new_items_per_page = request_data['items_per_page']
+    new_itemsPerPage = request_data['itemsPerPage']
 
     s = Session()
     # 修改user的設定資料
-    _user = s.query(User).filter_by(emp_id=userID).first()
-    s.query(Setting).filter(Setting.id == _user.setting_id).update(
-      {'items_per_page': new_items_per_page, 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee}
-    )
+    _user = s.query(User).filter_by(emp_id = userID).first()
+    if new_itemsPerPage != 0:
+      s.query(Setting).filter(Setting.id == _user.setting_id).update(
+        { 'items_per_page': new_itemsPerPage, 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee }
+      )
+    else:
+      s.query(Setting).filter(Setting.id == _user.setting_id).update(
+        { 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee }
+      )
 
     s.query(User).filter(User.emp_id == userID).update({'isOnline': False})  # false:user已經登出(logout)
 
@@ -74,14 +79,14 @@ def update_setting():
 def update_user():
     print("updateUser....")
     request_data = request.get_json()
-
+    print("request_data", request_data)
     _emp_id = request_data['emp_id']
     _emp_name = request_data['emp_name']
     _dep_name = request_data['dep_name']
     _emp_perm = request_data['emp_perm']
-    _routingPriv: request_data['routingPriv']
+    _routingPriv = request_data['routingPriv']
     _password_reset = request_data['password_reset']
-    newPassword='a12345678'
+    newPassword = 'a12345678'
 
     return_value = True  # true: 資料正確, 註冊成功
     if _emp_id == "" or _emp_name == "":
@@ -91,19 +96,19 @@ def update_user():
     user = s.query(User).filter_by(emp_id=_emp_id).first()
     if user and user.isRemoved:
       _auth_name = 'member' if _emp_perm == 4 else ('staff' if _emp_perm == 3 else ('admin' if _emp_perm == 2 else ('system' if _emp_perm == 1 else 'member')))
-      s.query(Permission).filter(Permission.id == user['perm_id']).update(
+      s.query(Permission).filter(Permission.id == user.perm_id).update(
         {"auth_code": _emp_perm, "auth_name": _auth_name}
       )
 
-      s.query(Setting).filter(Setting.id == user['setting_id']).update(
-        {"routingPriv": _routingPrive}
+      s.query(Setting).filter(Setting.id == user.setting_id).update(
+        {"routingPriv": _routingPriv}
       )
 
       if _password_reset=='yes':
         s.query(User).filter(User.emp_id == _emp_id).update({
           "emp_name": _emp_name,
           "dep_name": _dep_name,
-          "password": generate_password_hash(newPassword, method='sha256')
+          "password": generate_password_hash(newPassword, method='scrypt')
         })
       else:
         s.query(User).filter(User.emp_id == _emp_id).update({

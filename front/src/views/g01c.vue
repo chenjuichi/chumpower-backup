@@ -1,7 +1,7 @@
 <template>
   <div class="page_contain">
     <h1>Welcome</h1>
-    <p>This is Page c</p>
+    <p>This is Page g01c</p>
   </div>
 </template>
 
@@ -13,7 +13,7 @@ import { myMixin } from '../mixins/common.js';
 
 //=== component name ==
 defineComponent({
-  name: 'c'
+  name: 'g01c'
 });
 
 // === mix ==
@@ -28,7 +28,7 @@ const routeName = computed(() => route.name);
 
 //=== mounted ===
 onMounted(() => {
-  console.log("c, mounted()...");
+  console.log("g01c, mounted()...");
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -57,13 +57,13 @@ onBeforeMount(() => {
 */
 </script>
 
-<style  lang="scss" scoped>
+<style lang="scss" scoped>
 .page_contain {
   position: fixed;
   left: 0px;
 
   padding: 60px 0px 0px;
-  width: 100vw;   // 視窗寬度
+  width: 100vw;             // 視窗寬度
   margin: 0;
 }
 </style>

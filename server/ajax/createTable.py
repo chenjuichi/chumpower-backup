@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 from database.tables import User, Permission, Setting, Session
 from sqlalchemy import or_
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash
 
 import pymysql
 from sqlalchemy import exc
@@ -24,6 +24,8 @@ def register():
     emp_name = request_data['emp_name']
     dep_name = request_data['dep_name']
     sPWD = request_data['password']  # convert null into empty string
+    emp_perm = request_data['emp_perm']
+    routingPriv = request_data['routingPriv']
 
     return_value = True  # true: 資料正確, 註冊成功
 
@@ -34,17 +36,19 @@ def register():
     #  return_value = False  # if the user exist
 
     if return_value:
-      message='hello ' + emp_name,
-      new_user_setting = Setting(message=message,
-                          lastRoutingName='Main',
-                          routingPriv='1,1,1,1,0,0,1,1',
-                         )
+      message='hello ' + emp_name
+      perm = s.query(Permission).filter_by(auth_code=emp_perm).first()
+      new_user_setting = Setting(message=message, lastRoutingName='Main', routingPriv=routingPriv,)
       s.add(new_user_setting)
       s.flush()
-      new_user = User(emp_id=emp_id, emp_name=emp_name, dep_name=dep_name,
-                      password=generate_password_hash(sPWD, method='scrypt'),   # 生成密碼, Werkzeug 3.0 版本
-                      perm_id=4,  # member
-                      setting_id=new_user_setting.id)
+      new_user = User(
+        emp_id=emp_id,
+        emp_name=emp_name,
+        dep_name=dep_name,
+        password=generate_password_hash(sPWD, method='scrypt'),   # 生成密碼
+        perm_id=perm.id,
+        setting_id=new_user_setting.id
+      )
       s.add(new_user)
 
       s.commit()

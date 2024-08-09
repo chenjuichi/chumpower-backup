@@ -1,9 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/HomeView.vue'
 import About from '../views/AboutView.vue'
+
 import A from '../views/a.vue';
 import B from '../views/b.vue';
 import C from '../views/c.vue';
+import D from '../views/d.vue';
+
+import E from '../views/e.vue';
+import F from '../views/f.vue';
+import G01 from '../views/g01.vue';
+import G01C from '../views/g01c.vue';
+import G01D from '../views/g01d.vue';
+import G1 from '../views/g1.vue';
+import G2 from '../views/g2.vue';
+import G3 from '../views/g3.vue';
+import H1 from '../views/h1.vue';
+import H2 from '../views/h2.vue';
+import H3 from '../views/h3.vue';
+import J1 from '../views/j1.vue';
+import J2 from '../views/j2.vue';
+import J3 from '../views/j3.vue';
+import J4 from '../views/j4.vue';
+
 import MyTable from '../views/MyTable.vue';
 //import LoginRegister from '@/views/LoginRegister.vue';
 import LoginRegister from '../views/LoginForm2.vue';
@@ -17,10 +36,26 @@ const routes = [
   { path: '/employer', name: 'Employer', component: Employer },
   { path: '/home', name: 'Home', component: Home },
   { path: '/about', name: 'About', component: About },
-  { path: '/a', name: 'a', component: A },
-  { path: '/b', name: 'b', component: B },
-  { path: '/c', name: 'c', component: C },
-  { path: '/d', name: 'd', component: MyTable },
+  { path: '/a', name: 'A', component: A },
+  { path: '/b', name: 'B', component: B },
+  { path: '/c', name: 'C', component: C },
+  { path: '/d', name: 'D', component: D },
+  { path: '/e', name: 'E', component: E },
+  { path: '/f', name: 'F', component: F },
+  { path: '/g01', name: 'G01', component: G01 },
+  { path: '/g01c', name: 'G01C', component: G01C },
+  { path: '/g01d', name: 'G01D', component: G01D },
+  { path: '/g1', name: 'G1', component: G1 },
+  { path: '/g2', name: 'G2', component: G2 },
+  { path: '/g3', name: 'G3', component: G3 },
+  { path: '/h1', name: 'H1', component: H1 },
+  { path: '/h2', name: 'H2', component: H2 },
+  { path: '/h3', name: 'H3', component: H3 },
+  { path: '/j1', name: 'J1', component: J1 },
+  { path: '/j2', name: 'J2', component: J2 },
+  { path: '/j3', name: 'J3', component: J3 },
+  { path: '/j4', name: 'J4', component: J4 },
+
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: NotFound, meta: { hideNavAndFooter: true } }, // 404 Not Found 路由
 ];
 

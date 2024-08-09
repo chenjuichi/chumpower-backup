@@ -1,0 +1,93 @@
+$SYSTEM_COLOR: #ffc0cb;
+$SYSTEM_BACKGROUND_COLOR: #54880e;    // 本案主要背景顏色
+
+$NAVBAR_COLOR: #f9f9f9;               // 定義 nav 背景顏色變數
+$FOOTER_BG_COLOR: #f9f9f9;            // 定義 footer 背景顏色變數
+
+$DROPDOWN_MARGIN_TOP: 10px;             // 定義 dropdown menu 的頂部間距變數
+$DROPDOWN_ITEM_PADDING_LEFT: 20px;      // 定義 dropdown menu 內項的左邊距變數
+
+$DATA_TABLE_HEADER_BG_COLOR: #68BBE3; // 定義 v-data-table header 顏色
+$ODD_ROW_COLOR: #F9F1F0;              // 定義 v-data-table 偶數行 顏色
+$EVEN_ROW_COLOR:#FADCD9;              // 定義 v-data-table 奇數行 顏色
+
+$DATA_TABLE_BORDER_RADIUS: 15PX;        // 定義 v-data-table 圓角大小
+
+.nav-link.my-nav-link-text {
+  font-size: 16px;
+  font-weight: 700;
+  transition: color 0.3s;
+  color:rgba(0,0,0,0.65);
+  text-decoration: none;  // 取消所有 nav-link 的下劃線
+}
+
+.nav-link.my-nav-link-text:hover {
+  color: #01d1b7;
+}
+
+.dropdown-menu {
+  display: block;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.3s, transform 0.3s;
+  position: absolute;
+  margin-top: $DROPDOWN_MARGIN_TOP;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  background-color: $NAVBAR_COLOR;
+  box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+  border: none;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dropdown-menu.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.my-dropdown-item {
+  transition: color 0.3s, background-color 0.3s;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1); // 細的淡色分隔線
+  white-space: nowrap;
+  overflow: hidden;
+
+  padding-left:20px;
+}
+
+.my-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.my-dropdown-item:hover {
+  color: #01d1b7;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+// 移除 dropdown的分隔線
+.dropdown-item {
+  text-decoration: none !important;
+  padding: 0 !important;
+  padding-left: $DROPDOWN_ITEM_PADDING_LEFT !important;
+}
+
+.disabled-link {
+  color: rgba(0, 0, 0, 0.2);  // 灰色並且透明度淡
+  pointer-events: none;         // 禁用點擊事件
+  cursor: not-allowed;          // 禁用指針顯示
+}
+
+.dropdown-item, .my-dropdown-item {
+  cursor: pointer;      // 設置指針為 pointer
+  text-align: left;     // 文字靠左對齊
+  line-height: 48px;
+  margin: auto;
+}
+

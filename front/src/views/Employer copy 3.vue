@@ -264,7 +264,21 @@ const headers = [
   { title: '群組', sortable: false, value: 'emp_perm' },
   { title: 'Actions', sortable: false, value: 'actions' },
 ];
+/*
+const empPermMapping = {
+  4: '員工',
+  3: '主管',
+  2: '管理人員',
+  1: '系統人員',
+};
 
+const roleMappings = {
+  '系統人員': Array.from({ length: 26 }, (_, i) => i + 1),
+  '管理人員': [1, 2, 3, 4, 5, 21, 22, 23, 24, 25],
+  '主管': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+  '員工': [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+};
+*/
 const footerOptions = [
   { value: 5, title: '5' },
   { value: 10, title: '10' },
@@ -321,7 +335,66 @@ const pagination = reactive({
   itemsPerPage: 10, // 預設值, rows/per page
   page: 1,
 });
-
+/*
+const treeViewItems = reactive([
+  {
+    id: 1,
+    name: "在製品生產",
+    children: [
+      { id: 2, name: "1.備料區" },
+      { id: 3, name: "2.加工區" },
+      { id: 4, name: "3.組裝區" },
+      { id: 5, name: "4.出貨區" },
+    ]
+  },
+  {
+    id: 6,
+    name: "備料清單",
+    children: [
+      { id: 7, name: "1.加工區" },
+      { id: 8, name: "2.組裝區" },
+    ]
+  },
+  {
+    id: 9,
+    name: "組裝生產",
+    children: [
+      { id: 10, name: "1.領料生產報工" },
+      { id: 11, name: "2.完成生產報工" },
+      { id: 12, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 13,
+    name: "成品入庫",
+    children: [
+      { id: 14, name: "1.檢料生產報工" },
+      { id: 15, name: "2.完成生產報工" },
+      { id: 16, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 17,
+    name: "加工生產",
+    children: [
+      { id: 18, name: "1.領料生產報工" },
+      { id: 19, name: "2.完成生產報工" },
+      { id: 20, name: "3.異常填報" }
+    ]
+  },
+  {
+    id: 21,
+    name: "系統設定",
+    children: [
+      { id: 22, name: "1.機台資料維護" },
+      { id: 23, name: "2.組裝站資料維護" },
+      { id: 24, name: "3.加工異常原因維護" },
+      { id: 25, name: "4.組裝異常原因維護" },
+      { id: 26, name: "5.人員資料維護" },
+    ]
+  },
+]);
+*/
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');
@@ -341,6 +414,20 @@ watch(currentUser, (newUser) => {
     permDialog.value = true;
   }
 });
+/*
+watch(toggle, (newVal) => {
+  console.log("watch:", toggle.value, newVal);
+  if (toggle.value === '系統人員') {
+    updateSelection([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+  } else if (toggle.value === '管理人員') {
+    updateSelection([1, 2, 3, 4, 5, 21, 22, 23, 24, 25]);
+  } else if (toggle.value === '主管') {
+    updateSelection([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
+  } else if (toggle.value === '員工') {
+    updateSelection([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+  }
+}, { deep: true });
+*/
 
 watch(toggle, (newVal) => {
   if (editedIndex.value == -1) {
@@ -510,6 +597,14 @@ const createItem = (object) => {
   register(payload).then(status => {
     status && (editedItem = Object.assign({}, defaultItem));
   });
+
+  //createUser(payload).then(data => {
+  //  if (data) {
+  //    editedItem = Object.assign({}, defaultItem);
+  //  } else {
+  //    showSnackbar(data.message, 'red accent-2');
+  //  }
+  //});
 };
 
 const editItem = (item) => {
@@ -544,16 +639,16 @@ const deleteItemConfirm = () => {
 }
 
 const closeDelete=() => {
-  dialogDelete.value = false;
-}
+    dialogDelete.value = false;
+  }
 
 const permCloseFun = () => {
-  permDialog.value = false;
-}
+    permDialog.value = false;
+  }
 
 const rightCloseFun = () => {
-  rightDialog.value = false;
-}
+    rightDialog.value = false;
+  }
 
 const handleSelect = (node) => {
   if (node.disabled) {

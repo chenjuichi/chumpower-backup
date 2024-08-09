@@ -56,19 +56,14 @@ export const apiOperation = (operation, path, payload) => {
           //list_table_is_ok.value = true;
         } else {    // post 操作
           console.log("post, path:", path)
-          if (path == '/register' || path == '/register') {
-            console.log("post, register")
+          if (path == '/register' || path == '/updateUser' || path == '/removeUser' || path == '/updateSetting') {
+            console.log("post, path is", path)
             return res.data.status;
           }
 
           if (path == '/login') {
-            console.log("post, login")
+            console.log("post, path is", path)
             return res.data;
-          }
-
-          if (path == '/removeUser') {
-            console.log("post, removeUser")
-            return res.data.status;
           }
         }
         // 在這裡可以處理其他操作的回傳值

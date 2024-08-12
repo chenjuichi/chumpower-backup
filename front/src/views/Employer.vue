@@ -590,10 +590,14 @@ const removeItem = (id) => {  //依user id來刪除後端table資料
   console.log("removeItem(),", id);
 
   let payload= {ID: id};
-  removeUser(payload).then(status => {
-    if (status) {
-      Object.assign(editedItem, defaultItem);
-    }
+  //removeUser(payload).then(status => {
+  //  if (status) {
+  //    Object.assign(editedItem, defaultItem);
+  //  }
+  //});
+  removeUser(payload)
+  .finally(() => {
+    Object.assign(editedItem, defaultItem);
   });
 };
 

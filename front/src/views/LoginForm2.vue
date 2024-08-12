@@ -50,6 +50,7 @@
             @keypress="handleKeyDown"
             @keydown.enter="focusPasswordInput"
             @keydown.tab.prevent="focusPasswordInput"
+
             id="loginEmpID"
             style="width: 100% !important; max-width: 183px !important;"
           />
@@ -349,6 +350,10 @@ const setupListUsers = (focused) => {
 
     isLoginUserFocused.value=false;
 
+    if (loginUser.loginEmpID.length == 7) {   // 在工號為7位數時, 則前方自動補0成為8位數
+      loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
+    }
+
     foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
     //console.log("foundDessert:",foundDessert.value);
     if (foundDessert.value) {
@@ -514,8 +519,13 @@ const userRegister = () => {
     routingPriv: temp_routingPriv,
     emp_perm: temp_perm,
   };
-  register(payload).then(status => {
-    status && (resetRegisterForm(), togglePanel());
+  //register(payload).then(status => {
+  //  status && (resetRegisterForm(), togglePanel());
+  //});
+  register(payload)
+  .finally(() => {
+    resetRegisterForm();
+    togglePanel();
   });
 };
 
@@ -526,6 +536,12 @@ const resetRegisterForm = () => {
   registerUser.password = '';
   registerUser.confirmPassword = '';
 };
+// 在工號為7位數時, 則前方自動補0成為8位數
+//const padEmpID = () => {
+  //if (loginUser.loginEmpID.length === 7) {
+  //  loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
+  //}
+//};
 
 const userLogin = () => {
   console.log("userLogin()...");
@@ -544,23 +560,7 @@ const userLogin = () => {
 
 const signInUser = (user) => {
   console.log("signInUser(),", user);
-  //router.push('/home');
-  /*
-  if (link1.isEnabled && link2.isEnabled) {
-    router.push(link1.to);
-  } else if (link1.isEnabled) {
-    router.push(link1.to);
-  } else if (link2.isEnabled) {
-    router.push(link2.to);
-  }
-  */
-  /*
-  //emit('setLinks', { link1, link2, link3, link4, link5 }); // 使用 emit 發送資料
-  //emit('setLinks', reactiveLinks)
-  eventBus.emit('setLinks', reactiveLinks);
 
-  removeLocalStorage();
-  */
   let router_name = (user.setting_lastRoutingName == '') ? 'Main': user.setting_lastRoutingName;
   console.log("router_name:", router_name);
   let default_routingPriv = initialSelection.join(',');
@@ -686,7 +686,8 @@ const allowBackspaceInInputs = (event) => {
   overflow: hidden;
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2), 0 10px 10px rgba(0, 0, 0, 0.2); //區塊陰影
   background: linear-gradient(to left, $SYSTEM_BACKGROUND_COLOR, #f2f2f2);                     //漸層顏色
-  margin-top: 10vh;
+  //margin-top: 10vh;
+  margin-top: 20px;
 }
 
 .overlay-container {

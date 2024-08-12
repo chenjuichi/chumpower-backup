@@ -18,11 +18,11 @@
             @mouseleave="onLeave(0)"
           >
             <button class="dropbtnk" :disabled="navLinks[0].isEnabled">
-              <div :class="{'button-content': isSegment }">
+              <div :class="{'button-content': navLinks[0].isSegment }">
                 <!--item1, menu 1-->
-                <span :class="{'button-title': isSegment }">{{ navLinks[0].text }}</span>
+                <span :class="{'button-title': navLinks[0].isSegment }">{{ navLinks[0].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                  <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[0].isSegment }]" />
                 </span>
               </div>
             </button>
@@ -68,11 +68,11 @@
             @mouseleave="onLeave(1)"
           >
               <button class="dropbtnk" :disabled="navLinks[5].isEnabled">
-                <div :class="{'button-content': isSegment }">
+                <div :class="{'button-content': navLinks[5].isSegment }">
                   <!--item2, menu 6-->
-                  <span :class="{'button-title': isSegment }">{{ navLinks[5].text }}</span>
+                  <span :class="{'button-title': navLinks[5].isSegment }">{{ navLinks[5].text }}</span>
                   <span class="icon-container">
-                    <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                    <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[5].isSegment }]" />
                   </span>
                 </div>
               </button>
@@ -102,11 +102,11 @@
             @mouseleave="onLeave(2)"
           >
               <button class="dropbtnk" :disabled="navLinks[8].isEnabled">
-                <div :class="{'button-content': isSegment }">
+                <div :class="{'button-content': navLinks[8].isSegment }">
                   <!--item3, menu 9-->
-                  <span :class="{'button-title': isSegment }">{{ navLinks[8].text }}</span>
+                  <span :class="{'button-title': navLinks[8].isSegment }">{{ navLinks[8].text }}</span>
                   <span class="icon-container">
-                    <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                    <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[8].isSegment}]" />
                   </span>
                 </div>
               </button>
@@ -144,11 +144,11 @@
             @mouseleave="onLeave(3)"
           >
             <button class="dropbtnk" :disabled="navLinks[12].isEnabled">
-              <div :class="{'button-content': isSegment }">
+              <div :class="{'button-content': navLinks[12].isSegment }">
                 <!--item4, menu 13-->
-                <span :class="{'button-title': isSegment }">{{ navLinks[12].text }}</span>
+                <span :class="{'button-title': navLinks[12].isSegment }">{{ navLinks[12].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                  <i :class="['fas', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[12].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -186,11 +186,11 @@
             @mouseleave="onLeave(4)"
           >
             <button class="dropbtnk" :disabled="navLinks[16].isEnabled">
-              <div :class="{'button-content': isSegment }">
+              <div :class="{'button-content': navLinks[16].isSegment }">
                 <!--item5, menu 17-->
-                <span :class="{'button-title': isSegment }">{{ navLinks[16].text }}</span>
+                <span :class="{'button-title': navLinks[16].isSegment }">{{ navLinks[16].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                  <i :class="['fas', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[16].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -228,11 +228,11 @@
             @mouseleave="onLeave(5)"
           >
             <button class="dropbtnk" :disabled="navLinks[20].isEnabled">
-              <div :class="{'button-content': isSegment }">
+              <div :class="{'button-content': navLinks[20].isSegment }">
                 <!--item6, menu 21-->
-                <span :class="{'button-title': isSegment }">{{ navLinks[20].text }}</span>
+                <span :class="{'button-title': navLinks[20].isSegment }">{{ navLinks[20].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                  <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : navLinks[20].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -289,7 +289,7 @@
             <button class="dropbtnk">
               <em>{{ currentUser ? currentUser.name : '使用者' }}</em>
               <span class="icon-container">
-                <i :class="['fas', hoveredItems[6] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment}]" />
+                <i :class="['fas', hoveredItems[6] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment }]" />
               </span>
             </button>
             <div class="dropdown-contentk">
@@ -494,9 +494,16 @@ const logout = () => {
     lastRoutingName: userData.setting_lastRoutingName,
     empID: userData.empID,
   };
-  const isAuthenticated = false;
+  let isAuthenticated = false;
+  //status && (setAuthenticated(isAuthenticated), removeLocalStorage(), router.replace({ name: 'LoginRegister' }));
+  updateSetting(payload)
+  .finally(() => {
+    setAuthenticated(isAuthenticated);
+    removeLocalStorage();
+    router.replace({ name: 'LoginRegister' });
+  });
+  /*
   updateSetting(payload).then(status => {
-    //status && (setAuthenticated(isAuthenticated), removeLocalStorage(), router.replace({ name: 'LoginRegister' }));
     console.log("updateSetting status:", status);
     if (status) {
       setAuthenticated(isAuthenticated);
@@ -507,6 +514,7 @@ const logout = () => {
   }).catch(error => {
     console.error("Error during logout:", error);
   });
+  */
   //router.replace({ name: 'LoginRegister' });  //啟動router
   //if (router.currentRoute.value.path !== '/') {
   //  router.push('/');

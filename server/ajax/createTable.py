@@ -27,7 +27,7 @@ def register():
     emp_perm = request_data['emp_perm']
     routingPriv = request_data['routingPriv']
 
-    return_value = True  # true: 資料正確, 註冊成功
+    #return_value = True  # true: 資料正確, 註冊成功
 
     s = Session()
     #前端已做檢查, 所以暫時mark
@@ -35,28 +35,29 @@ def register():
     #if old_user:
     #  return_value = False  # if the user exist
 
-    if return_value:
-      message='hello ' + emp_name
-      perm = s.query(Permission).filter_by(auth_code=emp_perm).first()
-      new_user_setting = Setting(message=message, lastRoutingName='Main', routingPriv=routingPriv,)
-      s.add(new_user_setting)
-      s.flush()
-      new_user = User(
-        emp_id=emp_id,
-        emp_name=emp_name,
-        dep_name=dep_name,
-        password=generate_password_hash(sPWD, method='scrypt'),   # 生成密碼
-        perm_id=perm.id,
-        setting_id=new_user_setting.id
-      )
-      s.add(new_user)
+    #if return_value:
+    message='hello ' + emp_name
+    perm = s.query(Permission).filter_by(auth_code=emp_perm).first()
+    new_user_setting = Setting(message=message, lastRoutingName='Main', routingPriv=routingPriv,)
+    s.add(new_user_setting)
+    s.flush()
+    new_user = User(
+      emp_id=emp_id,
+      emp_name=emp_name,
+      dep_name=dep_name,
+      password=generate_password_hash(sPWD, method='scrypt'),   # 生成密碼
+      perm_id=perm.id,
+      setting_id=new_user_setting.id
+    )
+    s.add(new_user)
 
-      s.commit()
+    s.commit()
 
     s.close()
 
     return jsonify({
-      'status': return_value,
+      #'status': return_value,
+      'status': True,
     })
 
 

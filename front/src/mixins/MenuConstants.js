@@ -36,8 +36,8 @@ export const menuData = [
     isEnabled: true,
     isSegment: false,
     children: [
-      { id: 7, text: "1.加工區", to: '/a', isEnabled: false, isSegment: false },
-      { id: 8, text: "2.組裝區", to: '/b', isEnabled: false, isSegment: false },
+      { id: 7, text: "1.加工區", to: '/e', isEnabled: false, isSegment: false },
+      { id: 8, text: "2.組裝區", to: '/f', isEnabled: false, isSegment: false },
     ]
   },
   {
@@ -47,9 +47,9 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 10, text: "1.領料生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 11, text: "2.完成生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 12, text: "3.異常填報", to: '/d', isEnabled: false, isSegment: false },
+      { id: 10, text: "1.領料生產報工", to: '/g01', isEnabled: false, isSegment: false },
+      { id: 11, text: "2.完成生產報工", to: '/g01c', isEnabled: false, isSegment: false },
+      { id: 12, text: "3.異常填報", to: '/g01d', isEnabled: false, isSegment: false },
     ]
   },
   {
@@ -59,9 +59,9 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 14, text: "1.檢料生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 15, text: "2.完成生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 16, text: "3.異常填報", to: '/d', isEnabled: false, isSegment: false },
+      { id: 14, text: "1.檢料生產報工", to: '/g1', isEnabled: false, isSegment: false },
+      { id: 15, text: "2.完成生產報工", to: '/g2', isEnabled: false, isSegment: false },
+      { id: 16, text: "3.異常填報", to: '/g3', isEnabled: false, isSegment: false },
     ]
   },
   {
@@ -71,9 +71,9 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 18, text: "1.領料生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 19, text: "2.完成生產報工", to: '/d', isEnabled: false, isSegment: false },
-      { id: 20, text: "3.異常填報", to: '/d', isEnabled: false, isSegment: false },
+      { id: 18, text: "1.領料生產報工", to: '/h1', isEnabled: false, isSegment: false },
+      { id: 19, text: "2.完成生產報工", to: '/h2', isEnabled: false, isSegment: false },
+      { id: 20, text: "3.異常填報", to: '/h3', isEnabled: false, isSegment: false },
     ]
   },
   {
@@ -83,10 +83,10 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 22, text: "1.機台資料維護", to: '/a', isEnabled: false, isSegment: false },
-      { id: 23, text: "2.組裝站資料維護", to: '/b', isEnabled: false, isSegment: false },
-      { id: 24, text: "3.加工異常原因維護", to: '/c', isEnabled: false, isSegment: false },
-      { id: 25, text: "4.組裝異常原因維護", to: '/d', isEnabled: false, isSegment: false },
+      { id: 22, text: "1.機台資料維護", to: '/j1', isEnabled: false, isSegment: false },
+      { id: 23, text: "2.組裝站資料維護", to: '/j2', isEnabled: false, isSegment: false },
+      { id: 24, text: "3.加工異常原因維護", to: '/j3', isEnabled: false, isSegment: false },
+      { id: 25, text: "4.組裝異常原因維護", to: '/j4', isEnabled: false, isSegment: false },
       { id: 26, text: "5.人員資料維護", to: '/employer', isEnabled: false, isSegment: false },
     ]
   }

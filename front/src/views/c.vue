@@ -11,6 +11,8 @@ import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { myMixin } from '../mixins/common.js';
 
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+
 //=== component name ==
 defineComponent({
   name: 'c'

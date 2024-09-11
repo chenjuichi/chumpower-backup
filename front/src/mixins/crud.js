@@ -1,6 +1,11 @@
 import axios from 'axios';
 import { ref, reactive, watch } from 'vue';
 
+//import { snackbar, snackbar_info, snackbar_color } from './snackbarStore';
+
+// for listMaterials
+export const materials = ref([]);
+
 // for listDepartments
 export const departments = ref([]);
 
@@ -19,7 +24,7 @@ const list_table_is_ok = ref(false);
 
 export const snackbar = ref(false);
 export const snackbar_info = ref('');
-export const snackbar_color = ref('');   // default: 'red accent-2'
+export const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
 // 定義 apiOperation，用來處理不同的 API 操作
 export const apiOperation = (operation, path, payload) => {
@@ -43,14 +48,39 @@ export const apiOperation = (operation, path, payload) => {
       .then((res) => {
         if (operation === 'get') {    // get 操作
           if (path == '/listDepartments') {
-            departments.value = [...res.data.departments];
+            //departments.value = [...res.data.departments];
+            // 檢查 res.data 是否包含 'departments' 或 'data'
+            if (res.data.departments) {
+              departments.value = [...res.data.departments];
+            //} else if (res.data.data) {
+            } else {
+              departments.value = [...res.data.data];
+            }
+          }
+
+          if (path == '/listMaterials') {
+            materials.value = [...res.data.materials];
           }
 
           if (path == '/listUsers') {
             temp_desserts.value = res.data.users;
+
+            // 檢查每個對象的 dep_name，如果是 null、"NULL" 或 "Null"，則替換為空字符串
+            temp_desserts.value = temp_desserts.value.map(user => {
+              if (user.dep_name == null || user.dep_name.toLowerCase() === "null") {
+                user.dep_name = ' '; // 替換為空字符串
+              }
+              return user;
+            });
+
             desserts.value = [...temp_desserts.value];
             //console.log("/listUsers, desserts:", desserts.value)
             list_table_is_ok.value = true;
+          }
+
+          if (path == '/readAllExcelFiles') {
+            console.log("get, path is", path)
+            return res.data;
           }
 
           //list_table_is_ok.value = true;
@@ -90,7 +120,8 @@ export const setupListUsersWatcher = () => {
 };
 
 export const showSnackbar = (message, color) => {
-  console.log("showSnackbar,", message, color)
+  console.log("showSnackbar,", message, color);
+
   snackbar_info.value = message;
   snackbar_color.value = color;
   snackbar.value = true;

@@ -201,6 +201,8 @@ import { useRoute } from 'vue-router'; // Import useRouter
 
 import { myMixin } from '../mixins/common.js';
 
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+
 import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
 import { departments, desserts }  from '../mixins/crud.js';
 import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
@@ -322,9 +324,9 @@ const pagination = reactive({
   page: 1,
 });
 
-const snackbar = ref(false);
-const snackbar_info = ref('');
-const snackbar_color = ref('red accent-2');
+//const snackbar = ref(false);
+//const snackbar_info = ref('');
+//const snackbar_color = ref('red accent-2');
 
 //=== watch ===
 setupListUsersWatcher();

@@ -1,7 +1,23 @@
 <template>
-  <div class="page_contain">
-    <h1>Welcome</h1>
-    <p>This is Page a</p>
+  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle">
+    <!-- Snackbar -->
+    <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+      {{ snackbar_info }}
+      <template v-slot:actions>
+        <v-btn color="#adadad" @click="snackbar = false">
+          <v-icon dark>mdi-close-circle</v-icon>
+        </v-btn>
+      </template>
+    </v-snackbar>
+
+    <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
+      <v-card flat class="card-container">
+
+        <h1>Welcome</h1>
+        <p>This is Page a</p>
+
+      </v-card>
+    </v-row>
   </div>
 </template>
 
@@ -10,6 +26,8 @@ import { ref, defineComponent, computed, onMounted, onBeforeMount } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { myMixin } from '../mixins/common.js';
+
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 //=== component name ==
 defineComponent({

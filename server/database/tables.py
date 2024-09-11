@@ -30,7 +30,7 @@ class User(BASE):
   isRemoved = Column(Boolean, default=True)               # false:已經刪除資料
   isOnline = Column(Boolean, default=False)               # false:user不在線上(logout)
   #_production = relationship('Production', backref="user")              # 一對多(一), 生管
-  #_material =  relationship('Material', backref="user")                 # 一對多(一), 備料
+  _process =  relationship('Process', backref="user")                 # 一對多(一), 備料
   #_assembler =  relationship('Assembler', backref="user")               # 一對多(一), 裝配
   #_finished_goods =  relationship('Finished_Goods', backref="user")     # 一對多(一), 成品
   create_at = Column(DateTime, server_default=func.now())
@@ -115,6 +115,68 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
 
 
 # ------------------------------------------------------------------
+
+
+class Material(BASE):
+    __tablename__ = 'material'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_num = Column(String(20), nullable=False)
+    material_num = Column(String(20), nullable=False)
+    material_comment = Column(String(70), nullable=False)
+    material_req_qty = Column(Integer, nullable=False)
+    material_pick_qty = Column(Integer, nullable=False)
+    isPickOK = Column(Boolean, default=False)               # false: 尚未備料完成
+    create_at = Column(DateTime, server_default=func.now())
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      return "id={}, order_num={}, material_num={}, material_comment={}, material_req_qty={}, material_pick_qty={}".format(
+      self.id, self.order_num, self.material_num, self.material_comment, self.material_req_qty, self.material_pick_qty)
+
+    # 定義class的dict內容
+    def get_dict(self):
+      return {
+        'id': self.id,
+        'order_num': self.order_num,
+        'material_num': self.material_num,
+        'material_comment': self.material_comment,
+        'material_req_qty': self.material_req_qty,
+        'material_pick_qty': self.material_pick_qty,
+      }
+
+
+# ------------------------------------------------------------------
+
+
+class Process(BASE):
+    __tablename__ = 'process'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_num = Column(String(20), nullable=False)
+    user_id = Column(Integer, ForeignKey('user.id'))
+    begin_time = Column(String(20))
+    end_time = Column(String(20))
+    process_type = Column(String(20))
+    process_status = Column(String(20))
+    create_at = Column(DateTime, server_default=func.now())
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      return "id={}, order_num={}, user_id={}, begin_time={}, end_time={}, process_type={}, process_status={}".format(
+      self.id, self.order_num, self.user_id, self.begin_time, self.end_time, self.process_type, self.process_status)
+
+    # 定義class的dict內容
+    def get_dict(self):
+      return {
+        'id': self.id,
+        'order_num': self.order_num,
+        'user_id': self.user_id,
+        'begin_time': self.begin_time,
+        'end_time': self.end_time,
+        'process_type': self.process_type,
+        'process_status': self.process_status
+      }
 
 
 # 建立連線

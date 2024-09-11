@@ -2,7 +2,7 @@ import math
 import random
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy.sql import func
-from database.tables import User, Permission, Setting, Session
+from database.tables import User, Material, Permission, Setting, Session
 
 from flask_cors import CORS
 
@@ -82,5 +82,44 @@ def list_users():
     return jsonify({
         'status': return_value,
         'users': _user_results    #員工資料
+    })
+
+# list all materials
+@listTable.route("/listMaterials", methods=['GET'])
+def list_materials():
+    print("listMaterials....")
+
+    s = Session()
+
+    _results = []
+    return_value = True
+    _objects = s.query(Material).all()
+    materials = [u.__dict__ for u in _objects]
+    for record in materials:
+      if (record['isPickOK']):
+        _object = {
+          'order_num': record['emp_id'],
+          'process_num': record['emp_name'],
+          'material_num': record['dep_name'],
+          'material_status': perm_item.auth_code,    #4, 3, 2, 1
+          'req_qty': setting_item.lastRoutingName,
+          'date': setting_item.routingPriv,
+          'location': 'hello',
+          'shortage_note': 'hello',
+          'comment': 'hello',
+          'comment2': 'hello',
+        }
+        _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("listMaterials, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    return jsonify({
+        'status': return_value,
+        'materials': _record_results    #員工資料
     })
 

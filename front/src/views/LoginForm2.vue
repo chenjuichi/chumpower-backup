@@ -203,6 +203,9 @@ import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants
 
 import eventBus from '../mixins/enentBus.js';
 
+//import { snackbar, snackbar_info, snackbar_color } from '../mixins/snackbarStore.js';
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+
 import { departments, temp_desserts, loginUser, loginEmpIDInput}  from '../mixins/crud.js';
 import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
 
@@ -257,9 +260,10 @@ const loginButton = ref(null);
 const registerButton = ref(null);
 const registerPasswordInput = ref(null);
 
-const snackbar = ref(false);
-const snackbar_info = ref('');
-const snackbar_color = ref('red accent-2');
+//const foundDessert_index = ref(-1);
+//const snackbar = ref(false);
+//const snackbar_info = ref('');
+//const snackbar_color = ref('red accent-2');
 
 let myIdField = null;
 let loginEmpID_max_length = 8;
@@ -350,8 +354,10 @@ const setupListUsers = (focused) => {
 
     isLoginUserFocused.value=false;
 
-    if (loginUser.loginEmpID.length == 7) {   // 在工號為7位數時, 則前方自動補0成為8位數
-      loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
+    //if (loginUser.loginEmpID.length == 7) {   // 在工號為7位數時, 則前方自動補0成為8位數
+    loginUser.loginEmpID = loginUser.loginEmpID.trim();
+    if (loginUser.loginEmpID.length < 8 && loginUser.loginEmpID.length != 0) {   // 在工號為7位數時, 則前方自動補0成為8位數
+        loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
     }
 
     foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
@@ -360,7 +366,7 @@ const setupListUsers = (focused) => {
       loginUser.loginName = foundDessert.value.emp_name;
     } else {
         //console.log("step, not found...", loginUser.loginEmpID);
-        if (loginUser.loginEmpID !== '') {
+      if (loginUser.loginEmpID !== '') {
         let temp_info = snackbar_info.value = '錯誤, 找不到工號' + loginUser.loginEmpID + '!';
         showSnackbar(temp_info, 'red accent-2');
 

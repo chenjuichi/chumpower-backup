@@ -2,13 +2,15 @@ import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/HomeView.vue'
 import About from '../views/AboutView.vue'
 
+import Animation from '../views/Animation.vue';
+
 import A from '../views/a.vue';
 import B from '../views/b.vue';
 import C from '../views/c.vue';
 import D from '../views/d.vue';
 
-import E from '../views/e.vue';
-import F from '../views/f.vue';
+import E from '../views/MaterialListForProcess.vue';
+import F from '../views/MaterialListForAssem.vue';
 import G01 from '../views/g01.vue';
 import G01C from '../views/g01c.vue';
 import G01D from '../views/g01d.vue';
@@ -18,10 +20,10 @@ import G3 from '../views/g3.vue';
 import H1 from '../views/h1.vue';
 import H2 from '../views/h2.vue';
 import H3 from '../views/h3.vue';
-import J1 from '../views/j1.vue';
-import J2 from '../views/j2.vue';
-import J3 from '../views/j3.vue';
-import J4 from '../views/j4.vue';
+import J1 from '../views/dataForMachine.vue';
+import J2 from '../views/dataForAssemble.vue';
+import J3 from '../views/dataForProcessAlarm.vue';
+import J4 from '../views/dataForMachineAlarm.vue';
 
 import MyTable from '../views/MyTable.vue';
 //import LoginRegister from '@/views/LoginRegister.vue';
@@ -32,6 +34,7 @@ import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面
 
 const routes = [
   { path: '/', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
+  { path: '/animation', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
   { path: '/main', name: 'Main', component: Main },
   { path: '/employer', name: 'Employer', component: Employer },
   { path: '/home', name: 'Home', component: Home },
@@ -68,13 +71,11 @@ router.beforeEach((to, from, next) => {
   const toDepth = to.path.split('/').length;
   const fromDepth = from.path.split('/').length;
   to.meta.transitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
-  //next();
 
   // 認證檢查邏輯
   let isAuthenticated = localStorage.getItem('Authenticated');
   if (isAuthenticated === null) {
-    //isAuthenticated = false;
-    isAuthenticated = 'false'; // 確保初始值為字串 'false'
+    isAuthenticated = false; // 確保初始值為字串 'false'
     localStorage.setItem('Authenticated', isAuthenticated);
   } else {
     isAuthenticated = JSON.parse(isAuthenticated); // 將字串轉換為布爾值
@@ -82,11 +83,52 @@ router.beforeEach((to, from, next) => {
 
   console.log("routing is(to, from, auth):", to.name, from.name, isAuthenticated);
 
-  if (to.name !== 'LoginRegister' && !isAuthenticated) {
-    next({ name: 'LoginRegister' });
+  // 檢查動畫頁面是否已經顯示過
+  let isAnimationShow = sessionStorage.getItem('animationShow');
+  //console.log("routing is(to, from, auth):", to.name, from.name);
+  //console.log("isAnimationShow:", isAnimationShow);
+
+  // 檢查動畫頁面是否已經顯示過
+  if (isAnimationShow === null) {
+    console.log("routine step a...");
+    isAnimationShow = false; // 確保初始值為字串 'false'
+    sessionStorage.setItem('animationShow', isAnimationShow);  // 修改這裡的鍵名
+    //let temp_show = sessionStorage.getItem('animationShow')
+    //let temp_sess = JSON.parse(temp_show);
+    //console.log("routine step a-1,", temp_show, typeof(temp_show), temp_sess, typeof(temp_sess));
+    //next({ name: 'Animation' });
   } else {
-    next();
+    console.log("routine step b...")
+    isAnimationShow = JSON.parse(isAnimationShow); // 將字串轉換為布爾值
   }
+
+  console.log("to.name:", to.name)
+
+  if (isAnimationShow == false && to.name !== 'Animation') {
+    console.log("routine step 1... 跳轉到 Animation 頁面");
+
+    isAnimationShow = true; // 確保初始值為字串 'false'
+    sessionStorage.setItem('animationShow', isAnimationShow);
+
+    console.log("routine step 1-1,",JSON.parse(sessionStorage.getItem('animationShow')));
+    return next({ name: 'Animation' });   // 使用 return 結束邏輯，避免重複執行 next
+  }
+
+  // 檢查動畫頁面是否是 Animation
+  if (to.name === 'Animation') {
+    console.log("已進入動畫頁面");
+    return next(); // 確保動畫頁面可以顯示
+  }
+
+  // 認證檢查邏輯
+  if (to.name !== 'LoginRegister' && !isAuthenticated) {
+    console.log("routine step 2... 跳轉到 LoginRegister 頁面");
+    return next({ name: 'LoginRegister' });
+  }
+  //} else {
+    next();   // 正常跳轉到目標頁面
+  //}
+
 });
 
 // 將所有路由的 path 和 name 儲存到 routerLinks

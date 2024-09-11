@@ -1,6 +1,12 @@
 <template>
   <div id="app">
-    <Nav v-if="!hideNavAndFooter" :show-footer="showFooter" :navLinks="navLinks" @update:showFooter="updateShowFooter" />
+    <Nav
+      v-if="!hideNavAndFooter"
+      :show-footer="showFooter"
+      :navLinks="navLinks"
+      @update:showFooter="updateShowFooter"
+    />
+
     <div :class="{'content': !hideNavAndFooter,  'no-footer': !showFooter }">
       <router-view v-slot="{ Component, route }">
         <transition :name="route.meta.transitionName">
@@ -16,8 +22,13 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch, onBeforeMount, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+
+import { flatItems } from './mixins/MenuConstants.js';
+
+import Animation from './views/Animation.vue';
+
 import Nav from './views/Nav.vue';
 import Footer from './views/Footer.vue';
 //import LoginRegister from './views/LoginForm2.vue';
@@ -35,17 +46,18 @@ let countdownTimer = null;              // 倒數計時器
 const countdown = ref(IDLE_TIMEOUT);    // 初始倒數值
 
 const route = useRoute();
-const router = useRouter();
+//const router = useRouter();
 
 // 定義 基本navLinks
-const generateDefaultNavLinks = () => {
-  return Array.from({ length: 26 }, (_, index) => ({
-    text: `Item ${index + 1}`,
-    to: `/path${index + 1}`,
-    isEnabled: index % 2 === 0    // 假設啟用每第二個项(偶數項)
-  }));
-};
-const navLinks = ref(generateDefaultNavLinks());  // 動態生成預設直(初始值)
+//const generateDefaultNavLinks = () => {
+//  return Array.from({ length: 26 }, (_, index) => ({
+//    text: `Item ${index + 1}`,
+//    to: `/path${index + 1}`,
+//    isEnabled: index % 2 === 0    // 假設啟用每第二個项(偶數項)
+//  }));
+//};
+//const navLinks = ref(generateDefaultNavLinks());  // 動態生成預設直(初始值)
+const navLinks = ref([]);  // 初始值為空array
 /*
 const navLinks = ref([
   {
@@ -66,6 +78,7 @@ const navLinks = ref([
 const updateShowFooter = (value) => {
   showFooter.value = value;
 };
+
 // 更新 navLinks
 const updateNavLinks = (links) => {
   console.log("navLinks,links:", links)
@@ -77,7 +90,6 @@ const handleSetLinks = (links) => {
   console.log("Received links:", links);
   updateNavLinks(links);
 };
-
 
 // 設定timer
 const resetIdleTimer = () => {
@@ -136,10 +148,22 @@ watch(route, (newRoute) => {
   hideNavAndFooter.value = newRoute.meta.hideNavAndFooter || false;
 });
 
+//=== created ===
+onBeforeMount(() => {
+  console.log("App.vue, created()...");
+
+});
+
+//=== mounted ===
 onMounted(() => {
-  console.log("App, mounted()...");
+  console.log("App.vue, mounted()...");
 
   eventBus.on('setLinks', handleSetLinks);
+
+  // 初始化 navLinks
+  //navLinks.value = generateDefaultNavLinks();
+  navLinks.value = flatItems.value;
+  console.log("navLinks:", navLinks.value);
 
   // 初始化計時器
   resetIdleTimer();

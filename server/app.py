@@ -14,6 +14,9 @@ from ajax.getTable import getTable
 from ajax.createTable import createTable
 from ajax.updateTable import updateTable
 from ajax.deleteTable import deleteTable
+from ajax.excelTable import excelTable
+
+from travel.kuka_car import kuka_car
 
 # --------------------------
 
@@ -35,6 +38,9 @@ app.register_blueprint(getTable)
 app.register_blueprint(createTable)
 app.register_blueprint(updateTable)
 app.register_blueprint(deleteTable)
+app.register_blueprint(excelTable)
+
+app.register_blueprint(kuka_car)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
 
@@ -44,13 +50,22 @@ with open('database/data.json', 'r', encoding='utf-8') as f:      # 開啟系統
   data = json.load(f)
 
 app.config['envDir'] = data[0]['envDir']
-env_vars = dotenv_values(app.config['envDir'])    # 開啟application參數檔案
+env_vars = dotenv_values(app.config['envDir'])
 app.config['baseDir'] = env_vars["baseDir"]
 _base_dir = env_vars["baseDir"]
-##print("read excel files, dir: ", _base_dir)
-app.config['file_ok'] = False                     # 初始化file_ok
-#print("file_ok", app.config['file_ok'])
+print("Excel檔案在目錄:", _base_dir)
 
+app.config['excelSheet'] = env_vars["excelSheet"]
+_excelSheet = app.config['excelSheet']
+print("Excel active sheet 為:", _excelSheet)
+
+app.config['orderRow'] = env_vars["orderRow"]
+_orderRow = app.config['orderRow']
+print("Excel sheet 資料起始行 為:", _orderRow)
+
+
+#print("Excel檔案在目錄:", _base_dir)
+app.config['file_ok'] = False                     # 初始化file_ok
 f.close()
 
 # --------------------------
@@ -59,7 +74,7 @@ scheduler = BackgroundScheduler()       # 初始化调度器
 
 @app.route("/")
 def helloWorld():
-  print("hello Theata")
+  print("hello Chumpower")
   return "Hello..."
 
 @app.route('/hello', methods=['GET'])

@@ -18,7 +18,7 @@ export const roleMappings = {
 export const menuData = [
   {
     id: 1,
-    text: '在製品生產',
+    text: '在製品生產資訊',
     to: '',
     isEnabled: false,
     isSegment: false,

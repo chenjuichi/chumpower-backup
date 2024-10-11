@@ -34,7 +34,7 @@
               ></v-badge>
             </template>
           </v-btn>
-          <!-- disable:agv已到站及agv運行中-->
+
           <v-btn
             :disabled="isBlinking"
             color="primary"
@@ -50,7 +50,7 @@
             style="margin-left: 10px; font-size: 14px;"
             :class="{ 'blinking': isBlinking }"
           >
-            {{order_num_on_agv_blink}}
+            {{order_num_on_agv}}
           </span>
         </v-card-title>
         <v-divider></v-divider>
@@ -65,78 +65,64 @@
           class="outer custom-header"
           :style="tableStyle"
           :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
-
         >
           <template #top>
-            <v-dialog
-              v-model="dialog"
-              max-width="800px"
-              @keydown.esc="handleEscClose"
-              @click:outside="handleOutsideClick"
-            >
-              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  備料資訊
-                  <v-fade-transition mode="out-in">
+            <v-dialog v-model="dialog" style="top: 30px;">
+              <v-table
+                class="inner"
+                density="compact"
+                height="280px"
+                fixed-header
+              >
+                <template #top>
+                  <div class="text-h5 sticky-title">
+                    備料資訊
                     <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-check-circle-outline"
-
-                      text="確定"
-                      class="text-none"
+                      color="primary"
+                      variant="outlined"
                       @click="updateItem"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
-                </v-card-title>
+                      style="position: relative; left: 990px; top:10px;">
+                      <v-icon left color="blue" >mdi-check-circle-outline</v-icon>確定
+                    </v-btn>
+                  </div>
+                </template>
 
-                <v-card-text>
-                  <v-table class="inner" density="compact" fixed-header>
-                    <thead style="color: black;">
-                      <tr>
-                        <th class="text-left">元件</th>
-                        <th class="text-left">物料</th>
-                        <th class="text-left">數量</th>
-                        <th class="text-left">日期</th>
-                        <th class="text-left">領料</th>
-                      </tr>
-                    </thead>
+                <thead>
+                  <tr>
+                    <th class="text-left">元件</th>
+                    <th class="text-left">物料</th>
+                    <th class="text-left">數量</th>
+                    <th class="text-left">日期</th>
+                    <th class="text-left">領料</th>
+                    <!--<th class="text-left">缺料</th>-->
+                  </tr>
+                </thead>
 
-                    <tbody>
-                      <tr
-                        v-for="(bom_item, index) in boms"
-                        :key="bom_item.seq_num"
-                        :style="{
-                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                        }"
-                      >
-                        <td>{{ bom_item.seq_num }}</td>
-                        <td>
-                          <div>
-                            <div>{{ bom_item.material_num }}</div>
-                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                          </div>
-                        </td>
-                        <td>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                        </td>
-                        <td>
-                          <div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                          </div>
-                        </td>
-                        <td><v-checkbox-btn v-model="bom_item.receive" /></td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </v-card-text>
-              </v-card>
+                <tbody style="overflow-y:auto;">
+                  <tr v-for="bom_item in boms" :key="bom_item.seq_num">
+                    <td>{{ bom_item.seq_num }}</td>
+                    <td>
+                      <div>
+                        <div>{{ bom_item.material_num }}</div>
+                        <div style="color: #33cccc; font-weight:600">{{ bom_item.mtl_comment }}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                    </td>
+                    <td>
+                      <div>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                      </div>
+                    </td>
+                    <td><v-checkbox-btn v-model="bom_item.receive" /></td>
+                    <!--<td><v-checkbox-btn v-model="bom_item.lack" /></td>-->
+                  </tr>
+                </tbody>
+              </v-table>
             </v-dialog>
           </template>
-
           <!--
           <template v-slot:item.order_num="{ item }">
             <div>
@@ -193,22 +179,20 @@
 
   import { useRoute } from 'vue-router'; // Import useRouter
 
-  import { myMixin } from '../mixins/common.js';
+  import { myMixin } from '../../mixins/common.js';
 
-  import { useSocketio } from '../mixins/SocketioService.js';
+  import { useSocketio } from '../../mixins/SocketioService.js';
 
-  import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+  import { snackbar, snackbar_info, snackbar_color } from '../../mixins/crud.js';
 
-  import { materials, boms, socket_server_ip, fileCount }  from '../mixins/crud.js';
+  import { materials, boms, fileCount }  from '../../mixins/crud.js';
 
-  import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+  import { apiOperation, setupGetBomsWatcher}  from '../../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
   const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
   const countExcelFiles = apiOperation('get', '/countExcelFiles');
   const listMaterials = apiOperation('get', '/listMaterials');
-  const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
-
   const getBoms = apiOperation('post', '/getBoms');
   const updateBoms = apiOperation('post', '/updateBoms');
   const updateMaterial = apiOperation('post', '/updateMaterial');
@@ -245,18 +229,15 @@
   ];
 
   //const localIp = 'localhost';
-  //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
-  //const serverIp = '192.168.0.13';
-  //const serverIp = process.env.VUE_SOCKET_SERVER_IP
+  const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
   const userId = 'user_chumpower';
-  //console.log("serverIp:", serverIp)
   // 初始化Socket連接
   //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-  const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
-  //const localIP = ref('');
-  const from_agv_input_order_num = ref('');
+  const { socket, setupSocketConnection } = useSocketio(serverIp, userId);
+  const localIP = ref('');
+  const from_agv_order_num = ref('');
   const isBlinking = ref(false);          // 控制按鍵閃爍
-  const order_num_on_agv_blink=ref('');
+  const order_num_on_agv=ref('');
 
   const currentUser = ref({});
   const permDialog = ref(false);
@@ -266,14 +247,7 @@
 
   const currentStartTime = ref(null);  // 記錄開始時間
 
-  const agv1StartTime = ref(null);
-  const agv1EndTime = ref(null);
-  const agv2StartTime = ref(null);
-  const agv2EndTime = ref(null);
-
   const dialog = ref(false);
-
-  const selectedItem = ref(null); // 儲存當前點擊的記錄
 
   const pagination = reactive({
     itemsPerPage: 5, // 預設值, rows/per page
@@ -350,13 +324,13 @@
           console.log('工單 '+ data + ' 已檢料完成!');
           socket.value.emit('station1_order_ok');
 
-          from_agv_input_order_num.value = data;
-          order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
+          from_agv_order_num.value = data;
+          order_num_on_agv.value = "工單:" + data + "物料運送中...";
           //isBlinking.value = true; // 開始按鍵閃爍
 
           // 定義 materialPayload1
           const materialPayload1 = {
-            order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+            order_num: from_agv_order_num.value, // 確保 my_material_orderNum 已定義
             record_name: 'show3_ok',
             record_data: 1 // 設為 2，表示備料完成
           };
@@ -364,85 +338,38 @@
         } else {
           console.log('工單 '+ data + ' 還沒檢料完成!');
           socket.value.emit('station1_order_ng');
-          order_num_on_agv_blink.value = '';
+          order_num_on_agv.value = '';
         }
       });
 
       socket.value.on('station1_agv_begin', async () => {
         console.log('AGV暫停, 收到 station1_agv_begin 訊息');
 
-        // 記錄agv在站與站之間運行開始時間
-        agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-        console.log("AGV Start time:", agv2StartTime.value);
-
         const materialPayload1 = {
-          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+          order_num: from_agv_order_num.value, // 確保 my_material_orderNum 已定義
           record_name: 'show3_ok',
           record_data: 2 // 設為 2，表示備料完成
         };
         await updateMaterial(materialPayload1);
-
-        let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-        let formattedStartTime = formatDateTime(agv1StartTime.value);
-        let formattedEndTime = formatDateTime(agv1EndTime.value);
-        console.log("Formatted AGV Start Time:", formattedStartTime);
-        console.log("Formatted AGV End Time:", formattedEndTime);
-        console.log("AGV Period time:", agv1PeriodTime);
-
-        const processPayload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv1PeriodTime,
-          user_id: 'AGV1',
-          order_num: from_agv_input_order_num.value,
-          process_type: 1,
-        };
-        await createProcess(processPayload);
       })
 
       socket.value.on('station1_agv_end', async () => {
         console.log('AGV暫停, 收到 station1_agv_end 訊息');
 
         const materialPayload1 = {
-          order_num: from_agv_input_order_num.value,
-          show1_ok: 2,      //組裝站
-          show2_ok: 3,      //未組裝
-          show3_ok: 0,      //空白
-          whichStation: 2,  //目標途程:組裝站
+          order_num: from_agv_order_num.value, // 確保 my_material_orderNum 已定義
+          show1_ok: 2,
+          show2_ok: 20, // 設為 2，表示備料完成
+          show3_ok: 2,
+          whichStation: 2,
         };
         await updateMaterialRecord(materialPayload1);
 
-        let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
-        let formattedStartTime = formatDateTime(agv2StartTime.value);
-        let formattedEndTime = formatDateTime(agv2EndTime.vale);
-        console.log("Formatted AGV Start Time:", formattedStartTime);
-        console.log("Formatted AGV End Time:", formattedEndTime);
-        console.log("AGV Period time:", agv2PeriodTime);
-
-        const processPayload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv2PeriodTime,
-          user_id: 'AGV2',
-          order_num: from_agv_input_order_num.value,
-          process_type: 2,
-        };
-        await createProcess(processPayload);
-
-
-        isBlinking.value = false;           // 停止工單運送字串閃爍
-        order_num_on_agv_blink.value = '';
-      });
-
-      socket.value.on('station1_agv_ready', async () => {
-        console.log('AGV 已到達裝卸站, 收到 station1_agv_ready 訊息...');
-        // 記錄等待ag到站結束時間
-        agv1EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-        console.log("AGV End time:", agv1EndTime.value);
-
+        isBlinking.value = false; // 停止按鍵閃爍
+        order_num_on_agv.value = '';
       });
     } catch (error) {
-      console.error('Socket連線失敗:', error);
+      console.error('Socket連接失敗:', error);
     }
   });
 
@@ -462,20 +389,12 @@
   });
 
   //=== method ===
-  const initialize = async () => {
-    try {
-      console.log("initialize()...");
+  const initialize = () => {
+    console.log("initialize()...")
 
-      // 使用 async/await 等待 API 請求完成，確保順序正確
-      await listMaterials();
-
-      await listSocketServerIP();
-      console.log("initialize, socket_server_ip:", socket_server_ip.value)
-    } catch (error) {
-      console.error("Error during initialize():", error);
-    }
+    listMaterials();
   };
-  /*
+
   const getStatusStyle = (status) =>{
     const colorMap = {
       0: '#ff4000',
@@ -490,50 +409,7 @@
       fontSize: '12px',
     };
   };
-  */
-  const handleEscClose = async () => {
-    console.log("Dialog closed via ESC key, item:", selectedItem.value);
 
-    // 記錄當前途程狀態
-    let payload = {
-      order_num: selectedItem.value.order_num,
-      record_name: 'show2_ok',
-      record_data: 0                //未備料
-    };
-    await updateMaterial(payload);
-    //updateMaterial(payload).then(data => {
-    //  !data && showSnackbar(data.message, 'red accent-2');
-    //});
-
-    dialog.value = false;
-  };
-
-  const handleOutsideClick = async () => {
-    console.log("Dialog closed by clicking outside, item:", selectedItem.value);
-
-    // 記錄當前途程狀態
-    let payload = {
-      order_num: selectedItem.value.order_num,
-      record_name: 'show2_ok',
-      record_data: 0                //未備料
-    };
-    await updateMaterial(payload);
-    //updateMaterial(payload).then(data => {
-    //  !data && showSnackbar(data.message, 'red accent-2');
-    //});
-
-    dialog.value = false;
-  };
-
-  // 開啟對話框並傳遞點擊的資料
-  //const openDialog = (item) => {
-  //  console.log("openDialog(), item:", item);
-  //
-  //  selectedItem.value = item;  // 儲存當前選中的行資料
-  //  dialog.value = true;        // 開啟對話框
-  //};
-
-  /*
   const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
     try {
       const response = await axios.get('http://localhost:6500/server-ip'); // 請求伺服器 IP
@@ -543,31 +419,27 @@
       serverIP.value = '無法獲取伺服器 IP';
     }
   };
-  */
-  const toggleExpand = async (item) => {
+
+  const toggleExpand = (item) => {
     console.log("toggleExpand(),", item.order_num);
 
     let payload = {
       order_num: item.order_num,
     };
-    await getBoms(payload);
+    getBoms(payload);
 
-    selectedItem.value = item;
-
-    // 1.記錄當前開始備料時間
+    // 記錄當前開始時間
     currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
     console.log("Start time:", currentStartTime.value);
 
-    // 2.記錄當前途程狀態
     payload = {
       order_num: item.order_num,
       record_name: 'show2_ok',
       record_data: 1                //備料中
     };
-    await updateMaterial(payload);
-    //updateMaterial(payload).then(data => {
-    //  !data && showSnackbar(data.message, 'red accent-2');
-    //});
+    updateMaterial(payload).then(data => {
+      !data && showSnackbar(data.message, 'red accent-2');
+    });
 
     dialog.value = true;
   };
@@ -628,6 +500,8 @@
       console.log("Formatted Start Time:", formattedStartTime);
       console.log("Formatted End Time:", formattedEndTime);
       console.log("Period time:", periodTime);
+
+      // 4. 新增 後端 process的相應項目
       const processPayload = {
         begin_time: formattedStartTime,
         end_time: formattedEndTime,
@@ -635,10 +509,17 @@
         user_id: currentUser.value.empID,
         order_num: my_material_orderNum,
         process_type: 1,
+        process_status: 2,
       };
-      await createProcess(processPayload);
 
-      await listMaterials();
+      const response3 = await createProcess(processPayload);
+      if (!response3) {
+        showSnackbar(response3.message, 'red accent-2');
+        dialog.value = false;
+        return;
+      }
+
+      listMaterials();
     }
 
     dialog.value = false;
@@ -656,11 +537,6 @@
   };
 
   const formatDateTime = (date) => {
-    if (!date || !(date instanceof Date)) {
-      console.error("Invalid date passed to formatDateTime:", date);
-      return 'Invalid Date';
-    }
-
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
     const dd = String(date.getDate()).padStart(2, '0');
@@ -691,9 +567,6 @@
     */
     isBlinking.value = true; // 開始按鍵閃爍
     socket.value.emit('station1_call');
-    // 記錄等待agv到站開始時間
-    agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-    console.log("AGV Start time:", agv1StartTime.value);
   };
 
   const readAllExcelFun = () => {
@@ -716,8 +589,8 @@
       //data.status ? listMaterials() : showSnackbar(data.message, 'red accent-2');
     });
   };
-  /*
-  // 獲取本機 IP 的函數
+
+    // 獲取本機 IP 的函數
   const getLocalIP = async () => {
     try {
       const rtc = new RTCPeerConnection({ iceServers: [] });
@@ -755,7 +628,7 @@
       error.value = '無法獲取本機 IP';
     }
   };
-  */
+
   const showSnackbar = (message, color) => {
     console.log("showSnackbar,", message, color)
 

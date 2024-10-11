@@ -1,11 +1,10 @@
-<template>
-    <div class="animation-page">
-      <div class="box green">一站式服務</div>
-      <div class="box purple"></div>
-      <div class="box orange"></div>
-      <div class="box purple"></div>
-      <div class="box green"></div>
-      <h3>歡迎光臨...</h3>
+  <template>
+    <div class="container" @click="imageClicked">
+      <div class="content">
+        <!--<h1>Testing this out</h1>-->
+      </div>
+
+      <div class="img"></div>
     </div>
   </template>
 
@@ -14,10 +13,7 @@
   import { gsap } from 'gsap';
   import { useRouter } from 'vue-router';
 
-  //=== data ===
-  const imageSrc = ref(require('../assets/com_adv_icon1_tw_pic-rmv.png')); //企業視覺圖像
-  let boxes = []; // 用來儲存所有綁定的元素
-
+  const isClickable = ref(false);
   const router = useRouter();
 
   //=== component name ==
@@ -30,47 +26,33 @@
     console.log("Animation, mounted()...");
 
     // 動畫效果
-    gsap.to(".box", {
-      duration: 1,
-      rotation: 360,
-      opacity: 1,
-      delay: 0.5,
-      stagger: 0.2,
-      ease: "sine.out",
-      force3D: true
+    const tl = gsap.timeline({
+      paused:true,
+      onComplete: () => {
+        console.log("Clip path animation done, image is now clickable...");
+        isClickable.value = true; // 動畫完成後，圖片可以點擊
+      },
     });
 
-    // 綁定 click 事件，並將元素儲存到 boxes 中
-    boxes = document.querySelectorAll(".box");
-    boxes.forEach((box) => {
-      box.addEventListener("click", handleClick);
+    const container = document.querySelector('.container');
+
+    // 使用正確的變數名稱 tl
+    tl.to(container, {
+      clipPath: 'polygon(7% 7%, 93% 7%, 93% 93%, 7% 93%)',
+      duration: 1,
     });
-    /*
-    // 點擊 box 時的動畫效果
-    document.querySelectorAll(".box").forEach((box) => {
-      box.addEventListener("click", () => {
-        console.log("Box clicked!"); // 確認點擊事件被觸發
-        gsap.to(".box", {
-          duration: 0.5,
-          opacity: 0,
-          y: -100,
-          stagger: 0.1,
-          ease: "back.in",
-          onComplete: () => {
-            // 動畫完成後跳轉到 App.vue
-            console.log("Animation bye bye...")
-            router.replace({ name: 'LoginRegister' });
-          }
-        });
-      });
+    //tl.to(container, {clipPath: 'polygon(93% 7%, 93% 7%, 93% 93%, 93% 93%)'});
+
+    container.addEventListener("mouseover", () => {
+      tl.play();  // 使用 tl 而非 t1
     });
-    */
   });
 
-  //=== method ===
-  const handleClick = () => {     // 點擊事件處理函數
-    console.log("Box clicked!"); // 確認點擊事件被觸發
-    gsap.to(".box", {
+  // 按鈕點擊事件處理函數
+  const handleClick = () => {
+    console.log("Image clicked!");
+
+    gsap.to(".img", {
       duration: 0.5,
       opacity: 0,
       y: -100,
@@ -78,57 +60,75 @@
       ease: "back.in",
       onComplete: () => {
         console.log("Animation bye bye...");
-        router.replace({ name: 'LoginRegister' });
-      }
+
+        // 進行路由導航
+        const resolvedRoute = router.resolve({ name: "LoginRegister" });
+        const path = resolvedRoute.href;
+        router.replace({ path });
+      },
     });
   };
 
-  // 清理綁定的事件
-  onUnmounted(() => {
-    console.log("Animation unmounted, cleaning up events...");
-    boxes.forEach((box) => {
-      box.removeEventListener("click", handleClick); // 移除 click 事件
-    });
-  });
+  // 圖片點擊邏輯
+  const imageClicked = () => {
+    console.log("Image clicked function called,", isClickable.value);
+    //console.log("imageClicked(), ", isClickable.value)
 
+    if (isClickable.value) {
+      handleClick(); // 只有動畫完成後才允許點擊
+    } else {
+      console.log("Image not clickable yet...");
+    }
+  };
   </script>
 
   <style lang="scss" scoped>
   @import url("https://fonts.googleapis.com/css2?family=Signika+Negative:wght@400;600&display=swap");
 
-  .animation-page {
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    min-height: 100vh;
-    font-family: "Signika Negative", sans-serif;
-  }
+  // 全局樣式調整
+  //body:hover .container {
+  //  clip-path: polygon(7% 7%, 93% 7%, 93% 93%, 7% 93%);
+  //}
 
-  h3 {
-    position: fixed;
-    top: 0;
-    width: 100%;
-    text-align: center;
-  }
+  .container {
+    //width: calc(100vw - 0px);
+    width: 100vw;           // 設定寬度填滿整個視窗或父容器
+    max-width: 1249px;     // 如果要限制容器的最大寬度
+    height: 100vh;
+    //margin: 0 auto;        // 讓 container 在視窗中水平置中
+    margin: 0;
+    padding: 0;            // 移除任何內間距
 
-  .box {
-    cursor: pointer;
-    width: 100px;
-    height: 100px;
-    opacity: 0;
-    background-size: cover;         // 確保背景圖適應 div 的大小
-    background-position: center;    // 確保圖像居中
-  }
+    position: absolute;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    transition: clip-path 1s;
 
-  .green {
-    background-color: #28a745;
-  }
+    .img {
+      background: url('../assets/boss-chumpower.jpg');
+      background-size: cover;
+      background-position: center;  // 確保背景圖居中
+      width: 100%;          // 寬度設定為 container 的 100%
+      height: 100vh;
+      cursor: pointer;
+      opacity: 1; // 確保圖片可見
+    }
 
-  .purple {
-    background-color: #6f42c1;
-  }
+    .content {
+      position: absolute;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      height: 100vh;
+      width: 100%;          // 設定 content 寬度與 container 一致
+      //max-width: 1140px;    // 保持與 container 一樣的最大寬度
+      //margin: 0 auto;       // content 水平置中
+      margin: 0;
+      padding: 0;           // 移除任何內間距
 
-  .orange {
-    background-color: #fd7e14;
+      h1 {
+        font-size: 4rem;
+        position: absolute;
+      }
+    }
   }
   </style>

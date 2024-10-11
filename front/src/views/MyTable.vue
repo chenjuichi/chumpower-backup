@@ -631,12 +631,12 @@ watch(list_table_is_ok, (val) => {
 onMounted(() => {
   console.log("MyTable, mounted()...");
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
+  let userData = JSON.parse(sessionStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
   userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+  sessionStorage.setItem('loginedUser', JSON.stringify(userData));
 
-  let user = localStorage.getItem("loginedUser");
+  let user = sessionStorage.getItem("loginedUser");
   currentUser.value = user ? JSON.parse(user) : null;
 
   console.log("currentUser:", currentUser.value);

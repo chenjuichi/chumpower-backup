@@ -2,7 +2,7 @@ import math
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
-from database.tables import User, Permission, Setting, Session
+from database.tables import User, Process, Permission, Setting, Session
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 
@@ -320,66 +320,56 @@ def create_grid():
   return jsonify({
       'status': return_value
   })
+'''
 
-
-# create spindle data table
-@createTable.route("/createSpindle", methods=['POST'])
-def create_spindle():
-  print("createSpindle....")
+# create process data table
+@createTable.route("/createProcess", methods=['POST'])
+def create_process():
+  print("createProcess....")
 
   request_data = request.get_json()
-  print("request_data: ", request_data)
-  _spindle_type = int(request_data['spindle_type'])
-  _spindle_cat = request_data['spindle_cat']
-  _spindle_outer = request_data['spindle_outer']
-  _spindle_inner = request_data['spindle_inner']
-  _spindle_lubrication=int(request_data['spindle_lubrication'])
-  _spindle_rpm = request_data['spindle_rpm']
-  _spindle_motor = request_data['spindle_motor']
-  temp_str=request_data['spindle_motor']
-  _spindle_motor = (temp_str, '')[temp_str == '空白']
-  _spindle_kw = request_data['spindle_kw']
-  _spindle_nm = request_data['spindle_nm']
-  _spindle_cooling= int(request_data['spindle_cooling'])
-  _spindle_handle=request_data['spindle_handle']
+  #print("request_data: ", request_data)
+
+  _begin_time = request_data['begin_time']
+  _end_time = request_data['end_time']
+  _period_time = request_data['periodTime']
+  _user_id = request_data['user_id']
+  _order_num = request_data['order_num']
+  _process_type= request_data['process_type']
+  #_process_status = request_data['process_status']
 
   return_value = True
   return_message = ''
   s = Session()
 
-  new_spindle = Spindle(
-    spindle_type =_spindle_type,
-    spindle_cat = _spindle_cat,
-    spindle_outer = _spindle_outer,
-    spindle_inner = _spindle_inner,
-    spindle_lubrication = _spindle_lubrication,
-    spindle_rpm = _spindle_rpm,
-    spindle_motor = _spindle_motor,
-    spindle_kw = _spindle_kw,
-    spindle_nm = _spindle_nm,
-    spindle_cooling = _spindle_cooling,
-    spindle_handle = _spindle_handle,
+  record = Process(
+    order_num = _order_num,
+    user_id = _user_id,
+    begin_time = _begin_time,
+    end_time = _end_time,
+    process_type = _process_type,
+    #process_status = _process_status,
   )
 
-  s.add(new_spindle)
+  s.add(record)
 
   try:
     s.commit()
-    print("Spindle data create successfully.")
+    print("Process data create successfully.")
   except Exception as e:
     s.rollback()
     print("Error:", str(e))
-    return_message = '錯誤! 主軸資料新增沒有成功...'
+    return_message = '錯誤! 資料新增沒有成功...'
     return_value = False
 
   s.close()
 
   return jsonify({
-      'status': return_value,
-      'message': return_message,
+    'status': return_value,
+    #'message': return_message,
   })
 
-
+'''
 # create stockout data into table
 @createTable.route("/createStockOutGrids", methods=['POST'])
 def create_stockout_grids():

@@ -55,17 +55,22 @@ app.config['baseDir'] = env_vars["baseDir"]
 _base_dir = env_vars["baseDir"]
 print("Excel檔案在目錄:", _base_dir)
 
-app.config['excelSheet'] = env_vars["excelSheet"]
-_excelSheet = app.config['excelSheet']
-print("Excel active sheet 為:", _excelSheet)
+app.config['excel_product_sheet'] = env_vars["excel_product_sheet"]   #excel檔案內的工作表名稱
+_excel_product_sheet = app.config['excel_product_sheet']
+app.config['excel_bom_sheet'] = env_vars["excel_bom_sheet"]   #excel檔案內的工作表名稱
+_excel_bom_sheet = app.config['excel_bom_sheet']
+app.config['excel_work_time_sheet'] = env_vars["excel_work_time_sheet"]   #excel檔案內的工作表名稱
+_excel_work_time_sheet = app.config['excel_work_time_sheet']
+print("Excel 工作表名稱 為:", _excel_product_sheet, _excel_bom_sheet, _excel_work_time_sheet)
 
-app.config['orderRow'] = env_vars["orderRow"]
-_orderRow = app.config['orderRow']
-print("Excel sheet 資料起始行 為:", _orderRow)
-
+app.config['startRow'] = env_vars["startRow"]       #excel工作表的起始列
+_startRow = app.config['startRow']
+#print("Excel sheet 資料起始列 為:", _startRow)
 
 #print("Excel檔案在目錄:", _base_dir)
-app.config['file_ok'] = False                     # 初始化file_ok
+app.config['file_ok'] = False                         # 初始化file_ok
+#app.config['socket_server_ip'] = '192.168.32.50'
+app.config['socket_server_ip'] = local_ip
 f.close()
 
 # --------------------------

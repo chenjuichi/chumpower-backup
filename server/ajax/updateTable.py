@@ -8,7 +8,7 @@ from sqlalchemy import exc
 from sqlalchemy import func
 from sqlalchemy import distinct
 
-from database.tables import User, Permission, Setting, Session
+from database.tables import User, Permission, Setting, Bom, Material, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -16,8 +16,11 @@ from operator import itemgetter, attrgetter   # 2023-08-27  add
 
 updateTable = Blueprint('updateTable', __name__)
 
+
 # ------------------------------------------------------------------
 
+
+# update user's password from user table
 @updateTable.route("/updatePassword", methods=['POST'])
 def update_password():
     print("updatePassword....")
@@ -45,7 +48,7 @@ def update_setting():
     print("updateSetting....")
 
     request_data = request.get_json()
-    print("request_data:", request_data)
+    #print("request_data:", request_data)
 
     userID = request_data['empID']
     new_isSee = request_data['seeIsOk']
@@ -78,8 +81,9 @@ def update_setting():
 @updateTable.route("/updateUser", methods=['POST'])
 def update_user():
     print("updateUser....")
+
     request_data = request.get_json()
-    print("request_data", request_data)
+    #print("request_data", request_data)
     _emp_id = request_data['emp_id']
     _emp_name = request_data['emp_name']
     _dep_name = request_data['dep_name']
@@ -123,6 +127,131 @@ def update_user():
     return jsonify({
         'status': return_value
     })
+
+
+# from bom table update some data
+@updateTable.route("/updateBoms", methods=['POST'])
+def update_boms():
+    print("updateBoms....")
+    request_data = request.get_json()
+    #print("request_data", request_data)
+
+    return_value = True  # true: 資料正確, 註冊成功
+    s = Session()
+
+    try:
+      # 遍歷傳入的每一筆資料
+      for key, bom_data in request_data.items():
+        bom_id = bom_data.get('id')
+
+        # 查找對應的記錄
+        bom_record = s.query(Bom).filter_by(id=bom_id).first()
+
+        if bom_record:
+            # 更新記錄的各個欄位
+            '''
+            bom_record.date = bom_data.get('date')
+            bom_record.date_alarm = bom_data.get('date_alarm')
+            bom_record.seq_num = bom_data.get('seq_num')
+            bom_record.lack = bom_data.get('lack')
+            bom_record.material_num = bom_data.get('material_num')
+            bom_record.mtl_comment = bom_data.get('mtl_comment')
+            bom_record.qty = bom_data.get('qty')
+            '''
+            bom_record.receive = bom_data.get('receive')
+            #bom_record.isPickOK = True    #領料完成
+
+      s.commit()
+
+    except Exception as e:
+        s.rollback()  # 如果發生錯誤，回滾變更
+        print(f"Error: {e}")
+        return_value = False
+
+    s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+
+
+# from material table update some data by id
+@updateTable.route("/updateMaterial", methods=['POST'])
+def update_material():
+    print("updateMaterial....")
+
+    request_data = request.get_json()
+    #print("request_data", request_data)
+    _order_num = request_data['order_num']
+    _record_name = request_data['record_name']
+    _record_data = request_data['record_data']
+
+    return_value = True  # true: 資料正確, 註冊成功
+    s = Session()
+
+    # 查找對應的記錄
+    material_record = s.query(Material).filter_by(order_num = _order_num).first()
+
+    # 動態設置欄位值
+    if hasattr(material_record, _record_name):
+      setattr(material_record, _record_name, _record_data)
+      s.commit()
+
+    '''
+    try:
+      # 查找對應的記錄
+      material_record = s.query(Material).filter_by(order_num = _order_num).first()
+
+      # 動態設置欄位值
+      if hasattr(material_record, _record_name):
+          setattr(material_record, _record_name, _record_data)
+          s.commit()
+          #print(f"Updated {material_record} with {_record_name} = {_record_data}")
+      else:
+          #print(f"Field {_record_name} does not exist in Material.")
+          return_value = False
+
+    except Exception as e:
+        s.rollback()
+        print(f"Error: {e}")
+        return_value = False
+    '''
+    s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+
+
+# from material table update some data by id
+@updateTable.route("/updateMaterialRecord", methods=['POST'])
+def update_material_record():
+  print("updateMaterialRecord....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _order_num = request_data['order_num']
+  _show1_ok = request_data['show1_ok']
+  _show2_ok = request_data['show2_ok']
+  _show3_ok = request_data['show3_ok']
+  _whichStation = request_data['whichStation']
+
+  s = Session()
+
+  s.query(Material).filter(Material.order_num == _order_num).update({
+    "show1_ok": _show1_ok,
+    "show2_ok": _show2_ok,
+    "show3_ok": _show3_ok,
+    "whichStation": _whichStation,
+  })
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': True
+  })
 
 
 # from reagent table update some data by id

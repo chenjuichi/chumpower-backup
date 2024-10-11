@@ -3,11 +3,30 @@ import { ref, reactive, watch } from 'vue';
 
 //import { snackbar, snackbar_info, snackbar_color } from './snackbarStore';
 
+// for countExcelFiles
+export const fileCount = ref(0);         //定義 fileCount 狀態變數
+
 // for listMaterials
 export const materials = ref([]);
 
+// for listMaterialsAndAssembles
+export const materials_and_assembles = ref([]);
+
+// for listInformations
+export const informations = ref([]);
+
+// for getBoms
+export const boms = ref([]);
+const temp_boms = ref([]);
+
 // for listDepartments
 export const departments = ref([]);
+
+// for listMarquees
+export const marquees = ref([]);
+
+// for listSocketServerIP
+export const socket_server_ip = ref('');
 
 // for listUsers
 export const loginEmpIDInput = ref(null);
@@ -29,7 +48,10 @@ export const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 // 定義 apiOperation，用來處理不同的 API 操作
 export const apiOperation = (operation, path, payload) => {
   return (payload) => {
-    console.log(`${operation.toUpperCase()} ${path} with payload`, payload);
+    if (payload != undefined)
+      console.log(`${operation.toUpperCase()} ${path} with payload`, payload);
+    else
+      console.log(`${operation.toUpperCase()} ${path}`);
 
     list_table_is_ok.value = false;
 
@@ -47,19 +69,39 @@ export const apiOperation = (operation, path, payload) => {
     return request
       .then((res) => {
         if (operation === 'get') {    // get 操作
+          console.log("get, path is", path)
+
           if (path == '/listDepartments') {
             //departments.value = [...res.data.departments];
             // 檢查 res.data 是否包含 'departments' 或 'data'
             if (res.data.departments) {
+              console.log("listDepartments, test solution a...")
               departments.value = [...res.data.departments];
             //} else if (res.data.data) {
             } else {
+              console.log("listDepartments, test solution b...")
               departments.value = [...res.data.data];
             }
           }
 
+          if (path == '/listMarquees') {
+            marquees.value = [...res.data.marquees];
+          }
+
+          if (path == '/listSocketServerIP') {
+            socket_server_ip.value = res.data.socket_server_ip;
+          }
+
           if (path == '/listMaterials') {
             materials.value = [...res.data.materials];
+          }
+
+          if (path == '/listMaterialsAndAssembles') {
+            materials_and_assembles.value = [...res.data.materials_and_assembles];
+          }
+
+          if (path == '/listInformations') {
+            informations.value = [...res.data.informations];
           }
 
           if (path == '/listUsers') {
@@ -79,21 +121,54 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/readAllExcelFiles') {
-            console.log("get, path is", path)
+            //console.log("get, path is", path)
             return res.data;
+          }
+
+          if (path == '/countExcelFiles') {
+            fileCount.value = res.data.count;
+            //console.log("get, path is", path)
+            //return res.data.count;
           }
 
           //list_table_is_ok.value = true;
         } else {    // post 操作
-          console.log("post, path:", path)
-          if (path == '/register' || path == '/updateUser' || path == '/removeUser' || path == '/updateSetting') {
-            console.log("post, path is", path)
+          console.log("post, path is", path);
+
+          if (path == '/register' || path == '/updateUser' || path == '/removeUser' || path == '/updateSetting' || path == '/updateBoms') {
+            console.log("res.data:", res.data);
             return res.data.status;
           }
 
           if (path == '/login') {
-            console.log("post, path is", path)
+            console.log("res.data:", res.data);
             return res.data;
+          }
+
+          if (path == '/getBoms') {
+            console.log("res.data.boms:", res.data.boms);
+            temp_boms.value = [...res.data.boms];
+            list_table_is_ok.value = true;
+          }
+
+          if (path == '/updateMaterial') {
+            console.log("res.data:", res.data);
+            return res.data.status;
+          }
+
+          if (path == '/updateMaterialRecord') {
+            console.log("res.data:", res.data);
+            return res.data.status;
+          }
+
+          if (path == '/createProcess') {
+            console.log("res.data:", res.data);
+            return res.data.status;
+          }
+
+          if (path == '/getMaterial') {
+            console.log("res.data:", res.data);
+            return res.data.status;
           }
         }
         // 在這裡可以處理其他操作的回傳值
@@ -118,6 +193,16 @@ export const setupListUsersWatcher = () => {
     }
   });
 };
+
+export const setupGetBomsWatcher = () => {
+  watch(list_table_is_ok, (val) => {
+    if (val) {
+      boms.value = Object.assign([], temp_boms.value);
+      list_table_is_ok.value = false;
+    }
+  });
+};
+
 
 export const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color);

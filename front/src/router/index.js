@@ -2,16 +2,16 @@ import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/HomeView.vue'
 import About from '../views/AboutView.vue'
 
-import Animation from '../views/Animation.vue';
+import Animation from '../views/Animation3.vue';
 
 import A from '../views/a.vue';
 import B from '../views/b.vue';
-import C from '../views/c.vue';
+import C from '../views/InformationForAssem.vue';
 import D from '../views/d.vue';
 
 import E from '../views/MaterialListForProcess.vue';
 import F from '../views/MaterialListForAssem.vue';
-import G01 from '../views/g01.vue';
+import G01 from '../views/PickReportForAssemble.vue';
 import G01C from '../views/g01c.vue';
 import G01D from '../views/g01d.vue';
 import G1 from '../views/g1.vue';
@@ -33,8 +33,12 @@ import Main from '../views/Main.vue';
 import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面
 
 const routes = [
-  { path: '/', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
-  { path: '/animation', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
+  { path: '/', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
+  { path: '/login', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
+
+  //{ path: '/', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
+  //{ path: '/animation', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
+
   { path: '/main', name: 'Main', component: Main },
   { path: '/employer', name: 'Employer', component: Employer },
   { path: '/home', name: 'Home', component: Home },
@@ -84,16 +88,16 @@ router.beforeEach((to, from, next) => {
   console.log("routing is(to, from, auth):", to.name, from.name, isAuthenticated);
 
   // 檢查動畫頁面是否已經顯示過
-  let isAnimationShow = sessionStorage.getItem('animationShow');
+  let isAnimationShow = localStorage.getItem('animationShow');
   //console.log("routing is(to, from, auth):", to.name, from.name);
-  //console.log("isAnimationShow:", isAnimationShow);
+  console.log("isAnimationShow:", isAnimationShow);
 
   // 檢查動畫頁面是否已經顯示過
   if (isAnimationShow === null) {
     console.log("routine step a...");
     isAnimationShow = false; // 確保初始值為字串 'false'
-    sessionStorage.setItem('animationShow', isAnimationShow);  // 修改這裡的鍵名
-    //let temp_show = sessionStorage.getItem('animationShow')
+    localStorage.setItem('animationShow', isAnimationShow);  // 修改這裡的鍵名
+    //let temp_show = localStorage.getItem('animationShow')
     //let temp_sess = JSON.parse(temp_show);
     //console.log("routine step a-1,", temp_show, typeof(temp_show), temp_sess, typeof(temp_sess));
     //next({ name: 'Animation' });
@@ -108,9 +112,9 @@ router.beforeEach((to, from, next) => {
     console.log("routine step 1... 跳轉到 Animation 頁面");
 
     isAnimationShow = true; // 確保初始值為字串 'false'
-    sessionStorage.setItem('animationShow', isAnimationShow);
+    localStorage.setItem('animationShow', isAnimationShow);
 
-    console.log("routine step 1-1,",JSON.parse(sessionStorage.getItem('animationShow')));
+    console.log("routine step 1-1,",JSON.parse(localStorage.getItem('animationShow')));
     return next({ name: 'Animation' });   // 使用 return 結束邏輯，避免重複執行 next
   }
 

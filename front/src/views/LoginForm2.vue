@@ -18,7 +18,8 @@
       <!--水平滾動-->
       <div style="position: relative; top: -220px; right: -240px; width: 650px;">
         <Vue3Marquee :pause-on-hover="true">
-          <template v-for="(word, index) in helloArray" :key="index">
+            <template v-for="(word, index) in marquees" :key="index">
+            <!--<template v-for="(word, index) in helloArray" :key="index">-->
             <span>{{ word }}</span>
             <span>&nbsp;&nbsp;&nbsp;</span> <!-- 間隔3個空白 -->
           </template>
@@ -206,11 +207,13 @@ import eventBus from '../mixins/enentBus.js';
 //import { snackbar, snackbar_info, snackbar_color } from '../mixins/snackbarStore.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { departments, temp_desserts, loginUser, loginEmpIDInput}  from '../mixins/crud.js';
+import { departments, marquees, temp_desserts, loginUser, loginEmpIDInput}  from '../mixins/crud.js';
 import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
+const listMarquees = apiOperation('get', '/listMarquees');
+
 const listUsers = apiOperation('get', '/listUsers');
 const register = apiOperation('post', '/register');
 const login = apiOperation('post', '/login');
@@ -338,6 +341,7 @@ onBeforeMount(() => {
 });
 
 //=== method ===
+/*
 const initialize = () => {
   console.log("initialize()...")
 
@@ -346,6 +350,21 @@ const initialize = () => {
   listUsers();
   //setupListUsersWatcher();
   listDepartments();
+
+  listMarquees();
+};
+*/
+const initialize = async () => {
+  try {
+    console.log("initialize()...");
+
+    // 使用 async/await 等待 API 請求完成，確保順序正確
+    await listMarquees();      // 最後加載廣告牌資料
+    await listDepartments();   // 再加載部門資料
+    await listUsers();         // 先加載使用者資料
+  } catch (error) {
+    console.error("Error during initialize():", error);
+  }
 };
 
 const setupListUsers = (focused) => {
@@ -583,7 +602,7 @@ const signInUser = (user) => {
   });
 
   eventBus.emit('setLinks', reactiveLinks);
-  removeLocalStorage();         //清除 localStorage內的值
+  removelocalStorage();         //清除 localStorage內的值
 
   Object.assign(loginUser, {    //清除 登入資料
     loginEmpID: '',
@@ -595,7 +614,11 @@ const signInUser = (user) => {
   let isAuthenticated = 'true'; // 確保初始值為字串 'true'
   localStorage.setItem('Authenticated', isAuthenticated);
 
-  router.replace({ name: router_name });  //啟動router
+  //router.replace({ name: router_name });  //啟動router
+  const resolvedRoute = router.resolve({ name: router_name });
+  const path = resolvedRoute.href;    // 取得解析後的 path
+  router.replace({ path });           // 使用 path 來進行導航
+
   /*
   //router.push({ name: router_name });
   const currentState = history.state;
@@ -610,7 +633,7 @@ const signInUser = (user) => {
   */
 };
 
-const removeLocalStorage = () => {
+const removelocalStorage = () => {
   if (localStorage.getItem('loginedUser')) {
     localStorage.removeItem('loginedUser');
   }

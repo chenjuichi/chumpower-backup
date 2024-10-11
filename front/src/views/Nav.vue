@@ -28,6 +28,7 @@
             </button>
             <div class="dropdown-contentk">
               <!--menu 2-->
+            <!--
               <router-link
                 :to="localNavLinks[1].isEnabled ? localNavLinks[1].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[1].isEnabled}]"
@@ -35,6 +36,7 @@
               >
                 {{ localNavLinks[1].text }}
               </router-link>
+            -->
               <!--menu 3-->
               <router-link
                 :to="localNavLinks[2].isEnabled ? localNavLinks[2].to : '#'"
@@ -52,6 +54,7 @@
               {{ localNavLinks[3].text }}
               </router-link>
               <!--menu 5-->
+            <!--
               <router-link
                 :to="localNavLinks[4].isEnabled ? localNavLinks[4].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[4].isEnabled}]"
@@ -59,6 +62,7 @@
               >
               {{ localNavLinks[4].text }}
               </router-link>
+            -->
             </div>
           </li>
           <!--item2-->
@@ -518,19 +522,22 @@ const logout = () => {
     empID: userData.empID,
   };
   let isAuthenticated = false;
-  //status && (setAuthenticated(isAuthenticated), removeLocalStorage(), router.replace({ name: 'LoginRegister' }));
+  //status && (setAuthenticated(isAuthenticated), removelocalStorage(), router.replace({ name: 'LoginRegister' }));
   updateSetting(payload)
   .finally(() => {
     setAuthenticated(isAuthenticated);
-    removeLocalStorage();
-    router.replace({ name: 'LoginRegister' });
+    removelocalStorage();
+    //router.replace({ name: 'LoginRegister' });
+    const resolvedRoute = router.resolve({ name: 'LoginRegister' });
+    const path = resolvedRoute.href;  // 取得解析後的 path
+    router.replace({ path });         // 使用 path 來進行導航
   });
   /*
   updateSetting(payload).then(status => {
     console.log("updateSetting status:", status);
     if (status) {
       setAuthenticated(isAuthenticated);
-      removeLocalStorage();
+      removelocalStorage();
       console.log("Redirecting to LoginRegister...");
       router.replace({ name: 'LoginRegister' });
     }
@@ -545,7 +552,7 @@ const logout = () => {
 };
 
 // 清除localStorage內容
-const removeLocalStorage = () => {
+const removelocalStorage = () => {
   if (localStorage.getItem('loginedUser')) {
     localStorage.removeItem('loginedUser');
   }

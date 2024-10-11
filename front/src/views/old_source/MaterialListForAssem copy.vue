@@ -13,27 +13,47 @@
     <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
       <v-card flat class="card-container">
         <v-card-title class="d-flex align-center pe-2 sticky-card-title">
-          加工區備料清單
+          組裝區備料清單
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
-          <v-btn color="primary" variant="outlined" style="position: relative; left: -10px; top: 0px;" @click="addItem">
-            <v-icon left color="green">mdi-microsoft-excel</v-icon>匯入清單
+          <v-btn
+            :disabled="fileCount === 0"
+            color="primary"
+            variant="outlined"
+            style="position: relative; left: -10px; top: 0px;"
+            @click="readAllExcelFun"
+          >
+            <v-icon left color="green">mdi-microsoft-excel</v-icon>
+            匯入清單
+            <template v-if="fileCount > 0" v-slot:append>
+              <v-badge
+                color="info"
+                :content="fileCount"
+                inline
+              ></v-badge>
+            </template>
           </v-btn>
 
-          <v-btn color="primary" variant="outlined" style="position: relative; left: 0px; top: 0px;" @click="addItem">
-            <v-icon left color="blue">mdi-truck-flatbed</v-icon>呼叫AGV
+          <v-btn
+            color="primary"
+            variant="outlined"
+            style="position: relative; left: 0px; top: 0px;"
+            @click="addItem"
+          >
+            <v-icon left color="blue">mdi-truck-flatbed</v-icon>
+            呼叫AGV
           </v-btn>
         </v-card-title>
         <v-divider></v-divider>
         <v-data-table
           :headers="headers"
-          :items="roles"
+          :items="materials"
           fixed-header
           items-per-page="5"
           item-value="order_num"
           :items-length="roles.length"
           v-model:page="pagination.page"
-          class="outer"
+          class="outer custom-header"
           :style="tableStyle"
           :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
         >
@@ -51,8 +71,8 @@
                     <v-btn
                       color="primary"
                       variant="outlined"
-                      @click="addItem"
-                      style="position: relative; left: 990px; top:10px; border-width: 2px; font-size: 16px; font-weight: 600;">
+                      @click="updateItem"
+                      style="position: relative; left: 990px; top:10px;">
                       <v-icon left color="blue" >mdi-check-circle-outline</v-icon>確定
                     </v-btn>
                   </div>
@@ -64,37 +84,37 @@
                     <th class="text-left">物料</th>
                     <th class="text-left">數量</th>
                     <th class="text-left">日期</th>
-                    <th class="text-left">領取</th>
-                    <th class="text-left">缺料</th>
+                    <th class="text-left">領料</th>
+                    <!--<th class="text-left">缺料</th>-->
                   </tr>
                 </thead>
 
                 <tbody style="overflow-y:auto;">
-                  <tr v-for="item in virtualBoats" :key="item.element_num">
-                    <td>{{ item.element_num }}</td>
+                  <tr v-for="bom_item in boms" :key="bom_item.element_num">
+                    <td>{{ bom_item.element_num }}</td>
                     <td>
                       <div>
-                        <div>{{ item.material_num }}</div>
-                        <div style="color: #33cccc; font-weight:600">{{ item.mtl_comment }}</div>
+                        <div>{{ bom_item.material_num }}</div>
+                        <div style="color: #33cccc; font-weight:600">{{ bom_item.mtl_comment }}</div>
                       </div>
                     </td>
                     <td>
-                      <div :class="{'red-text': item.date_alarm}">{{ item.qty }}</div>
+                      <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
                     </td>
                     <td>
                       <div>
-                        <div :class="{'red-text': item.date_alarm}">{{ item.date }}</div>
-                        <div :class="{'red-text': item.date_alarm}">{{ item.date_alarm }}</div>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
                       </div>
                     </td>
-                    <td><v-checkbox-btn v-model="item.receive" /></td>
-                    <td><v-checkbox-btn v-model="item.lack" /></td>
+                    <td><v-checkbox-btn v-model="bom_item.receive" /></td>
+                    <!--<td><v-checkbox-btn v-model="bom_item.lack" /></td>-->
                   </tr>
                 </tbody>
               </v-table>
             </v-dialog>
           </template>
-
+          <!--
           <template v-slot:item.order_num="{ item }">
             <div>
               <div>{{ item.order_num }}</div>
@@ -108,7 +128,7 @@
               <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
             </div>
           </template>
-
+          -->
           <template v-slot:item.req_qty="{ item }">
             <div>
               <div>{{ item.req_qty }}</div>
@@ -118,8 +138,8 @@
 
           <template v-slot:item.comment="{ item }">
             <div>
-              <div style="color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-              <div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>
+              <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+              <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
             </div>
           </template>
 
@@ -128,6 +148,7 @@
               size="small"
               variant="tonal"
               style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+              :disabled="item.is_bom_ok"
               @click="toggleExpand(item)"
             >
               詳 情
@@ -145,29 +166,30 @@
   </template>
 
   <script setup>
-  import { ref, reactive, defineComponent, computed, watch, onMounted, onBeforeMount, nextTick } from 'vue';
-  import { TreeView } from "vue-tree-view";
+  import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
   import { useRoute } from 'vue-router'; // Import useRouter
 
-  import { myMixin } from '../mixins/common.js';
+  import { myMixin } from '../../mixins/common.js';
 
-  import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+  import { snackbar, snackbar_info, snackbar_color } from '../../mixins/crud.js';
 
-  import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
-  import { desserts, socket_server_ip }  from '../mixins/crud.js';
-  import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
+  import { materials, boms, fileCount }  from '../../mixins/crud.js';
+
+  import { apiOperation, setupGetBomsWatcher}  from '../../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
-  const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
-  const listUsers = apiOperation('get', '/listUsers');
-  const removeUser = apiOperation('post', '/removeUser');
-  const updateUser = apiOperation('post', '/updateUser');
-  const register = apiOperation('post', '/register');
+  const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
+  const countExcelFiles = apiOperation('get', '/countExcelFiles');
+  const listMaterials = apiOperation('get', '/listMaterials');
+  const getBoms = apiOperation('post', '/getBoms');
+  const updateBoms = apiOperation('post', '/updateBoms');
+  const updateMaterial = apiOperation('post', '/updateMaterial');
+  const createProcess = apiOperation('post', '/createProcess');
 
   //=== component name ==
   defineComponent({
-    name: 'MaterialListForProcess'
+    name: 'MaterialListForAssem'
   });
 
   // === mix ==
@@ -179,27 +201,30 @@
   });
 
   //=== data ===
+  let intervalId = null;              // 10分鐘, 倒數計時器
 
   const route = useRoute(); // Initialize router
 
   const headers = [
     { title: '訂單編號', sortable: true, key: 'order_num' },
     { title: '物料編號', sortable: false, key: 'material_num'},
-    { title: '需求數量', sortable: false, key: 'req_qty' },
-    { title: '場域位置', sortable: false, key: 'location' },
+    { title: '需求數量(建立日期)', sortable: false, key: 'req_qty' },
+    //{ title: '場域位置', sortable: false, key: 'location' },
     { title: '缺料註記', sortable: false, key: 'shortage_note' },
-    { title: '說明', align: 'center', sortable: false, key: 'comment' },
+    { title: '說明', align: 'start', sortable: false, key: 'comment' },
     { title: '', key: 'action' },
   ];
-
+  /*
   const headers_detail = [
-    { title: '元件', align: 'start', key: 'element_num' },
-    { title: '物料', align: 'end', key: 'material_num' },
+    { title: '項目號碼', align: 'start', key: 'element_num' },
+    { title: '料號', align: 'end', key: 'material_num' },
     { title: '數量', align: 'end', key: 'qty' },
     { title: '日期', align: 'end', key: 'date' },
+    { title: '領料', align: 'end', key: 'receive' },
     { title: '領取', align: 'end', key: 'receive' },
     { title: '缺料', align: 'end', key: 'lack' },
   ]
+  */
   const footerOptions = [
     { value: 5, title: '5' },
     //{ value: 10, title: '10' },
@@ -207,9 +232,17 @@
     //{ value: -1, title: '全部' }
   ];
 
-  const material_status = ['未備料', '備料完成', '備料中', '備料中(缺料)']
+  //const material_status = ['未備料', '備料完成', '備料中', '備料中(缺料)']
 
   const roles = [
+    // order_num: 訂單編號
+    // material_num: 物料編號
+    // req_qty: 需求數量
+    // date: (建立日期)
+    // shortage_note: '元件缺料'
+    // comment: 說明
+    /*
+    { order_num: 'A23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/01/10',location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
     { order_num: 'A23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/01/10',location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
     { order_num: 'B23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/11/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
     { order_num: 'C23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/11/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
@@ -220,9 +253,19 @@
     { order_num: 'H23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
     { order_num: 'I23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
     { order_num: 'J23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
+    */
   ];
+  const currentBoms = ref([]);
+  /*
+  const currentBoms = [
+  // element_num:
+  // material_num:
+  // mtl_comment:
+  // qty:
+  // date:
+  // date_alarm:
+  // receive: false, lack: false },
 
-  const virtualBoats = [
   { element_num: '0010', material_num: 'A13456789012', mtl_comment: 'KL16S本體', qty: 100, date: '2024/10/30', date_alarm:'' ,receive: false, lack: false },
   { element_num: '0020', material_num: 'A23456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
   { element_num: '0030', material_num: 'A33456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
@@ -234,8 +277,9 @@
   { element_num: '0090', material_num: 'A93456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
   { element_num: '0100', material_num: 'A03456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
   { element_num: '0110', material_num: 'A03456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  ]
 
+  ]
+  */
   const EmpID_max_length = 8;       //員工編號最多數字個數
 
   const currentUser = ref({});
@@ -244,6 +288,7 @@
   const showExplore = ref(false);
   const showVirtualTable = ref(false);
 
+  const currentStartTime = ref(null);  // 記錄開始時間
 
   const EmpIDInput = ref(null);
   const tableComponent = ref(null);
@@ -259,12 +304,12 @@
   const password_reset = ref('no');
   const editedIndex = ref(-1);
   const editedItem = reactive({
-    emp_id: '',
-    emp_name: '',
-    dep_name: '',
-    emp_perm: 4,    // member
-    routingPriv: '',
-    password_reset: 'no',
+    order_num: '',
+    material_num: '',
+    req_qty: '',
+    date: '',
+    shortage_note: '',
+    comment: '',
   });
 
   const defaultItem = reactive({
@@ -280,19 +325,20 @@
     itemsPerPage: 5, // 預設值, rows/per page
     page: 1,
   });
-
-  //const snackbar = ref(false);
-  //const snackbar_info = ref('');
-  //const snackbar_color = ref('red accent-2');
+//
+  //const reactiveLinks = reactive(flatItems.value);
+  //const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
+  //const emit = defineEmits(['setLinks']);
+//
 
   //=== watch ===
-  setupListUsersWatcher();
-
   watch(currentUser, (newUser) => {
     if (newUser.perm < 1) {
       permDialog.value = true;
     }
   });
+
+  setupGetBomsWatcher();
 
   //=== computed ===
   const tableStyle = computed(() => ({
@@ -312,7 +358,7 @@
 
   //=== mounted ===
   onMounted(() => {
-    console.log("MaterialListForProcess.vue, mounted()...");
+    console.log("MaterialListForAssem.vue, mounted()...");
 
     let userData = JSON.parse(localStorage.getItem('loginedUser'));
     console.log("current routeName:", routeName.value);
@@ -325,9 +371,17 @@
     let user = localStorage.getItem("loginedUser");
     currentUser.value = user ? JSON.parse(user) : null;
     console.log("currentUser:", currentUser.value);
+
+    fileCount.value = countExcelFiles();
+    console.log("fileCount:", fileCount.value);
+
+    const intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
   });
 
   //=== unmounted ===
+  onUnmounted(() => {   // 清除計時器（當元件卸載時）
+    clearInterval(intervalId);
+  });
 
   //=== created ===
   onBeforeMount(() => {
@@ -336,16 +390,14 @@
     pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
     initAxios();
-    //initialize();
+    initialize();
   });
 
   //=== method ===
   const initialize = () => {
     console.log("initialize()...")
 
-    listUsers();
-
-    listSocketServerIP();
+    listMaterials();
   };
 
   const getStatusStyle = (status) =>{
@@ -364,10 +416,144 @@
   };
 
   const toggleExpand = (item) => {
-    console.log("toggleExpand(),", item)
-    //item._showDetails = !item._showDetails;
-    dialog.value = true;
+    console.log("toggleExpand(),", item.order_num);
 
+    let payload = {
+      order_num: item.order_num,
+    };
+    getBoms(payload);
+
+    // 記錄當前開始時間
+    currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+    console.log("Start time:", currentStartTime.value);
+
+    payload = {
+      order_num: item.order_num,
+      record_name: 'bom_agv_status',
+      record_data: 1                //備料進行中
+    };
+
+    updateMaterial(payload).then(data => {
+      !data && showSnackbar(data.message, 'red accent-2');  // update失敗
+    });
+
+    dialog.value = true;
+  };
+
+  const updateItem = () => {    //編輯 bom, material及process後端table資料
+    console.log("updateItem(),", boms.value);
+
+    let my_material_orderNum = boms.value[0].order_num;
+    let endTime = new Date();                                               // 記錄當前結束時間
+    let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
+
+    // 將 currentStartTime, endTime 轉換為字串格式 yyyy-mm-dd hh:mm:ss
+    let formattedStartTime = formatDateTime(currentStartTime.value);
+    let formattedEndTime = formatDateTime(endTime);
+
+    // 針對 boms，加上 bom_start_time, bom_end_time 和 bom_period_time等資料
+    boms.value.forEach(bom => {
+      bom.bom_start_time = formatTime(currentStartTime.value);  // 格式化開始時間
+      bom.bom_end_time = formatTime(endTime);                   // 格式化結束時間
+      bom.bom_period_time = periodTime;                         // 時間間隔
+    });
+
+    // 1. 更新 boms 資料
+    updateBoms(boms.value).then(response0 => {
+      if (!response0) {
+        showSnackbar(response0.message, 'red accent-2');
+        dialog.value = false;
+        return;
+      }
+
+      // 2. 更新 materials 資料，bom_agv_status = 2
+      const materialPayload1 = {
+        order_num: my_material_orderNum,
+        record_name: 'bom_agv_status',
+        record_data: 2  // 設為 2，表示備料完成
+      };
+      updateMaterial(materialPayload1).then(response1 => {
+        if (!response1) {
+          showSnackbar(response1.message, 'red accent-2');
+          dialog.value = false;
+          return;
+        }
+
+        // 3. 更新 materials 資料，is_bom_ok = true
+        const materialPayload2 = {
+          order_num: my_material_orderNum,  // 假設同一筆 order_num
+          record_name: 'is_bom_ok',
+          record_data: true  // 設為 true，表示 bom 完成
+        };
+        updateMaterial(materialPayload2).then(response2 => {
+          if (!response2) {
+            showSnackbar(data.message, 'red accent-2');
+            dialog.value = false;
+            return;
+          }
+
+          let myMaterial = materials.value.find(m => m.order_num == my_material_orderNum);
+          myMaterial.is_bom_ok = true;    // 更新該項目的 is_bom_ok 為 true
+          myMaterial.bom_agv_status = 2;  // 更新 bom_agv_status
+
+          console.log("Formatted Start Time:", formattedStartTime);
+          console.log("Formatted End Time:", formattedEndTime);
+          console.log("Period time:", periodTime);
+
+          // 4. 新增 後端 process的相應項目
+          const processPayload = {
+            begin_time: formattedStartTime,
+            end_time: formattedEndTime,
+            periodTime: periodTime,
+            user_id: currentUser.value.empID,
+            order_num: my_material_orderNum,
+            process_type: 1,
+            process_status: 2,
+          };
+          createProcess(processPayload).then(response3 => {
+            if (!response3) {
+              showSnackbar(data.message, 'red accent-2');
+              dialog.value = false;
+              return;
+            }
+            listMaterials();
+          });   //end response3
+        });     //end response2
+      });       //end response1
+    });         //end response0
+
+    dialog.value = false;
+  };
+
+  // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
+  const calculatePeriodTime = (start, end) => {
+    const diffMs = end - start;                     // 差異時間（毫秒）
+    const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
+
+    const hours = Math.floor(diffSeconds / 3600);
+    const minutes = Math.floor((diffSeconds % 3600) / 60);
+    const seconds = diffSeconds % 60;
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const formatDateTime = (date) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  };
+
+  // 格式化時間為 hh:mm:ss
+  const formatTime = (time) => {
+    const hours = String(time.getHours()).padStart(2, '0');
+    const minutes = String(time.getMinutes()).padStart(2, '0');
+    const seconds = String(time.getSeconds()).padStart(2, '0');
+
+    return `${hours}:${minutes}:${seconds}`;
   };
 
   const addItem = () => {
@@ -376,13 +562,34 @@
     dialog.value = false;
   };
 
-  const close = () => {
-      console.log("close()");
+  const readAllExcelFun= () => {
+    console.log("readAllExcelFun()...");
 
-      dialog.value = false;
-      showExplore.value = false;
-      editedIndex.value = -1;
-      Object.assign(editedItem, defaultItem);
+    if (fileCount.value == 0) {
+      console.warn("No files available for import.");
+      return;
+    }
+
+    readAllExcelFiles().then(data => {
+      console.log("data:", data);
+
+      if (data.status) {
+        fileCount.value = 0;
+        listMaterials();
+      } else {
+        showSnackbar(data.message, 'red accent-2');
+      }
+      //data.status ? listMaterials() : showSnackbar(data.message, 'red accent-2');
+    });
+  };
+
+  const close = () => {
+    console.log("close()");
+
+    dialog.value = false;
+    showExplore.value = false;
+    editedIndex.value = -1;
+    Object.assign(editedItem, defaultItem);
   };
 
   const save = () => {
@@ -408,34 +615,17 @@
     close();
   }
 
-  const reverseEmpPermMapping = Object.fromEntries(
-    Object.entries(empPermMapping).map(([key, value]) => [value, key])
-  );
+  //const reverseEmpPermMapping = Object.fromEntries(
+  //  Object.entries(empPermMapping).map(([key, value]) => [value, key])
+  //);
 
-  const getEmpPermText = (emp_perm) => {
-    return empPermMapping[emp_perm] || '未知';
-  };
+  //const getEmpPermText = (emp_perm) => {
+  //  return empPermMapping[emp_perm] || '未知';
+  //};
 
-  const getEmpPermKey = (permText) => {
-    return reverseEmpPermMapping[permText] || '未知';
-  };
-
-  const updateItem = (object) => {  //編輯 user後端table資料
-    console.log("updateItem(),", object);
-
-    let payload= {
-      emp_id: object.emp_id,
-      emp_name: object.emp_name,
-      dep_name: object.dep_name,
-      emp_perm: object.emp_perm,
-      routingPriv: currentSetting.value.join(','),          // 轉換為以逗號分隔的字串
-      password_reset: password_reset.value,
-    };
-
-    updateUser(payload).then(data => {
-      !data && showSnackbar(data.message, 'red accent-2');  // update失敗
-    });
-  };
+  //const getEmpPermKey = (permText) => {
+  //  return reverseEmpPermMapping[permText] || '未知';
+  //};
 
   const createItem = (object) => {
     console.log("createItem(),", object);
@@ -456,20 +646,9 @@
   };
 
   const editItem = (item) => {
-    console.log("editItem()...")
+    console.log("editItem(),", item)
 
-    editedIndex.value = desserts.value.indexOf(item);
-    Object.assign(editedItem, item);
-    console.log("editedItem.routingPriv:", editedItem.routingPriv)
 
-    let routingPrivArray = editedItem.routingPriv.split(',').map(Number);
-    console.log("routingPrivArray,", routingPrivArray)
-
-    treeViewSelection.value = Array(26).fill(0);
-    treeViewSelection.value = getSelectedIds(treeViewItems, routingPrivArray);
-
-    console.log("treeViewSelection:", treeViewSelection.value)
-    editedItem.password_reset = 'no'
     dialog.value = true;
   }
 
@@ -753,5 +932,9 @@
 
 .red-text {
   color: red;
+}
+
+.custom-header theader th {
+  background-color: #85aef2; /* 自訂背景顏色 */
 }
   </style>

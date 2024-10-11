@@ -4,12 +4,12 @@ import About from '../views/AboutView.vue'
 
 import A from '../views/a.vue';
 import B from '../views/b.vue';
-import C from '../views/c.vue';
+import C from '../views/InformationForAssem.vue';
 import D from '../views/d.vue';
 
 import E from '../views/MaterialListForProcess.vue';
 import F from '../views/MaterialListForAssem.vue';
-import G01 from '../views/g01.vue';
+import G01 from '../views/AssembleForPickReport.vue';
 import G01C from '../views/g01c.vue';
 import G01D from '../views/g01d.vue';
 import G1 from '../views/g1.vue';

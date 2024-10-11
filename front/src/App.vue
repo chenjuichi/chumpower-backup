@@ -46,7 +46,6 @@ let countdownTimer = null;              // 倒數計時器
 const countdown = ref(IDLE_TIMEOUT);    // 初始倒數值
 
 const route = useRoute();
-//const router = useRouter();
 
 // 定義 基本navLinks
 //const generateDefaultNavLinks = () => {

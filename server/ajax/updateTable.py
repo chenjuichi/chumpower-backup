@@ -8,7 +8,7 @@ from sqlalchemy import exc
 from sqlalchemy import func
 from sqlalchemy import distinct
 
-from database.tables import User, Permission, Setting, Bom, Material, Session
+from database.tables import User, Permission, Setting, Bom, Material, Assemble, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -221,6 +221,35 @@ def update_material():
     return jsonify({
         'status': return_value
     })
+
+
+# from material table update some data by id
+@updateTable.route("/updateAssemble", methods=['POST'])
+def update_assemble():
+  print("updateAssemble....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _assemble_id = request_data['assemble_id']
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+
+  return_value = True  # true: 資料正確, 註冊成功
+  s = Session()
+
+  # 查找對應的記錄
+  assemble_record = s.query(Assemble).filter_by(id = _assemble_id).first()
+
+  # 動態設置欄位值
+  if hasattr(assemble_record, _record_name):
+    setattr(assemble_record, _record_name, _record_data)
+    s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
 
 
 # from material table update some data by id

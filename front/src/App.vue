@@ -37,7 +37,6 @@ import eventBus from './mixins/enentBus.js';
 
 const showFooter = ref(true);
 const hideNavAndFooter = ref(false);    // 監聽路由變化來隱藏或顯示 Nav 和 Footer
-//const showLoginForm = ref(true);        // 控制 LoginForm 顯示
 
 const IDLE_TIMEOUT = 5 * 60 * 1000;     // 5 分鐘
 let idleTimer = null;
@@ -72,85 +71,21 @@ const navLinks = ref([
 ]);
 */
 
-
-// 更新 showFooter
-const updateShowFooter = (value) => {
-  showFooter.value = value;
-};
-
-// 更新 navLinks
-const updateNavLinks = (links) => {
-  console.log("navLinks,links:", links)
-  //showLoginForm.value = false; // 登入成功後隱藏 LoginForm
-  navLinks.value = links;
-};
-
-const handleSetLinks = (links) => {
-  console.log("Received links:", links);
-  updateNavLinks(links);
-};
-
-// 設定timer
-const resetIdleTimer = () => {
-  clearTimeout(idleTimer);
-
-  clearInterval(countdownTimer); // 清除舊的倒數計時器
-  countdown.value = IDLE_TIMEOUT; // 重置倒數值
-
-  idleTimer = setTimeout(() => {
-    eventBus.emit('idleTimeout');
-  }, IDLE_TIMEOUT);
-
-  // 每秒更新倒數計時
-  countdownTimer = setInterval(() => {
-    countdown.value -= 1000;          // 每秒減少1000毫秒
-    if (countdown.value <= 0) {
-      clearInterval(countdownTimer);  // 停止倒數計時
-    }
-    const minutes = Math.floor(countdown.value / 60000);
-    const seconds = Math.floor((countdown.value % 60000) / 1000);
-    eventBus.emit('updateCountdown', {
-      minutes: String(minutes).padStart(2, '0'),
-      seconds: String(seconds).padStart(2, '0')
-    });
-  }, 1000);
-};
-
-// 起始timer
-const handleUserActivity = () => {
-  resetIdleTimer();
-};
-
-//const handleIdleTimeout = () => {
-//  router.push({ name: 'LoginRegister' });
-//};
-
-const handleIdleTimeout = () => {
-  eventBus.emit('triggerLogout');   // 觸發 'triggerLogout' 事件
-
-  //router.replace({ name: 'LoginRegister' });  //啟動router
-
-  /*
-  const currentState = history.state;
-  router.push({ name: 'LoginRegister' }).then(() => {
-    // 保留現有的歷史狀態
-    history.replaceState(currentState, '', router.resolve({ name: 'LoginRegister' }).href);
-  }).catch(err => {
-    if (err.name !== 'NavigationDuplicated') {
-      throw err;
-    }
-  });
-  */
-};
-
-watch(route, (newRoute) => {
+//=== watch ===
+watch(route, (newRoute, oldRoute) => {
   hideNavAndFooter.value = newRoute.meta.hideNavAndFooter || false;
+
+  // 聽路由變化，如果離開 C 或 D 路由時重設計時器
+  if (oldRoute.name === 'C' || oldRoute.name === 'D') {
+    // 離開 C 或 D 路由時重設計時器
+    resetIdleTimer();
+    console.log('離開 C 或 D 路由，重設計時器');
+  }
 });
 
 //=== created ===
 onBeforeMount(() => {
   console.log("App.vue, created()...");
-
 });
 
 //=== mounted ===
@@ -201,6 +136,7 @@ onMounted(() => {
   eventBus.on('idleTimeout', handleIdleTimeout);
 });
 
+//=== unmounted ===
 onUnmounted(() => {
   if (idleTimer) {
     clearTimeout(idleTimer);
@@ -215,6 +151,85 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleUserActivity);
   window.removeEventListener('scroll', handleUserActivity);
 });
+
+//=== method ===
+// 更新 showFooter
+const updateShowFooter = (value) => {
+  showFooter.value = value;
+};
+
+// 更新 navLinks
+const updateNavLinks = (links) => {
+  console.log("navLinks,links:", links)
+  //showLoginForm.value = false; // 登入成功後隱藏 LoginForm
+  navLinks.value = links;
+};
+
+const handleSetLinks = (links) => {
+  console.log("Received links:", links);
+  updateNavLinks(links);
+};
+
+// 設定timer
+const resetIdleTimer = () => {
+  clearTimeout(idleTimer);
+
+  clearInterval(countdownTimer);    // 清除舊的倒數計時器
+  countdown.value = IDLE_TIMEOUT;   // 重置倒數值
+
+  idleTimer = setTimeout(() => {
+    eventBus.emit('idleTimeout');
+  }, IDLE_TIMEOUT);
+
+  // 每秒更新倒數計時
+  countdownTimer = setInterval(() => {
+    countdown.value -= 1000;          // 每秒減少1000毫秒
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer);  // 停止倒數計時
+    }
+    const minutes = Math.floor(countdown.value / 60000);
+    const seconds = Math.floor((countdown.value % 60000) / 1000);
+    eventBus.emit('updateCountdown', {
+      minutes: String(minutes).padStart(2, '0'),
+      seconds: String(seconds).padStart(2, '0')
+    });
+  }, 1000);
+};
+
+// 起始timer
+const handleUserActivity = () => {
+  resetIdleTimer();
+};
+
+//const handleIdleTimeout = () => {
+//  router.push({ name: 'LoginRegister' });
+//};
+
+const handleIdleTimeout = () => {
+  const routeName = route.name
+
+  // 如果目前的 routing name 是 C 或 D，則不跳轉
+  if (routeName === 'C' || routeName === 'D') {
+    console.log('保持在目前路由', routeName)
+    return
+  }
+
+  eventBus.emit('triggerLogout');   // 觸發 'triggerLogout' 事件
+
+  //router.replace({ name: 'LoginRegister' });  //啟動router
+
+  /*
+  const currentState = history.state;
+  router.push({ name: 'LoginRegister' }).then(() => {
+    // 保留現有的歷史狀態
+    history.replaceState(currentState, '', router.resolve({ name: 'LoginRegister' }).href);
+  }).catch(err => {
+    if (err.name !== 'NavigationDuplicated') {
+      throw err;
+    }
+  });
+  */
+};
 </script>
 
 <style lang="scss" scoped>

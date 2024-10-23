@@ -128,9 +128,13 @@ class Material(BASE):
     material_date = Column(String(12), nullable=False)              #建置日期
     material_delivery_date = Column(String(12), nullable=False)     #交期
     isTakeOk = Column(Boolean, default=False)                       # true:檢料完成
+    isShow = Column(Boolean, default=False)                         # true: 檢料完成且已callAGV, disable show it
     isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成
     isAssembleStation2TakeOk = Column(Boolean, default=False)       # true:組裝站製程2完成
     isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:組裝站製程3完成
+    station1_Qty = Column(Integer)
+    station2_Qty = Column(Integer)
+    station3_Qty = Column(Integer)
     whichStation = Column(Integer, default=1)                       # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
     show1_ok = Column(String(20), server_default='1')
     show2_ok = Column(String(20), server_default='0')
@@ -223,22 +227,26 @@ class Assemble(BASE):
     material_comment = Column(String(70), nullable=False)         #料號說明
     seq_num = Column(String(20), nullable=False)                  #序號
     work_num = Column(String(20))                                 #工作中心
-    total_ask_qty = Column(Integer, default=0)                               #已領總數
-    ask_qty = Column(Integer, default=0)                                     #領取數量
-    meinh_qty = Column(Integer, default=0)                     #作業數量
-    good_qty = Column(Integer, default=0)           #確認良品數量
-    non_good_qty = Column(Integer, default=0)       #廢品數量
+    process_step_code = Column(Integer, default=0)                #工作中芯的順序, 3:最先作動, 0:作動完畢
+    ask_qty = Column(Integer, default=0)                          #領取數量
+    total_ask_qty = Column(Integer, default=0)                    #已領取總數量
+    user_id = Column(String(8))                                   #員工編號(領料)
+    good_qty = Column(Integer, default=0)                         #確認良品數量
+    total_good_qty = Column(Integer, default=0)                   #已交付確認良品總數
+    non_good_qty = Column(Integer, default=0)                     #廢品數量
 
-    receive_qty = Column(Integer)               #領取數量
-    already_received_qty = Column(Integer)      #已經領取數量
-    completed_qty = Column(Integer)             #完成數量
+    meinh_qty = Column(Integer, default=0)                        #作業數量
 
-    reason = Column(String(50))                     #差異原因
-    emp_num = Column(String(8))                     #員工編號 8碼
-    confirm_comment = Column(String(70))            #確認內文
-    is_assemble_ok = Column(Boolean, default=False)      # true: 目前途程為組裝, false: 不是
+    #receive_qty = Column(Integer)                #領取數量
+    #already_received_qty = Column(Integer)       #已經領取數量
+    completed_qty = Column(Integer)                               #完成數量
 
-    currentStartTime = Column(String(20), default='')
+    reason = Column(String(50))                                   #差異原因
+    #emp_num = Column(String(8))                                   #員工編號 8碼
+    confirm_comment = Column(String(70))                          #確認內文
+    is_assemble_ok = Column(Boolean, default=False)               # true: 目前途程為組裝, false: 不是
+
+    currentStartTime = Column(String(30))                         #領料生產報工開始時間
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
@@ -282,9 +290,9 @@ class Process(BASE):
     order_num = Column(String(20), nullable=False)                #訂單編號
     work_num =  Column(String(20))                                #工作中心
     user_id = Column(String(8), nullable=False)                   #員工編號
-    begin_time = Column(String(20))                               #開始時間
-    end_time = Column(String(20))                                 #結束時間
-    period_time =  Column(String(20))
+    begin_time = Column(String(30))                               #開始時間
+    end_time = Column(String(30))                                 #結束時間
+    period_time =  Column(String(30))
     process_type = Column(Integer, default=1)                     #1:備料區,
                                                                   #2:組裝區(含21, 22, 23)
                                                                   #3:成品區(含31, 32, 33)

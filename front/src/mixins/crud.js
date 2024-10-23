@@ -12,6 +12,9 @@ export const materials = ref([]);
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
 
+// for getMaterialsAndAssemblesByUser
+export const materials_and_assembles_by_user = ref([]);
+
 // for listInformations
 export const informations = ref([]);
 
@@ -120,7 +123,7 @@ export const apiOperation = (operation, path, payload) => {
             list_table_is_ok.value = true;
           }
 
-          if (path == '/readAllExcelFiles') {
+          if (path == '/readAllExcelFiles' || path == '/deleteAssemblesWithNegativeGoodQty') {
             //console.log("get, path is", path)
             return res.data;
           }
@@ -151,25 +154,35 @@ export const apiOperation = (operation, path, payload) => {
             list_table_is_ok.value = true;
           }
 
-          if (path == '/updateMaterial') {
+          if (path == '/getMaterialsAndAssemblesByUser') {
+            console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
+            materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
+          }
+
+          if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' || path == '/getMaterial') {
             console.log("res.data:", res.data);
             return res.data.status;
           }
 
-          if (path == '/updateMaterialRecord') {
-            console.log("res.data:", res.data);
-            return res.data.status;
-          }
+          //if (path == '/updateMaterial') {
+          //  console.log("res.data:", res.data);
+          //  return res.data.status;
+          //}
+
+          //if (path == '/updateMaterialRecord') {
+          //  console.log("res.data:", res.data);
+          //  return res.data.status;
+          //}
 
           if (path == '/createProcess') {
             console.log("res.data:", res.data);
             return res.data.status;
           }
 
-          if (path == '/getMaterial') {
-            console.log("res.data:", res.data);
-            return res.data.status;
-          }
+          //if (path == '/getMaterial') {
+          //  console.log("res.data:", res.data);
+          //  return res.data.status;
+          //}
         }
         // 在這裡可以處理其他操作的回傳值
         //return res.data;

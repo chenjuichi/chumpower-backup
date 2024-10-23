@@ -158,7 +158,7 @@ def get_information_details():
 
   request_data = request.get_json()
   _order_num = request_data['order_num']
-  print("_order_num:", _order_num)
+  print("order_num:", _order_num)
 
   code_to_name = {
     '106': '雷射',
@@ -183,7 +183,7 @@ def get_information_details():
       'work_name': work_name,                               # 工作中心名稱
       'material_num': information_details.material_num,     # 物料編號
       'mtl_comment': information_details.material_comment,  # 物料說明
-      'receive_qty': information_details.receive_qty,       # 領取數量
+      'receive_qty': information_details.ask_qty,       # 領取數量
       'delivery_date': material.material_delivery_date,     # 交期
       'actual_spent_time':  spent,
       'isPickOK': bom.isPickOK
@@ -202,3 +202,119 @@ def get_information_details():
     'status': return_value,
     'information_details': results
   })
+
+
+# list all materials and assemble data by current user
+@getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
+def get_materials_and_assembles_by_user():
+    print("getMaterialsAndAssemblesByUser....")
+
+    request_data = request.get_json()
+    print("request_data:", request_data)
+    _user_id = request_data['user_id']
+    print("user_id:", _user_id)
+
+    s = Session()
+
+    _results = []
+    return_value = True
+    code_to_name = {
+      '106': '雷射',
+      '109': '組裝',
+      '110': '檢驗'
+    }
+    code_to_assembleStep = {
+      '109': 3,
+      '106': 2,
+      '110': 1
+    }
+
+    #       0         1        2          3        4            5           6            7           8            9
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+
+
+    # 使用 with_for_update() 來加鎖
+    _objects = s.query(Material).with_for_update().all()
+
+    # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
+    max_step_code_per_order = {}
+
+    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
+    for material_record in _objects:
+      for assemble_record in material_record._assemble:
+        # 檢查員工編號是否符合
+        if assemble_record.user_id != _user_id or assemble_record.total_ask_qty == 0:
+          continue  # 如果不符合，跳過這筆紀錄
+
+        code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
+        step_code = code_to_assembleStep.get(code, 0)      # 取得對應的 step code
+
+        order_num = material_record.order_num              # 訂單編號
+
+        # 設定或更新該 order_num 下的最大 step code
+        if order_num not in max_step_code_per_order:
+            max_step_code_per_order[order_num] = step_code
+        else:
+            max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
+
+    # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
+    #_objects = s.query(Material).all()
+    for material_record in _objects:
+      for assemble_record in material_record._assemble:
+        # 檢查員工編號是否符合
+        if assemble_record.user_id != _user_id or assemble_record.total_ask_qty == 0:
+          continue  # 如果不符合，跳過這筆紀錄
+
+        cleaned_comment = material_record.material_comment.strip()          # 刪除 material_comment 字串前後的空白
+
+        code = assemble_record.work_num[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
+        name = code_to_name.get(code, '')               # 查找對應的中文名稱
+        #step_code = code_to_assembleStep.get(code, 0)   #
+        step_code = assemble_record.process_step_code
+        order_num = material_record.order_num                       # 訂單編號
+
+        # 比較該筆記錄的 step_code 是否為該訂單下最大的
+        max_step_code = max_step_code_per_order.get(order_num, 0)
+        step_enable = (step_code == max_step_code)  # 如果是最大值，則啟用
+        format_name = f"{assemble_record.work_num}({name})"
+        num = int(material_record.show2_ok)
+
+        _object = {
+          'order_num': material_record.order_num,                   #訂單編號
+          'assemble_work': format_name,                             #工序
+          'material_num': material_record.material_num,             #物料編號
+          #'assemble_process': str2[num],                            #途程目前狀況 material_record.isTakeOk & step_enable
+          'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
+          'assemble_process_num': num,
+          'assemble_id': assemble_record.id,
+          'req_qty': assemble_record.meinh_qty,                                   #需求數量(作業數量)
+          'total_receive_qty': '(' + str(assemble_record.total_good_qty) + ')',   #已完成數量
+          'total_receive_qty_num': assemble_record.total_good_qty,                #已完成數量
+          'receive_qty': assemble_record.good_qty,                                #完成數量
+          'delivery_date': material_record.material_delivery_date,  #交期
+          'comment': cleaned_comment,                               #說明
+          'isTakeOk' : material_record.isTakeOk,
+          'whichStation' : material_record.whichStation,
+          'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程1完成
+          'isAssembleStation2TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程2完成
+          'isAssembleStation3TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程3完成
+          'currentStartTime': assemble_record.currentStartTime,
+          'tooltipVisible': False,
+          'input_disable': False,
+          #'process_step_code': step_code,
+          'process_step_enable': step_enable,
+        }
+        #print(_object)
+        _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("listMaterialsAndAssemblesByUser, 總數: ", temp_len)
+    if (temp_len == 0):
+      return_value = False
+
+    return jsonify({
+        'status': return_value,
+        'materials_and_assembles_by_user': _results
+    })

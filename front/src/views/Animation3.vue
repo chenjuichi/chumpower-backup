@@ -3,7 +3,6 @@
     <div class="header" v-if="showHeader">
       <nav class="nav">
         <div class="nav-logo">
-          <!--<a href="#" class="nav-logo-link">INFINITY <span class="logo-color">SALON</span></a>-->
           <a href="#" class="nav-logo-link">
             <img :src="home_url" alt="INFINITY SALON" class="logo-image" />
           </a>
@@ -15,7 +14,6 @@
             <li><a href="#" class="nav-menu-link">行銷全球</a></li>
             <li><a href="#" class="nav-menu-link">智慧工廠</a></li>
             <li><a href="#" class="nav-menu-link">世界專利</a></li>
-            <!--<li><a href="#" class="nav-menu-link header-btn">Address</a></li>-->
           </ul>
         </div>
       </nav>
@@ -23,28 +21,25 @@
       <div class="header-content-container">
         <div class="left-container">
           <div class="header-text-container">
-            <h1 class="header-main-heading">CHUMPOWER</h1>
+            <h1 class="header-main-heading" id="my-text">CHUMPOWER</h1>
             <h1 class="header-main-heading second-heading">銓寶工業</h1>
+
             <h2 class="header-sub-heading">專業精密夾頭、刀桿、主軸配件製造公司</h2>
             <p class="header-description">每年外銷25萬組以上精密鑽夾頭</p>
             <p class="header-description">客戶遍及全球五大洲</p>
 
             <div class="header-btn-container">
-                <button class="header-btn btn-effect" @click="startTransition">
-                  Booking
-                </button>
-              <!--
-              <a href="#" class="header-btn btn-effect">Booking</a>
-              <a href="#" class="header-btn">Gallery</a>
-              -->
+              <button class="header-btn btn-effect" @click="startTransition">
+                Booking
+              </button>
             </div>
           </div>
         </div>
 
         <div class="right-container">
           <div class="hero-image-container">
-            <div class="overlay"></div>
-            <img :src="imageSrc" class="hero-image">
+            <div class="overlay" />
+            <img :src="imageSrc" class="hero-image" />
           </div>
         </div>
       </div>
@@ -63,6 +58,10 @@
   const showHeader = ref(true);
 
   const router = useRouter();
+
+  //const myText = ref("CHUMPOWER");
+
+  const text4 = ref(null);
 
   //=== method ===
   const splitTextIntoLetters = (text) => {    // 字母分解邏輯，模擬 lettering.js 的效果
@@ -156,18 +155,53 @@
     color: #99573D;
   }
 
+  .nav-menu {
+    margin-left: 150px;
+  }
+
   .nav-menu-container {
     display: flex;
     flex-direction: row;
     transform: translateX(-130px);
+    //transform: translateX(20px);
   }
-
+  /*
   .nav-menu-link {
     margin-right: 2rem;
     font-size: 1.1rem;
     font-weight: 700;
     color: #000;
     font-family: '微軟正黑體', 'cwTeXYen', sans-serif;
+    background: linear-gradient(to right, #54b3d6 0%, #54b3d6 50%, transparent 50%);
+    background-size: 200% 100%;
+    background-position: 100% 0;
+    transition: background-position 0.5s ease, color 0.5s ease;
+    padding: 0.5rem 1rem;  // 添加一些內距讓背景顏色更明顯
+  }
+  */
+  .nav-menu-link {
+  margin-right: 2rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #000;
+  font-family: '微軟正黑體', 'cwTeXYen', sans-serif;
+
+  background: linear-gradient(to right, #54b3d6 49%, transparent 50%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+
+  transition: background-position 0.5s ease, color 0.5s ease;
+  padding: 0.5rem 1rem;
+  margin-right: 0px;
+}
+
+  .nav-menu-link:hover {
+    color: #fff;  // 滑入時文字變為白色
+    background-position: 0 0;  // 滑入時背景從左向右過渡
+  }
+
+  .nav-menu-link:hover {
+    color: #fff;      // 滑入時文字變為白色
   }
 
   .header-content-container {
@@ -286,11 +320,16 @@
     }
   }
 
+  //.slide-down-leave-active {
+  //  transition: transform 0.5s ease;
+  //}
+
   .slide-down-leave-active {
-    transition: transform 0.5s ease;
+    transition: transform 0.5s ease-in-out;
+    transform: translateY(-100%);
   }
 
   .slide-down-leave-to {
-    transform: translateY(100%); /* 向下移出視窗 */
+    transform: translateY(100%);  // 向下移出視窗
   }
   </style>

@@ -29,7 +29,7 @@
           <v-btn
             color="primary"
             variant="outlined"
-            style="position: relative; left: 130px; top: 0px;"
+            style="position: relative; left: 130px; top: 10px; min-height: 20px; height: 34px;"
           >
             <v-icon left color="blue">mdi-history</v-icon>
             歷史紀錄
@@ -42,7 +42,7 @@
             variant="outlined"
             hide-details
             single-line
-
+            style="position: relative; top: -2px; min-height: 10px; height:10px;"
             density="compact"
           ></v-text-field>
         </v-card-title>
@@ -142,6 +142,20 @@
             </div>
           </template>
           -->
+          <!-- 使用動態插槽來客製化 '現況進度' (show1_ok) 欄位的表頭 -->
+          <template v-slot:header.show1_ok = "{ column }">
+            <div
+              style="line-height: 1; margin: 0; padding: 0; text-align: left; display: flex; align-items: center; cursor: pointer;"
+            >
+              <span>{{ column.title }}</span>
+            </div>
+            <div
+              style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
+            >
+              組裝/雷射/檢驗
+            </div>
+          </template>
+
           <template v-slot:item.show1_ok="{ item }">
             <div>
               <div style="font-weight:600;">{{ item.show1_ok }}</div>
@@ -241,7 +255,7 @@
     { title: '交期', sortable: false, key: 'delivery_date' },
     { title: '訂單數量', sortable: false, key: 'req_qty' },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '', key: 'action' },
+    { title: '', sortable: false, key: 'action' },
   ];
 
   //const localIp = 'localhost';
@@ -286,7 +300,7 @@
     width: '1050px',
     overflowY: 'hidden',
     position: 'relative',
-    top: '-30px',
+    top: '-10px',
     marginBottom: '5px',
   }));
 
@@ -825,6 +839,16 @@
   left: 150px;
   position: relative;
   width: 250px;
+}
+
+:deep(.v-field__field) {
+   min-height : 20px;
+   height: 34px;
+}
+
+:deep(.v-data-table-footer__info) {
+  min-height : 30px;
+  height: 40px;
 }
 
 .custom-header theader th {

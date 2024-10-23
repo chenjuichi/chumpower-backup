@@ -91,7 +91,6 @@ def count_excel_files():
     })
 
 
-
 @excelTable.route("/readAllExcelFiles", methods=['GET'])
 def read_all_excel_files():
   print("readAllExcelFiles....")
@@ -104,6 +103,12 @@ def read_all_excel_files():
   return_message = ''
   file_count_total = 0  #檔案總數目
   file_count_ok = 0     #檔案內總筆數
+
+  code_to_assembleStep = {
+    '109': 3,
+    '106': 2,
+    '110': 1
+  }
 
   _base_dir = current_app.config['baseDir']
   _target_dir = _base_dir.replace("_in", "_out")
@@ -237,18 +242,28 @@ def read_all_excel_files():
             emp_num = assemble_row['員工號碼'] if not pd.isna(assemble_row['員工號碼']) else None
             confirm_comment = assemble_row['確認內文'] if not pd.isna(assemble_row['確認內文']) else None
 
+            GMEIN = assemble_row['確認良品率 (GMEIN)']
+            if GMEIN == 0:
+              continue
+            #
+            workNum = assemble_row['工作中心']
+            code = workNum[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
+            step_code = code_to_assembleStep.get(code, 0)   #
+            #
+
             assemble = Assemble(
               material_id=material.id,                    # Use the ID of the inserted material
               material_num=assemble_row['物料'],
               material_comment=assemble_row['物料說明'],
               seq_num=assemble_row['作業'],
-              work_num=assemble_row['工作中心'],
+              work_num = workNum,
+              process_step_code = step_code,
               meinh_qty=assemble_row['作業數量 (MEINH)'],
               good_qty = assemble_row['確認良品率 (GMEIN)'],           #確認良品數量
               non_good_qty = assemble_row['確認廢品 (MEINH)'],        #廢品數量
 
               reason = reason,
-              emp_num = emp_num,
+              user_id = emp_num,
               confirm_comment = confirm_comment,
             )
             s.add(assemble)
@@ -288,3 +303,46 @@ def read_all_excel_files():
     'message': return_message1,
   })
 
+@excelTable.route("/deleteAssemblesWithNegativeGoodQty", methods=['GET'])
+def delete_assembles_with_negative_good_qty():
+  print("deleteAssemblesWithNegativeGoodQty...")
+
+  s = Session()
+
+  # 查詢所有 Assemble 資料
+  _objects = s.query(Assemble).all()
+
+  # 用來追蹤前一筆資料
+  previous_assemble = None
+
+  # 迭代每一筆 Assemble 資料
+  for current_assemble in _objects:
+    if current_assemble.good_qty < 0:
+      # 如果發現 ask_qty 小於 0，則刪除當前及前一筆 Assemble 紀錄
+      if previous_assemble:
+        print(f"Deleting previous assemble: {previous_assemble.id}, good_qty={previous_assemble.good_qty}")
+        s.delete(previous_assemble)  # 刪除前一筆 Assemble 紀錄
+      print(f"Deleting current assemble: {current_assemble.id}, ask_qty={current_assemble.good_qty}")
+      s.delete(current_assemble)  # 刪除當前 Assemble 紀錄
+
+      # 處理與 Material 的關聯（如有必要）
+      # 根據業務邏輯決定是否刪除 Material，或更新 Material 的某些狀態
+      material = s.query(Material).filter(Material.id == current_assemble.material_id).first()
+      if material:
+        # 更新 Material 的欄位，例如 isTakeOk 或其他狀態
+        # material.isTakeOk = False  # 更新某些狀態
+        # 如果需要刪除 Material，也可以使用：
+        # s.delete(material)
+        print(f"Updating or deleting related material: {material.id}, material_num={material.material_num}")
+
+    # 更新 previous_assemble 為當前 Assemble
+    previous_assemble = current_assemble
+
+  # 提交刪除
+  s.commit()
+  s.close()
+
+  return jsonify({
+    'status': True,
+    #'message': return_message1,
+  })

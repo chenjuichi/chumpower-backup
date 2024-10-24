@@ -22,6 +22,7 @@
       :sort-by.sync="sortBy"
       :sort-desc.sync="sortDesc"
       class="elevation-10 custom-table"
+      items-per-page-text="每頁的資料筆數"
     >
       <!-- 客製化 top 區域 -->
       <template v-slot:top>
@@ -200,9 +201,10 @@
           style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
           :disabled="isButtonDisabled(item)"
           @click="updateItem(item)"
+          color="indigo-darken-4"
         >
           結 束
-          <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+          <v-icon color="indigo-darken-4" end>mdi-close-circle-outline</v-icon>
         </v-btn>
         <v-btn
           size="small"
@@ -210,9 +212,10 @@
           style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif; margin-left: 20px;"
           :disabled="isButtonDisabled(item)"
           @click="updateAlarm(item)"
+          color="orange-darken-2"
         >
           異 常
-          <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+          <v-icon color="orange-darken-4" end>mdi-alert-circle-outline</v-icon>
         </v-btn>
       </template>
 
@@ -297,8 +300,8 @@
   const receive_qty_alarm = ref('');
 
   //const from_agv_input_order_num = ref('');
-  //const isBlinking = ref(false);          // 控制按鍵閃爍
-  //const order_num_on_agv_blink=ref('');
+  const isBlinking = ref(false);          // 控制按鍵閃爍
+  const order_num_on_agv_blink=ref('');
 
   //const inputStr = ref('');
   const outputStatus = ref({
@@ -308,8 +311,6 @@
 
   const currentUser = ref({});
   //const permDialog = ref(false);
-
-  const isBlinking = ref(false);          // 控制按鍵閃爍
 
   const componentKey = ref(0)             // key值用於強制重新渲染
 
@@ -506,8 +507,8 @@
       };
       await getMaterialsAndAssemblesByUser(payload);
 
-      // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
-      materials_and_assembles.value.forEach(item => {
+      // 為materials_and_assembles_by_user每個物件增加 pickBegin 屬性，初始為空陣列 []
+      materials_and_assembles_by_user.value.forEach(item => {
         item.pickEnd = [];
       });
 
@@ -610,18 +611,18 @@
     // 2.記錄當前完成數量
     let payload = {
       assemble_id: item.assemble_id,
-      record_name: 'good_qty',
+      record_name: 'completed_qty',
       record_data: Number(item.receive_qty),
     };
     await updateAssemble(payload);
 
     item.pickEnd.push(item.receive_qty);
 
-    let current_good_qty= Number(item.receive_qty)
+    let current_completed_qty= Number(item.receive_qty)
     let total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
     payload = {
       assemble_id: item.assemble_id,
-      record_name: 'total_good_qty',
+      record_name: 'total_completed_qty',
       record_data: total,
     };
     await updateAssemble(payload);
@@ -632,7 +633,7 @@
     checkInputStr(item.assemble_work);
     console.log("outputStatus:", outputStatus.value, )
 
-    if (current_good_qty==total) {
+    if (current_completed_qty == total) {
       // 2.記錄當前途程結束狀態
       payload = {
         order_num: item.order_num,
@@ -838,6 +839,24 @@
 
     // 改變 key 值，Vue 會重新渲染整個元件
     componentKey.value += 1;
+  };
+
+  const callAGV = async () => {
+    console.log("callAGV()...")
+    /*
+    const materialPayload1 = {        // 2. 更新 materials 資料，show2_ok = 2
+      order_num: my_material_orderNum,
+      record_name: 'show3_ok',
+      record_data: 1                  // 設為 2，表示備料完成
+    };
+
+    await updateMaterial(materialPayload1);
+    */
+    isBlinking.value = true; // 開始按鍵閃爍
+    socket.value.emit('station1_call');
+    // 記錄等待agv到站開始時間
+    agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
+    console.log("AGV Start time:", agv1StartTime.value);
   };
   </script>
 

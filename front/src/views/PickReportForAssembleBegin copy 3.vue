@@ -22,7 +22,6 @@
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
-    items-per-page-text="每頁的資料筆數"
   >
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
@@ -149,7 +148,7 @@
           dense
           hide-details
           style="max-width: 60px; text-align: center; z-index: 1;"
-          :id="`receiveQtyID-${item.assemble_id}`"
+          :id="`receiveQtyID-${item.order_num}`"
           @update:modelValue="checkReceiveQty(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
           @keyup.enter="updateItem(item)"
@@ -171,56 +170,49 @@
       </div>
     </template>
 
-    <!-- 自訂 gif 按鍵欄位 -->
     <template v-slot:item.gif="{ item, index }">
-      <v-hover v-slot:default="{ isHovering, props }">
-        <div
-          v-bind="props"
-          style="position: relative; display: inline-block;"
-          @mouseenter="handleGifClick(item, index); hoveredItemIndex = index; isTableVisible = true;"
-          @mouseleave="hoveredItemIndex = null; isTableVisible = false;"
-        >
-          <img
-            v-if="!isButtonDisabled(item)"
-            :src="isHovering ? animationImageSrc : staticImageSrc"
-            alt="GIF"
-            style="width: 25px; height: 25px;"
-          />
-          <!-- 動態顯示表格 -->
-          <div
-            v-if="isTableVisible && boms.length > 0 && !isButtonDisabled(item)"
-            :style="adjustTablePosition"
+  <div
+    style="position: relative; display: inline-block;"
+    @mouseenter="handleGifClick(item, index); hoveredItemIndex = index"
+    @mouseleave="onMouseLeaveTable"
+  >
+    <img
+      v-if="!isButtonDisabled(item)"
+      :src="hoveredItemIndex === index ? animationImageSrc : staticImageSrc"
+      alt="GIF"
+      style="width: 30px; height: 30px;"
+    />
+
+    <!-- 動態顯示表格 -->
+    <div
+      v-if="isTableVisible && boms.length > 0 && !isButtonDisabled(item)"
+      :style="adjustTablePosition"
+      @mouseenter="onMouseEnterTable"
+      @mouseleave="onMouseLeaveTable"
+    >
+      <v-simple-table
+        style="width: 160px; overflow:hidden;"
+      >
+        <thead>
+          <tr>
+            <th style="text-align: left; padding-left: 3px; padding-right: 3px;">編號</th>
+            <th style="text-align: right; padding-left: 3px; padding-right: 3px;">數量</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(bom, bomIndex) in boms"
+            :key="bomIndex"
+            :style="{backgroundColor: bomIndex % 2 === 0 ? '#ffffff' : '#edf2f4'}"
           >
-            <v-table style="width: 190px; overflow: hidden;" class="show_table">
-              <thead>
-                <tr>
-                  <th style="text-align: left;">編號</th>
-                  <th style="text-align: right;">數量</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(bom, bomIndex) in boms"
-                  :key="bomIndex"
-                  :style="{backgroundColor: bomIndex % 2 === 0 ? '#ffffff' : '#edf2f4'}"
-                  class="custom-row"
-                >
-                  <td style="text-align: left;">{{ bom.material_num }}</td>
-                  <td style="text-align: right;">{{ bom.qty }}</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="2">
-                    共 {{ boms.length }} 項
-                  </td>
-                </tr>
-              </tfoot>
-            </v-table>
-          </div>
-        </div>
-      </v-hover>
-    </template>
+            <td style="text-align: left; padding-left: 3px; padding-right: 3px;">{{ bom.material_num }}</td>
+            <td style="text-align: right; padding-left: 3px; padding-right: 3px;">{{ bom.qty }}</td>
+          </tr>
+        </tbody>
+      </v-simple-table>
+    </div>
+  </div>
+</template>
 
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template v-slot:item.action="{ item }">
@@ -230,10 +222,9 @@
         style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
         :disabled="isButtonDisabled(item)"
         @click="updateItem(item)"
-        color="indigo-darken-4"
       >
         開 始
-        <v-icon color="indigo-darken-4" end>mdi-open-in-new</v-icon>
+        <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
       </v-btn>
     </template>
 
@@ -269,13 +260,14 @@ const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
+//const getMaterial = apiOperation('post', '/getMaterial');
 
 //=== component name ==
 defineComponent({
   name: 'PickReportForAssembleBegin'
 });
 
-//=== mix ==
+// === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
@@ -343,8 +335,9 @@ const componentKey = ref(0) // key 值用於強制重新渲染
 //const agv2StartTime = ref(null);
 //const agv2EndTime = ref(null);
 
+
 const pagination = reactive({
-  itemsPerPage: 5,              // 預設值, rows/per page
+  itemsPerPage: 5, // 預設值, rows/per page
   page: 1,
 });
 
@@ -363,29 +356,27 @@ const containerStyle = computed(() => ({
 
 const routeName = computed(() => route.name);
 
+//=====
 // 計算懸浮表格的位置，根據資料筆數動態調整高度
 const adjustTablePosition = computed(() => ({
   position: 'fixed',
-  //top: `${mouseY.value + 10}px`,
-  //left: `${mouseX.value - 150}px`,
-
-  top: '80px',      // 固定上邊距離
-  right: '190px',  // 固定左邊距離
-
+  top: `${mouseY.value + 10}px`,
+  left: `${mouseX.value + 10}px`,
   backgroundColor: 'white',
   padding: '5px',
   borderRadius: '5px',
   boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.1)',
-  fontSize: '10px',
+  fontSize: '12px',
   color: '#333',
   whiteSpace: 'nowrap',
-  width: '190px',
+  width: '160px',                   //寬度固定為 160px
   zIndex: 999,
   margin: '0 3px',
-  height: `${boms.length * 15}px`, // 根據資料筆數動態調整高度
+  height: `${boms.length * 35}px`,  // 根據資料筆數動態調整高度，每行大約35px
   overflowY: 'hidden', // 禁止垂直滾動條
   overflowX: 'hidden', // 禁止水平滾動條
 }));
+//=====
 
 //=== mounted ===
 onMounted(async () => {
@@ -409,10 +400,6 @@ onMounted(async () => {
     myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
   });
 
-  // 在組件掛載時添加事件監聽器
-  window.addEventListener('mousemove', updateMousePosition);
-
-  // 處理socket連線
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
@@ -529,7 +516,6 @@ onMounted(async () => {
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   //clearInterval(intervalId);
-  window.removeEventListener('mousemove', updateMousePosition);
 });
 
 //=== created ===
@@ -642,13 +628,22 @@ const getStatusStyle = (status) =>{
     fontSize: '12px',
   };
 };
+/*
+const handleGifClick = async (item, index) => {
+  console.log(`GIF 點擊事件觸發，資料索引: ${index}, 資料內容:`, item);
 
+  let payload = {
+    order_num: item.order_num,
+  };
+  await getBoms(payload);
+  console.log("bom[]:", boms.value)
+};
+*/
 const updateItem = async (item) => {
   console.log("updateItem(),", item);
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
-    console.log("item.receive_qty:", item.receive_qty)
     receive_qty_alarm.value = '領取數量不可為空白或0!'
     item.tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
@@ -824,13 +819,12 @@ const checkTextEditField = (focused, item) => {
     //  item.receive_qty =0;        // 強迫輸入值為0
 
     // 檢查 item.pickBegin 是否為空陣列
-    /*
     if (item.pickBegin.length == 0) {
       item.receive_qty = 0; // 若為空陣列，設置 item.receive_qty 為 0
     } else {
-      item.receive_qty = item.pickBegin[item.pickBegin.length - 1]; // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
+      // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
+      item.receive_qty = item.pickBegin[item.pickBegin.length - 1];
     }
-    */
   }
 };
 
@@ -857,42 +851,38 @@ const refreshComponent = () => {
   componentKey.value += 1;
 };
 
+//=====
 // 滑鼠移入圖片，顯示表格
 const handleGifClick = async (item, index) => {
   console.log(`GIF 點擊事件觸發，資料索引: ${index}, 資料內容:`, item);
 
-  if (hoveredItemIndex.value === index && isTableVisible.value) {
-    return;  // 如果表格已經顯示且資料已經加載，不再重複請求
-  }
-
   hoveredItemIndex.value = index;
-  isTableVisible.value = true;    // 設置表格可見
+  isTableVisible.value = true;
 
-  boms.value = [];
   let payload = {
     order_num: item.order_num,
   };
   await getBoms(payload);
-  //console.log('Current hovered item index:', hoveredItemIndex.value);
   //console.log("bom[]:", boms.value)
 };
 
 // 滑鼠移入表格時，保持表格顯示
-//const onMouseEnterTable = () => {
-//  isTableVisible.value = true;
-//}
+const onMouseEnterTable = () => {
+  isTableVisible.value = true;
+}
 
 // 滑鼠移出圖片或表格時，隱藏表格
-//const onMouseLeaveTable = () => {
-//  isTableVisible.value = false;   // 隱藏表格
-//  //hoveredItemIndex.value = null;  // 重置 hoveredItemIndex
-//}
+const onMouseLeaveTable = () => {
+  isTableVisible.value = false;
+}
 
 // 滑鼠位置偵測
 const updateMousePosition = (event) => {
   mouseX.value = event.clientX;
   mouseY.value = event.clientY;
 }
+window.addEventListener('mousemove', updateMousePosition);
+//=====
 </script>
 
 <style lang="scss" scoped>
@@ -913,7 +903,7 @@ const updateMousePosition = (event) => {
 }
 
 .no-footer {
-  margin-bottom: 0;           // 沒有頁腳時的底部邊距
+  margin-bottom: 0;                   // 沒有頁腳時的底部邊距
 }
 
 :deep(.v-data-table .v-table__wrapper > table > thead > tr > th.v-data-table__th) {
@@ -942,36 +932,12 @@ const updateMousePosition = (event) => {
   //border: 1px solid #000;     // 表格的外框
   border-radius: 0 0 20px 20px;
 }
-
-//:deep(.v-table) {
-//  border-collapse: collapse; // 讓表格邊框不會分開
-//}
-
-//:deep(.v-table th, .v-table td) {
-//  border: 1px solid #ddd;   // 邊框顏色
-//}
-
-:deep(.show_table thead th) {
-  padding: 3px !important;
-  height: 15px !important;
-  font-size: 12px !important;
-  color:blue;
-  font-family: '微軟正黑體', sans-serif; margin-top:10px;
+/*
+.custom-table th,
+.custom-table td {
+  border: 1px solid #000;   // 單元格的邊框
+  padding: 8px;             // 單元格的內邊距
+  text-align: left;         // 文本對齊
 }
-
-:deep(.show_table tfoot td) {
-  padding: 3px !important;
-  height: 15px !important;
-  font-size: 12px !important;
-  font-weight: 700;
-  color:blue;
-  text-align: center;
-  font-family: '微軟正黑體', sans-serif; margin-top:10px;
-}
-
-:deep(.show_table tbody td) {
-  padding: 3px !important;
-  height: 15px !important;
-  font-size: 12px !important;
-}
+*/
 </style>

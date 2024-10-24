@@ -261,9 +261,9 @@ def list_materials_and_assembles():
         step_code = assemble_record.process_step_code
         order_num = material_record.order_num                       # 訂單編號
 
-        # 比較該筆記錄的 step_code 是否為該訂單下最大的
+        # 比較該筆記錄的 step_code 是否為該訂單中最先作動的工作中心工作順序編號
         max_step_code = max_step_code_per_order.get(order_num, 0)
-        step_enable = (step_code == max_step_code)  # 如果是最大值，則啟用
+        step_enable = (step_code == max_step_code)                  # 如果是最大值，則啟用
         format_name = f"{assemble_record.work_num}({name})"
         num = int(material_record.show2_ok)
 
@@ -275,7 +275,8 @@ def list_materials_and_assembles():
           'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
-          'req_qty': assemble_record.meinh_qty,                                 #需求數量(作業數量)
+          #'req_qty': assemble_record.meinh_qty,                                 #需求數量(作業數量)
+          'req_qty': assemble_record.good_qty,                                 #需求數量(作業數量)
           'total_receive_qty': '(' + str(assemble_record.total_ask_qty) + ')',  #領取總數量
           'total_receive_qty_num': assemble_record.total_ask_qty,               #領取總數量
           'receive_qty': assemble_record.ask_qty,                               #領取數輛
@@ -288,7 +289,7 @@ def list_materials_and_assembles():
           'isAssembleStation3TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程3完成
           'currentStartTime': assemble_record.currentStartTime,
           'tooltipVisible': False,
-          'input_disable': False,
+          'input_disable': assemble_record.input_disable,
           #'process_step_code': step_code,
           'process_step_enable': step_enable,
         }

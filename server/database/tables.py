@@ -227,7 +227,7 @@ class Assemble(BASE):
     material_comment = Column(String(70), nullable=False)         #料號說明
     seq_num = Column(String(20), nullable=False)                  #序號
     work_num = Column(String(20))                                 #工作中心
-    process_step_code = Column(Integer, default=0)                #工作中芯的順序, 3:最先作動, 0:作動完畢
+    process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
     ask_qty = Column(Integer, default=0)                          #領取數量
     total_ask_qty = Column(Integer, default=0)                    #已領取總數量
     user_id = Column(String(8))                                   #員工編號(領料)
@@ -239,7 +239,8 @@ class Assemble(BASE):
 
     #receive_qty = Column(Integer)                #領取數量
     #already_received_qty = Column(Integer)       #已經領取數量
-    completed_qty = Column(Integer)                               #完成數量
+    completed_qty = Column(Integer, default=0)                    #完成數量
+    total_completed_qty = Column(Integer, default=0)              #已完成總數量
 
     reason = Column(String(50))                                   #差異原因
     #emp_num = Column(String(8))                                   #員工編號 8碼
@@ -247,6 +248,8 @@ class Assemble(BASE):
     is_assemble_ok = Column(Boolean, default=False)               # true: 目前途程為組裝, false: 不是
 
     currentStartTime = Column(String(30))                         #領料生產報工開始時間
+    input_disable = Column(Boolean, default=False)                #領取數量達上限(作業數量), 禁止再輸入
+    input_end_disable = Column(Boolean, default=False)            #完成數量達上限(作業數量), 禁止再輸入
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容

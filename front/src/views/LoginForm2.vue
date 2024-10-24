@@ -193,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, reactive, defineComponent, onBeforeMount, onMounted, onUnmounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Vue3Marquee } from 'vue3-marquee';
@@ -301,6 +301,12 @@ onMounted(() => {
   loginEmpIDInput.value.focus();   // 元件掛載時聚焦在工號欄位
 
   console.log("routerLinks:",routerLinks);
+});
+
+//=== unmounted ===
+// 在組件卸載時移除事件監聽器
+onUnmounted(() => {
+  document.removeEventListener('keydown', allowBackspaceInInputs);
 });
 
 //=== destroyed ===

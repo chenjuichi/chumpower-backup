@@ -15,10 +15,13 @@ from ajax.createTable import createTable
 from ajax.updateTable import updateTable
 from ajax.deleteTable import deleteTable
 from ajax.excelTable import excelTable
+from ajax.browseDirectory import browseDirectory
 
-from travel.kuka_car import kuka_car
+#from travel.kuka_car import kuka_car
+
 
 # --------------------------
+
 
 app = Flask(__name__)  # 初始化Flask物件
 
@@ -39,13 +42,14 @@ app.register_blueprint(createTable)
 app.register_blueprint(updateTable)
 app.register_blueprint(deleteTable)
 app.register_blueprint(excelTable)
+app.register_blueprint(browseDirectory)
 
-app.register_blueprint(kuka_car)
+#app.register_blueprint(kuka_car)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
 
 # --------------------------
-
+#當 with 區塊結束時，文件會自動關閉
 with open('database/data.json', 'r', encoding='utf-8') as f:      # 開啟系統設定檔案
   data = json.load(f)
 

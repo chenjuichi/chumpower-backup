@@ -28,7 +28,7 @@
       <template v-slot:top>
         <v-card>
           <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
-            組裝區完成回繳生產報工
+            組裝區完成生產報工
             <v-divider class="mx-4" inset vertical></v-divider>
             <v-spacer></v-spacer>
 
@@ -54,13 +54,27 @@
               呼叫AGV
             </v-btn>
 
-          <span
-            style="margin-left: 10px; font-size: 14px;"
-            :class="{ 'blinking': isBlinking }"
-          >
-            {{order_num_on_agv_blink}}
-          </span>
+            <div>
+              <span
+                :style="{
+                  display: 'inline-block',
+                  borderRadius: '50%',
+                  width: '25px',
+                  height: '25px',
+                  position: 'relative',
+                  top: '7px',
+                  left: '5px',
 
+                  opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
+                  transition: 'opacity 0.5s ease',    // 過渡效果
+                  background: background,             // 背景顏色
+                  border: '1px solid black'           // 黑色邊框
+                }"
+              />
+              <span style="margin-left: 10px; font-size: 14px;" :class="{ 'blinking': isBlinking }">
+                {{order_num_on_agv_blink}}
+              </span>
+            </div>
           </v-card-title>
         </v-card>
       </template>
@@ -170,7 +184,7 @@
             dense
             hide-details
             style="max-width: 60px; text-align: center; z-index: 1;"
-            :id="`receiveQtyID-${item.order_num}`"
+            :id="`receiveQtyID-${item.assemble_id}`"
             @update:modelValue="checkReceiveQty(item)"
             @update:focused="(focused) => checkTextEditField(focused, item)"
             @keyup.enter="updateItem(item)"
@@ -210,7 +224,7 @@
           size="small"
           variant="tonal"
           style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif; margin-left: 20px;"
-          :disabled="isButtonDisabled(item)"
+
           @click="updateAlarm(item)"
           color="orange-darken-2"
         >
@@ -249,7 +263,7 @@
   const updateMaterial = apiOperation('post', '/updateMaterial');
   const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
   const createProcess = apiOperation('post', '/createProcess');
-  const getMaterial = apiOperation('post', '/getMaterial');
+  //const getMaterial = apiOperation('post', '/getMaterial');
 
   //=== component name ==
   defineComponent({
@@ -265,6 +279,11 @@
   });
 
   //=== data ===
+  const isVisible = ref(true);             // 設定初始狀態為顯示
+  const isFlashLed = ref(false);           // 控制是否閃爍Led
+  let intervalIdForLed = null;
+  const background = ref('#ffff00');
+
   const hoveredItemIndexForReqQty = ref(null);  // 追蹤目前懸停在哪一筆資料上的 index
 
   //let receiveQtyID_max_length = 3;
@@ -284,6 +303,7 @@
     { title: '訂單編號', sortable: true, key: 'order_num'},
     { title: '物料編號', sortable: false, key: 'material_num'},
     { title: '需求數量', sortable: false, key: 'req_qty' },
+    { title: '領料總數', sortable: false, key: 'total_ask_qty'},
     { title: '完成數量', sortable: false, key: 'receive_qty' },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
     { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
@@ -366,6 +386,12 @@
       const myIdField = document.getElementById(`receiveQtyID-${item.order_num}`);
       myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
     });
+
+    intervalIdForLed = setInterval(() => {
+      isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
+    }, 500);
+
+    isBlinking.value = materials_and_assembles_by_user.value.length == 0 || materials_and_assembles_by_user.value.every(item => !item.isAssembleStation1TakeOk && !item.isAssembleStation2TakeOk && !item.isAssembleStation3TakeOk);
 
     console.log('等待socket連線...');
     try {
@@ -618,6 +644,7 @@
 
     item.pickEnd.push(item.receive_qty);
 
+    // ˇ.記錄當前完成總數量
     let current_completed_qty= Number(item.receive_qty)
     let total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
     payload = {
@@ -808,13 +835,14 @@
       //if (item.receive_qty.trim().length == 0)
       //  item.receive_qty =0;
       // 檢查 item.pickBegin 是否為空陣列
+      /*
       if (item.pickEnd.length == 0) {
         item.receive_qty = 0; // 若為空陣列，設置 item.receive_qty 為 0
       } else {
         // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
         item.receive_qty = item.pickEnd[item.pickEnd.length - 1];
       }
-
+      */
     }
   };
 

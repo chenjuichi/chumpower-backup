@@ -3,6 +3,7 @@
     <Nav
       v-if="!hideNavAndFooter"
       :show-footer="showFooter"
+      :navBarColor="localNavBarColor"
       :navLinks="navLinks"
       @update:showFooter="updateShowFooter"
     />
@@ -15,9 +16,20 @@
         </transition>
       </router-view>
       <Sender />
+
     </div>
     <Footer v-if="!hideNavAndFooter" v-show="showFooter" />
+    <!--<FloatingMenu v-if="!hideNavAndFooter" v-model:showFooter="showFooter" />-->
+    <!--在 Component 上使用多個 v-model-->
+    <FloatingMenu
+      v-if="!hideNavAndFooter"
 
+      :showFooter="showFooter"
+      @update:showFooter="showFooter = $event"
+
+      :navBarColor="navBarColor"
+      @update:navBarColor="navBarColor = $event"
+    />
   </div>
 </template>
 
@@ -32,10 +44,15 @@ import Animation from './views/Animation.vue';
 import Nav from './views/Nav.vue';
 import Footer from './views/Footer.vue';
 //import LoginRegister from './views/LoginForm2.vue';
+import FloatingMenu from './views/FloatingIcon.vue';
 import Sender from './components/Sender.vue';
+
 import eventBus from './mixins/enentBus.js';
 
 const showFooter = ref(true);
+const navBarColor = ref('#6aaaea');
+const localNavBarColor =ref('')
+
 const hideNavAndFooter = ref(false);    // 監聽路由變化來隱藏或顯示 Nav 和 Footer
 
 const IDLE_TIMEOUT = 5 * 60 * 1000;     // 5 分鐘
@@ -82,6 +99,17 @@ watch(route, (newRoute, oldRoute) => {
     console.log('離開 C 或 D 路由，重設計時器');
   }
 });
+
+// 監聽路由變化來切換 FloatingMenu 的顯示狀態
+//watch(route, (newRoute) => {
+//  showFloatingMenu.value = newRoute.meta.showFloatingMenu || false;
+//});
+watch(navBarColor, (newValue) => {
+
+localNavBarColor.value = newValue.hex;
+
+});
+
 
 //=== created ===
 onBeforeMount(() => {
@@ -154,8 +182,9 @@ onUnmounted(() => {
 
 //=== method ===
 // 更新 showFooter
-const updateShowFooter = (value) => {
-  showFooter.value = value;
+const updateShowFooter = (newValue) => {
+  //console.log("App.vue, updateShowFooter(),", newValue);
+  showFooter.value = newValue;
 };
 
 // 更新 navLinks

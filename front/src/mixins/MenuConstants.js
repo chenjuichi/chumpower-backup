@@ -24,8 +24,10 @@ export const menuData = [
     isSegment: false,
     children: [
       { id: 2, text: "1.備料區", to: '/a', isEnabled: false, isSegment: false },
-      { id: 3, text: "2.加工區", to: '/b', isEnabled: false, isSegment: false },
-      { id: 4, text: "3.組裝區", to: '/c', isEnabled: false, isSegment: false },
+      //{ id: 3, text: "2.加工區", to: '/b', isEnabled: false, isSegment: false },
+      //{ id: 4, text: "3.組裝區", to: '/c', isEnabled: false, isSegment: false },
+      { id: 3, text: "1.加工區", to: '/b', isEnabled: false, isSegment: false },
+      { id: 4, text: "2.組裝區", to: '/c', isEnabled: false, isSegment: false },
       { id: 5, text: "4.出貨區", to: '/d', isEnabled: false, isSegment: false },
     ]
   },

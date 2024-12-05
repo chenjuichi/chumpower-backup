@@ -1,5 +1,4 @@
 <template>
-
   <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
     <div class="container-fluid">
       <!--圖示-->
@@ -10,7 +9,7 @@
 
       <div class="collapse navbar-collapse" id="navbarNav" style="font-family: 'cwTeXYen', sans-serif;">
         <!-- 選單 -->
-        <ul class="navbar-nav my-left-nav">
+        <ul class="navbar-nav my-left-nav" style="font-weight: 700;">
           <!--item1-->
           <li
             class="nav-item dropdown dropdownk"
@@ -288,7 +287,7 @@
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(6)"
             @mouseleave="onLeave(6)"
-            style="left: 200px;"
+            style="left: 125px;"
           >
             <button class="dropbtnk">
               <em>{{ currentUser ? currentUser.name : '使用者' }}</em>
@@ -299,33 +298,57 @@
             <div class="dropdown-contentk">
               <div class="dropdown-item my-dropdown-item" @click="logout">登出</div>
               <div class="dropdown-item my-dropdown-item" @click="passwordDialog">修改密碼</div>
-              <div class="dropdown-item my-dropdown-item" @click="functionB">功能B</div>
+              <div class="dropdown-item my-dropdown-item" @click="browserDialog">表單貼條碼</div>
               <div class="dropdown-item my-dropdown-item" @click="functionC">功能C</div>
             </div>
           </li>
           <!--item8-->
-          <li class="nav-item" style="position: relative; left: 190px; font-size: 13px;">
-            <span>剩餘時間: {{ countdown.minutes }}:{{ countdown.seconds }}</span>
+          <li class="nav-item" style="position: relative; left: 125px; font-size: 13px; margin-right: 0px;">
+            <span style="background: #1976d2; color: white; font-weight: 400;">
+              剩餘時間: {{ countdown.minutes }}:{{ countdown.seconds }}
+            </span>
           </li>
         </ul>
 
         <!--checkbox-->
-        <v-checkbox v-model="localShowFooter" label="Show Footer" class="ml-auto" style="position: relative; right: 200px;" />
+      <!--
+        <v-checkbox
+          v-model="localShowFooter"
+          label="Show Footer"
+          class="ml-auto"
+          style="position: relative; right: 200px;"
+        />
+      -->
+      <!--
+        <v-checkbox
+          v-model="localShowFooter"
+          v-model:modelValue="localShowFooter"
+  				@update:modelValue="updateShowFooter"
+
+          label="Show Footer"
+          class="ml-auto"
+          style="position: relative; right: 200px;"
+        />
+      -->
       </div>
     </div>
   </nav>
 
-  <ChangePassword :dialog="openDialog" @update:dialog="updateDialog"></ChangePassword>
+  <ChangePassword :dialog="openDialog" @update:dialog="updateDialog" />
+  <BrowseDirectory :pdf="openPdfDialog" @update:pdf="updatePdfDialog" />
 </template>
 
 <script setup>
-import { ref, reactive, watch, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
+import { ref, reactive, watch, watchEffect, computed, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
 //import { useRoute, useRouter } from 'vue-router'; // Import useRouter
 import { useRouter } from 'vue-router'; // Import useRouter
 //import logo from '../assets/BBC-Line-Logo_Blue.png';
 import logo from '../assets/logo.svg';
-import VCheckbox from './VCheckbox.vue';
+
+//import VCheckbox from './VCheckbox.vue';
 import ChangePassword from './changePassword.vue';
+import BrowseDirectory from './BrowseDirectory.vue';
+
 import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants.js';
 
 import eventBus from '../mixins/enentBus.js';
@@ -348,6 +371,11 @@ const { initAxios } = myMixin();
 //=== props ==
 const props = defineProps({
   showFooter: Boolean,
+  //navBarColor: String,
+  navBarColor: {
+    type: String,
+    default: "#f9f9f9", // 提供默認值，避免 undefined
+  },
 
   navLinks: {
     type: Array,
@@ -364,8 +392,11 @@ const emit = defineEmits(['update:showFooter']);
 //=== data ===
 const isSegment = ref(false);
 const openDialog = ref(false);
+const openPdfDialog = ref(false);
+
 const home_url = logo;
 const localShowFooter = ref(props.showFooter);
+const bgColor = ref('');
 //const dropdownOpen = ref({ b: false, user: false, data_maintain: false, product_info: false });
 
 const hoveredItems = reactive({});
@@ -388,6 +419,9 @@ const router = useRouter(); // Initialize router
 //=== mounted ===
 onMounted(() => {
   console.log("nav, mounted():",props.navLinks);
+
+  // 自動追蹤callBack裡的響應式數據, bgColor.value
+  watchEffect(() => (bgColor.value = props.navBarColor));
 
   // 禁用 BackButton 功能
   disableBackButton();
@@ -474,6 +508,7 @@ onBeforeMount(() => {
 //=== watch ===
 watch(localShowFooter, (newValue) => {
   console.log("Nav.vue, watch(),", newValue)
+  localShowFooter.value = newValue;           // 2024-11-26 add
 
   emit('update:showFooter', newValue);
 });
@@ -492,10 +527,25 @@ const onLeave = (index) => {
 const passwordDialog = () => {
   openDialog.value=true;
 };
+const browserDialog = () => {
+  console.log("browserDialog()...")
+  openPdfDialog.value=true;
+  console.log("openPdfDialog:", openPdfDialog.value)
+};
 
 const updateDialog = (newVal) => {
   openDialog.value = newVal;
 };
+const updatePdfDialog = (newVal) => {
+  openPdfDialog.value = newVal;
+};
+
+const updateShowFooter = (newColor) => {
+  localShowFooter.value = newColor; 							// 更新本地顏色
+  emit('update:showFooter', newColor); 	          // 通知父層更新
+  console.log('Updated showFooter:', newColor);
+};
+
 // 測試用
 const functionB = () => {
   alert("功能B");
@@ -597,7 +647,8 @@ const allowBackspaceInInputs = (event) => {
 @import "../styles/variables.scss";
 
 .navbar {
-  background: $NAVBAR_COLOR !important;
+  //background: $NAVBAR_COLOR !important;
+  background: v-bind(bgColor) !important;
   padding-top: 0px;
   padding-bottom: 0px;
 }

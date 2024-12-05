@@ -204,10 +204,9 @@ import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants
 
 import eventBus from '../mixins/enentBus.js';
 
-//import { snackbar, snackbar_info, snackbar_color } from '../mixins/snackbarStore.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { departments, marquees, temp_desserts, loginUser, loginEmpIDInput}  from '../mixins/crud.js';
+import { departments, marquees, temp_desserts, loginUser, loginEmpIDInput }  from '../mixins/crud.js';
 import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
@@ -243,7 +242,7 @@ const popStateHandler = ref(null);
 
 const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 
-const helloArray = ['公告欄: 測試...測試...', '部門A:', '訊息', , '部門B:', '訊息',, '部門C:', '訊息',]
+//const helloArray = ['公告欄: 測試...測試...', '部門A:', '訊息', , '部門B:', '訊息',, '部門C:', '訊息',]
 const registerUser = reactive({
   empID: '',
   name: '',
@@ -301,6 +300,10 @@ onMounted(() => {
   loginEmpIDInput.value.focus();   // 元件掛載時聚焦在工號欄位
 
   console.log("routerLinks:",routerLinks);
+  //在組件掛載後, 執行一次聚焦
+  if (loginEmpIDInput.value) {
+    loginEmpIDInput.value.focus()
+  }
 });
 
 //=== unmounted ===
@@ -645,6 +648,9 @@ const removelocalStorage = () => {
   }
   if (localStorage.getItem('Authenticated')) {
     localStorage.removeItem('Authenticated');
+  }
+  if (localStorage.getItem('selectedItems')) {
+    localStorage.removeItem('selectedItems');
   }
 };
 

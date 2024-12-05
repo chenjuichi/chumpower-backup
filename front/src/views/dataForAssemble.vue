@@ -182,7 +182,7 @@
   </template>
 
   <script setup>
-  import { ref, reactive, defineComponent, computed, watch, watchEffect, onMounted, onBeforeMount, nextTick } from 'vue';
+  import { ref, reactive, defineComponent, computed, watch, onMounted, onBeforeMount, nextTick } from 'vue';
   import { TreeView } from "vue-tree-view";
   //import TreeView from "vue3-treeview";
   import "vue-tree-view/dist/style.css";

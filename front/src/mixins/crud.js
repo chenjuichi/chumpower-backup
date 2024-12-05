@@ -6,6 +6,9 @@ import { ref, reactive, watch } from 'vue';
 // for countExcelFiles
 export const fileCount = ref(0);         //定義 fileCount 狀態變數
 
+// for copyMaterial
+export const material_copy_id = ref(0);
+
 // for listMaterials
 export const materials = ref([]);
 
@@ -41,6 +44,16 @@ export const loginUser = reactive({
   loginPassword: ''
 });
 
+export const currentAGV = ref({})
+//  status: 0,
+//  station: 1
+//});
+const temp_current_agv = ref({})
+//  status: 0,
+//  station: 1
+//});
+
+
 const foundDessert = ref(null);
 const list_table_is_ok = ref(false);
 
@@ -64,7 +77,9 @@ export const apiOperation = (operation, path, payload) => {
     //POST ：參數通常作為請求體的一部分發送。例如，axios.post('/api/path', { key: 'value' }) ,
     //      會將 { key: 'value' } 作為請求發送。
     const options = {
-      ...(operation === 'get' ? { params: payload } : payload)
+      ...(operation === 'get' ? { params: payload } : payload),
+      //...(path === '/saveFile' || path === '/downloadFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
+      ...(path === '/saveFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
     };
 
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
@@ -78,11 +93,10 @@ export const apiOperation = (operation, path, payload) => {
             //departments.value = [...res.data.departments];
             // 檢查 res.data 是否包含 'departments' 或 'data'
             if (res.data.departments) {
-              console.log("listDepartments, test solution a...")
+              //console.log("listDepartments, test solution a...")
               departments.value = [...res.data.departments];
-            //} else if (res.data.data) {
             } else {
-              console.log("listDepartments, test solution b...")
+              //console.log("listDepartments, test solution b...")
               departments.value = [...res.data.data];
             }
           }
@@ -130,39 +144,97 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/countExcelFiles') {
             fileCount.value = res.data.count;
-            //console.log("get, path is", path)
-            //return res.data.count;
           }
 
-          //list_table_is_ok.value = true;
         } else {    // post 操作
           console.log("post, path is", path);
 
-          if (path == '/register' || path == '/updateUser' || path == '/removeUser' || path == '/updateSetting' || path == '/updateBoms') {
-            console.log("res.data:", res.data);
+          if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
+              path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
+              path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
+              path == '/createProcess') {
+            //console.log("res.data:", res.data);
             return res.data.status;
           }
 
-          if (path == '/login') {
-            console.log("res.data:", res.data);
+          if (path == '/login' || path == '/listDirectory') {
+            //console.log("res.data:", res.data);
             return res.data;
           }
 
+          if (path === '/saveFile') {
+            console.log(res.data instanceof Blob); // 應該顯示 true
+
+            if (res.data instanceof Blob) {
+              fileName = 'NEW_FILE_NAME.pdf';
+              console.log('儲存的檔案名稱:', fileName);
+
+              const url = window.URL.createObjectURL(res.data);
+              const link = document.createElement('a');
+              link.href = url;
+              link.setAttribute('download', fileName);
+              link.style.display = 'none';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+              return true;  // 下載完成後返回成功狀態
+            }
+            return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
+          }
+          /*
+          if (path === '/downloadFile') {
+            //console.log(res.data instanceof Blob); // 應該顯示 true
+            console.log(res.data instanceof Blob); // 應該顯示 true
+            console.log("=====");
+            console.log(res instanceof Blob); // 應該顯示 true
+            console.log("=====");
+            console.log(res); // 應該顯示 true
+            console.log("step1");
+
+            if (res instanceof Blob) {
+              console.log("step2");
+
+              console.log("step2-1");
+
+              return res;  // 下載完成後返回成功狀態
+            }
+            console.log("step3");
+            return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
+          }
+          */
+          if (path == '/readFile') {
+            console.log("/readFile(), res.data:", res.data.content)
+
+            return res.data.content;
+          }
+
           if (path == '/getBoms') {
-            console.log("res.data.boms:", res.data.boms);
+            //console.log("res.data.boms:", res.data.boms);
             temp_boms.value = [...res.data.boms];
             list_table_is_ok.value = true;
           }
 
+          if (path == '/getAGV') {
+            currentAGV.value = res.data.agv_data;
+          }
+
+          if (path == '/copyMaterial') {
+            console.log("copyMaterial(), material_copy_id:",res.data.material_data.id)
+            material_copy_id.value = res.data.material_data.id;
+          }
+
           if (path == '/getMaterialsAndAssemblesByUser') {
-            console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
+            //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
             materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
           }
 
-          if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' || path == '/getMaterial') {
-            console.log("res.data:", res.data);
-            return res.data.status;
-          }
+      //    if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
+      //        path == '/updateAGV') {
+      //        //path == '/getMaterial'  || path == '/updateAGV') {
+      //      //console.log("res.data:", res.data);
+      //      return res.data.status;
+      //    }
 
           //if (path == '/updateMaterial') {
           //  console.log("res.data:", res.data);
@@ -174,10 +246,10 @@ export const apiOperation = (operation, path, payload) => {
           //  return res.data.status;
           //}
 
-          if (path == '/createProcess') {
-            console.log("res.data:", res.data);
-            return res.data.status;
-          }
+          //if (path == '/createProcess') {
+          //  console.log("res.data:", res.data);
+          //  return res.data.status;
+          //}
 
           //if (path == '/getMaterial') {
           //  console.log("res.data:", res.data);
@@ -215,8 +287,19 @@ export const setupGetBomsWatcher = () => {
     }
   });
 };
-
-
+/*
+export const setupGetAGVWatcher = () => {
+  console.log("crud, watch...")
+  watch(list_table_is_ok, (val) => {
+    if (val) {
+      console.log("crud, watch...")
+      currentAGV.value = temp_current_agv.value;
+      //currentAGV.station = temp_current_agv.agv_data.station;
+      list_table_is_ok.value = false;
+    }
+  });
+};
+*/
 export const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color);
 

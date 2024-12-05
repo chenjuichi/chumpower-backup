@@ -228,7 +228,7 @@
   const updateMaterial = apiOperation('post', '/updateMaterial');
   const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
   const createProcess = apiOperation('post', '/createProcess');
-  const getMaterial = apiOperation('post', '/getMaterial');
+  //const getMaterial = apiOperation('post', '/getMaterial');
 
   //=== component name ==
   defineComponent({
@@ -458,7 +458,8 @@
     console.log("toggleExpand(),", item.order_num);
 
     let payload = {
-      order_num: item.order_num,
+      //order_num: item.order_num,
+      id: item.id,
     };
     getBoms(payload);
 

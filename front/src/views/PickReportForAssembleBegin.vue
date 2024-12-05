@@ -148,7 +148,7 @@
           v-model="item.receive_qty"
           dense
           hide-details
-          style="max-width: 60px; text-align: center; z-index: 1;"
+
           :id="`receiveQtyID-${item.assemble_id}`"
           @update:modelValue="checkReceiveQty(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
@@ -202,6 +202,7 @@
                 <tr
                   v-for="(bom, bomIndex) in boms"
                   :key="bomIndex"
+                  v-if="bom.receive"
                   :style="{backgroundColor: bomIndex % 2 === 0 ? '#ffffff' : '#edf2f4'}"
                   class="custom-row"
                 >
@@ -302,6 +303,9 @@ const footerOptions = [
   { value: 10, title: '10' },
   { value: -1, title: '全部' }
 ];
+
+//            0         1        2          3        4            5           6            7           8            9
+const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num'},
@@ -405,7 +409,7 @@ onMounted(async () => {
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
-    const myIdField = document.getElementById(`receiveQtyID-${item.order_num}`);
+    const myIdField = document.getElementById(`receiveQtyID-${item.assemble_id}`);
     myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
   });
 
@@ -713,6 +717,8 @@ const updateItem = async (item) => {
     record_data: outputStatus.value.step1
   };
   await updateMaterial(payload);
+  item.assemble_process = str2[outputStatus.value.step1]
+  item.assemble_process_num = outputStatus.value.step1
 
   // 7.按開始鍵後, 記錄當前途程狀態訊息show3_ok
   payload = {
@@ -870,7 +876,8 @@ const handleGifClick = async (item, index) => {
 
   boms.value = [];
   let payload = {
-    order_num: item.order_num,
+    //order_num: item.order_num,
+    id: item.id,
   };
   await getBoms(payload);
   //console.log('Current hovered item index:', hoveredItemIndex.value);
@@ -930,11 +937,13 @@ const updateMousePosition = (event) => {
 
 :deep(input[type="text"]) {
   min-height: 20px;
+  height: 20px;
   opacity: 1;
   padding: 0px;
   text-align: center;
   color: red;
   min-width:60px;
+  width:60px;
 }
 
 .custom-table {

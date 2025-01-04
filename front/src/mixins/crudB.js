@@ -54,7 +54,28 @@ const handleResponse = (res, path) => {
     return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
   }
 
+  if (path === '/stampFile') {
+    if (res.data instanceof Blob) {
+      console.log("Blob received from", path);
+
+      const fileName = response.headers['x-file-name'] || 'STAMPED_FILE.pdf';
+      console.log('儲存的檔案名稱:', fileName);
+
+      const url = window.URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      return true;  // 下載完成後返回成功狀態
+    //} else {
+    //  console.error('Unexpected response data:', response.data);
+    }
+    return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
+  }
+
   return res.data; // 對於非特殊路徑，返回回應的資料部分
 }
-
-

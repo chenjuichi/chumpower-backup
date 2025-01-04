@@ -121,11 +121,14 @@ class Material(BASE):
     __tablename__ = 'material'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    abnormal_cause_id = Column(Integer, ForeignKey('abnormal_cause.id'))      #異常原因 id, 一對多(多),
+
     order_num = Column(String(20), nullable=False)                  #訂單編號(1)
     material_num = Column(String(20), nullable=False)               #成品料號(2)
     material_comment = Column(String(70), nullable=False)           #料號說明(3)
     material_qty = Column(Integer, nullable=False)                  #(成品)需求數量(4)
-    delivery_qty = Column(Integer, default=0)                       #送料數量
+    delivery_qty = Column(Integer, default=0)                       #送料數量(現況數量)
     total_delivery_qty = Column(Integer, default=0)                 #已送料總數量
     input_disable = Column(Boolean, default=False)                  #送料數量達上限(需求數量), 或尚未備料, 則禁止再輸入
 
@@ -133,9 +136,10 @@ class Material(BASE):
     material_delivery_date = Column(String(12), nullable=False)     #交期(6)
     isTakeOk = Column(Boolean, default=False)                       # true:檢料區檢料完成,指定訂單可以派車
     isShow = Column(Boolean, default=False)                         # true:檢料完成且已call AGV, 就disable詳情按鍵
-    isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成, 即完成生產報工中, 按結束鍵
+    isAssembleAlarm = Column(Boolean, default=True)                 # false:組裝異常,
+    isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成,
     isAssembleStation2TakeOk = Column(Boolean, default=False)       # true:組裝站製程2完成, 即完成生產報工中, 按結束鍵
-    isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:組裝站製程3完成, 即完成生產報工中, 按結束鍵, 指定訂單可以派車
+    isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:組裝站製程3必須顯示(異常)
     isAssembleStationShow = Column(Boolean, default=False)          # true:完成生產報工(press結束按鍵), 且是最後1個製成, 且已經call AGV, disable
     station1_Qty = Column(Integer)
     station2_Qty = Column(Integer)
@@ -175,6 +179,27 @@ class Material(BASE):
         'bom_agv_status': self.bom_agv_status
       }
       '''
+      return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+
+
+# ------------------------------------------------------------------
+
+
+class AbnormalCause(BASE):
+    __tablename__ = 'abnormal_cause'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    _material =  relationship('Material', backref="abnormal_cause")     # 一對多(一),
+    area = Column(Integer, default=1)                                   #發生異常原因的區域, 1:組裝區, 2:成品區, 3:加工區
+    message = Column(String(30), nullable=False)                        #異常原因訊息
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      fields = ', '.join([f"{name}={getattr(self, name)}" for name in self.__mapper__.columns.keys()])
+      return f"<LargeTable({fields})>"
+
+    # 定義class的dict內容
+    def get_dict(self):
       return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
 
 

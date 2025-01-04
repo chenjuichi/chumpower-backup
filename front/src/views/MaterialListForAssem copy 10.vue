@@ -86,139 +86,11 @@
             </v-btn>
           -->
             <div class="pa-4 text-center">
-              <v-dialog v-model="editDialog" max-width="900">
-              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '500px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  編輯訂單
-                  <v-fade-transition mode="out-in">
-                    <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-content-save"
-
-                      text="確定"
-                      class="text-none"
-                      @click="updateModifyMaterialAndBomsFun"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
-                </v-card-title>
-                <v-card-text>
-                  <v-row>
-                    <v-col cols="12" md="5">
-                      <v-text-field
-                        v-model="selectedOrderNum"
-                        @keyup.enter="handleOrderNumSearch"
-                        variant="solo"
-                        readonly
-                        class="modify_order_num"
-                      >
-                        <template #prepend>
-                          <span class="text-caption">訂單編號</span>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                    <v-col cols="12" md="3">
-                      <v-menu
-                        v-model="fromDateMenu"
-                        :close-on-content-click="false"
-                        :nudge-right="40"
-                        transition="scale-transition"
-                        offset-y
-                        max-width="300px"
-                        min-width="300px"
-                      >
-                        <template #activator="{ props }">
-                          <v-text-field
-                            prepend-icon="mdi-calendar"
-                            readonly
-                            :value="formattedDate"
-                            v-bind="props"
-                            variant="solo"
-                            class="modify_date"
-                          />
-                        </template>
-                        <v-date-picker
-                          v-model="fromDateVal"
-                          color="blue-lighten-1"
-                          @update:model-value="handleDateChange"
-                        />
-                      </v-menu>
-                    </v-col>
-
-                    <v-col cols="12" md="4">
-                      <v-text-field
-                        variant="solo"
-                        required
-                        class="modify_qty"
-                        @keydown="handleKeyDown"
-                        v-model="selectedReqQty"
-                      >
-                        <template #prepend>
-                          <span class="text-caption">訂單數量</span>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                  </v-row>
-                  <v-row>
-                    <v-col cols="12" md="2" style="margin-top: 25px;">
-                      <v-btn
-                        color="primary"
-                        variant="outlined"
-                        style="
-                          width:100px;
-                          min-width:100px;
-
-                          font-weight:700;
-                        "
-                        @click="modifyExcelFilesFun"
-                      >
-                        <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                        <span style="color: #0D47A1;">匯入BOM</span>
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="12" md="10">
-                      <v-table class="inner" density="compact" fixed-header>
-                        <thead style="color: black;">
-                          <tr>
-                            <th class="text-left">元件</th>
-                            <th class="text-left">物料</th>
-                            <th class="text-left">數量</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr
-                            v-for="(bom_item, index) in modify_boms"
-                            :key="bom_item.seq_num"
-                            :style="{
-                              backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                            }"
-                          >
-                            <td>{{ bom_item.seq_num }}</td>
-                            <td>
-                              <div>
-                                <div>{{ bom_item.material_num }}</div>
-                                <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                              </div>
-                            </td>
-                            <td>
-                              <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </v-table>
-                    </v-col>
-                  </v-row>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
-            <!--
-              <v-dialog v-model="editDialog" max-width="900">
+              <v-dialog v-model="editDialog" max-width="700" max-height="600px !important">
                 <v-card prepend-icon="mdi-text-box-edit-outline" title="編輯訂單">
                   <v-card-text>
                     <v-row>
-
+                      <!-- 訂單號碼 -->
                       <v-col cols="12" md="5">
                         <v-text-field
                           v-model="selectedOrderNum"
@@ -233,7 +105,7 @@
                         </v-text-field>
                       </v-col>
 
-
+                      <!-- 日期選擇 -->
                       <v-col cols="12" md="3">
                         <v-menu
                           v-model="fromDateMenu"
@@ -262,7 +134,7 @@
                         </v-menu>
                       </v-col>
 
-
+                      <!-- 訂單數量 -->
                       <v-col cols="12" md="4">
                         <v-text-field
                           variant="solo"
@@ -277,56 +149,87 @@
                         </v-text-field>
                       </v-col>
                     </v-row>
+                  <!-- 測試用 begin -->
+                  <!--
+                    <div class="facet-container" style="left: 220px; position: relative;">
 
-                    <v-row>
-                      <v-col cols="12" md="2">
-                        <v-btn
-                          color="primary"
-                          variant="outlined"
-                          style="
-                            width:100px;
-                            min-width:100px;
-                            position:relative;
-                            left:-10px;
-                            top:-10px;
-                            font-weight:700;
-                          "
-                          @click="modifyExcelFilesFun"
-                        >
-                          <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                          <span style="color: #0D47A1;">匯入BOM</span>
-                        </v-btn>
-                      </v-col>
-                      <v-col cols="12" md="10" class="custom-bordered-row">
-                        <v-data-table
-                          :items="modify_boms"
-                          :headers="modify_bom_headers"
-                          items-per-page="5"
-                          style="position: relative; top: -15px;"
-                        />
-                      </v-col>
-                    </v-row>
+                      <div class="left">
+                        <label>零配件總纜</label>
+                        <draggable v-model="allFacets" group="facets" class="facet-list" item-key="id">
+                          <template #item="{ element, index }">
+                            <li class="facet" @dblclick="moveToUserFacets(index)">
+                              {{ element }}
+                            </li>
+                          </template>
+                        </draggable>
+                      </div>
+
+                      <div class="right">
+                        <label>備料清單</label>
+                        <draggable v-model="userFacets" group="facets" class="facet-list" item-key="id">
+                          <template #item="{ element, index }">
+                            <li class="facet" @dblclick="moveToAllFacets(index)">
+                              {{ element }}
+                            </li>
+                          </template>
+                        </draggable>
+                      </div>
+                    </div>
+                  -->
+                  <!-- 測試用 end -->
+
+                  <v-row>
+                    <v-col cols="12" md="2">
+                      <v-btn
+                        color="primary"
+                        variant="outlined"
+                        style="
+                          width:100px;
+                          min-width:100px;
+                          position:relative;
+                          left:-10px;
+                          top:-10px;
+                          font-weight:700;
+                        "
+                        @click="modifyExcelFilesFun"
+                      >
+                        <v-icon left color="green">mdi-microsoft-excel</v-icon>
+                        <span style="color: #0D47A1;">匯入BOM</span>
+                      </v-btn>
+                    </v-col>
+                    <v-col cols="12" md="10" class="custom-bordered-row">
+                      <v-data-table
+                        :items="modify_boms"
+                        :headers="modify_bom_headers"
+                        items-per-page="5"
+                        style="position: relative; top: -15px;"
+                      />
+                    </v-col>
+                  </v-row>
                   </v-card-text>
+
                   <v-divider></v-divider>
+
                   <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn
-                      text="Close"
-                      variant="tonal"
-                      prepend-icon="mdi-close-circle"
-                      @click="editDialog = false"
-                    />
 
                     <v-btn
+                      text="Close"
+                      variant="plain"
+                      prepend-icon="mdi-close-circle"
+                      @click="editDialog = false"
+                    ></v-btn>
+
+                    <v-btn
+                      color="primary"
                       text="Save"
                       variant="tonal"
                       append-icon="mdi-content-save"
                       @click="editDialog = false"
-                    />
+                    ></v-btn>
                   </v-card-actions>
                 </v-card>
               </v-dialog>
-            -->
             </div>
 
             <!--客製化 員工選單-->
@@ -650,7 +553,6 @@
   const createProcess = apiOperation('post', '/createProcess');
   const updateAGV = apiOperation('post', '/updateAGV');
   const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
-  const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
 
   //=== component name ==
   defineComponent({
@@ -722,10 +624,10 @@
   ];
 
   const modify_bom_headers =[
-    {title:'元件', sortable: false, key:'id'},
+    {title:'元件', sortable: false, key:'id', width: '50'},
     {title:'編號', sortable: false, key:'material_num'},
     {title:'名稱', sortable: false, key:'mtl_comment'},
-    {title:'數量', sortable: false, key:'qty'},
+    {title:'數量', sortable: false, key:'qty', width: '50'},
   ]
   const modify_boms =ref([]);
 
@@ -1690,17 +1592,6 @@ const readAllExcelFun = async () => {
   }
 };
 
-const updateModifyMaterialAndBomsFun = async () => {
-  let payload = {
-    id: selectedId.value,
-    bom_data: modify_boms.value,
-  };
-
-  await updateModifyMaterialAndBoms(payload)
-
-  editDialog.value = fals
-}
-
 const modifyExcelFilesFun = async () => {
   console.log("modifyExcelFilesFun()...");
 
@@ -1713,8 +1604,7 @@ const modifyExcelFilesFun = async () => {
     const modify_result = await modifyExcelFiles(payload);
 
     if (modify_result.status) {
-      //console.log("modify_result, modifyBom:", modify_result.modifyBom);
-      modify_boms.value = [...modify_result.modifyBom];
+      console.log("modify_result, modifyBom:", modify_result.modifyBom)
     } else {
       showSnackbar(modify_result.message, 'red accent-2');
     }
@@ -2185,11 +2075,6 @@ p {
 
 :deep(.modify_qty span) {
   color:#0D47A1
-}
-
-:deep(.modify_qty .v-input__control) {
-  min-width: 60px;
-  width: 60px;
 }
 
 .modify_date {

@@ -22,6 +22,16 @@ excelTable = Blueprint('excelTable', __name__)
 
 # ------------------------------------------------------------------
 
+# 生成唯一檔案名稱的函式
+def get_unique_filename(target_dir, filename, chip):
+    base, ext = os.path.splitext(filename)  # 分離檔案名稱與副檔名
+    counter = 1
+    unique_filename = filename
+    while os.path.exists(os.path.join(target_dir, unique_filename)):  # 檢查檔案是否已存在
+        unique_filename = f"{base}_{chip}_{counter}{ext}"  # 為檔名新增後綴
+        counter += 1
+    return unique_filename
+
 
 #to convert date format
 '''
@@ -274,8 +284,6 @@ def read_all_excel_files():
 
           s.commit()
 
-
-
       #except pymysql.err.IntegrityError as e:
       #    s.rollback()
       #    print(f"IntegrityError: {e}")
@@ -287,16 +295,27 @@ def read_all_excel_files():
       #    print(f"Exception: {e}")
 
 
+      try:
+
+        unique_filename = get_unique_filename(_target_dir, _file_name, "copy")  # 生成唯一檔案名稱
+        unique_target_path = os.path.join(_target_dir, unique_filename)  # 獲取完整目標路徑
+        print("unique_target_path:",unique_target_path)
+        shutil.move(_path, unique_target_path)  # 移動檔案到目標路徑
+        print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+      except PermissionError as e:
+        print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
+      except Exception as e:
+        print(f"移動檔案時發生錯誤: {e}")
 
 
-
+      '''
       # 移動檔案到目標目錄
       try:
         shutil.move(_path, _target_dir)
       except PermissionError as e:
         print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
-
-        #end for loop
+      '''
+    #end for loop
 
     s.close()
 
@@ -304,6 +323,153 @@ def read_all_excel_files():
     'status': return_value,
     'message': return_message1,
   })
+
+
+@excelTable.route("/modifyExcelFiles", methods=['POST'])
+def modify_excel_files():
+  print("modifyExcelFiles....")
+
+  data = request.json
+  material_id = data.get("material_id")
+  _id = data.get("id")
+  _material_id = int(material_id)
+  print("_id, _material_id:",_id, _material_id, type(_id), type(_material_id))
+
+  global global_var
+
+  return_value = False
+  return_message1 = '錯誤, excel檔案內沒有該筆工單!'
+  return_message = ''
+  modifyBom = []  # 用於儲存 BOM 資料的清單
+
+  _base_dir = current_app.config['baseDir']
+  _modify_dir = _base_dir.replace("_in", "_modify")
+  _target_dir = _base_dir.replace("_in", "_out")
+  print("read modify excel files, 目錄: ", _modify_dir)
+  print("move excel files to, 目錄: ", _target_dir)
+  # 讀取指定目錄下的所有指定檔案名稱
+  files = [f for f in os.listdir(_modify_dir) if os.path.isfile(os.path.join(_modify_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  if (files):   #有工單檔案
+    sheet_names_to_check = [
+      current_app.config['excel_product_sheet'],
+      current_app.config['excel_bom_sheet'],
+    ]
+    _startRow = int(current_app.config['startRow'])
+
+    s = Session()
+
+    #find_material = s.query(Material).filter_by(order_num = _material_id).first()
+    find_material = s.query(Material).filter_by(id = _id).first() #找出一筆工單資料
+
+    # 取得現有的 BOM 資料
+    existing_bom = s.query(Bom).filter_by(material_id = find_material.id).all()
+    existing_materials = {bom.material_num for bom in existing_bom}
+
+    for _file_name in files:  #檔案讀取
+      _path = _modify_dir + '\\' + _file_name
+      global_var = _path + ' 檔案讀取中...'
+
+      with open(_path, 'rb') as file:
+        workbook = openpyxl.load_workbook(filename=file, read_only=True)
+        return_value = True
+        return_message1 = ''
+        missing_sheets = [sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames]
+
+        if missing_sheets:
+          return_value = False
+          return_message1 = '錯誤, 工單檔案內沒有相關工作表!'
+          print(return_message1)
+          break
+
+        print(sheet_names_to_check[0] + ' sheet exists, data reading...')
+
+        bom_df = pd.read_excel(_path, sheet_name=1)               # Second sheet for Bom
+
+        bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)     # 檢查是否存在 NaN 值
+        bom_df['訂單'] = bom_df['訂單'].fillna('').astype(str)    # 保持字串型態
+        bom_entries = bom_df[bom_df['訂單'] == material_id]       # 查詢對應的 BOM 項目
+        print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
+
+        # Insert corresponding BOM entries
+        bom_data= []
+        for bom_index, bom_row in bom_entries.iterrows():
+          bom_data.append({
+            'material_id': find_material.id,
+            'seq_num': bom_row['預留項目'],
+            'material_num': bom_row['物料'],
+            'material_comment': bom_row['物料說明'],
+            'req_qty': bom_row['需求數量'],
+          })
+
+
+        # 將現有的 BOM 資料加入 modifyBom
+        id = 0
+        for existing in existing_bom:
+          id +=1
+          modifyBom.append({
+            "id": id,
+            "material_id": existing.material_id,
+            "seq_num": existing.seq_num,
+            "material_num": existing.material_num,
+            "mtl_comment": existing.material_comment,
+            "qty": existing.req_qty,
+            "start_date": existing.start_date,
+            "date_alarm": '',
+          })
+
+        # 新增的 material_num
+        for bom_entry in bom_data:
+          material_num = bom_entry.get("material_num")
+          if material_num not in existing_materials:
+            '''
+            new_bom = Bom(
+              material_id = find_material.id,
+              material_num = material_num,
+              seq_num = bom_entry.get("seq_num"),
+              material_comment = bom_entry.get("material_comment"),
+              req_qty = bom_entry.get("req_qty"),
+              start_date = find_material.material_delivery_date
+            )
+            s.add(new_bom)
+            '''
+            #existing_bom.append(new_bom)
+            id +=1
+            modifyBom.append({
+              "id": id,
+              "material_id": find_material.id,
+              "seq_num": id,
+              "material_num": material_num,
+              "mtl_comment": bom_entry.get("material_comment"),
+              "qty": bom_entry.get("req_qty"),
+              "start_date": find_material.material_delivery_date,
+              "date_alarm": '',
+            })
+
+      # 在程式的移動檔案邏輯中使用
+      try:
+        unique_filename = get_unique_filename(_target_dir, _file_name, "mdf")  # 生成唯一檔案名稱
+        unique_target_path = os.path.join(_target_dir, unique_filename)  # 獲取完整目標路徑
+
+        shutil.move(_path, unique_target_path)  # 移動檔案到目標路徑
+        print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+      except PermissionError as e:
+        print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
+      except Exception as e:
+        print(f"移動檔案時發生錯誤: {e}")
+
+    #end for loop
+
+    # 提交到資料庫
+    #s.commit()
+    #s.close()
+  # end if
+
+  return jsonify({
+    'status': return_value,
+    'message': return_message1,
+    'modifyBom': modifyBom,
+  })
+
 
 @excelTable.route("/deleteAssemblesWithNegativeGoodQty", methods=['GET'])
 def delete_assembles_with_negative_good_qty():

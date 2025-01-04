@@ -251,14 +251,15 @@
 
   import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-  import { materials_and_assembles_by_user, socket_server_ip }  from '../mixins/crud.js';
+  import { assembleInformations, abnormalCauses, socket_server_ip }  from '../mixins/crud.js';
 
-  import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+  import { apiOperation }  from '../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
   const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+  const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
+  const listAssembleInformations = apiOperation('get', '/listAssembleInformations');
 
-  const getMaterialsAndAssemblesByUser = apiOperation('post', '/getMaterialsAndAssemblesByUser');
   const updateAssemble = apiOperation('post', '/updateAssemble');
   const updateMaterial = apiOperation('post', '/updateMaterial');
   const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
@@ -300,14 +301,15 @@
   ];
 
   const headers = [
-    { title: '訂單編號', sortable: true, key: 'order_num'},
-    { title: '物料編號', sortable: false, key: 'material_num'},
-    { title: '需求數量', sortable: false, key: 'req_qty' },
-    { title: '領料總數', sortable: false, key: 'total_ask_qty'},
-    { title: '完成數量', sortable: false, key: 'receive_qty' },
-    { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
-    { title: '', sortable: false, key: 'action' },
+    { title: '訂單編號',    sortable: true,  key: 'order_num'},
+    { title: '現況進度',    sortable: false, key: 'show1_ok'},
+    { title: '現況備註',    sortable: false, key: 'show3_ok' },
+    { title: '交期',        sortable: false, key: 'delivery_date', align: 'start' },
+    { title: '訂單數量',    sortable: false, key: 'req_qty' },
+    { title: '完成數量',    sortable: false, key: 'receive_qty' },
+
+    { title: '說明',        sortable: false, key: 'comment', align: 'start' },
+    { title: '異常原因填報', sortable: false, key: 'abnormal_cause', align: 'start' },
   ];
 
   const userId = 'user_chumpower';
@@ -396,111 +398,7 @@
     console.log('等待socket連線...');
     try {
       await setupSocketConnection();
-    /*
-      socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
-        console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
 
-        const materialPayload0 = {
-          order_num: data,
-        };
-        const response0 = await getMaterial(materialPayload0);
-
-        if(response0) {
-          console.log('工單 '+ data + ' 已檢料完成!');
-          socket.value.emit('station1_order_ok');
-
-          from_agv_input_order_num.value = data;
-          order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
-          //isBlinking.value = true; // 開始按鍵閃爍
-
-          // 定義 materialPayload1
-          const materialPayload1 = {
-            order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-            record_name: 'show3_ok',
-            record_data: 1 // 設為 2，表示備料完成
-          };
-          await updateMaterial(materialPayload1);
-        } else {
-          console.log('工單 '+ data + ' 還沒檢料完成!');
-          socket.value.emit('station1_order_ng');
-          order_num_on_agv_blink.value = '';
-        }
-      });
-
-      socket.value.on('station1_agv_begin', async () => {
-        console.log('AGV暫停, 收到 station1_agv_begin 訊息');
-
-        // 記錄agv在站與站之間運行開始時間
-        agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-        console.log("AGV Start time:", agv2StartTime.value);
-
-        const materialPayload1 = {
-          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-          record_name: 'show3_ok',
-          record_data: 2 // 設為 2，表示備料完成
-        };
-        await updateMaterial(materialPayload1);
-
-        let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-        let formattedStartTime = formatDateTime(agv1StartTime.value);
-        let formattedEndTime = formatDateTime(agv1EndTime.value);
-        console.log("Formatted AGV Start Time:", formattedStartTime);
-        console.log("Formatted AGV End Time:", formattedEndTime);
-        console.log("AGV Period time:", agv1PeriodTime);
-
-        const processPayload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv1PeriodTime,
-          user_id: 'AGV1',
-          order_num: from_agv_input_order_num.value,
-          process_type: 1,
-        };
-        await createProcess(processPayload);
-      })
-
-      socket.value.on('station1_agv_end', async () => {
-        console.log('AGV暫停, 收到 station1_agv_end 訊息');
-
-        const materialPayload1 = {
-          order_num: from_agv_input_order_num.value,
-          show1_ok: 2,      //組裝站
-          show2_ok: 3,      //未組裝
-          show3_ok: 0,      //空白
-          whichStation: 2,  //目標途程:組裝站
-        };
-        await updateMaterialRecord(materialPayload1);
-
-        let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
-        let formattedStartTime = formatDateTime(agv2StartTime.value);
-        let formattedEndTime = formatDateTime(agv2EndTime.vale);
-        console.log("Formatted AGV Start Time:", formattedStartTime);
-        console.log("Formatted AGV End Time:", formattedEndTime);
-        console.log("AGV Period time:", agv2PeriodTime);
-
-        const processPayload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv2PeriodTime,
-          user_id: 'AGV2',
-          order_num: from_agv_input_order_num.value,
-          process_type: 2,
-        };
-        await createProcess(processPayload);
-
-
-        isBlinking.value = false;           // 停止工單運送字串閃爍
-        order_num_on_agv_blink.value = '';
-      });
-
-      socket.value.on('station1_agv_ready', async () => {
-        console.log('AGV 已到達裝卸站, 收到 station1_agv_ready 訊息...');
-        // 記錄等待ag到站結束時間
-        agv1EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-        console.log("AGV End time:", agv1EndTime.value);
-
-      });
-      */
     } catch (error) {
       console.error('Socket連線失敗:', error);
     }
@@ -527,16 +425,10 @@
       //console.log("initialize()...", currentUser.value.empID);
       console.log("initialize()...");
 
-      // 使用 async/await 等待 API 請求完成，確保順序正確
-      const payload = {
-        user_id: currentUser.value.empID,
-      };
-      await getMaterialsAndAssemblesByUser(payload);
+      await listAbnormalCauses();
 
-      // 為materials_and_assembles_by_user每個物件增加 pickBegin 屬性，初始為空陣列 []
-      materials_and_assembles_by_user.value.forEach(item => {
-        item.pickEnd = [];
-      });
+      // 使用 async/await 等待 API 請求完成，確保順序正確
+      await listAssembleInformations();
 
       await listSocketServerIP();
       console.log("initialize, socket_server_ip:", socket_server_ip.value)

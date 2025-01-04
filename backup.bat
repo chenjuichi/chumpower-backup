@@ -5,7 +5,7 @@ pause
 
 :: 確保目標目錄存在
 if not exist "C:\chumpower-backup\front"                        mkdir "C:\chumpower-backup\front"
-if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
+::if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
 if not exist "C:\chumpower-backup\front\src"                    mkdir "C:\chumpower-backup\front\src"
 if not exist "C:\chumpower-backup\front\src\views"              mkdir "C:\chumpower-backup\front\src\views"
 if not exist "C:\chumpower-backup\front\src\views\old_source"   mkdir "C:\chumpower-backup\front\src\views\old_source"
@@ -23,7 +23,7 @@ copy "D:\vue3\chumpower\*.json"     "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\*.bat"      "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.env"       "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.gitignore" "C:\chumpower-backup\front\"
-copy "D:\vue3\chumpower\public\*.*" "C:\chumpower-backup\front\public\"
+::copy "D:\vue3\chumpower\public\*.*" "C:\chumpower-backup\front\public\"
 
 copy "D:\vue3\chumpower\src\views\*.vue"            "C:\chumpower-backup\front\src\views"
 copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
@@ -66,11 +66,11 @@ if not exist "C:\chumpower-backup\server\pdf_file\物料清單" (
 )
 copy "C:\vue\chumpower\pdf_file\物料清單\*.*" "C:\chumpower-backup\server\pdf_file\物料清單"
 
-if not exist "C:\chumpower-backup\server\server\travel" (
-    echo 建立目錄: C:\chumpower-backup\server\server\travel
-    mkdir "C:\chumpower-backup\server\server\travel"
-)
-copy "C:\vue\chumpower\server\travel\*.py" "C:\chumpower-backup\server\server\travel"
+::if not exist "C:\chumpower-backup\server\server\travel" (
+::    echo 建立目錄: C:\chumpower-backup\server\server\travel
+::    mkdir "C:\chumpower-backup\server\server\travel"
+::)
+::copy "C:\vue\chumpower\server\travel\*.py" "C:\chumpower-backup\server\server\travel"
 
 
 echo 複製完成

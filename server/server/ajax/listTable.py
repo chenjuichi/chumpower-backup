@@ -2,7 +2,7 @@ import math
 import random
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy.sql import func
-from database.tables import User, Material, Bom, Permission, Setting, Session
+from database.tables import User, Material, Bom, Permission, AbnormalCause, Setting, Session
 
 from flask_cors import CORS
 
@@ -15,7 +15,9 @@ from sqlalchemy import exc
 
 listTable = Blueprint('listTable', __name__)
 
+
 # ------------------------------------------------------------------
+
 
 @listTable.route("/listFileOK", methods=['GET'])
 def list_file_ok():
@@ -60,6 +62,44 @@ def list_departments():
   return jsonify({
     'departments': departments,
   })
+
+
+# list all abnormalCauses
+@listTable.route("/listAbnormalCauses", methods=['GET'])
+def list_abnormal_causes():
+  print("listAbnormalCauses....")
+
+  s = Session()
+  _abnormal_cause_results = []
+
+  # 查詢所有異常原因，並通過關聯獲取相關的 material
+  _objects = s.query(AbnormalCause).options(joinedload(AbnormalCause._material)).all()
+
+  for abnormal_cause in _objects:
+      # 獲取與當前異常原因相關聯的所有 material
+      related_materials = abnormal_cause._material
+
+      # 如果有相關的 material，提取其 id，否則設為 None
+      material_ids = [material.id for material in related_materials] if related_materials else []
+
+      # 將數據組裝到結果中
+      _abnormal_cause_object = {
+          'id': abnormal_cause.id,
+          'area': abnormal_cause.area,
+          'message': abnormal_cause.message,
+          'material_ids': material_ids,  # 可能是一個列表，因為是一對多關係
+      }
+      _abnormal_cause_results.append(_abnormal_cause_object)
+
+  s.close()
+
+  temp_len = len(_abnormal_cause_results)
+  print("listAbnormalCauses, 總數: ", temp_len)
+
+  return jsonify({
+      'abnormalCauses': _abnormal_cause_results,
+  })
+
 
 # list all Marquees
 @listTable.route("/listMarquees", methods=['GET'])
@@ -111,6 +151,7 @@ def list_users():
         'status': return_value,
         'users': _user_results    #員工資料
     })
+
 '''
 # list all bom
 @listTable.route("/listBoms", methods=['GET'])
@@ -156,6 +197,7 @@ def list_boms():
       'boms': results
     })
 '''
+
 # list all materials
 @listTable.route("/listMaterials", methods=['GET'])
 def list_materials():
@@ -174,10 +216,14 @@ def list_materials():
       #if not record['isShow'] and record['isLackMaterial'] != 0 and record['isBatchFeeding'] != 0:   # 檢查 isShow 是否為 False
       if not record['isShow']:   # 檢查 isShow 是否為 False
         cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
-        if record['order_num'] in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
+        #temp_data = record['order_num']  # 訂單編號
+        temp_data = record['id']          # 該筆訂單編號的table id
+        if temp_data in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
           continue
         # 計算 temp_delivery 的值
-        order_num = record['order_num']
+        #order_num = record['order_num']
+        #order_num = temp_data
+        order_num_id = temp_data
         material_qty = record['material_qty']
         delivery_qty = record['delivery_qty']
         '''
@@ -196,11 +242,12 @@ def list_materials():
         temp_delivery=record['total_delivery_qty']
 
         # 標記這個 order_num 已處理過
-        processed_order_nums.add(order_num)
+        #processed_order_nums.add(order_num)
+        processed_order_nums.add(order_num_id)
 
         _object = {
           'id': record['id'],
-          'order_num': order_num,                   #訂單編號
+          'order_num': record['order_num'],                   #訂單編號
           'material_num': record['material_num'],   #物料編號
           'req_qty': material_qty,                  #需求數量
           'delivery_qty': delivery_qty,             #備料數量
@@ -273,13 +320,21 @@ def list_materials_and_assembles():
         code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
         step_code = code_to_assembleStep.get(code, 0)      # 取得對應的 step code, 以設定工作順序
 
-        order_num = material_record.order_num              # 訂單編號
+        #order_num = material_record.order_num              # 訂單編號
+        order_num_id = material_record.id                  # 該筆訂單編號的table id
 
+        '''
         # 設定或更新該 order_num 下的最大 step code
         if order_num not in max_step_code_per_order:
             max_step_code_per_order[order_num] = step_code
         else:
             max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
+        '''
+        # 設定或更新該 order_num_id 下的最大 step code
+        if order_num_id not in max_step_code_per_order:
+            max_step_code_per_order[order_num_id] = step_code
+        else:
+            max_step_code_per_order[order_num_id] = max(max_step_code_per_order[order_num_id], step_code)
 
     # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
     #_objects = s.query(Material).all()
@@ -291,15 +346,18 @@ def list_materials_and_assembles():
         name = code_to_name.get(code, '')                             # 查找對應的中文名稱
         #step_code = code_to_a
         step_code = assemble_record.process_step_code
-        order_num = material_record.order_num                         # 訂單編號
+        #order_num = material_record.order_num                         # 訂單編號
+        order_num_id = material_record.id                             # 該筆訂單編號的table id
 
         # 比較該筆記錄的 step_code 是否為該訂單中最先作動的工作中心工作順序編號
-        max_step_code = max_step_code_per_order.get(order_num, 0)
+        #max_step_code = max_step_code_per_order.get(order_num, 0)
+        max_step_code = max_step_code_per_order.get(order_num_id, 0)
         step_enable = (step_code == max_step_code)                    # 如果是最大值，則啟用
         format_name = f"{assemble_record.work_num}({name})"
         num = int(material_record.show2_ok)
 
         _object = {
+          'id': material_record.id,                                 #訂單編號的table id
           'order_num': material_record.order_num,                   #訂單編號
           'assemble_work': format_name,                             #工序
           'material_num': material_record.material_num,             #物料編號
@@ -309,6 +367,7 @@ def list_materials_and_assembles():
           'assemble_id': assemble_record.id,
           #'req_qty': assemble_record.meinh_qty,                                #需求數量(作業數量)
           'req_qty': assemble_record.good_qty,                                  #需求數量(作業數量)
+          'delivery_qty': material_record.delivery_qty,                         #備料數量(現況數量)
           'total_receive_qty': f"({assemble_record.total_ask_qty})",            # 已完成總數量
           'total_receive_qty_num': assemble_record.total_ask_qty,               #領取總數量
           'receive_qty': assemble_record.ask_qty,                               #領取數輛
@@ -369,14 +428,16 @@ def list_informations():
         temp_temp_show2_ok_str = temp_temp_show2_ok_str + record.shortage_note
 
       _object = {
-        'order_num': record.order_num,                 #訂單編號
-        'material_num': record.material_num,           #物料編號
+        'id': record.id,                                #訂單編號的table id
+        'order_num': record.order_num,                  #訂單編號
+        'material_num': record.material_num,            #物料編號
         'isTakeOk': record.isTakeOk,
         'whichStation': record.whichStation,
-        'req_qty': record.material_qty,                #需求數量
-        'delivery_date':record.material_delivery_date, #交期
-        'comment': cleaned_comment,                    #說明
-        'show1_ok' : str1[int(record.show1_ok) - 1],                  #現況進度
+        'req_qty': record.material_qty,                 #需求數量
+        'delivery_date':record.material_delivery_date,  #交期
+        'delivery_qty':record.delivery_qty,             #現況數量
+        'comment': cleaned_comment,                     #說明
+        'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度
         'show2_ok' : temp_temp_show2_ok_str,
         'show3_ok' : str3[int(record.show3_ok)],                  #現況備註
       }
@@ -399,3 +460,59 @@ def list_informations():
         'informations': _results
     })
 
+
+# list all materials for information list
+@listTable.route("/listAssembleInformations", methods=['GET'])
+def list_assemble_informations():
+    print("listAssembleInformations....")
+
+    s = Session()
+
+    _results = []
+    return_value = True
+    str1=['備料站', '組裝站', '成品站']
+    #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
+    #      0    1          2(agv_begin)     3(agv_end)   4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)    13(結束鍵)   14(開始鍵)    15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
+    str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
+
+    _objects = s.query(Material).all()  # 取得所有 Material 物件
+
+    for record in _objects:
+      if record.isAssembleStation3TakeOk:   # 檢查 isAssembleStation3TakeOk 是否為 True, 異常
+        cleaned_comment = record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
+        temp_temp_show2_ok_str = str2[int(record.show2_ok)]
+        temp_show2_ok = int(record.show2_ok)
+        if (temp_show2_ok == 1):
+          temp_temp_show2_ok_str = temp_temp_show2_ok_str + record.shortage_note
+
+        _object = {
+          'order_num': record.order_num,                 #訂單編號
+
+          'isTakeOk': record.isTakeOk,
+          'whichStation': record.whichStation,
+          'req_qty': record.material_qty,                #需求數量
+          'delivery_date':record.material_delivery_date, #交期
+          'comment': cleaned_comment,                    #說明
+          'show1_ok' : str1[int(record.show1_ok) - 1],                  #現況進度
+          'show2_ok' : temp_temp_show2_ok_str,
+          'show3_ok' : str3[int(record.show3_ok)],                  #現況備註
+        }
+
+        _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    #print("listInformations, 資料: ", _results)
+    print("listInformations, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    # 根據 'order_num' 排序
+    _results = sorted(_results, key=lambda x: x['order_num'])
+
+    return jsonify({
+        'status': return_value,
+        'informations': _results
+    })

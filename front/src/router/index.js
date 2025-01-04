@@ -13,6 +13,7 @@ import E from '../views/MaterialListForProcess.vue';
 import F from '../views/MaterialListForAssem.vue';
 import G01 from '../views/PickReportForAssembleBegin.vue';
 import G01C from '../views/PickReportForAssembleEnd.vue';
+//import G01D from '../views/PickReportForAssembleError.vue';
 import G01D from '../views/g01d.vue';
 import G1 from '../views/g1.vue';
 import G2 from '../views/g2.vue';

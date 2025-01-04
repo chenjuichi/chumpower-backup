@@ -208,29 +208,43 @@
 
       <!-- 自訂 '開始' 按鍵欄位 -->
       <template v-slot:item.action="{ item }">
-        <v-btn
-          size="small"
-          class="mr-2"
-          variant="tonal"
-          style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
-          :disabled="isButtonDisabled(item)"
-          @click="updateItem(item)"
-          color="indigo-darken-4"
-        >
-          結 束
-          <v-icon color="indigo-darken-4" end>mdi-close-circle-outline</v-icon>
-        </v-btn>
-        <v-btn
-          size="small"
-          variant="tonal"
-          style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif; margin-left: 20px;"
-
-          @click="updateAlarm(item)"
-          color="orange-darken-2"
-        >
-          異 常
-          <v-icon color="orange-darken-4" end>mdi-alert-circle-outline</v-icon>
-        </v-btn>
+        <div class="action-cell">
+          <v-btn
+            size="small"
+            class="mr-2"
+            variant="tonal"
+            style="font-size: 13px; font-weight: 700; font-family: '微軟正黑體', sans-serif; padding-left:4px; padding-right:4px; margin-right:10px !important;"
+            :disabled="isButtonDisabled(item)"
+            @click="updateItem(item)"
+            color="indigo-darken-4"
+          >
+            結 束
+            <v-icon color="indigo-darken-4" end>mdi-close-circle-outline</v-icon>
+          </v-btn>
+          <v-btn
+            size="small"
+            variant="tonal"
+            @click="updateAlarm(item)"
+            :style="{
+              fontSize: '13px',
+              fontWeight: '700',
+              fontFamily: '\'微軟正黑體\', sans-serif',
+              marginLeft: '20px',
+              paddingLeft: '4px',
+              paddingRright: '4px',
+              marginLeft: '0px !important',
+              background: item.isAssembleAlarm ? '#e8eaf6' : '#ff0000',
+              color: item.isAssembleAlarm ? '#000' : '#fff'}"
+          >
+            異 常
+            <v-icon
+              :style="{color: item.isAssembleAlarm ? '#000' : '#fff'}"
+              end
+            >
+              mdi-alert-circle-outline
+            </v-icon>
+          </v-btn>
+        </div>
       </template>
 
       <template #no-data>
@@ -300,13 +314,14 @@
   ];
 
   const headers = [
-    { title: '訂單編號', sortable: true, key: 'order_num'},
-    { title: '物料編號', sortable: false, key: 'material_num'},
-    { title: '需求數量', sortable: false, key: 'req_qty' },
-    { title: '領料總數', sortable: false, key: 'total_ask_qty'},
-    { title: '完成數量', sortable: false, key: 'receive_qty' },
+    { title: '訂單編號', sortable: true, key: 'order_num' },
+    { title: '物料編號', sortable: false, key: 'material_num' },
+    { title: '需求數量', sortable: false, key: 'req_qty', width:120 },
+    { title: '現況數量', sortable: false, key: 'delivery_qty', width:100 },
+    { title: '領料數量', sortable: false, key: 'total_ask_qty', width:100 },
+    { title: '完成數量', sortable: false, key: 'receive_qty', width:100 },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
+    { title: '交期', sortable: false, key: 'delivery_date', width:100 },
     { title: '', sortable: false, key: 'action' },
   ];
 
@@ -524,8 +539,10 @@
   //=== method ===
   const initialize = async () => {
     try {
-      //console.log("initialize()...", currentUser.value.empID);
       console.log("initialize()...");
+
+      await listSocketServerIP();
+      console.log("initialize, socket_server_ip:", socket_server_ip.value)
 
       // 使用 async/await 等待 API 請求完成，確保順序正確
       const payload = {
@@ -533,13 +550,10 @@
       };
       await getMaterialsAndAssemblesByUser(payload);
 
-      // 為materials_and_assembles_by_user每個物件增加 pickBegin 屬性，初始為空陣列 []
+      // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
       materials_and_assembles_by_user.value.forEach(item => {
         item.pickEnd = [];
       });
-
-      await listSocketServerIP();
-      console.log("initialize, socket_server_ip:", socket_server_ip.value)
     } catch (error) {
       console.error("Error during initialize():", error);
     }
@@ -935,6 +949,33 @@
     //border: 1px solid #000;     // 表格的外框
     border-radius: 0 0 20px 20px;
   }
+
+  .action-cell {
+    padding-left: 2px;
+    padding-right: 2px;
+    width: 164px;
+  }
+
+  :deep(.custom-table th:nth-child(9)),
+  :deep(.custom-table td:nth-child(9)) {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    //margin-left:  0px !important;
+    margin-right:  5px !important;
+  }
+
+  :deep(.custom-table th:nth-child(7)),
+  :deep(.custom-table td:nth-child(7)) {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  :deep(.custom-table th:nth-child(8)),
+  :deep(.custom-table td:nth-child(8)) {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
   /*
   .custom-table th,
   .custom-table td {

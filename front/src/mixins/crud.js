@@ -21,8 +21,15 @@ export const materials_and_assembles_by_user = ref([]);
 // for listInformations
 export const informations = ref([]);
 
+// for listAssembleInformations
+export const assembleInformations = ref([]);
+
+// for listAbnormalCauses
+export const abnormalCauses = ref([]);
+
 // for getBoms
 export const boms = ref([]);
+export const currentBoms = ref([]);
 const temp_boms = ref([]);
 
 // for listDepartments
@@ -52,7 +59,6 @@ const temp_current_agv = ref({})
 //  status: 0,
 //  station: 1
 //});
-
 
 const foundDessert = ref(null);
 const list_table_is_ok = ref(false);
@@ -113,12 +119,20 @@ export const apiOperation = (operation, path, payload) => {
             materials.value = [...res.data.materials];
           }
 
+          if (path == '/listAbnormalCauses') {
+          abnormalCauses.value = [...res.data.abnormalCauses];
+          }
+
           if (path == '/listMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
           }
 
           if (path == '/listInformations') {
             informations.value = [...res.data.informations];
+          }
+
+          if (path == '/listAssembleInformations') {
+            assembleInformations.value = [...res.data.assembleInformations];
           }
 
           if (path == '/listUsers') {
@@ -152,16 +166,17 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
-              path == '/createProcess') {
+              path == '/createProcess' || path == '/updateModifyMaterialAndBoms') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }
 
-          if (path == '/login' || path == '/listDirectory') {
+          if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles') {
             //console.log("res.data:", res.data);
             return res.data;
           }
 
+          /*
           if (path === '/saveFile') {
             console.log(res.data instanceof Blob); // 應該顯示 true
 
@@ -182,6 +197,8 @@ export const apiOperation = (operation, path, payload) => {
             }
             return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
           }
+          */
+
           /*
           if (path === '/downloadFile') {
             //console.log(res.data instanceof Blob); // 應該顯示 true
@@ -212,6 +229,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/getBoms') {
             //console.log("res.data.boms:", res.data.boms);
             temp_boms.value = [...res.data.boms];
+            currentBoms.value = res.data.boms;
             list_table_is_ok.value = true;
           }
 

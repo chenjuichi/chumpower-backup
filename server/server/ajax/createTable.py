@@ -379,6 +379,7 @@ def copy_material():
   _copy_id = request_data['copy_id']
   _total_delivery_qty = request_data['total_delivery_qty']
   #_delivery_qty = request_data['delivery_qty']
+  _show2_ok = request_data['show2_ok']
   _shortage_note = request_data['shortage_note']
 
   return_value = True
@@ -401,6 +402,7 @@ def copy_material():
     material_date = existing_material.material_date,
     material_delivery_date = existing_material.material_delivery_date,
     isTakeOk = True,  # 已經檢料
+    show2_ok = _show2_ok,
     total_delivery_qty = _total_delivery_qty,
     shortage_note = _shortage_note,
   )

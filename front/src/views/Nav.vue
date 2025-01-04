@@ -304,11 +304,13 @@
           </li>
           <!--item8-->
           <li class="nav-item" style="position: relative; left: 125px; font-size: 13px; margin-right: 0px;">
-            <span style="background: #1976d2; color: white; font-weight: 400;">
+            <span style="background: #1976d2; color: white; font-weight: 400; font-size: 16px;">
               剩餘時間: {{ countdown.minutes }}:{{ countdown.seconds }}
             </span>
           </li>
         </ul>
+
+
 
         <!--checkbox-->
       <!--

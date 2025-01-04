@@ -174,6 +174,148 @@ def update_boms():
         'status': return_value
     })
 
+'''
+@updateTable.route("/updateBomsInMaterial", methods=['POST'])
+def update_bom(material_id):
+  session = Session()
+  try:
+      # 取得請求的 BOM 資料
+      data = request.json
+      material_id = data.get("material_id")
+      bom_items = data.get("bom_items", [])
+
+      # 確認 `Material` 是否存在
+      material = session.query(Material).filter_by(id=material_id).first()
+      if not material:
+          return jsonify({"error": f"Material id {material_id} not found"}), 404
+
+      # 取得現有的 BOM 資料
+      existing_boms = session.query(Bom).filter_by(material_id=material_id).all()
+      existing_ids = {bom.id for bom in existing_boms}
+
+      # 從請求資料中分離出來的 ID
+      request_ids = {item["id"] for item in bom_items if "id" in item}
+
+      # 刪除不在請求中的 BOM 資料
+      boms_to_delete = [bom for bom in existing_boms if bom.id not in request_ids]
+      for bom in boms_to_delete:
+          session.delete(bom)
+
+      # 更新或新增 BOM
+      for item in bom_items:
+          if "id" in item and item["id"] in existing_ids:
+              # 更新現有的 BOM
+              bom = session.query(Bom).filter_by(id=item["id"]).first()
+              bom.material_num = item["material_num"]
+          else:
+              # 新增新的 BOM
+              new_bom = Bom(
+                  material_id=material_id,
+                  material_num=item["material_num"],
+                  seq_num="",
+                  material_comment="",
+                  req_qty=0
+              )
+              session.add(new_bom)
+
+      # 提交事務
+      session.commit()
+      return jsonify({"message": "BOM updated successfully"}), 200
+
+  except SQLAlchemyError as e:
+      session.rollback()
+      return jsonify({"error": str(e)}), 500
+  finally:
+      session.close()
+'''
+
+@updateTable.route("/updateBomsInMaterial", methods=['POST'])
+def update_bom(material_id):
+    data = request.json
+    material_id = data.get("material_id")
+    bom_data = data.get("bom_data", [])
+
+    # 驗證 Material 是否存在
+    material = session.query(Material).filter_by(id=material_id).first()
+    if not material:
+        return jsonify({"status": "error", "message": "Material ID not found"}), 404
+
+    # 取得現有的 BOM 資料
+    existing_bom = session.query(Bom).filter_by(material_id=material_id).all()
+    existing_material_nums = {bom.material_num for bom in existing_bom}
+
+    # 新增的 material_num
+    new_entries = []
+    for bom_entry in bom_data:
+        material_num = bom_entry.get("material_num")
+        if material_num not in existing_material_nums:
+            new_bom = Bom(
+                material_id=material_id,
+                material_num=material_num,
+                seq_num=f"SEQ-{len(existing_bom) + len(new_entries) + 1}",  # 自動生成序號
+                material_comment=f"Generated for {material_num}",
+                req_qty=0
+            )
+            session.add(new_bom)
+            session.flush()  # 提交後才能取得新 ID
+            new_entries.append({
+                "id": new_bom.id,
+                "material_id": material_id,
+                "material_num": material_num
+            })
+
+    # 提交到資料庫
+    session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "BOM updated successfully",
+        "new_entries": new_entries
+    })
+
+@updateTable.route("/updateModifyMaterialAndBoms", methods=['POST'])
+def update_modify_material_and_Boms():
+  print("updateModifyMaterialAndBoms....")
+
+  data = request.json
+  _id = data.get("id")
+  bom_data = data.get("bom_data", [])
+
+  s = Session()
+
+  #find_material = s.query(Material).filter_by(id = _id).first() #找出一筆工單資料
+  s.query(Material).filter(Material.id == _id).update({
+    "material_delivery_date": _show1_ok,
+    "material_qty": _show2_ok,
+  })
+
+  s.commit()
+
+  # 取得現有的 BOM 資料
+  existing_bom = s.query(Bom).filter_by(material_id = _id).all()
+  existing_materials = {bom.material_num for bom in existing_bom}
+
+  for bom_entry in bom_data:
+    material_num = bom_entry.get("material_num")
+    if material_num not in existing_materials:
+      new_bom = Bom(
+        material_id = find_material.id,
+        material_num = material_num,
+        seq_num = bom_entry.get("seq_num"),
+        material_comment = bom_entry.get("material_comment"),
+        req_qty = bom_entry.get("req_qty"),
+        start_date = find_material.material_delivery_date
+      )
+      s.add(new_bom)
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': True
+  })
+
 
 # from material table update some data by id or orde_num
 @updateTable.route("/updateMaterial", methods=['POST'])

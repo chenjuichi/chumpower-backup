@@ -200,14 +200,14 @@
               </thead>
               <tbody>
                 <tr
-                  v-for="(bom, bomIndex) in boms"
-                  :key="bomIndex"
-                  v-if="bom.receive"
-                  :style="{backgroundColor: bomIndex % 2 === 0 ? '#ffffff' : '#edf2f4'}"
+                  v-for="(bom_item, index) in boms"
+                  :key="index"
+                  v-if="boms[index].receive !== undefined && boms[index].receive"
+                  :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
                   class="custom-row"
                 >
-                  <td style="text-align: left;">{{ bom.material_num }}</td>
-                  <td style="text-align: right;">{{ bom.qty }}</td>
+                  <td style="text-align: left;">{{ boms[index].material_num }}</td>
+                  <td style="text-align: right;">{{ boms[index].qty }}</td>
                 </tr>
               </tbody>
               <tfoot>
@@ -246,7 +246,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
 
 import { useRoute } from 'vue-router';          // Import useRouter
 
@@ -311,6 +311,7 @@ const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num'},
   { title: '物料編號', sortable: false, key: 'material_num'},
   { title: '需求數量', sortable: false, key: 'req_qty' },
+  { title: '現況數量', sortable: false, key: 'delivery_qty' },
   { title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
@@ -339,6 +340,8 @@ const outputStatus = ref({
 
 const currentUser = ref({});
 const componentKey = ref(0) // key 值用於強制重新渲染
+
+const currentBoms = ref([]);
 
 //const currentStartTime = ref(null);  // 記錄開始時間
 
@@ -874,14 +877,22 @@ const handleGifClick = async (item, index) => {
   hoveredItemIndex.value = index;
   isTableVisible.value = true;    // 設置表格可見
 
-  boms.value = [];
+  //boms.value = [];
   let payload = {
-    //order_num: item.order_num,
-    id: item.id,
+    order_num: item.order_num,
+    //id: item.id,
   };
   await getBoms(payload);
-  //console.log('Current hovered item index:', hoveredItemIndex.value);
-  //console.log("bom[]:", boms.value)
+  console.log('Current hovered item index:', hoveredItemIndex.value);
+  //reactiveBoms = reactive({ data: [...boms.value] });
+  //reactiveBoms = ref([...boms.value]);
+  console.log("bom[]:", boms.value)
+  //console.log("reactiveBoms:", reactiveBoms)
+  //currentBoms.value = [...boms.value];
+  //console.log("currentBoms[]:", currentBoms.value)
+  //console.log("currentBoms.rec:", currentBoms.value[0].receive)
+  //console.log("Raw currentBoms:", toRaw(currentBoms.value));
+  //await nextTick();
 };
 
 // 滑鼠移入表格時，保持表格顯示

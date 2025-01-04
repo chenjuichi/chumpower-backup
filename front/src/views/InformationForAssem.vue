@@ -60,7 +60,7 @@
           :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
         >
           <template #top>
-            <v-dialog v-model="dialog" max-width="800px">
+            <v-dialog v-model="dialog" max-width="960px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配紀錄
@@ -145,7 +145,11 @@
           <!-- 使用動態插槽來客製化 '現況進度' (show1_ok) 欄位的表頭 -->
           <template v-slot:header.show1_ok = "{ column }">
             <div
-              style="line-height: 1; margin: 0; padding: 0; text-align: left; display: flex; align-items: center; cursor: pointer;"
+              style="line-height: 1;
+              margin: 0; padding: 0;
+              display: flex;
+              cursor: pointer;
+              position: relative; left: 8px;"
             >
               <span>{{ column.title }}</span>
             </div>
@@ -250,10 +254,11 @@
 
   const headers = [
     { title: '訂單編號', sortable: true, key: 'order_num' },
-    { title: '現況進度', sortable: false, key: 'show1_ok'},
-    { title: '現況備註', sortable: false, key: 'show3_ok' },
-    { title: '交期', sortable: false, key: 'delivery_date' },
-    { title: '訂單數量', sortable: false, key: 'req_qty' },
+    { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
+    { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
+    { title: '交期', sortable: false, key: 'delivery_date', width:110 },
+    { title: '訂單數量', sortable: false, key: 'req_qty', width:110 },
+    { title: '現況數量', sortable: false, key: 'delivery_qty', width:110 },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
     { title: '', sortable: false, key: 'action' },
   ];

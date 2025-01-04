@@ -19,6 +19,9 @@ s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
 drop_table('bom')
 drop_table('assemble')
 drop_table('material')
+
+drop_table('abnormal_cause')
+
 drop_table('process')
 drop_table('agv')
 drop_table('user')        # 員工table

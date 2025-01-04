@@ -116,6 +116,7 @@ import { apiOperationB } from '../mixins/crudB.js';
 const listDirectory = apiOperation('post', '/listDirectory');
 const readFile = apiOperation('post', '/readFile');
 const saveFile = apiOperationB('post', '/saveFile');
+const stampFile = apiOperationB('post', '/stampFile');
 const downloadFile = apiOperationB('post', '/downloadFile');
 
 // === component name ==
@@ -237,7 +238,7 @@ const createNewPdf = () => {
   readFileFun();								// 檔案選擇後直接觸發 readFileFun 讀取檔案
 	//selectedFile.value = null;
 	fileReady.value = false;
-	//selectedFileName.value = '';
+	selectedFileName.value = '';
 
 	//if (showTextarea.value && showBarcodeButton.value) {
 	//	saveFileFun();		// 讀取檔案
@@ -248,15 +249,20 @@ const createNewPdf = () => {
 };
 
 const selectFile = (fileName) => {
-	console.log("selectFile(), fileName:", fileName.value);
+	console.log("selectFile(), fileName:", fileName);
+	if (fileName != undefined) {
+		console.log("selectFile step1")
+		let fileNameWithoutExtension = fileName.split('.').slice(0, -1).join('.');
+		selectedFile.value = fileName; 								// 保留完整檔案名稱
+		barcodeText.value = fileNameWithoutExtension; // 設置條碼文字為去除副檔名的名稱
+		fileReady.value = true; 											// 設置檔案準備好
 
-  let fileNameWithoutExtension = fileName.split('.').slice(0, -1).join('.');
-  selectedFile.value = fileName; 								// 保留完整檔案名稱
-  barcodeText.value = fileNameWithoutExtension; // 設置條碼文字為去除副檔名的名稱
-  fileReady.value = true; 											// 設置檔案準備好
+		selectedFileName.value = fileName;						// 更新選取的檔案名稱
+	//} else {
+	//	console.log("selectFile step2")
+	//	selectedFileName.value = '';
 
-  selectedFileName.value = fileName;						// 更新選取的檔案名稱
-
+	}
   //isReadingFile.value = true; 									// 開始讀取檔案
 	//readFileFun();	// 檔案選擇後直接觸發 readFileFun 讀取檔案
 };
@@ -303,10 +309,10 @@ const readFileFun = async () => {
 		console.log("readFileFun step1...")
     //fileContent.value = await readFile(payload);
     await readFile(payload);
-		console.log("selectedFile.value:", selectedFile.value);
-		console.log("readFileFun step2...")
+		//console.log("selectedFile.value:", selectedFile.value);
+		//console.log("readFileFun step2...")
     const fileNameWithoutExtension = selectedFile.value.split('.').slice(0, -1).join('.');
-		console.log("readFileFun step3...")
+		//console.log("readFileFun step3...")
     barcodeText.value = fileNameWithoutExtension;
 
     // 設置顯示條碼，並自動插入條碼
@@ -407,36 +413,48 @@ const saveFileFun = async () => {
 		await saveFile(payload);				// 儲存檔案(server端)
 		console.log('儲存檔案完成');
 
-		localPdf.value = false;
-		await downloadFileFun();				// 下載檔案(client端)
+		//localPdf.value = false;
+		await stampFileFun();
 	} catch (error) {
 		showSnackbar('儲存檔案錯誤！', 'red accent-2');
 		console.error('儲存檔案錯誤:', error);
 	}
-	/*
-  try {
-    const response = await saveFile(payload);
-
-		localPdf.value = false;	// 關閉對話框 dialog
-
-    if (response instanceof Blob) {
-      const url = window.URL.createObjectURL(response);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `NEW_${selectedFile.value}`);
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    }
-  } catch (error) {
-    showSnackbar('儲存檔案錯誤！', 'red accent-2');
-    console.error('儲存檔案錯誤:', error);
-  }
-	*/
-	emit('update:pdf', false);
+	//emit('update:pdf', false);
 };
+
+const stampFileFun = async () => {
+	console.log("stampFileFun()...")
+
+	const positionMapping = {
+	 x: 0, y: 0
+	};
+	const position = positionMapping || { x: 0, y: 0 };
+	console.log("position:", position)
+	console.log("currentPath:", currentPath.value)
+	console.log("selectedFile:", selectedFile.value)
+	console.log(`${currentPath.value}\\${selectedFile.value}`)
+
+	const payload = {
+    filepath: `${currentPath.value}\\${selectedFile.value}`,
+    updated_content: fileContent.value,
+    png_path: "C:\\vue\\chumpower\\pdf_file\\日期章\\stamp0.png",
+    //png_path: "C:\\vue\\chumpower\\pdf_file\\processed_image.png",
+		//pdfType: pdfType.value,
+  };
+
+	try {
+		await stampFile(payload);				// 儲存檔案(server端)
+		console.log('日期印章檔案完成');
+
+		//localPdf.value = false;
+		await downloadFileFun();				// 下載檔案(client端)
+	} catch (error) {
+		showSnackbar('日期印章檔案錯誤！', 'red accent-2');
+		console.error('日期印章檔案錯誤:', error);
+	}
+	//emit('update:pdf', false);
+};
+
 
 const updatePdf = (value) => {
 	localPdf.value = value;

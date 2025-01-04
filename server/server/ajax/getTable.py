@@ -121,8 +121,10 @@ def get_boms():
   # 檢查傳入的參數，選擇查詢條件
   material_record = None
   if _order_num is not None:  # 如果傳入了 order_num
+    #print("step for order_num")
     material_record = s.query(Material).filter_by(order_num=_order_num).first()
   elif _id is not None:       # 如果傳入了 id
+    #print("step for id")
     material_record = s.query(Material).filter_by(id=_id).first()
 
   #if material_record is None:
@@ -159,6 +161,7 @@ def get_boms():
 
   temp_len = len(results)
   print("getBoms, 總數: ", temp_len)
+  #print("getBoms: ", results)
   if (temp_len == 0):
     return_value = False
 
@@ -241,9 +244,9 @@ def get_materials_and_assembles_by_user():
       '110': '檢驗'
     }
     code_to_assembleStep = {
-      '109': 3,
-      '106': 2,
-      '110': 1
+      '109': 3,   #第1, 1,      個製程
+      '106': 2,   #第2     1,   個製程
+      '110': 1    #第3, 2, 2, 1 個製程
     }
 
     #       0         1        2          3        4            5           6            7           8            9
@@ -252,28 +255,42 @@ def get_materials_and_assembles_by_user():
     # 使用 with_for_update() 來加鎖
     _objects = s.query(Material).with_for_update().all()
 
-    # 初始化一個 set 來追蹤已處理的 (order_num, format_name)
+    ## 初始化一個 set 來追蹤已處理的 (order_num, format_name)
+    # 初始化一個 set 來追蹤已處理的 (order_num_id, format_name)
     processed_records = set()
 
-    # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
+    ## 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
+    # 初始化一個暫存字典來存放每個 order_num_id 下的最大 process_step_code
     max_step_code_per_order = {}
 
     # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
     for material_record in _objects:
       for assemble_record in material_record._assemble:
-        # 檢查員工編號是否符合及生產報工的已領取總數不為0
+
+        # 檢查員工編號是否符合, 且生產報工的已領取總數不為0
         if assemble_record.user_id != _user_id or assemble_record.total_ask_qty == 0:
           continue  # 如果不符合，跳過這筆紀錄
 
-        code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
-        step_code = code_to_assembleStep.get(code, 0)      # 取得對應的 step code
-        order_num = material_record.order_num              # 訂單編號
-
+        code = assemble_record.work_num[1:]                 # 取得字串中的代碼 (去掉字串中的第一個字元)
+        step_code = code_to_assembleStep.get(code, 0)       # 取得對應的 step code
+        #order_num = material_record.order_num               # 訂單編號
+        order_num_id = material_record.id                   # 該筆訂單編號的table id
+        '''
         # 設定或更新該 order_num 下的最大 step code
         if order_num not in max_step_code_per_order:
             max_step_code_per_order[order_num] = step_code
         else:
             max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
+        '''
+        # 設定或更新該 order_num_id 下的最大 step code
+        if order_num_id not in max_step_code_per_order:
+            max_step_code_per_order[order_num_id] = step_code
+        else:
+            max_step_code_per_order[order_num_id] = max(max_step_code_per_order[order_num_id], step_code)
+
+    #流程追蹤與狀態管理：
+    #根據工序代碼（如 '106', '109', '110'）判斷當前流程階段，並匹配對應的名稱和步驟。
+    #追蹤每個訂單的最大進度階段，確保顯示的資料反映正確的流程狀態。
 
     # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
     #_objects = s.query(Material).all()
@@ -287,14 +304,20 @@ def get_materials_and_assembles_by_user():
         code = assemble_record.work_num[1:]                 # 取得字串中的代碼 (去掉字串中的第一個字元)
         name = code_to_name.get(code, '')                   # 查找對應的中文名稱
         format_name = f"{assemble_record.work_num}({name})"
-        order_num = material_record.order_num               # 訂單編號
-
+        #order_num = material_record.order_num               # 訂單編號
+        order_num_id = material_record.id                   # 該筆訂單編號的table id
+        '''
         # 如果 (order_num, format_name) 組合已經存在，則跳過
         if (order_num, format_name) in processed_records:
           continue
+        '''
+        # 如果 (order_num_id, format_name) 組合已經存在，則跳過
+        if (order_num_id, format_name) in processed_records:
+          continue
 
         # 比較該筆記錄的 step_code 是否為該訂單下最大的
-        max_step_code = max_step_code_per_order.get(order_num, 0)
+        #max_step_code = max_step_code_per_order.get(order_num, 0)
+        max_step_code = max_step_code_per_order.get(order_num_id, 0)
         step_code = assemble_record.process_step_code
         step_enable = (step_code == max_step_code)                # 如果是最大值，則啟用
         num = int(material_record.show2_ok)
@@ -306,21 +329,24 @@ def get_materials_and_assembles_by_user():
           temp_assemble_process_str = temp_assemble_process_str + material_record.shortage_note
 
         _object = {
+          'id': material_record.id,                   #訂單編號
           'order_num': material_record.order_num,                   #訂單編號
           'assemble_work': format_name,                             #工序
           'material_num': material_record.material_num,             #物料編號
-          'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
+          'assemble_process': '' if (num > 2 and not step_enable) else str2[num],       #途程目前狀況 isTakeOk & step_enable
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
           'req_qty': assemble_record.meinh_qty,                                         #需求數量(作業數量)
           'total_ask_qty': assemble_record.total_ask_qty,
-          'total_receive_qty_num': assemble_record.total_ask_qty,               #領取總數量
+          'total_receive_qty_num': assemble_record.total_ask_qty,                       #領取總數量
           'total_receive_qty': f"({assemble_record.total_completed_qty})",              # 已完成總數量
           'total_receive_qty_num': assemble_record.total_completed_qty,
           'receive_qty': assemble_record.completed_qty,                                 #完成數量
           'delivery_date': material_record.material_delivery_date,                      #交期
+          'delivery_qty': material_record.delivery_qty,                                 #現況數量
           'comment': cleaned_comment,                                                   #說明
           'isTakeOk' : material_record.isTakeOk,
+          'isAssembleAlarm' : material_record.isAssembleAlarm,
           'whichStation' : material_record.whichStation,
           'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程1完成
           'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,       # true:組裝站製程2完成
@@ -331,8 +357,10 @@ def get_materials_and_assembles_by_user():
           'process_step_enable': step_enable,
         }
 
-        # 將 (order_num, format_name) 加入 processed_records 並加入 _results
-        processed_records.add((order_num, format_name))
+        ## 將 (order_num, format_name) 加入 processed_records 並加入 _results
+        #processed_records.add((order_num, format_name))
+        # 將 (order_num_id, format_name) 加入 processed_records 並加入 _results
+        processed_records.add((order_num_id, format_name))
         _results.append(_object)
 
     s.close()

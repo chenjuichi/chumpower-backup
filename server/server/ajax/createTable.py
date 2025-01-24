@@ -2,7 +2,7 @@ import math
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
-from database.tables import User, Process, Agv, Material, Bom, Permission, Setting, Session
+from database.tables import User, Process, Agv, Material, Bom, Permission, Product, Setting, Session
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 

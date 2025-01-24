@@ -123,7 +123,7 @@ def read_all_excel_files():
 
   # 讀取指定目錄下的所有指定檔案名稱
   files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
-  if (files):   #有工單檔案, if condition_a
+  if (files):   #有工單檔案
     sheet_names_to_check = [
       current_app.config['excel_product_sheet'],
       current_app.config['excel_bom_sheet'],
@@ -131,14 +131,17 @@ def read_all_excel_files():
     ]
     _startRow = int(current_app.config['startRow'])
 
+    id_index = 0
+
     s = Session()
 
-    for _file_name in files:  #檔案讀取, for loop_1
+    for _file_name in files:  #檔案讀取
       file_count_total +=1
       _path = _base_dir + '\\' + _file_name
       global_var = _path + ' 檔案讀取中...'
 
-      with open(_path, 'rb') as file:   # with loop_1_a
+      #try:
+      with open(_path, 'rb') as file:
         workbook = openpyxl.load_workbook(filename=file, read_only=True)
         return_value = True
         return_message1 = ''
@@ -151,22 +154,62 @@ def read_all_excel_files():
           break
 
         print(sheet_names_to_check[0] + ' sheet exists, data reading...')
+        '''
+        sheet = workbook[sheet_names_to_check[0]]             #取得工作表,組裝表
+        _results = []
+        for i in range(_startRow, sheet.max_row+1):
+          if sheet.cell(row=i, column=1).value is None:   #資料讀取完畢
+            break
 
+          _order_num = str(sheet.cell(row = i, column = 2).value).strip()           #訂單編號
+          _material_num = str(sheet.cell(row = i, column = 3).value).strip()        #料號(成品料號)
+          _material_comment = str(sheet.cell(row = i, column = 4).value).strip()    #料號說明
+          _material_qty = sheet.cell(row = i, column = 7).value                     #數量
+          _material_date = sheet.cell(row = i, column = 5).value                    #建置日期
+
+          newItem = s.query(Material).filter_by(order_num = _order_num, material_num=_material_num).first()
+          return_value = True
+          return_message2 =''
+          if newItem:           #工單內容重複
+            return_value = False
+            return_message2 = '錯誤! 在' + _path + '檔案內, 系統已經有' + _order_num +'訂單及' + _material_num + '物料編號 相同資料...'
+            print(return_message2)
+            continue
+
+          _obj = Material(
+            order_num = _order_num,
+            material_num = _material_num,
+            material_comment = _material_comment,
+            material_qty = _material_qty,
+            material_date = _material_date,
+          )
+
+          _results.append(_obj)
+
+          #file_count_ok += 1        #continue for loop
+
+        s.bulk_save_objects(_results)
+
+        s.commit()
+        '''
         material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
         bom_df = pd.read_excel(_path, sheet_name=1)       # Second sheet for Bom
         assemble_df = pd.read_excel(_path, sheet_name=2)  # 3rd sheet for Assemble
 
-        # Insert Material data, for loop_1_a_1
+        #print("material_df.columns:",material_df.columns)
+
+        # Insert Material data
         for index, row in material_df.iloc[0:].iterrows():
           tempQty=row['數量']
           material = Material(
-            order_num=row['單號'],
-            material_num=row['料號'],
-            material_comment=row['說明'],
-            material_qty=tempQty,
-            material_date=convert_date(row['立單日']),
-            material_delivery_date=convert_date(row['交期']),
-            total_delivery_qty=tempQty,
+              order_num=row['單號'],
+              material_num=row['料號'],
+              material_comment=row['說明'],
+              material_qty=tempQty,
+              material_date=convert_date(row['立單日']),
+              material_delivery_date=convert_date(row['交期']),
+
+              total_delivery_qty=tempQty,
           )
           s.add(material)
           s.flush()
@@ -176,16 +219,18 @@ def read_all_excel_files():
           )
           s.add(product)
 
-          s.commit()
+          s.commit()  # Commit each material individually to get the `id`
 
           material_order = str(row.iloc[1]).strip()                 #確保 row.iloc[1] 為 str 型別
+
+          id_index += 1
 
           bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)      #檢查是否存在 NaN 值
           bom_df['訂單'] = bom_df['訂單'].fillna('').astype(str)     #保持字串型態
           bom_entries = bom_df[bom_df.iloc[:, 0] == material_order] # 查詢對應的 BOM 項目
           print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
 
-          # Insert corresponding BOM entries, for loop_1_a_1_a
+          # Insert corresponding BOM entries
           for bom_index, bom_row in bom_entries.iterrows():
 
             bom = Bom(
@@ -197,13 +242,19 @@ def read_all_excel_files():
                 start_date=convert_date(row['交期'])
             )
             s.add(bom)
-          #end for loop_1_a_1_a
+
+            #print("Bom:", bom_index, bom_row.iloc[0])
+
           s.commit()
 
+          #print(assemble_df.head())
+
+          #assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str) == str(material_order)]  #資料類型一致性
           assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str).str.strip() == material_order.strip()]  #清除空格
           print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+          #print("index:", index)
 
-          # Insert corresponding Assemble entries, for loop_1_a_1_b
+          # Insert corresponding Assemble entries
           for assemble_index, assemble_row in assemble_entries.iterrows():
             # 處理 NaN 值，將 NaN 替換為 None（SQLAlchemy 可以接受 None）
             reason = assemble_row['差異原因'] if not pd.isna(assemble_row['差異原因']) else None
@@ -213,10 +264,11 @@ def read_all_excel_files():
             GMEIN = assemble_row['確認良品率 (GMEIN)']
             if GMEIN == 0:
               continue
-
+            #
             workNum = assemble_row['工作中心']
             code = workNum[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
             step_code = code_to_assembleStep.get(code, 0)   #
+            #
 
             assemble = Assemble(
               material_id=material.id,                    # Use the ID of the inserted material
@@ -234,25 +286,45 @@ def read_all_excel_files():
               confirm_comment = confirm_comment,
             )
             s.add(assemble)
-          #end for loop_1_a_1_b
+
+            #print("Assemble:", assemble_index, assemble_row.iloc[0])
+
           s.commit()
-        #end for loop_1_a_1
-      #end with loop_1_a
+
+      #except pymysql.err.IntegrityError as e:
+      #    s.rollback()
+      #    print(f"IntegrityError: {e}")
+      #except exc.IntegrityError as e:
+      #    s.rollback()
+      #    print(f"SQLAlchemy IntegrityError: {e}")
+      #except Exception as e:
+      #    s.rollback()
+      #    print(f"Exception: {e}")
+
 
       try:
+
         unique_filename = get_unique_filename(_target_dir, _file_name, "copy")  # 生成唯一檔案名稱
-        unique_target_path = os.path.join(_target_dir, unique_filename)         # 獲取完整目標路徑
+        unique_target_path = os.path.join(_target_dir, unique_filename)  # 獲取完整目標路徑
         print("unique_target_path:",unique_target_path)
-        shutil.move(_path, unique_target_path)                                  # 移動檔案到目標路徑
+        shutil.move(_path, unique_target_path)  # 移動檔案到目標路徑
         print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
       except PermissionError as e:
         print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
       except Exception as e:
         print(f"移動檔案時發生錯誤: {e}")
 
-    #end for loop_1
+
+      '''
+      # 移動檔案到目標目錄
+      try:
+        shutil.move(_path, _target_dir)
+      except PermissionError as e:
+        print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
+      '''
+    #end for loop
+
     s.close()
-  #end if condition_a
 
   return jsonify({
     'status': return_value,

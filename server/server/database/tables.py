@@ -117,6 +117,15 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
 # ------------------------------------------------------------------
 
 
+association_material_abnormal = Table('association_material_abnormal', BASE.metadata,
+  Column('material_id', Integer, ForeignKey('material.id')),
+  Column('abnormal_cause_id', Integer, ForeignKey('abnormal_cause.id'))
+)
+
+
+# ------------------------------------------------------------------
+
+
 class Material(BASE):
     __tablename__ = 'material'
 
@@ -144,6 +153,9 @@ class Material(BASE):
     station1_Qty = Column(Integer)
     station2_Qty = Column(Integer)
     station3_Qty = Column(Integer)
+    assemble_qty = Column(Integer, default=0)                       #(組裝）完成數量
+    total_assemble_qty = Column(Integer, default=0)                 #已(組裝）完成總數量
+
     whichStation = Column(Integer, default=1)                       # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
     show1_ok = Column(String(20), server_default='1')
     show2_ok = Column(String(20), server_default='0')
@@ -155,6 +167,8 @@ class Material(BASE):
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),
     _assemble =  relationship('Assemble', backref="material")       # 一對多(一),
+    _abnormal_cause = relationship("AbnormalCause", secondary=association_material_abnormal, back_populates="_material")
+    _product =  relationship('Product', backref="material")         # 一對多(一),
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
@@ -189,9 +203,10 @@ class AbnormalCause(BASE):
     __tablename__ = 'abnormal_cause'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    _material =  relationship('Material', backref="abnormal_cause")     # 一對多(一),
-    area = Column(Integer, default=1)                                   #發生異常原因的區域, 1:組裝區, 2:成品區, 3:加工區
+    number = Column(String(6), nullable=False)                          #異常原因訊息編號
     message = Column(String(30), nullable=False)                        #異常原因訊息
+    _material = relationship("Material", secondary=association_material_abnormal, back_populates="_abnormal_cause")
+    create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
     def __repr__(self):
@@ -262,7 +277,8 @@ class Assemble(BASE):
     work_num = Column(String(20))                                 #工作中心
     process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
     ask_qty = Column(Integer, default=0)                          #領取數量
-    total_ask_qty = Column(Integer, default=0)                    #已領取總數量
+    total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
+    total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
     user_id = Column(String(8))                                   #員工編號(領料)
     good_qty = Column(Integer, default=0)                         #確認良品數量
     total_good_qty = Column(Integer, default=0)                   #已交付確認良品總數
@@ -276,13 +292,17 @@ class Assemble(BASE):
     total_completed_qty = Column(Integer, default=0)              #已完成總數量
 
     reason = Column(String(50))                                   #差異原因
-    #emp_num = Column(String(8))                                   #員工編號 8碼
+    #emp_num = Column(String(8))                                  #員工編號 8碼
     confirm_comment = Column(String(70))                          #確認內文
     is_assemble_ok = Column(Boolean, default=False)               # true: 目前途程為組裝, false: 不是
 
     currentStartTime = Column(String(30))                         #領料生產報工開始時間
+    currentEndTime = Column(String(30))                           #完工生產報工結束時間
     input_disable = Column(Boolean, default=False)                #領取數量達上限(作業數量), 禁止再輸入
     input_end_disable = Column(Boolean, default=False)            #完成數量達上限(作業數量), 禁止再輸入
+    isAssembleStationShow = Column(Boolean, default=False)        # true:完成生產報工(最後途程的結束鍵按下), 且是最後1個製成, 且已經call AGV, disable,
+    alarm_enable = Column(Boolean, default=True)                 # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
+    alarm_message = Column(String(30), default='')
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
@@ -313,6 +333,45 @@ class Assemble(BASE):
         'is_assemble_ok': self.is_assemble_ok,
       }
       '''
+      return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+
+
+# ------------------------------------------------------------------
+
+
+class Product(BASE):
+    __tablename__ = 'product'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)    #
+    material_id = Column(Integer, ForeignKey('material.id'))      #訂單號碼
+    #material_num = Column(String(20), nullable=False)             #料號
+    #material_comment = Column(String(70), nullable=False)         #料號說明
+    #seq_num = Column(String(20), nullable=False)                  #序號
+    #work_num = Column(String(20))                                 #工作中心
+    #process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
+    ask_qty = Column(Integer, default=0)                          #領取數量(移入到站數量)
+    #total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
+    ask_qty_end = Column(Integer, default=0)                      #結束數量(到站確認數量)
+    #total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量
+    user_id = Column(String(8))                                   #員工編號(領料)
+    good_qty = Column(Integer, default=0)                         #交付確認良品數量
+    non_good_qty = Column(Integer, default=0)                     #廢品數量
+    reason = Column(String(50))                                   #差異原因
+    confirm_comment = Column(String(70))                          #確認內文
+    is_product_ok = Column(Boolean, default=False)                # true: 目前到站途程為成品站, false: 不是
+    currentStartTime = Column(String(30))                         #報工開始時間
+    currentEndTime = Column(String(30))                           #報工結束時間
+    input_disable = Column(Boolean, default=False)                #禁止再輸入
+    isProductStationShow = Column(Boolean, default=False)         # true:完成報工(入庫checkbox on), 最後一個途程,
+    create_at = Column(DateTime, server_default=func.now())
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      fields = ', '.join([f"{name}={getattr(self, name)}" for name in self.__mapper__.columns.keys()])
+      return f"<LargeTable({fields})>"
+
+    # 定義class的dict內容
+    def get_dict(self):
       return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
 
 

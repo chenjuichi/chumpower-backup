@@ -47,7 +47,7 @@
       <template v-slot:top>
         <v-card>
           <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
-            組裝區備料清單
+            成品區入庫資訊
             <v-spacer />
 
             <!--客製化 匯入清單按鍵-->

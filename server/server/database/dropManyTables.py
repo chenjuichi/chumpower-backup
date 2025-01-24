@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text, MetaData
 
 s = Session()
+
 def drop_table(table_name):
     base = declarative_base()
     metadata = MetaData()
@@ -11,6 +12,8 @@ def drop_table(table_name):
     if table is not None:
         print("Dropping table", table_name)
         base.metadata.drop_all(engine, [table], checkfirst=True)
+    else:
+        print(f"Table {table_name} does not exist. Skipping...")
 
 # 設定 FOREIGN_KEY_CHECKS = 0
 s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
@@ -18,8 +21,10 @@ s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
 # 執行多個資料表的 DROP
 drop_table('bom')
 drop_table('assemble')
-drop_table('material')
+drop_table('product')
 
+drop_table('association_material_abnormal')
+drop_table('material')
 drop_table('abnormal_cause')
 
 drop_table('process')
@@ -33,4 +38,4 @@ s.execute(text('SET FOREIGN_KEY_CHECKS = 1'))
 
 s.close()
 
-print("Drop table is ok...")
+print("Drop table process completed...")

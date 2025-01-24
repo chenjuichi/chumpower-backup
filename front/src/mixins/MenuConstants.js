@@ -61,7 +61,8 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 14, text: "1.檢料生產報工", to: '/g1', isEnabled: false, isSegment: false },
+      //{ id: 14, text: "1.檢料生產報工", to: '/g1', isEnabled: false, isSegment: false },
+      { id: 14, text: "1.入庫登錄", to: '/g1', isEnabled: false, isSegment: false },
       { id: 15, text: "2.完成生產報工", to: '/g2', isEnabled: false, isSegment: false },
       { id: 16, text: "3.異常填報", to: '/g3', isEnabled: false, isSegment: false },
     ]

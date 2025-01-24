@@ -46,7 +46,7 @@
       </v-card>
     </template>
 
-    <!-- 使用動態插槽來客製化 '訂單編號' (order_num) 欄位的表頭 -->
+    <!-- 客製化 '訂單編號' (order_num) 欄位的表頭 -->
     <template v-slot:header.order_num="{ column }">
       <v-hover v-slot="{ isHovering, props }">
         <div
@@ -69,7 +69,7 @@
       </v-hover>
     </template>
 
-    <!-- 使用動態插槽來客製化 '需求數量' (req_qty) 欄位的表頭 -->
+    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 -->
     <template v-slot:header.req_qty="{ column }">
       <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
         <div>{{ column.title }}</div>
@@ -152,8 +152,9 @@
           :id="`receiveQtyID-${item.assemble_id}`"
           @update:modelValue="checkReceiveQty(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
-          @keyup.enter="updateItem(item)"
-          :disabled="item.input_disable"
+          @keyup.enter="updateItem2(item)"
+
+          :disabled="isButtonDisabled(item)"
         />
         <span
           v-show="item.tooltipVisible"
@@ -311,7 +312,7 @@ const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num'},
   { title: '物料編號', sortable: false, key: 'material_num'},
   { title: '需求數量', sortable: false, key: 'req_qty' },
-  { title: '現況數量', sortable: false, key: 'delivery_qty' },
+  { title: '備料數量', sortable: false, key: 'delivery_qty' },
   { title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
@@ -570,24 +571,28 @@ const initialize = async () => {
 };
 
 const isButtonDisabled = (item) => {
+  console.log("item.whichStation:",item.whichStation, item.whichStation != 2);
+  console.log("item.input_disable:",item.input_disable);
+  console.log("!item.process_step_enable:",!item.process_step_enable);
+  console.log("OR return value:",(item.whichStation != 2 || item.input_disable) || !item.process_step_enable);
   return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable;
   //return (item.whichStation != 2 || item.input_disable) || item.process_step_enable==0;
 };
 
 const checkReceiveQty = (item) => {
-  console.log("checkReceiveQty,", item);
+  console.log("checkReceiveQty(),", item);
 
   const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
   const temp = Number(item.req_qty)
   if (total > temp) {
     //console.log("total, temp, step1...");
-    receive_qty_alarm.value = '領取數量超過作業數量!';
+    receive_qty_alarm.value = '領取數量超過現況數量!';
     item.tooltipVisible = true;     // 顯示 Tooltip
     setTimeout(() => {
       item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
       item.receive_qty = '';        // 清空輸入欄位
     }, 2000);
-    console.error('領取數量超過需求數量');
+    console.error('領取數量超過現況數量!');
   } else {
     item.tooltipVisible = false;
   }
@@ -619,18 +624,6 @@ const handleKeyDown = (event) => {
   }
 };
 
-const handleEscClose = async () => {
-  console.log("Dialog closed via ESC key");
-
-  dialog.value = false;
-};
-
-const handleOutsideClick = async () => {
-  console.log("Dialog closed by clicking outside");
-
-  dialog.value = false;
-};
-
 const getStatusStyle = (status) =>{
   const colorMap = {
     0: '#ff0018',
@@ -648,6 +641,19 @@ const getStatusStyle = (status) =>{
     fontWeight: '600',
     fontSize: '12px',
   };
+};
+
+const updateItem2 = async (item) => {
+  console.log("updateItem2(),", item);
+
+  // 檢查是否輸入了空白或 0
+  if (!item.receive_qty || Number(item.receive_qty) === 0) {
+    item.receive_qty = Number(item.delivery_qty) || 0;
+  } else {
+    item.receive_qty = Number(item.receive_qty) || 0;
+  }
+
+  item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
 };
 
 const updateItem = async (item) => {
@@ -670,7 +676,7 @@ const updateItem = async (item) => {
 
   // 確認是第1次領料
   if (item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0) {
-    // 1.記錄當前組裝開始時間
+    // 記錄當前領料生產開始時間
     payload = {
       assemble_id: item.assemble_id,
       record_name: 'currentStartTime',

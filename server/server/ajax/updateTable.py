@@ -1,14 +1,17 @@
+import os
 import time
 import datetime
+import shutil
 import pytz
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
+
 import pymysql
 from sqlalchemy import exc
 from sqlalchemy import func
 from sqlalchemy import distinct
 
-from database.tables import User, Permission, Setting, Bom, Material, Assemble, Agv, Session
+from database.tables import User, Permission, Setting, Bom, Material, Assemble, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -18,6 +21,17 @@ updateTable = Blueprint('updateTable', __name__)
 
 
 # ------------------------------------------------------------------
+
+
+# 生成唯一檔案名稱的函式
+def get_unique_filename(target_dir, filename, chip):
+    base, ext = os.path.splitext(filename)  # 分離檔案名稱與副檔名
+    counter = 1
+    unique_filename = filename
+    while os.path.exists(os.path.join(target_dir, unique_filename)):  # 檢查檔案是否已存在
+      unique_filename = f"{base}_{chip}_{counter}{ext}"  # 為檔名新增後綴
+      counter += 1
+    return unique_filename
 
 
 # update user's password from user table
@@ -233,7 +247,7 @@ def update_bom(material_id):
 def update_bom(material_id):
     data = request.json
     material_id = data.get("material_id")
-    bom_data = data.get("bom_data", [])
+    _bom_data = data.get("bom_data", [])
 
     # 驗證 Material 是否存在
     material = session.query(Material).filter_by(id=material_id).first()
@@ -246,7 +260,7 @@ def update_bom(material_id):
 
     # 新增的 material_num
     new_entries = []
-    for bom_entry in bom_data:
+    for bom_entry in _bom_data:
         material_num = bom_entry.get("material_num")
         if material_num not in existing_material_nums:
             new_bom = Bom(
@@ -273,21 +287,86 @@ def update_bom(material_id):
         "new_entries": new_entries
     })
 
+@updateTable.route('/updateAssembleProcessStep', methods=['POST'])
+def update_assemble_process_step():
+  print("updateAssembleProcessStep....")
+
+  data = request.json
+
+  if not data or 'id' not in data or 'asm_id' not in data:
+    return jsonify({"error": "Missing parameters '_id' or 'asm_id'"}), 400
+
+  material_id = data['id']
+  assemble_id = data['asm_id']
+  return_value = False
+
+  s = Session()
+
+  material_record = s.query(Material).filter_by(id=material_id).first()
+
+  if not material_record:
+    return jsonify({"error": f"Material with id {material_id} not found"}), 404
+
+  assemble_record = s.query(Assemble).filter_by(id=assemble_id, material_id=material_id).first()
+
+  if not assemble_record:
+    return jsonify({"error": f"Assemble with id {asm_id} and material_id {material_id} not found"}), 404
+
+
+  assemble_records = material_record._assemble
+
+  #if not assemble_records:
+  #  return jsonify({"message": f"No assemble records linked to material_id {material_id}"}), 200
+
+  # 檢查 process_step_code 是否全部為 0
+  all_process_step_zero = all(record.process_step_code == 0 for record in assemble_records)
+
+  # 如果條件滿足，更新 material 表
+  if all_process_step_zero:
+    material_record.isAssembleStation3TakeOk = True
+    assemble_record.isAssembleStationShow = True
+    return_value = True
+    #return jsonify({"message": "Material updated successfully"}), 200
+  else:
+    material_record.isAssembleStation3TakeOk = False
+    assemble_record.isAssembleStationShow = False
+    return_value = False
+    #return jsonify({"message": "Not all process_step_code are zero"}), 200
+  s.commit()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
 @updateTable.route("/updateModifyMaterialAndBoms", methods=['POST'])
 def update_modify_material_and_Boms():
   print("updateModifyMaterialAndBoms....")
 
   data = request.json
   _id = data.get("id")
-  bom_data = data.get("bom_data", [])
+  _date = data.get("date")
+  _qty = data.get("qty")
+  _fileName = data.get("file_name")
+  _bom_data = data.get("bom_data", [])
+  print("bom_data:", _bom_data)
+
+  return_value = True
 
   s = Session()
 
-  #find_material = s.query(Material).filter_by(id = _id).first() #找出一筆工單資料
-  s.query(Material).filter(Material.id == _id).update({
-    "material_delivery_date": _show1_ok,
-    "material_qty": _show2_ok,
-  })
+  update_data = {}
+  if _date is not None:
+      update_data["material_delivery_date"] = _date
+  if _qty is not None:
+      update_data["material_qty"] = _qty
+
+  if update_data:
+    rows_updated = s.query(Material).filter(Material.id == _id).update(update_data)
+
+  if rows_updated == 0:
+    return_value = False
+    raise ValueError("Update failed: no rows affected")
 
   s.commit()
 
@@ -295,16 +374,17 @@ def update_modify_material_and_Boms():
   existing_bom = s.query(Bom).filter_by(material_id = _id).all()
   existing_materials = {bom.material_num for bom in existing_bom}
 
-  for bom_entry in bom_data:
+  for bom_entry in _bom_data:
     material_num = bom_entry.get("material_num")
     if material_num not in existing_materials:
+      print("bom_entry:",bom_entry)
       new_bom = Bom(
-        material_id = find_material.id,
+        material_id = _id,
         material_num = material_num,
         seq_num = bom_entry.get("seq_num"),
-        material_comment = bom_entry.get("material_comment"),
-        req_qty = bom_entry.get("req_qty"),
-        start_date = find_material.material_delivery_date
+        material_comment = bom_entry.get("mtl_comment"),
+        req_qty = bom_entry.get("qty"),
+        start_date = _date
       )
       s.add(new_bom)
 
@@ -312,8 +392,26 @@ def update_modify_material_and_Boms():
 
   s.close()
 
+  # 在程式的移動檔案邏輯中使用
+  try:
+    if return_value:
+      _base_dir = current_app.config['baseDir']
+      _modify_dir = _base_dir.replace("_in", "_modify")
+      _target_dir = _base_dir.replace("_in", "_out")
+      _path = _modify_dir + '\\' + _fileName
+      print("file_name:", _fileName)
+
+      unique_filename = get_unique_filename(_target_dir, _fileName, "mdf")  # 生成唯一檔案名稱
+      unique_target_path = os.path.join(_target_dir, unique_filename)  # 獲取完整目標路徑
+      shutil.move(_path, unique_target_path)  # 移動檔案到目標路徑
+      print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+  except PermissionError as e:
+    print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
+  except Exception as e:
+    print(f"移動檔案時發生錯誤: {e}")
+
   return jsonify({
-    'status': True
+    'status': return_value
   })
 
 
@@ -328,6 +426,7 @@ def update_material():
     _id = request_data.get('id')
     _record_name = request_data['record_name']
     _record_data = request_data['record_data']
+    print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
 
     return_value = True  # true: 資料正確, 註冊成功
     s = Session()
@@ -483,7 +582,6 @@ def update_permissions():
   return jsonify({
     'status': return_value
   })
-
 
 
 # create agv data table

@@ -21,11 +21,14 @@ export const materials_and_assembles_by_user = ref([]);
 // for listInformations
 export const informations = ref([]);
 
+// for listInformationsForAssembleError
+export const informations_for_assemble_error = ref([]);
+
 // for listAssembleInformations
 export const assembleInformations = ref([]);
 
 // for listAbnormalCauses
-export const abnormalCauses = ref([]);
+export const abnormal_causes = ref([]);
 
 // for getBoms
 export const boms = ref([]);
@@ -119,16 +122,20 @@ export const apiOperation = (operation, path, payload) => {
             materials.value = [...res.data.materials];
           }
 
-          if (path == '/listAbnormalCauses') {
-          abnormalCauses.value = [...res.data.abnormalCauses];
-          }
-
           if (path == '/listMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
           }
 
           if (path == '/listInformations') {
             informations.value = [...res.data.informations];
+          }
+
+          if (path == '/listAbnormalCauses') {
+            abnormal_causes.value = [...res.data.abnormal_causes];
+          }
+
+          if (path == '/listInformationsForAssembleError') {
+            informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];
           }
 
           if (path == '/listAssembleInformations') {
@@ -166,7 +173,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
-              path == '/createProcess' || path == '/updateModifyMaterialAndBoms') {
+              path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }
@@ -174,6 +181,10 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles') {
             //console.log("res.data:", res.data);
             return res.data;
+          }
+
+          if (path == '/getInformationsForAssembleErrorByHistory') {
+            informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];
           }
 
           /*

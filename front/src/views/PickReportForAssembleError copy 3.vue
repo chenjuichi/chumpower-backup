@@ -1,5 +1,5 @@
 <template>
-  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle">
+  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
       {{ snackbar_info }}
@@ -10,201 +10,137 @@
       </template>
     </v-snackbar>
 
-    <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
-      <v-card flat class="card-container">
-        <v-card-title class="d-flex align-center pe-2 sticky-card-title">
-          組裝區在製品生產資訊
-          <v-divider class="mx-4" inset vertical></v-divider>
-          <v-spacer></v-spacer>
-        <!--
-          <v-btn
-            color="primary"
-            variant="outlined"
-            style="position: relative; left: 125px; top: 0px;"
-          >
-            <v-icon left color="green">mdi-microsoft-excel</v-icon>
-            更新現況
-          </v-btn>
-        -->
-          <v-btn
-            color="primary"
-            variant="outlined"
-            style="position: relative; left: 130px; top: 10px; min-height: 20px; height: 34px;"
-          >
-            <v-icon left color="blue">mdi-history</v-icon>
-            歷史紀錄
-          </v-btn>
-
-          <v-text-field
-            v-model="search"
-            label="Search"
-            prepend-inner-icon="mdi-magnify"
-            variant="outlined"
-            hide-details
-            single-line
-            style="position: relative; top: -2px; min-height: 10px; height:10px;"
-            density="compact"
-          ></v-text-field>
-        </v-card-title>
-        <v-divider></v-divider>
-        <v-data-table
-          :headers="headers"
-          :items="informations"
-          fixed-header
-          items-per-page="5"
-          item-value="order_num"
-          :items-length="informations.length"
-          v-model:page="pagination.page"
-          class="outer custom-header"
-          :style="tableStyle"
-          :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
-        >
-          <template #top>
-            <v-dialog v-model="dialog" max-width="960px">
-              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  裝配紀錄
-                  <v-fade-transition mode="out-in">
-                    <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-check-circle-outline"
-
-                      text="關閉"
-                      class="text-none"
-                      @click="updateItem"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
-                </v-card-title>
-
-                <v-card-text>
-                  <v-table class="inner" density="compact" fixed-header>
-                    <thead style="color: black;">
-                      <tr>
-                        <th class="text-left">備料/裝配</th>
-                        <th class="text-left">開始時間</th>
-                        <th class="text-left">結束時間</th>
-                        <th class="text-left">領料數量</th>
-                        <th class="text-left">實際耗時(分)</th>
-                        <th class="text-left">實際工時(分)</th>
-                        <th class="text-left">單件標工(分)</th>
-                        <th class="text-left">人員註記</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      <tr
-                        v-for="(detail_item, index) in informationDetails"
-                        :key="bom_item.seq_num"
-                        :style="{
-                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                        }"
-                      >
-                        <td>{{ bom_item.seq_num }}</td>
-                        <td>
-                          <div>
-                            <div>{{ bom_item.material_num }}</div>
-                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                          </div>
-                        </td>
-                        <td>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                        </td>
-                        <td>
-                          <div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                          </div>
-                        </td>
-                        <td><v-checkbox-btn v-model="bom_item.receive" /></td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
-          </template>
-
-          <!--
-          <template v-slot:item.order_num="{ item }">
-            <div>
-              <div>{{ item.order_num }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.process_num }}</div>
-            </div>
-          </template>
-
-          <template v-slot:item.material_num="{ item }">
-            <div>
-              <div>{{ item.material_num }}</div>
-              <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-            </div>
-          </template>
-          -->
-          <!-- 使用動態插槽來客製化 '現況進度' (show1_ok) 欄位的表頭 -->
-          <template v-slot:header.show1_ok = "{ column }">
-            <div
-              style="line-height: 1;
-              margin: 0; padding: 0;
-              display: flex;
-              cursor: pointer;
-              position: relative; left: 8px;"
-            >
-              <span>{{ column.title }}</span>
-            </div>
-            <div
-              style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
-            >
-              組裝/雷射/檢驗
-            </div>
-          </template>
-
-          <template v-slot:item.show1_ok="{ item }">
-            <div>
-              <div style="font-weight:600;">{{ item.show1_ok }}</div>
-              <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
-            </div>
-          </template>
-
-          <template v-slot:item.show3_ok="{ item }">
-            <div style="font-weight:600;">{{ item.show3_ok }}</div>
-          </template>
-
-          <template v-slot:item.req_qty="{ item }">
-            <div>
-              <div>{{ item.req_qty }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
-            </div>
-          </template>
-
-          <template v-slot:item.comment="{ item }">
-            <div>
-              <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-              <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-            </div>
-          </template>
-
-          <template v-slot:item.action="{ item }">
+    <v-data-table
+      :headers="headers"
+      :items="informations_for_assemble_error"
+      fixed-header
+      style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
+      class="custom-data-table"
+      items-per-page="5"
+      item-value="order_num"
+      v-model:page="pagination.page"
+      items-per-page-text="每頁的資料筆數"
+    >
+      <template v-slot:top>
+        <v-card>
+          <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height: 80px;">
+            組裝區異常填報
+            <v-spacer></v-spacer>
             <v-btn
-              :disabled="!item.isTakeOk && item.whichStation == 1"
-              size="small"
-              variant="tonal"
-              style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-
-              @click="toggleExpand(item)"
+              color="primary"
+              variant="outlined"
+              style="position: relative; left: 130px; top: 10px; min-height: 20px; height: 34px;"
             >
-              詳 情
-              <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+              <v-icon left color="blue">mdi-history</v-icon>
+              歷史紀錄
             </v-btn>
-          </template>
 
-          <template #no-data>
-            <strong><span style="color: red;">目前沒有資料</span></strong>
-          </template>
-        </v-data-table>
-      </v-card>
-    </v-row>
+            <v-text-field
+              v-model="search"
+              label="Search"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              hide-details
+              single-line
+              style="position: relative; top: -2px; min-height: 10px; height:10px;"
+              density="compact"
+            />
+          </v-card-title>
+        </v-card>
+      </template>
+
+      <!-- 客製化 '現況進度' (show1_ok) 欄位的表頭 -->
+      <template v-slot:header.show1_ok = "{ column }">
+        <div
+          style="line-height: 1;
+          margin: 0; padding: 0;
+          display: flex;
+          cursor: pointer;
+          position: relative; left: 8px;
+          width: 80px;"
+        >
+          <span>{{ column.title }}</span>
+        </div>
+        <div
+          style=" color: #a6a6a6;
+                  font-size: 10px;
+                  font-weight: 600;
+                  text-align: center;
+                  line-height: 1;
+                  position:relative;
+                  right: 5px;
+
+                "
+        >
+          組裝/雷射/檢驗
+        </div>
+      </template>
+
+      <!-- 客製化 '訂單數量' (req_qty) 欄位表頭 -->
+      <template v-slot:header.req_qty="{ column }">
+        <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
+          訂單<br />數量
+        </div>
+      </template>
+
+      <!-- 客製化 '現況數量' (delivery_qty) 欄位表頭 -->
+      <template v-slot:header.delivery_qty="{ column }">
+        <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
+          現況<br />數量
+        </div>
+      </template>
+
+      <!-- 自訂 '現況進度' 欄位 -->
+      <template v-slot:item.show1_ok="{ item }">
+        <div>
+          <div style="font-weight:600;">{{ item.show1_ok }}</div>
+          <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
+        </div>
+      </template>
+
+      <!-- 自訂 '現況備註' 欄位 -->
+      <template v-slot:item.show3_ok="{ item }">
+        <div style="font-weight:600;">{{ item.show3_ok }}</div>
+      </template>
+
+      <!-- 自訂 '訂單數量' 欄位 -->
+      <template v-slot:item.req_qty="{ item }">
+        <div>
+          <div>{{ item.req_qty }}</div>
+          <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+        </div>
+      </template>
+
+      <!-- 自訂 '說明' 欄位 -->
+      <template v-slot:item.comment="{ item }">
+        <div>
+          <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+          <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+        </div>
+      </template>
+
+      <!-- 自訂 '異常原因填寫' 欄位 -->
+      <template v-slot:item.cause_message="{ item }">
+        <v-combobox
+          v-model="item.cause_message"
+          :items="abnormal_causes_msg"
+          density="compact"
+          hide-details="true"
+          item-color="blue"
+
+          @change="handleInput(item)"
+          @keyup.enter="updateItem2(item)"
+
+          style="position: relative; left: -140px;"
+          v-if="!item.cause_message || item.cause_message.length == 0"
+        />
+        <span class="text-span fixed-width" v-else>{{ item.cause_message }}</span>
+      </template>
+
+      <template #no-data>
+        <strong><span style="color: red;">目前沒有資料</span></strong>
+      </template>
+    </v-data-table>
   </div>
   </template>
 
@@ -219,24 +155,21 @@
 
   import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-  import { informations, boms, fileCount }  from '../mixins/crud.js';
+  import { abnormal_causes, boms, informations_for_assemble_error }  from '../mixins/crud.js';
 
-  import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+  import { apiOperation }  from '../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
-  const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
-  const countExcelFiles = apiOperation('get', '/countExcelFiles');
-  const listInformations = apiOperation('get', '/listInformations');
-  const getBoms = apiOperation('post', '/getBoms');
+  const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
+  const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
+
   const updateBoms = apiOperation('post', '/updateBoms');
   const updateMaterial = apiOperation('post', '/updateMaterial');
-  const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
   const createProcess = apiOperation('post', '/createProcess');
-  //const getMaterial = apiOperation('post', '/getMaterial');
 
   //=== component name ==
   defineComponent({
-    name: 'MaterialListForAssem'
+    name: 'PickReportForAssembleError'
   });
 
   // === mix ==
@@ -253,18 +186,17 @@
   const route = useRoute(); // Initialize router
 
   const headers = [
-    { title: '訂單編號', sortable: true, key: 'order_num' },
-    { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-    { title: '現況備註', sortable: false, key: 'show3_ok', width:150 },
+    { title: '訂單編號', sortable: true, key: 'order_num', width:130 },
+    { title: '現況進度', sortable: false, key: 'show1_ok', width:80 },
+    { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
     { title: '交期', sortable: false, key: 'delivery_date', width:110 },
-    { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
-    { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
-    { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '', sortable: false, key: 'action' },
+    { title: '訂單數量', sortable: false, key: 'req_qty', width:60 },
+    { title: '現況數量', sortable: false, key: 'delivery_qty', width:60 },
+    { title: '點檢人員', sortable: false, key: 'user', width:100 },
+    { title: '說明', align: 'start', sortable: false, key: 'comment', width:180 },
+    { title: '異常原因填寫', sortable: false, key: 'cause_message', width:110 },
   ];
 
-  //const localIp = 'localhost';
-  //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
   const userId = 'user_chumpower';
   // 初始化Socket連接
   //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
@@ -274,8 +206,16 @@
   const isBlinking = ref(false);          // 控制按鍵閃爍
   const order_num_on_agv=ref('');
   const search = ref('');
+  const inputSearchValue = ref('');
+
+  const selectedErrorMsg = ref(null);
+  const placeholderTextForErrorMsg = ref('請選擇異常訊息');
+  const inputSelectErrorMsg = ref(null);
+
+  //const abnormal_causes_msg = ref([]);
 
   const currentUser = ref({});
+  const componentKey = ref(0)             // key值用於強制重新渲染
   const permDialog = ref(false);
   //const rightDialog = ref(false);
   //const showExplore = ref(false);
@@ -297,23 +237,16 @@
     }
   });
 
-  setupGetBomsWatcher();
-
   //=== computed ===
-  const tableStyle = computed(() => ({
-    height: props.showFooter ? 'calc(100vh - 120px)' : 'calc(100vh - 60px)',
-    width: '1050px',
-    overflowY: 'hidden',
-    position: 'relative',
-    top: '-10px',
-    marginBottom: '5px',
-  }));
-
   const containerStyle = computed(() => ({
     bottom: props.showFooter ? '60px' : '0'
   }));
 
   const routeName = computed(() => route.name);
+
+  const abnormal_causes_msg = computed(() =>
+  abnormal_causes.value.map(cause => `${cause.message}(${cause.number})`)
+);
 
   //=== mounted ===
   onMounted(async () => {
@@ -335,7 +268,7 @@
     //console.log("fileCount:", fileCount.value);
 
 
-    intervalId = setInterval(listInformations, 10 * 1000);  // 每 10秒鐘調用一次 API
+    intervalId = setInterval(listInformationsForAssembleError, 10 * 1000);  // 每 10秒鐘調用一次 API
     /*
     console.log('取得本機ip...');
     try {
@@ -431,7 +364,169 @@
   const initialize = () => {
     console.log("initialize()...")
 
-    listInformations();
+    listAbnormalCauses();
+
+    // 使用 map() 提取 message
+    //abnormal_causes_msg.value = abnormal_causes.value.map(item => item.message);
+    //abnormal_causes_msg.value = abnormal_causes.value.map(item => `${item.message}(${item.number})`);
+    //console.log("abnormal_causes_msg.value:",abnormal_causes_msg.value)
+
+    listInformationsForAssembleError();
+  };
+  /*
+  const handleComboboxInput = (event) => {
+    const value = event.target.value;
+    const key = event.key;
+
+    const allowedKeys = ['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'];
+
+    if (allowedKeys.includes(key) || validateInput(value)) {
+      if (value) {
+        const stringValue = String(value);        // 確保 value 是字串
+        selectedErrorMsg.value = stringValue;
+        // 驗證輸入或過濾選項
+        if (validateInput(stringValue)) {
+          filterOptions(stringValue);
+        }
+      } else {
+        console.warn("Input is empty");
+      }
+    } else {
+      console.warn("Invalid key pressed");
+    }
+  };
+  */
+ // 更新當前資料行
+ const handleInput = (item) => {
+  console.log("1. item.cause_message:", item.cause_message);
+  console.log("2. abnormal_causes_msg.value:", abnormal_causes_msg.value);
+
+  // 找到匹配的異常原因
+  const match = abnormal_causes_msg.value.find((msg) => {
+    const regex = new RegExp(`\\(${item.cause_message}\\)$`); // 檢查是否以 (number) 結尾
+    return regex.test(msg);
+  });
+
+  if (match) {
+    console.log("找到匹配的異常原因:", match);
+    // 更新資料行的 cause_message
+    item.cause_message = match;
+  } else {
+    console.log("未找到匹配的異常原因");
+  }
+};
+
+  const validateInput = (input) => {
+    const pattern = /^[0-9]+$/;
+    const isValid=pattern.test(input);
+    if (!isValid) {
+      console.warn("Invalid input:", input);
+      snackbar_info.value = '僅允許數字';
+      snackbar.value = true;
+    }
+    return isValid;
+  };
+
+  const filterOptions = (input) => {
+    const stringInput = String(input);  // 確保 input 是字串
+    console.log("input:", input)
+    const filteredOptions = abnormal_causes_msg.value.filter(option =>
+      option.toLowerCase().includes(stringInput.toLowerCase())
+    );
+    console.log("input, filteredOptions:", input, filteredOptions)
+  };
+
+  const updateItem2 = async (item) => {
+    console.log("updateItem2(),", item);
+
+    let deliveryQty = 0;
+    // 檢查是否輸入了空白或 0
+    if (!item.delivery_qty || Number(item.delivery_qty) === 0) {
+      deliveryQty = Number(item.total_delivery_qty) || 0;
+    } else {
+      deliveryQty = Number(item.delivery_qty) || 0;
+    }
+
+    let payload = {};
+
+    // 記錄當前送料數量
+    payload = {
+      id: item.id,
+      record_name: 'delivery_qty',
+      record_data: deliveryQty,
+    };
+    await updateMaterial(payload);
+    item.delivery_qty = deliveryQty
+
+    item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+  };
+  /*
+  const handleKeyDown = (event) => {
+    const inputChar = event.key;
+
+    const caps = event.getModifierState && event.getModifierState('CapsLock');
+    console.log("CapsLock is: ", caps); // true when CapsLock is on
+
+    // 允許左右方向鍵、backspace 和 delete 鍵
+    if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+      return;
+    }
+
+    // 如果按下的鍵不是數字，阻止輸入
+    if (!/^\d$/.test(inputChar)) {
+      event.preventDefault();  // 阻止非數字輸入
+      return;
+    }
+
+    const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
+
+    // 檢查輸入的長度是否超過6，阻止多餘的輸入
+    if (inputValue.length >= 6) {
+      event.preventDefault();
+      return;
+    }
+
+    // 偵測是否按下 Enter 鍵
+    if (event.key === 'Enter' || event.keyCode === 13) {
+      console.log('Return key pressed');
+      // 如果需要，這裡可以執行其他操作，或進行額外的驗證
+      //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
+    }
+  };
+  */
+  // 根據輸入搜尋員工編號
+  const handleEmployeeSearch = () => {
+    console.log("handleEmployeeSearch()...");
+
+    let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedErrorMsg.value);
+    if (selected) {
+      selectedErrorMsg.value = `${selected.emp_id} ${selected.emp_name}`;
+      console.log("所選擇異常訊息已更新: ", selectedErrorMsg.value);
+
+      inputSelectErrorMsg.value = placeholderTextForErrorMsg.value;
+    } else {
+      selectedErrorMsg.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+    }
+
+    // 確保 placeholder 保持靜態文字
+    placeholderTextForErrorMsg.value = "請選擇異常訊息";
+  };
+
+  const updateErrorMsgFieldFromSelect = () => {
+    console.log("updateErrorMsgFieldFromSelect(),", inputSelectErrorMsg.value);
+
+    const selected = desserts.value.find(emp => emp.emp_id === inputSelectErrorMsg.value);
+    if (selected) {
+      selectedErrorMsg.value = `${selected.emp_id} ${selected.emp_name}`;
+      console.log("所選擇異常訊息已更新: ", selectedErrorMsg.value);
+
+      inputSelectErrorMsg.value = placeholderTextForErrorMsg.value;
+    } else {
+      selectedErrorMsg.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+    }
+
+      // 確保 placeholder 保持靜態文字
+      placeholderTextForErrorMsg.value = "請選擇異常訊息";
   };
 
   const getStatusStyle = (status) =>{
@@ -447,41 +542,6 @@
       fontWeight: '600',
       fontSize: '12px',
     };
-  };
-  /*
-  const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
-    try {
-      const response = await axios.get('http://localhost:6500/server-ip'); // 請求伺服器 IP
-      serverIP.value = response.data.ip;
-    } catch (error) {
-      console.error('無法獲取伺服器 IP:', error);
-      serverIP.value = '無法獲取伺服器 IP';
-    }
-  };
-  */
-  const toggleExpand = (item) => {
-    console.log("toggleExpand(),", item.order_num);
-
-    let payload = {
-      //order_num: item.order_num,
-      id: item.id,
-    };
-    getBoms(payload);
-
-    // 記錄當前開始時間
-    currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
-    console.log("Start time:", currentStartTime.value);
-
-    payload = {
-      order_num: item.order_num,
-      record_name: 'show2_ok',
-      record_data: 1                //備料中
-    };
-    updateMaterial(payload).then(data => {
-      !data && showSnackbar(data.message, 'red accent-2');
-    });
-
-    dialog.value = true;
   };
 
   const updateItem = async () => {              //編輯 bom, material及process後端table資料
@@ -633,43 +693,14 @@
   */
 
   /*
-  // 獲取本機 IP 的函數
-  const getLocalIP = async () => {
-    try {
-      const rtc = new RTCPeerConnection({ iceServers: [] });
-      rtc.createDataChannel(''); // 創建一個數據通道以避免錯誤
-      const offer = await rtc.createOffer();
-      await rtc.setLocalDescription(offer);
+  const refreshComponent = () => {
+    console.log('更新訂單按鈕已點擊');
 
-      return new Promise((resolve, reject) => {
-        rtc.onicecandidate = (ice) => {
-          if (ice && ice.candidate && ice.candidate.candidate) {
-            const ipMatch = ice.candidate.candidate.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-            if (ipMatch) {
-              for (let i = 0; i < ipMatch.length; i++) {
-                console.log("local ip:",ipMatch[i])
-              }
-              //resolve(ipMatch[1]); // 返回找到的 IP 地址
-              const ip = ipMatch[0];
-              // 檢查 IP 是否為無線網卡的 IP 地址
-              // 假設無線網卡的 IP 是 192.168.*.* 或 10.*.*.*
-              //if (ip.startsWith('192.168.') || ip.startsWith('10.')) {
-              //if (ip.startsWith('192.168.')) {
-                  resolve(ip); // 返回找到的無線 IP 地址
-              //}
-            }
-          }
-        };
+    // 透過重新加載當前路由，來刷新組件
+    //router.go(0);
 
-        // 超時處理
-        setTimeout(() => {
-          reject('無法獲取 IP 地址');
-        }, 1000);
-      });
-    } catch (err) {
-      console.error('獲取本機 IP 時出現錯誤:', err);
-      error.value = '無法獲取本機 IP';
-    }
+    // 改變 key 值，Vue 會重新渲染整個元件
+    componentKey.value += 1;
   };
   */
   const showSnackbar = (message, color) => {
@@ -869,5 +900,84 @@
   to {
     visibility: hidden;
   }
+}
+
+//:deep(.v-table__wrapper table header tr th) {
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.v-data-table tbody td) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+//:deep(.custom-data-table .v-data-table-header th:first-child) {
+//:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:first-child > div) {
+//  text-align: center !important;
+//}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:first-child div ) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 130px !important;
+}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(2))  {
+  width: 80px !important;
+}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(3) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 110px !important;
+}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(4) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 110px !important;
+}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(7) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100px !important;
+}
+
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(9) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 140px !important;
+}
+
+//:deep(.custom-data-table .v-data-table tbody td:first-child) {
+:deep(.v-table__wrapper > table > tbody > tr > td:first-child) {
+  text-align: center !important;
+  //min-width: 160px;
+  //width: 160px;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(2) div) {
+  width: 80px !important;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(3) div) {
+  width: 110px !important;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(9) .v-input__control) {
+  width: 140px !important;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td > v-input .v-combobox__selection span) {
+  font-size:12px !important;
+  font-weight: 600 !important;
 }
 </style>

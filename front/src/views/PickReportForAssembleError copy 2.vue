@@ -1,5 +1,5 @@
 <template>
-  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle">
+  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
       {{ snackbar_info }}
@@ -10,22 +10,12 @@
       </template>
     </v-snackbar>
 
-    <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
+    <v-row align="center" justify="center" v-if="currentUser.perm == 1 || currentUser.perm == 2">
       <v-card flat class="card-container">
         <v-card-title class="d-flex align-center pe-2 sticky-card-title">
-          組裝區在製品生產資訊
+          組裝區異常填報
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
-        <!--
-          <v-btn
-            color="primary"
-            variant="outlined"
-            style="position: relative; left: 125px; top: 0px;"
-          >
-            <v-icon left color="green">mdi-microsoft-excel</v-icon>
-            更新現況
-          </v-btn>
-        -->
           <v-btn
             color="primary"
             variant="outlined"
@@ -44,23 +34,23 @@
             single-line
             style="position: relative; top: -2px; min-height: 10px; height:10px;"
             density="compact"
-          ></v-text-field>
+          />
         </v-card-title>
         <v-divider></v-divider>
         <v-data-table
           :headers="headers"
-          :items="informations"
+          :items="informations_for_assemble_error"
           fixed-header
           items-per-page="5"
           item-value="order_num"
-          :items-length="informations.length"
+          :items-length="informations_for_assemble_error.length"
           v-model:page="pagination.page"
           class="outer custom-header"
           :style="tableStyle"
           :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
         >
           <template #top>
-            <v-dialog v-model="dialog" max-width="960px">
+            <v-dialog v-model="dialog" max-width="1200px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配紀錄
@@ -127,21 +117,6 @@
             </v-dialog>
           </template>
 
-          <!--
-          <template v-slot:item.order_num="{ item }">
-            <div>
-              <div>{{ item.order_num }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.process_num }}</div>
-            </div>
-          </template>
-
-          <template v-slot:item.material_num="{ item }">
-            <div>
-              <div>{{ item.material_num }}</div>
-              <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-            </div>
-          </template>
-          -->
           <!-- 使用動態插槽來客製化 '現況進度' (show1_ok) 欄位的表頭 -->
           <template v-slot:header.show1_ok = "{ column }">
             <div
@@ -186,17 +161,28 @@
           </template>
 
           <template v-slot:item.action="{ item }">
-            <v-btn
-              :disabled="!item.isTakeOk && item.whichStation == 1"
-              size="small"
-              variant="tonal"
-              style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+            <!-- v-text-field 用於顯示所選擇的異常訊息 -->
+            <v-text-field
+              v-model="selectedErrorMsg"
+              @keyup.enter="handleEmployeeSearch"
 
-              @click="toggleExpand(item)"
-            >
-              詳 情
-              <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
-            </v-btn>
+              variant="outlined"
+              density="comfortable"
+              style="min-width:160px; width:160px;"
+            />
+
+            <!-- v-select 用於選擇異常訊息 -->
+            <v-select
+              v-model="inputSelectErrorMsg"
+              :items="abnormal_causes"
+              item-title="display"
+              item-value="emp_id"
+              :placeholder="placeholderTextForErrorMsg"
+              variant="outlined"
+              density="comfortable"
+              @update:modelValue="updateErrorMsgFieldFromSelect"
+              style="min-width:160px; width: 160px;"
+            />
           </template>
 
           <template #no-data>
@@ -219,24 +205,21 @@
 
   import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-  import { informations, boms, fileCount }  from '../mixins/crud.js';
+  import { abnormal_causes, boms, informations_for_assemble_error }  from '../mixins/crud.js';
 
-  import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+  import { apiOperation }  from '../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
-  const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
-  const countExcelFiles = apiOperation('get', '/countExcelFiles');
-  const listInformations = apiOperation('get', '/listInformations');
-  const getBoms = apiOperation('post', '/getBoms');
+  const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
+  const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
+
   const updateBoms = apiOperation('post', '/updateBoms');
   const updateMaterial = apiOperation('post', '/updateMaterial');
-  const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
   const createProcess = apiOperation('post', '/createProcess');
-  //const getMaterial = apiOperation('post', '/getMaterial');
 
   //=== component name ==
   defineComponent({
-    name: 'MaterialListForAssem'
+    name: 'PickReportForAssembleError'
   });
 
   // === mix ==
@@ -255,10 +238,11 @@
   const headers = [
     { title: '訂單編號', sortable: true, key: 'order_num' },
     { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-    { title: '現況備註', sortable: false, key: 'show3_ok', width:150 },
+    { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
     { title: '交期', sortable: false, key: 'delivery_date', width:110 },
-    { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
-    { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
+    { title: '訂單數量', sortable: false, key: 'req_qty', width:110 },
+    { title: '現況數量', sortable: false, key: 'delivery_qty', width:110 },
+    { title: '作業人員', sortable: false, key: 'user', width:110 },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
     { title: '', sortable: false, key: 'action' },
   ];
@@ -275,7 +259,12 @@
   const order_num_on_agv=ref('');
   const search = ref('');
 
+  const selectedErrorMsg = ref(null);
+  const placeholderTextForErrorMsg = ref('請選擇異常訊息');
+  const inputSelectErrorMsg = ref(null);
+
   const currentUser = ref({});
+  const componentKey = ref(0)             // key值用於強制重新渲染
   const permDialog = ref(false);
   //const rightDialog = ref(false);
   //const showExplore = ref(false);
@@ -296,8 +285,6 @@
       permDialog.value = true;
     }
   });
-
-  setupGetBomsWatcher();
 
   //=== computed ===
   const tableStyle = computed(() => ({
@@ -335,7 +322,7 @@
     //console.log("fileCount:", fileCount.value);
 
 
-    intervalId = setInterval(listInformations, 10 * 1000);  // 每 10秒鐘調用一次 API
+    intervalId = setInterval(listInformationsForAssembleError, 10 * 1000);  // 每 10秒鐘調用一次 API
     /*
     console.log('取得本機ip...');
     try {
@@ -430,8 +417,44 @@
   //=== method ===
   const initialize = () => {
     console.log("initialize()...")
+    listAbnormalCauses();
 
-    listInformations();
+    listInformationsForAssembleError();
+  };
+
+  // 根據輸入搜尋員工編號
+  const handleEmployeeSearch = () => {
+    console.log("handleEmployeeSearch()...");
+
+    let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedErrorMsg.value);
+    if (selected) {
+      selectedErrorMsg.value = `${selected.emp_id} ${selected.emp_name}`;
+      console.log("所選擇異常訊息已更新: ", selectedErrorMsg.value);
+
+      inputSelectErrorMsg.value = placeholderTextForErrorMsg.value;
+    } else {
+      selectedErrorMsg.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+    }
+
+    // 確保 placeholder 保持靜態文字
+    placeholderTextForErrorMsg.value = "請選擇異常訊息";
+  };
+
+  const updateErrorMsgFieldFromSelect = () => {
+    console.log("updateErrorMsgFieldFromSelect(),", inputSelectErrorMsg.value);
+
+    const selected = desserts.value.find(emp => emp.emp_id === inputSelectErrorMsg.value);
+    if (selected) {
+      selectedErrorMsg.value = `${selected.emp_id} ${selected.emp_name}`;
+      console.log("所選擇異常訊息已更新: ", selectedErrorMsg.value);
+
+      inputSelectErrorMsg.value = placeholderTextForErrorMsg.value;
+    } else {
+      selectedErrorMsg.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+    }
+
+      // 確保 placeholder 保持靜態文字
+      placeholderTextForErrorMsg.value = "請選擇異常訊息";
   };
 
   const getStatusStyle = (status) =>{
@@ -459,30 +482,6 @@
     }
   };
   */
-  const toggleExpand = (item) => {
-    console.log("toggleExpand(),", item.order_num);
-
-    let payload = {
-      //order_num: item.order_num,
-      id: item.id,
-    };
-    getBoms(payload);
-
-    // 記錄當前開始時間
-    currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
-    console.log("Start time:", currentStartTime.value);
-
-    payload = {
-      order_num: item.order_num,
-      record_name: 'show2_ok',
-      record_data: 1                //備料中
-    };
-    updateMaterial(payload).then(data => {
-      !data && showSnackbar(data.message, 'red accent-2');
-    });
-
-    dialog.value = true;
-  };
 
   const updateItem = async () => {              //編輯 bom, material及process後端table資料
     console.log("updateItem(),", boms.value);
@@ -670,6 +669,17 @@
       console.error('獲取本機 IP 時出現錯誤:', err);
       error.value = '無法獲取本機 IP';
     }
+  };
+  */
+  /*
+  const refreshComponent = () => {
+    console.log('更新訂單按鈕已點擊');
+
+    // 透過重新加載當前路由，來刷新組件
+    //router.go(0);
+
+    // 改變 key 值，Vue 會重新渲染整個元件
+    componentKey.value += 1;
   };
   */
   const showSnackbar = (message, color) => {

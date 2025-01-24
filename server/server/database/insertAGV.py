@@ -1,4 +1,4 @@
-from tables import Agv, Setting, Session
+from tables import Agv, Session
 
 import pymysql
 from sqlalchemy import exc

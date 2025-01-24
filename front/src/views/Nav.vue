@@ -165,6 +165,7 @@
               {{ localNavLinks[13].text }}
               </router-link>
               <!--menu 15-->
+            <!--
               <router-link
                 :to="localNavLinks[14].isEnabled ? localNavLinks[14].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[14].isEnabled}]"
@@ -172,7 +173,9 @@
               >
               {{ localNavLinks[14].text }}
               </router-link>
+            -->
               <!--menu 16-->
+            <!--
               <router-link
                 :to="localNavLinks[15].isEnabled ? localNavLinks[15].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[15].isEnabled }]"
@@ -180,6 +183,7 @@
               >
                 {{ localNavLinks[15].text }}
               </router-link>
+            -->
             </div>
           </li>
           <!--item5-->

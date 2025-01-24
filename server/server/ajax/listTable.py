@@ -2,7 +2,7 @@ import math
 import random
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy.sql import func
-from database.tables import User, Material, Bom, Permission, AbnormalCause, Setting, Session
+from database.tables import User, Material, Bom, Permission, AbnormalCause, Product, Setting, Session
 
 from flask_cors import CORS
 
@@ -72,24 +72,17 @@ def list_abnormal_causes():
   s = Session()
   _abnormal_cause_results = []
 
-  # 查詢所有異常原因，並通過關聯獲取相關的 material
-  _objects = s.query(AbnormalCause).options(joinedload(AbnormalCause._material)).all()
+  abnormal_cause_results = s.query(AbnormalCause).all()   # 查詢所有的 AbnormalCause
 
-  for abnormal_cause in _objects:
-      # 獲取與當前異常原因相關聯的所有 material
-      related_materials = abnormal_cause._material
-
-      # 如果有相關的 material，提取其 id，否則設為 None
-      material_ids = [material.id for material in related_materials] if related_materials else []
-
-      # 將數據組裝到結果中
-      _abnormal_cause_object = {
-          'id': abnormal_cause.id,
-          'area': abnormal_cause.area,
-          'message': abnormal_cause.message,
-          'material_ids': material_ids,  # 可能是一個列表，因為是一對多關係
-      }
-      _abnormal_cause_results.append(_abnormal_cause_object)
+  # 將結果轉換為字典列表
+  _abnormal_cause_results = [
+    {
+        "id": cause.id,
+        "number": cause.number,
+        "message": cause.message,
+    }
+    for cause in abnormal_cause_results
+  ]
 
   s.close()
 
@@ -97,7 +90,7 @@ def list_abnormal_causes():
   print("listAbnormalCauses, 總數: ", temp_len)
 
   return jsonify({
-      'abnormalCauses': _abnormal_cause_results,
+    'abnormal_causes': _abnormal_cause_results,
   })
 
 
@@ -295,9 +288,9 @@ def list_materials_and_assembles():
     _results = []
     return_value = True
     code_to_name = {
-      '106': '雷射',
-      '109': '組裝',
-      '110': '檢驗'
+      '106': '雷射',  #第2個動作
+      '109': '組裝',  #第1個動作
+      '110': '檢驗'   #第3個動作
     }
     code_to_assembleStep = {    #組裝區工作順序, 3:最優先
       '109': 3,
@@ -306,68 +299,111 @@ def list_materials_and_assembles():
     }
 
     #       0         1        2          3        4            5           6            7           8            9
-    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', '00/00/00', '檢驗作業中', '00/00/00',]
 
     # 使用 with_for_update() 來加鎖
     _objects = s.query(Material).with_for_update().all()
 
     # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
     max_step_code_per_order = {}
-
+    '''
     # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
     for material_record in _objects:
       for assemble_record in material_record._assemble:
-        code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
+        #code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
+        code = assemble_record.process_step_code
         step_code = code_to_assembleStep.get(code, 0)      # 取得對應的 step code, 以設定工作順序
 
         #order_num = material_record.order_num              # 訂單編號
         order_num_id = material_record.id                  # 該筆訂單編號的table id
 
-        '''
-        # 設定或更新該 order_num 下的最大 step code
-        if order_num not in max_step_code_per_order:
-            max_step_code_per_order[order_num] = step_code
-        else:
-            max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
-        '''
+        ## 設定或更新該 order_num 下的最大 step code
+        #if order_num not in max_step_code_per_order:
+        #    max_step_code_per_order[order_num] = step_code
+        #else:
+        #    max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
+
         # 設定或更新該 order_num_id 下的最大 step code
         if order_num_id not in max_step_code_per_order:
             max_step_code_per_order[order_num_id] = step_code
         else:
             max_step_code_per_order[order_num_id] = max(max_step_code_per_order[order_num_id], step_code)
+    '''
+    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
+    for material_record in _objects:
+        for assemble_record in material_record._assemble:
+            #code = assemble_record.work_num[1:]  # 取得字串中的代碼 (去掉字串中的第一個字元)
+            step_code = assemble_record.process_step_code  # 直接使用資料中的 step_code
+
+            order_num_id = material_record.id  # 該筆訂單編號的table id
+
+            print(f"Processing material id={order_num_id}, assemble work_num={assemble_record.work_num}, step_code={step_code}")
+
+            # 設定或更新該 order_num_id 下的最大 step code
+            if order_num_id not in max_step_code_per_order:
+                max_step_code_per_order[order_num_id] = step_code
+                print(f"Set initial max step_code for id={order_num_id}: {step_code}")
+            else:
+                current_max = max_step_code_per_order[order_num_id]
+                max_step_code_per_order[order_num_id] = max(current_max, step_code)
+                print(f"Updated max step_code for id={order_num_id}: {current_max} -> {max_step_code_per_order[order_num_id]}")
+
+    print("Final max_step_code_per_order:", max_step_code_per_order)
 
     # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
     #_objects = s.query(Material).all()
+    print("start:")
     for material_record in _objects:
+      num = int(material_record.show2_ok)
+      temp_temp_show2_ok_str = str2[num]
+      assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
+      # 處理 show2_ok 的情況
+      if num == 5 or num == 7 or num == 9:
+        for assemble_record in assemble_records:
+          # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+          if assemble_record.total_ask_qty_end in [1, 2, 3]:
+            completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
+            date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+            date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+            temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
+        #print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
+
       for assemble_record in material_record._assemble:
+
         cleaned_comment = material_record.material_comment.strip()    # 刪除 material_comment 字串前後的空白
 
         code = assemble_record.work_num[1:]                           # 取得字串中的代碼 (去掉字串中的第一個字元)
         name = code_to_name.get(code, '')                             # 查找對應的中文名稱
         #step_code = code_to_a
         step_code = assemble_record.process_step_code
-        #order_num = material_record.order_num                         # 訂單編號
+        print("assemble_record.process_step_code:", assemble_record.process_step_code)
+        #order_num = material_record.order_num                        # 訂單編號
         order_num_id = material_record.id                             # 該筆訂單編號的table id
 
         # 比較該筆記錄的 step_code 是否為該訂單中最先作動的工作中心工作順序編號
         #max_step_code = max_step_code_per_order.get(order_num, 0)
         max_step_code = max_step_code_per_order.get(order_num_id, 0)
-        step_enable = (step_code == max_step_code)                    # 如果是最大值，則啟用
+        step_enable = (step_code == max_step_code and material_record.whichStation==2)
+        #print("material_record.whichStation:",material_record.whichStation)                  # 如果是最大值，則啟用
+        #print("max_step_code_per_order:",max_step_code_per_order)
+        #print("step_code , max_step_code:", step_code , max_step_code, step_enable)
+
         format_name = f"{assemble_record.work_num}({name})"
-        num = int(material_record.show2_ok)
+        #num = int(material_record.show2_ok)
 
         _object = {
           'id': material_record.id,                                 #訂單編號的table id
           'order_num': material_record.order_num,                   #訂單編號
           'assemble_work': format_name,                             #工序
-          'material_num': material_record.material_num,             #物料編號
-          #'assemble_process': str2[num],                            #途程目前狀況 material_record.isTakeOk & step_enable
-          'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
+          'material_num': material_record.material_num,             #物料編號(成品)
+          #'assemble_process': str2[num],                           #途程目前狀況 material_record.isTakeOk & step_enable
+          #'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
+          'assemble_process': '' if (num > 2 and not step_enable) else temp_temp_show2_ok_str,                            #途程目前狀況 isTakeOk & step_enable
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
           #'req_qty': assemble_record.meinh_qty,                                #需求數量(作業數量)
-          'req_qty': assemble_record.good_qty,                                  #需求數量(作業數量)
-          'delivery_qty': material_record.delivery_qty,                         #備料數量(現況數量)
+          'req_qty': assemble_record.good_qty,                                  # 需求數量(作業數量)
+          'delivery_qty': material_record.delivery_qty,                         # 備料數量(現況數量)
           'total_receive_qty': f"({assemble_record.total_ask_qty})",            # 已完成總數量
           'total_receive_qty_num': assemble_record.total_ask_qty,               #領取總數量
           'receive_qty': assemble_record.ask_qty,                               #領取數輛
@@ -411,19 +447,32 @@ def list_informations():
     return_value = True
     str1=['備料站', '組裝站', '成品站']
     #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
-    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
-    #      0    1          2(agv_begin)     3(agv_end)   4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)    13(結束鍵)   14(開始鍵)    15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
-    str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
+    #str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', '00/00/00', '檢驗作業中', '00/00/00', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', '00/00/00', '檢驗作業中', '00/00/00', '未入庫', '入庫作業中', '00',       '入庫完成']
+    #      0    1          2(agv_begin)      3(agv_end)   4(開始鍵)    5(結束鍵)     6(開始鍵)     7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)   13(結束鍵)    14(開始鍵)   15(結束鍵)    16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
+    str3=['',  '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 
     for record in _objects:
-      #assemble_records = record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
+      assemble_records = record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
       #print("record:", record)
       cleaned_comment = record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
 
       temp_temp_show2_ok_str = str2[int(record.show2_ok)]
       temp_show2_ok = int(record.show2_ok)
+
+      # 處理 show2_ok 的情況
+      if temp_show2_ok == 5 or temp_show2_ok == 7 or temp_show2_ok == 9:
+        for assemble_record in assemble_records:
+          # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+          if assemble_record.total_ask_qty_end in [1, 2, 3]:
+            completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
+            date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+            date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+            temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
+        print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
+
       if (temp_show2_ok == 1):
         temp_temp_show2_ok_str = temp_temp_show2_ok_str + record.shortage_note
 
@@ -439,7 +488,7 @@ def list_informations():
         'comment': cleaned_comment,                     #說明
         'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度
         'show2_ok' : temp_temp_show2_ok_str,
-        'show3_ok' : str3[int(record.show3_ok)],                  #現況備註
+        'show3_ok' : str3[int(record.show3_ok)],        #現況備註
       }
 
       _results.append(_object)
@@ -458,6 +507,108 @@ def list_informations():
     return jsonify({
         'status': return_value,
         'informations': _results
+    })
+
+
+# list all materials for information list
+@listTable.route("/listInformationsForAssembleError", methods=['GET'])
+def list_informations_for_assemble_error():
+    print("listInformationsForAssembleError....")
+
+    _history_flag = False
+
+    s = Session()
+
+    _results = []
+    return_value = True
+    str1=['備料站', '組裝站', '成品站']
+    #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
+    #      0    1          2(agv_begin)     3(agv_end)   4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)    13(結束鍵)   14(開始鍵)    15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
+    str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
+
+    _objects = s.query(Material).all()  # 取得所有 Material 物件
+
+    for material_record in _objects:
+      skip_material = False  # 標誌變數，預設為 False
+      user_ids = []  # 用於存儲處理後的 user_id
+      #print("step a...", material_record.id)
+      for assemble_record in material_record._assemble:
+        #print("assemble_record.material_id:", assemble_record.material_id)
+        #print("assemble_record:", assemble_record)
+        if assemble_record.material_id != material_record.id:
+          skip_material = True
+        if assemble_record.alarm_enable == False:
+          continue
+        user_id = assemble_record.user_id.lstrip('0')  # 去除前導的 0
+        user_ids.append(user_id)  # 將處理後的值加入列表
+
+      if skip_material:
+          continue                # 跳過當前 material_record，進入下一個 _objects 的迴圈
+
+      temp_alarm_message=assemble_record.alarm_message.strip()
+      temp_alarm_enable=assemble_record.alarm_enable
+      if not _history_flag and temp_alarm_enable and temp_alarm_message:
+        continue
+
+      user = ', '.join(user_ids)  # 將列表轉換為以逗號分隔的字符串
+      print("user:", user)
+      cleaned_comment = material_record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
+
+      temp_temp_show2_ok_str = str2[int(material_record.show2_ok)]
+      temp_show2_ok = int(material_record.show2_ok)
+      if (temp_show2_ok == 1):
+        temp_temp_show2_ok_str = temp_temp_show2_ok_str + material_record.shortage_note
+      '''
+      # 取得所有相關聯的 AbnormalCause 資料
+      abnormal_cause = (
+        {
+          "cause_id": material_record._abnormal_cause[0].id,
+          "cause_number": material_record._abnormal_cause[0].number,
+          "cause_message": material_record._abnormal_cause[0].message,
+        }
+        if material_record._abnormal_cause and len(material_record._abnormal_cause) > 0
+        else {
+          "cause_id": '',
+          "cause_number": '',
+          "cause_message": '',
+        }
+      )
+      '''
+      _object = {
+        'id': material_record.id,                                # 訂單編號的 table id
+        'order_num': material_record.order_num,                  # 訂單編號
+        'material_num': material_record.material_num,            # 物料編號
+        'isTakeOk': material_record.isTakeOk,
+        'whichStation': material_record.whichStation,
+        'req_qty': material_record.material_qty,                 # 需求數量
+        'delivery_date': material_record.material_delivery_date, # 交期
+        'delivery_qty': material_record.delivery_qty,            # 現況數量
+        'comment': cleaned_comment,                              # 說明
+        'show1_ok': str1[int(material_record.show1_ok) - 1],     # 現況進度
+        'show2_ok': temp_temp_show2_ok_str,
+        'show3_ok': str3[int(material_record.show3_ok)],         # 現況備註
+        'user': user,
+        #**abnormal_cause                                         # 將 cause_id, cause_number, cause_message 展開加入字典
+        #'cause_number': '',
+        'cause_message': temp_alarm_message,
+      }
+
+      _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("listInformationsForAssembleError, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    # 根據 'order_num' 排序
+    _results = sorted(_results, key=lambda x: x['order_num'])
+
+    return jsonify({
+      'status': return_value,
+      'informations_for_assemble_error': _results
     })
 
 

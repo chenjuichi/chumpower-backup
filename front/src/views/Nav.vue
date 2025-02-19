@@ -120,7 +120,9 @@
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[9].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              {{ localNavLinks[9].text }}
+                {{ localNavLinks[9].text }}
+
+                <v-badge color="info" :content="begin_count" inline v-show="begin_count != 0"  />
               </router-link>
               <!--menu 11-->
               <router-link
@@ -128,7 +130,9 @@
                 :class="['dropdown-item', 'my-dropdown-item', { 'disabled-linkk': !localNavLinks[10].isEnabled }]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
               >
-              {{ localNavLinks[10].text }}
+                {{ localNavLinks[10].text }}
+
+                <v-badge color="info" :content="end_count" inline v-show="end_count != 0" />
               </router-link>
               <!--menu 12-->
               <router-link
@@ -361,9 +365,13 @@ import eventBus from '../mixins/enentBus.js';
 
 import { myMixin } from '../mixins/common.js';
 
+import { begin_count, end_count }  from '../mixins/crud.js';
+
 import { apiOperation, }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
+const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
+
 const updateSetting = apiOperation('post', '/updateSetting');
 
 //=== component name ==
@@ -399,6 +407,8 @@ const emit = defineEmits(['update:showFooter']);
 const isSegment = ref(false);
 const openDialog = ref(false);
 const openPdfDialog = ref(false);
+
+let intervalId = null;                        // 間格10秒, 倒數計時器
 
 const home_url = logo;
 const localShowFooter = ref(props.showFooter);
@@ -452,6 +462,8 @@ onMounted(() => {
   eventBus.on('triggerLogout', logout);
   //
   eventBus.on('updateCountdown', updateCountdown);
+
+  intervalId = setInterval(listWaitForAssembleFun, 10 * 1000);  // 每 10秒鐘調用一次 API
 });
 
 onBeforeUnmount(() => {
@@ -472,6 +484,7 @@ onBeforeUnmount(() => {
 //=== unmounted ===
 onUnmounted(() => {
   //enableBackButton();
+  clearInterval(intervalId);    // 清除計時器（當元件卸載時）
 });
 
 //=== created ===
@@ -507,6 +520,7 @@ onBeforeMount(() => {
   }
   //
   initAxios();
+  initialize();
 });
 
 //=== computed ===
@@ -520,9 +534,25 @@ watch(localShowFooter, (newValue) => {
 });
 
 //=== method ===
+const initialize = async () => {
+  try {
+    console.log("initialize()...");
+
+    await listWaitForAssembleFun();
+    //console.log("begin_count, end_count:", begin_count, end_count);
+  } catch (error) {
+    console.error("Error during initialize():", error);
+  }
+};
+
+const listWaitForAssembleFun = async () => {
+  await listWaitForAssemble();
+}
+
 const onHover = (index) => {
   hoveredItems[index] = true;
   console.log("onHover:", index, hoveredItems[index]);
+  console.log("begin_count, end_count:", begin_count.value, end_count.value);
 };
 
 const onLeave = (index) => {

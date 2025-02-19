@@ -137,7 +137,7 @@
               @click="callAGV"
             >
               <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-              <span>備料送出</span>
+              <span>組裝送出</span>
             </v-btn>
 
             <!-- 客製化黃綠燈 -->
@@ -380,18 +380,19 @@
   import { useRoute } from 'vue-router'; // Import useRouter
 
   import { myMixin } from '../mixins/common.js';
-
   import { useSocketio } from '../mixins/SocketioService.js';
 
   import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
-
-  import { materials_and_assembles_by_user, socket_server_ip, desserts }  from '../mixins/crud.js';
-
+  import { materials_and_assembles_by_user }  from '../mixins/crud.js';
+  import { currentAGV }  from '../mixins/crud.js';
+  import { desserts }  from '../mixins/crud.js';
+  import { socket_server_ip }  from '../mixins/crud.js';
   import { apiOperation, setupListUsersWatcher}  from '../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
   const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
   const listUsers = apiOperation('get', '/listUsers');
+  const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
   const getMaterialsAndAssemblesByUser = apiOperation('post', '/getMaterialsAndAssemblesByUser');
   const updateAssemble = apiOperation('post', '/updateAssemble');
@@ -413,9 +414,7 @@
   const { initAxios } = myMixin();
 
   //=== props ===
-  const props = defineProps({
-    showFooter: Boolean
-  });
+  const props = defineProps({ showFooter: Boolean });
 
   //=== data ===
   const history = ref(false);               // 設定歷史紀錄為不顯示
@@ -437,8 +436,6 @@
   //const inputRefs = ref(new Map()); // 用來存放所有的 input refs
   const inputIDs = ref([]);
   const selectedItems = ref([]);          // 儲存選擇的項目 (基於 id)
-
-  //const enableDialogBtn = ref(false);
 
   const route = useRoute();               // Initialize router
 
@@ -496,19 +493,12 @@
   const agv2StartTime = ref(null);
   const agv2EndTime = ref(null);
 
-  //const dialog = ref(false);
-
   const pagination = reactive({
     itemsPerPage: 5, // 預設值, rows/per page
     page: 1,
   });
 
   //=== watch ===
-  //watch(currentUser, (newUser) => {
-  //  if (newUser.perm < 1) {
-  //    permDialog.value = true;
-  //  }
-  //});
   setupListUsersWatcher();
 
   // 監視 selectedItems 的變化，並將其儲存到 localStorage
@@ -518,7 +508,6 @@
     },
     { deep: true }
   );
-
 
   //=== computed ===
   const containerStyle = computed(() => ({
@@ -625,9 +614,10 @@
         console.log('AGV 運行任務開始，press Start按鍵, 收到 station2_agv_start 訊息');
 
         let payload = {};
+        let targetItem = {};
         // 依據每個 item 的 material id 進行資料更新
         selectedItems.value.forEach(async (item) => {
-          const targetItem = materials_and_assembles_by_user.value.find(
+          targetItem = materials_and_assembles_by_user.value.find(
             (i) => i.index === item
           );
           console.log("targetItem:", targetItem)
@@ -635,7 +625,7 @@
           payload = {
             id: targetItem.id,
             record_name: 'show3_ok',
-            record_data: 1, // 設為 1，等待 agv
+            record_data: 16,           // agv start
           };
           await updateMaterial(payload);
           //try {
@@ -651,12 +641,14 @@
         console.log('AGV暫停, 收到 station2_agv_begin 訊息');
 
         let payload = {};
+        let targetItem = {};
+
         // 記錄agv在站與站之間運行開始時間
         agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
         console.log("AGV Start time:", agv2StartTime.value);
 
         selectedItems.value.forEach(async (item) => {
-          const targetItem = materials_and_assembles_by_user.value.find(
+          targetItem = materials_and_assembles_by_user.value.find(
             (i) => i.index === item
           );
           console.log("targetItem:", targetItem)
@@ -664,7 +656,7 @@
           payload = {
             id: targetItem.id,
             record_name: 'show3_ok',
-            record_data: 2      // 設為 2，agv移動至組裝區中
+            record_data: 10      // 設為 10，agv移動至成品區中
           };
           await updateMaterial(payload);
           //try {
@@ -694,17 +686,18 @@
         console.log("AGV Start time:", agv2EndTime.value);
 
         let payload = {};
+        let targetItem = {};
 
         selectedItems.value.forEach(async (item) => {
-          const targetItem = materials_and_assembles_by_user.value.find(
-            (i) => i.index === item
+          targetItem = materials_and_assembles_by_user.value.find(
+            (kk) => kk.index === item
           );
           console.log("targetItem:", targetItem)
 
           payload = {
             id: targetItem.id,
             show1_ok: 3,        //成品站
-            show2_ok: 10,      //未組裝
+            show2_ok: 10,      //等待入庫
             show3_ok: 3,       //等待組裝中
             whichStation: 3,  //目標途程:組裝站
           };
@@ -719,14 +712,14 @@
         console.log("AGV 運行 End Time:", formattedEndTime);
         console.log("AGV 運行 Period time:", agv2PeriodTime);
 
-        let payload1 = {};
-        let payload2 = {};
+        //let payload1 = {};
+        //let payload2 = {};
         //let payload_new = {};
 
         console.log('agv_end 處理步驟2...');
         selectedItems.value.forEach(async (item) => {
-          const targetItem = materials_and_assembles_by_user.value.find(
-            (i) => i.index === item
+          targetItem = materials_and_assembles_by_user.value.find(
+            (kk) => kk.index === item
           );
           console.log("targetItem:", targetItem)
 
@@ -749,6 +742,16 @@
           };
           await updateMaterial(payload);
           console.log('步驟2-2...');
+
+          //紀錄該筆訂單已組裝完成總數量
+          let temp_total_assemble_qty = targetItem.total_assemble_qty + targetItem.delivery_qty
+          payload = {
+            id: targetItem.id,
+            record_name: 'total_assemble_qty',
+            record_data: temp_total_assemble_qty
+          };
+          await updateMaterial(payload);
+          console.log('步驟2-2-1...');
 
           //紀錄該筆的agv組裝完成狀態
           //if (Number(myMaterial.delivery_qty) !=0 && Number(myMaterial.total_delivery_qty) !=0) {
@@ -818,9 +821,10 @@
         console.log("AGV 等待 Period time:", agv1PeriodTime);
 
         let payload = {};
+        let targetItem = {};
         // 記錄備料區途程資料, 等待agv時間
         selectedItems.value.forEach(async (item) => {
-          const targetItem = materials_and_assembles_by_user.value.find(
+          targetItem = materials_and_assembles_by_user.value.find(
             (i) => i.index === item
           );
           console.log("targetItem:", targetItem)
@@ -1036,16 +1040,17 @@
   const callAGV = async () => {
     console.log("callAGV()...")
 
+    let payload = {};
+
     if (!isCallAGV.value) {
       if (selectedItems.value.length == 0) {
         showSnackbar("請選擇送料的工單!", 'red accent-2');
         return;
       }
 
-      let payload = {agv_id: 1};
+      payload = {agv_id: 1};
       await getAGV(payload);
-      //待待
-      //console.log("hello, currentAGV:", currentAGV.value);
+      console.log("hello, 組裝站叫車, AGV 狀態:", currentAGV.value);
       //if (currentAGV.value.status != 0) {
       //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
       //  return;
@@ -1062,6 +1067,17 @@
 
     agv1StartTime.value = new Date();  // 使用 Date 來記錄等待agv開始時間
     console.log("AGV Start time:", agv1StartTime.value);
+
+    selectedItems.value.forEach(async (item) => {
+      console.log('selectedItems, item:', item);
+
+      payload = {
+        id: item,
+        record_name: 'show3_ok',
+        record_data: 1      // 設為 1，等待agv
+      };
+      await updateMaterial(payload);
+    });
   };
 
   // 定義一個延遲函數
@@ -1095,14 +1111,14 @@
       return;
     }
     const targetIndex = materials_and_assembles_by_user.value.findIndex(
-      (i) => i.assemble_id === item.assemble_id
+      (kk) => kk.assemble_id === item.assemble_id
     );
-    console.log("targetIndex:", targetIndex)
+    console.log("targetIndex assemble_id:", targetIndex)
 
     // //組裝區途程完成(按結束定鍵) && AGV還沒送出
     //enableDialogBtn.value = item.isTakeOk && !item.isShow;
 
-    let current_completed_qty= Number(item.receive_qty);
+    let current_completed_qty= Number(item.receive_qty);    //完成數量
     // 記錄當前完成數量
     let payload = {
       assemble_id: item.assemble_id,
@@ -1113,7 +1129,7 @@
 
     item.pickEnd.push(item.receive_qty);
 
-    let current_total_completed_qty=Number(item.total_receive_qty_num);
+    let current_total_completed_qty=Number(item.total_receive_qty_num);   //已完成總數量
     let total = current_total_completed_qty + current_completed_qty;
     item.total_receive_qty_num = total;
     item.total_receive_qty ='(' + total.toString().trim() + ')';
@@ -1138,12 +1154,17 @@
       record_data: temp_qty,
     };
     await updateAssemble(payload);
+    console.log("temp_qty:", temp_qty)
 
     checkInputStr(item.assemble_work);
     console.log("outputStatus:", outputStatus.value)
     console.log("current_completed_qty, total:", current_completed_qty, total)
 
+    console.log("step1...")
+    console.log("current_completed_qty == total ?", current_completed_qty,total)
     if (current_completed_qty == total) {
+      console.log("step2...")
+
       // 記錄當前途程結束狀態
       payload = {
         //order_num: item.order_num,
@@ -1160,20 +1181,21 @@
         record_data: outputStatus.value.step2
       };
       await updateMaterial(payload);
-
-      payload = {
-        id: item.id,
-        record_name: 'isShow',
-        record_data: true
-      };
-      await updateMaterial(payload);
+      //2025-02-08 mark the following function
+      //payload = {
+      //  id: item.id,
+      //  record_name: 'isShow',
+      //  record_data: true
+      //};
+      //await updateMaterial(payload);
     }
 
     //const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
     let temp = Number(item.req_qty)
-    console.log("step 1  total, temp:", total, temp)
+    console.log("step3...")
+    console.log("total == temp ?", total, temp)
     if (total == temp) {
-      console.log("step 2...")
+      console.log("step4...")
       // 記錄當前紀錄, 不能再輸入
       payload = {
         assemble_id: item.assemble_id,
@@ -1181,6 +1203,9 @@
         record_data: true,
       };
       await updateAssemble(payload);
+
+      await listWaitForAssembleFun();
+
       //if (targetItem) {
       //  targetItem.input_disable = true;
       //}
@@ -1192,13 +1217,14 @@
         };
       }
       //item.input_disable = true;
-
+      //待查
       payload = {
         assemble_id: item.assemble_id,
         record_name: 'isAssembleStationShow',
         record_data: true,
       };
       await updateAssemble(payload);
+      //
       //if (targetItem) {
       //  targetItem.isShow = true;
       //}
@@ -1252,7 +1278,17 @@
         //item.isTakeOk = true
       }
     }
+    console.log("step5...");
+
+    payload = {
+      user_id: currentUser.value.empID,
+    };
+    await getMaterialsAndAssemblesByUser(payload);
   };
+
+  const listWaitForAssembleFun = async () => {
+    await listWaitForAssemble();
+  }
 
   const updateAlarm = async (item) => {
     console.log("updateAlarm(),", item);

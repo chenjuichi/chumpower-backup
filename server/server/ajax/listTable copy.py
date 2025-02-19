@@ -242,7 +242,7 @@ def list_materials():
           'id': record['id'],
           'order_num': record['order_num'],                   #訂單編號
           'material_num': record['material_num'],   #物料編號
-          'req_qty': material_qty,                  #需求數量(訂單數量)
+          'req_qty': material_qty,                  #需求數量
           'delivery_qty': delivery_qty,             #備料數量
           'total_delivery_qty': temp_delivery,      #應備數量
           'input_disable': record['input_disable'],
@@ -278,47 +278,6 @@ def list_materials():
     })
 
 
-# list some data in the material table
-@listTable.route("/listWaitForAssemble", methods=['GET'])
-def list_wait_for_assemble():
-    print("listWaitForAssemble....")
-
-    s = Session()
-
-    begin_count = 0
-    end_count = 0
-
-    _objects = s.query(Material).with_for_update().all()
-    for material_record in _objects:
-      #record['delivery_qty'] != 0
-      #record['isShow']
-      #record['isShow']
-      if material_record.delivery_qty == 0 or not material_record.isShow or material_record.isAssembleStationShow :   # 檢查 isShow 是否為 False
-        continue
-      nums = set()
-      for end_record in material_record._assemble:
-        if end_record.input_disable and not end_record.input_end_disable:
-          end_count += 1
-          nums.add(end_record.material_num)
-          break
-
-      for begin_record in material_record._assemble:
-        if begin_record.material_num in nums:
-          break
-        if begin_record.process_step_code!=0 and not begin_record.input_disable:
-          print("begin_record id:",begin_record.id)
-          begin_count += 1
-          break
-
-
-    s.close()
-
-    return jsonify({
-      'begin_count': begin_count,
-      'end_count': end_count
-    })
-
-
 # list all Warehouse For Assemble
 @listTable.route("/listWarehouseForAssemble", methods=['GET'])
 def list_Warehouse_For_assemble():
@@ -329,39 +288,64 @@ def list_Warehouse_For_assemble():
     _results = []
     return_value = True
 
+    _objects = s.query(Material).all()
+    materials = [u.__dict__ for u in _objects]
+    processed_order_nums = set()                # 用於追踪已處理過的 order_num
+    for record in materials:
+      if not record['isAssembleStationShow']:   # 檢查 isAssembleStationShow 是否為 False
+        cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
+        temp_data = record['id']                    # 該筆訂單編號的table id
+        if temp_data in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
+          continue
+        # 計算 temp_delivery 的值
+        #order_num = record['order_num']
+        #order_num = temp_data
+        order_num_id = temp_data
+        material_qty = record['material_qty']     #需求數量(訂單數量)
+        assemble_qty = record['assemble_qty']
+        '''
+        # 找出所有具有相同 order_num 的資料
+        same_order_records = [r for r in materials if r['order_num'] == order_num]
 
-    materials = [u.__dict__ for u in s.query(Material).all()]
-    processed_order_nums = set()
+        if all(r['delivery_qty'] == 0 for r in same_order_records):  # 若所有相同 order_num 的 delivery_qty 都為 0
+          temp_delivery = material_qty
+        else:  # 若有相同 order_num 的資料且 delivery_qty 都不為 0
+          total_delivery_qty_sum = sum(r['total_delivery_qty'] for r in same_order_records)
+          #temp_delivery = material_qty - total_delivery_qty_sum
+          #if temp_delivery == 0:
+          #  temp_delivery = total_delivery_qty_sum
+          temp_delivery = total_delivery_qty_sum if material_qty - total_delivery_qty_sum == 0 else material_qty - total_delivery_qty_sum
+        '''
+        temp_delivery=record['total_delivery_qty']
 
-    # 過濾掉 isAssembleStationShow 為 True 的資料
-    filtered_materials = [record for record in materials if record['isAssembleStationShow']]
-    for record in filtered_materials:
-      cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
+        # 標記這個 order_num 已處理過
+        #processed_order_nums.add(order_num)
+        processed_order_nums.add(order_num_id)
 
-      _object = {
-        'id': record['id'],
-        'order_num': record['order_num'],                   #訂單編號
-        'material_num': record['material_num'],             #物料編號
-        'req_qty': record['material_qty'],                  #訂單數量
-        'date': record['material_delivery_date'],           #交期
-        'delivery_qty': record['assemble_qty'],             #組裝完成數量(到庫數量)
-        'allOk_qty': record['allOk_qty'],                   #確認完成數量
-        'total_allOk_qty': record['total_allOk_qty'],
-        'input_disable': record['input_disable'],
-        'delivery_date':record['material_delivery_date'],   #交期
-        'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
-        'comment': cleaned_comment,                         #說明
-        'isTakeOk' : record['isAllOk'],                     #true:成品已入庫
-        'isShow' : record['isAssembleStationShow'],         #false:歷史檔案
-        'isLackMaterial' : record['isLackMaterial'],
-        'isBatchFeeding' :  record['isBatchFeeding'],
-        'whichStation' : record['whichStation'],
-        'show1_ok' : record['show1_ok'],
-        'show2_ok' : record['show2_ok'],
-        'show3_ok' : record['show3_ok'],
-      }
+        _object = {
+          'id': record['id'],
+          'order_num': record['order_num'],         #訂單編號
+          'material_num': record['material_num'],   #物料編號
+          'req_qty': material_qty,                  #需求數量(訂單數量)
+          'delivery_qty': assemble_qty,             #組裝完成數量
+          'allOk_qty': record['allOk_qty'],         #確認完成數量
+          'total_allOk_qty': record['total_allOk_qty'],
+          #'total_delivery_qty': temp_delivery,      #應備數量
+          'input_disable': record['input_disable'],
+          'delivery_date':record['material_delivery_date'],   #交期
+          'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
+          'comment': cleaned_comment,                         #說明
+          'isTakeOk' : record['isAllOk'],                     #true:成品已入庫
+          'isShow' : record['isAssembleStationShow'],
+          'isLackMaterial' : record['isLackMaterial'],
+          'isBatchFeeding' :  record['isBatchFeeding'],
+          'whichStation' : record['whichStation'],
+          'show1_ok' : record['show1_ok'],
+          'show2_ok' : record['show2_ok'],
+          'show3_ok' : record['show3_ok'],
+        }
 
-      _results.append(_object)
+        _results.append(_object)
 
     s.close()
 
@@ -399,8 +383,8 @@ def list_materials_and_assembles():
       '110': 1
     }
 
-    #       0         1        2          3             4            5            6            7            8             9           10              11           12
-    str2=['未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成']
+    #       0         1        2          3        4            5           6            7           8            9           10          11           12
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '等待入庫', '入庫作業中', '入庫完成']
 
     # 使用 with_for_update() 來加鎖
     _objects = s.query(Material).with_for_update().all()
@@ -432,22 +416,22 @@ def list_materials_and_assembles():
     '''
     # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
     for material_record in _objects:
-      for assemble_record in material_record._assemble:
-        #code = assemble_record.work_num[1:]  # 取得字串中的代碼 (去掉字串中的第一個字元)
-        step_code = assemble_record.process_step_code  # 直接使用資料中的 step_code
+        for assemble_record in material_record._assemble:
+            #code = assemble_record.work_num[1:]  # 取得字串中的代碼 (去掉字串中的第一個字元)
+            step_code = assemble_record.process_step_code  # 直接使用資料中的 step_code
 
-        order_num_id = material_record.id  # 該筆訂單編號的table id
+            order_num_id = material_record.id  # 該筆訂單編號的table id
 
-        print(f"Processing material id={order_num_id}, assemble work_num={assemble_record.work_num}, step_code={step_code}")
+            print(f"Processing material id={order_num_id}, assemble work_num={assemble_record.work_num}, step_code={step_code}")
 
-        # 設定或更新該 order_num_id 下的最大 step code
-        if order_num_id not in max_step_code_per_order:
-          max_step_code_per_order[order_num_id] = step_code
-          print(f"Set initial max step_code for id={order_num_id}: {step_code}")
-        else:
-          current_max = max_step_code_per_order[order_num_id]
-          max_step_code_per_order[order_num_id] = max(current_max, step_code)
-          print(f"Updated max step_code for id={order_num_id}: {current_max} -> {max_step_code_per_order[order_num_id]}")
+            # 設定或更新該 order_num_id 下的最大 step code
+            if order_num_id not in max_step_code_per_order:
+                max_step_code_per_order[order_num_id] = step_code
+                print(f"Set initial max step_code for id={order_num_id}: {step_code}")
+            else:
+                current_max = max_step_code_per_order[order_num_id]
+                max_step_code_per_order[order_num_id] = max(current_max, step_code)
+                print(f"Updated max step_code for id={order_num_id}: {current_max} -> {max_step_code_per_order[order_num_id]}")
 
     print("Final max_step_code_per_order:", max_step_code_per_order)
 
@@ -455,9 +439,6 @@ def list_materials_and_assembles():
     #_objects = s.query(Material).all()
     print("start:")
     for material_record in _objects:
-      if material_record.isAssembleStationShow:
-      #if not material_record.isShow or material_record.isAssembleStationShow:
-        continue
       num = int(material_record.show2_ok)
       temp_temp_show2_ok_str = str2[num]
       assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
@@ -506,9 +487,7 @@ def list_materials_and_assembles():
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
           #'req_qty': assemble_record.meinh_qty,                                #需求數量(作業數量)
-          #'req_qty': assemble_record.good_qty,                                  # 需求數量(作業數量)
-          'req_qty': material_record.material_qty,                                  # 需求數量(作業數量)
-
+          'req_qty': assemble_record.good_qty,                                  # 需求數量(作業數量)
           'delivery_qty': material_record.delivery_qty,                         # 備料數量(現況數量)
           'total_receive_qty': f"({assemble_record.total_ask_qty})",            # 已完成總數量
           'total_receive_qty_num': assemble_record.total_ask_qty,               #領取總數量
@@ -552,12 +531,12 @@ def list_informations():
     _results = []
     return_value = True
     str1=['備料站', '組裝站', '成品站']
-    #       0        1         2                 3              4            5           6             7            8             9          10                  11            12           13          14          15            16          17
-    #str2=['未備料', '備料中', '備料完成',       '未組裝',      '組裝作業中', '00/00/00',  '雷射作業中', '00/00/00',  '檢驗作業中',  '00/00/00', '未入庫',           '檢料作業中',  'aa/00/00',  '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
-    #str2=['未備料', '備料中', '備料完成',       '未組裝',      '組裝作業中', '00/00/00',  '雷射作業中', '00/00/00',  '檢驗作業中',  '00/00/00', '未入庫',           '入庫作業中',  '00',        '入庫完成']
-    str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
-    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)     16(agv_start)
-    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start']
+    #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
+    #str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', '00/00/00', '檢驗作業中', '00/00/00', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
+    #str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', '00/00/00', '雷射作業中', '00/00/00', '檢驗作業中', '00/00/00', '未入庫', '入庫作業中', '00',       '入庫完成']
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '等待入庫', '入庫作業中', '入庫完成']
+    #      0    1          2(agv_begin)      3(agv_end)   4(開始鍵)    5(結束鍵)     6(開始鍵)     7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)   13(結束鍵)    14(agv_begin)    15(agv_end)
+    str3=['',  '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '入庫進行中', '入庫已結束', 'agv移至備料區中', '等待備料中', ]
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 
@@ -631,10 +610,10 @@ def list_informations_for_assemble_error():
     str1=['備料站', '組裝站', '成品站']
     #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
     #str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
-    str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
-    #      0    1          2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(開始鍵)        15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
-    str3=['',  '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start']
-    #      0    1          2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)      11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)    16(agv_start)
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '等待入庫', '入庫作業中', '入庫完成']
+    #      0    1          2(agv_begin)     3(agv_end)   4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)    13(結束鍵)   14(開始鍵)    15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
+    #str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
+    str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '入庫進行中', '入庫已結束', 'agv移至備料區中', '等待備料中', ]
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 
@@ -731,11 +710,12 @@ def list_assemble_informations():
     _results = []
     return_value = True
     str1=['備料站', '組裝站', '成品站']
-    #       0        1         2                 3              4             5          6             7             8             9          10                 11             12           13          14          15            16          17
-    #str2=['未備料', '備料中', '備料完成',       '未組裝',       '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00',   '檢驗作業中', 'aa/bb/cc',  '未入庫',           '檢料作業中',  'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
-    str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00',  '等待入庫作業',     '入庫進行中',  '入庫完成']
-    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)     16(avg_start)
-    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start']
+    #       0        1         2         3         4             5          6             7           8             9         10        11           12           13          14          15            16          17
+    #str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '未入庫', '檢料作業中', 'aa/00/00', '雷刻作業中', 'aa/bb/00', '包裝作業中', 'aa/bb/cc', '完成入庫']
+    str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc', '等待入庫', '入庫作業中', '入庫完成']
+    #      0    1          2(agv_begin)     3(agv_end)   4(開始鍵)     5(結束鍵)     6(開始鍵)    7(結束鍵)     8(開始鍵)    9(結束鍵)     10(agv_begin)     11(agv_end)  12(開始鍵)    13(結束鍵)   14(開始鍵)    15(結束鍵)   16(開始鍵)    17(結束鍵)    18(agv_begin)    19(agv_end)  20(agv_alarm)
+    #str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '檢料進行中', '檢料已結束', '雷刻進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至備料區中', '等待備料中', 'agv待處理中...']
+    str3=['', '等待agv', 'agv移至組裝區中', '等待組裝中', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫中', '入庫進行中', '入庫已結束', 'agv移至備料區中', '等待備料中', ]
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 

@@ -12,6 +12,9 @@ export const material_copy_id = ref(0);
 // for listMaterials
 export const materials = ref([]);
 
+// for listWarehouseForAssemble
+export const warehouses = ref([]);
+
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
 
@@ -29,6 +32,10 @@ export const assembleInformations = ref([]);
 
 // for listAbnormalCauses
 export const abnormal_causes = ref([]);
+
+// for listWaitForAssemble
+export const begin_count = ref(0);
+export const end_count = ref(0);
 
 // for getBoms
 export const boms = ref([]);
@@ -122,6 +129,10 @@ export const apiOperation = (operation, path, payload) => {
             materials.value = [...res.data.materials];
           }
 
+          if (path == '/listWarehouseForAssemble') {
+            warehouses.value = [...res.data.warehouse_for_assemble];
+          }
+
           if (path == '/listMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
           }
@@ -140,6 +151,11 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/listAssembleInformations') {
             assembleInformations.value = [...res.data.assembleInformations];
+          }
+
+          if (path == '/listWaitForAssemble') {
+            begin_count.value = res.data.begin_count;
+            end_count.value = res.data.end_count;
           }
 
           if (path == '/listUsers') {
@@ -185,6 +201,10 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/getInformationsForAssembleErrorByHistory') {
             informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];
+          }
+
+          if (path == '/getWarehouseForAssembleByHistory') {
+            warehouses.value = [...res.data.warehouse_for_assemble];
           }
 
           /*

@@ -377,10 +377,18 @@ def copy_material():
   print("request_data:", request_data)
 
   _copy_id = request_data['copy_id']
-  _total_delivery_qty = request_data['total_delivery_qty']
+  _total_delivery_qty = request_data.get['total_delivery_qty']
+  _allOk_qty = request_data.get('allOk_qty')
+
   #_delivery_qty = request_data['delivery_qty']
   _show2_ok = request_data['show2_ok']
   _shortage_note = request_data['shortage_note']
+
+  #temp_value =0
+  #if _total_delivery_qty is not None and _allOk_qty is None:
+  #  temp_value = _total_delivery_qty
+  #if _allOk_qty is not None and _total_delivery_qty is None:
+  #  temp_value = _allOk_qty
 
   return_value = True
   #return_message = ''
@@ -403,7 +411,11 @@ def copy_material():
     material_delivery_date = existing_material.material_delivery_date,
     isTakeOk = True,  # 已經檢料
     show2_ok = _show2_ok,
-    total_delivery_qty = _total_delivery_qty,
+
+    #total_delivery_qty = _total_delivery_qty,
+    total_delivery_qty = _total_delivery_qty if _total_delivery_qty is not None and _allOk_qty is None else existing_material.total_delivery_qty,
+    assemble_qty = _allOk_qty if _allOk_qty is not None and _total_delivery_qty is None else 0,
+
     shortage_note = _shortage_note,
   )
 

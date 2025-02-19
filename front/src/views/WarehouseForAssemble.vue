@@ -1,1120 +1,727 @@
 <template>
-  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
-    <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
-      {{ snackbar_info }}
-      <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
-          <v-icon dark>mdi-close-circle</v-icon>
-        </v-btn>
-      </template>
-    </v-snackbar>
+<div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
+  <!-- Snackbar -->
+  <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+    {{ snackbar_info }}
+    <template v-slot:actions>
+      <v-btn color="#adadad" @click="snackbar = false">
+        <v-icon dark>mdi-close-circle</v-icon>
+      </v-btn>
+    </template>
+  </v-snackbar>
 
-    <!-- data table -->
-    <v-data-table
-      :headers="headers"
-      :items="materials"
-      fixed-header
-      style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
-      :items-per-page-options="footerOptions"
-      items-per-page="5"
+  <!-- data table -->
+  <v-data-table
+    :headers="headers"
+    :items="warehouses"
+    :row-props="getRowProps"
+    :search="search"
+    fixed-header
+    style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
 
-      item-value="id"
-      show-select
-      :value="selectedItems"
+    item-value="id"
+    show-select
+    :value="selectedItems"
 
-      class="elevation-10 custom-table"
-      items-per-page-text="每頁的資料筆數"
-    >
+    class="elevation-10 custom-table"
+    :items-per-page-options="footerOptions"
+    items-per-page="5"
+    v-model:page="pagination.page"
+    items-per-page-text="每頁的資料筆數"
+  >
 
-      <!-- 客製化 '選擇框' 欄位表頭 -->
-      <template v-slot:header.data-table-select>
-        <span class="custom-header">送料</span>
-      </template>
+    <!-- 客製化 '選擇框' 欄位表頭 -->
+    <template v-slot:header.data-table-select>
+      <span class="custom-header">入庫</span>
+    </template>
 
-      <!-- 自定義每行的選擇框 -->
-      <template v-slot:item.data-table-select="{ internalItem }">
-        <v-checkbox-btn
-          :model-value="isSelected(internalItem)"
-          :disabled="!internalItem.raw.isTakeOk || internalItem.raw.delivery_qty == 0"
-          color="primary"
-          @update:model-value="toggleSelect(internalItem)"
-          :class="{ 'blue-text': internalItem.raw.isTakeOk }"
-        />
-      </template>
+    <!-- 自定義每行的選擇框 -->
+    <template v-slot:item.data-table-select="{ internalItem }">
+      <v-checkbox-btn
+        :model-value="isSelected(internalItem)"
+        :disabled="internalItem.raw.allOk_qty == 0 || internalItem.raw.isTakeOk"
+        color="primary"
+        @update:model-value="toggleSelect(internalItem)"
+        :class="{ 'blue-text': internalItem.raw.isTakeOk }"
+      />
+    </template>
 
-      <!-- 客製化 top 區域 -->
-      <template v-slot:top>
-        <v-card>
-          <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
-            成品區入庫資訊
-            <v-spacer />
+    <!-- 客製化 top 區域 -->
+    <template v-slot:top>
+      <v-card>
+        <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
+          <v-row>
+            <v-col cols="12" md="3">
+              成品區入庫資訊
+            </v-col>
 
-            <!--客製化 匯入清單按鍵-->
-            <v-btn
-              :disabled="fileCount === 0"
-              color="primary"
-              variant="outlined"
-              style="position: relative; right: 210px; top: 0px; font-weight: 700;"
-              @click="readAllExcelFun"
-            >
-              <v-icon left color="green">mdi-microsoft-excel</v-icon>
-              <span style="color: #000;">匯入清單</span>
-              <template v-if="fileCount > 0" v-slot:append>
-                <v-badge color="info" :content="fileCount" inline />
-              </template>
-            </v-btn>
+            <!--客製化 歷史紀錄按鍵-->
+            <v-col cols="12" md="2">
+              <v-btn
+                @click="toggleHistory"
+                :active="history"
+                color="#c39898"
+                variant="outlined"
+                style="position: relative; left: 185px; top: 0px; font-weight: 700;"
+              >
+                <v-icon left color="#664343">mdi-history</v-icon>
+                歷史紀錄
+              </v-btn>
+            </v-col>
 
-            <!--客製化 編輯訂單按鍵-->
-          <!--
-            <v-btn
-              :disabled="fileCount != 0"
-              color="primary"
-              variant="outlined"
-              style="
-                position: relative;
-                right: 200px;
-                top: 0px;
-                font-weight: 700;
-                z-index: 2;
-                transition: opacity 0.3s ease, visibility 0.3s ease;
-              "
-              :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-              @click="editDialog = true"
-            >
-              <v-icon left color="blue">mdi-text-box-edit-outline</v-icon>
-              <span style="color: #000;">編輯訂單</span>
-            </v-btn>
-          -->
+            <!--客製化 入庫登記按鍵-->
+            <v-col cols="12" md="2">
+              <v-btn
+                :disabled="c_isBlinking"
+                color="primary"
+                variant="outlined"
+                style="position: relative; left: 100px; top: 0px; font-weight: 700;"
+                @click="callAGV"
+              >
+                <v-icon left color="blue">mdi-view-grid-plus-outline</v-icon>
+                <span>入庫登記</span>
+              </v-btn>
+            </v-col>
 
-            <!-- Bom 編輯對話視窗-->
-            <div class="pa-4 text-center">
-              <v-dialog v-model="editDialog" max-width="900">
-                <v-card :style="{ maxHeight: modify_boms.length > 5 ? '600px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
-                  <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                    編輯訂單
-                    <v-fade-transition mode="out-in">
-                      <v-btn
-                        style="position: relative; right: -550px;"
-                        color="success"
-                        prepend-icon="mdi-content-save"
-                        :disabled="editDialogBtnDisable"
-                        text="確定"
-                        class="text-none"
-                        @click="updateModifyMaterialAndBomsFun"
-                        variant="flat"
-                        flat
-                      />
-                    </v-fade-transition>
-                  </v-card-title>
-                  <v-card-text>
-                    <v-row>
-                      <v-col cols="12" md="5">
-                        <v-text-field
-                          v-model="selectedOrderNum"
-                          @keyup.enter="handleOrderNumSearch"
-                          variant="solo"
-                          readonly
-                          class="modify_order_num"
-                        >
-                          <template #prepend>
-                            <span class="text-caption">訂單編號</span>
-                          </template>
-                        </v-text-field>
-                      </v-col>
-                      <v-col cols="12" md="3">
-                        <v-menu
-                          v-model="fromDateMenu"
-                          :close-on-content-click="false"
-                          :nudge-right="40"
-                          transition="scale-transition"
-                          offset-y
-                          max-width="300px"
-                          min-width="300px"
-                        >
-                          <template #activator="{ props }">
-                            <v-text-field
-                              prepend-icon="mdi-calendar"
-                              readonly
-                              :value="formattedDate"
-                              v-bind="props"
-                              variant="solo"
-                              class="modify_date"
-                            />
-                          </template>
-                          <v-date-picker
-                            v-model="fromDateVal"
-                            color="blue-lighten-1"
-                            @update:model-value="handleDateChange"
-                          />
-                        </v-menu>
-                      </v-col>
-
-                      <v-col cols="12" md="4">
-                        <v-text-field
-                          variant="solo"
-                          required
-                          class="modify_qty"
-                          @keydown="handleKeyDown"
-                          v-model="selectedReqQty"
-                        >
-                          <template #prepend>
-                            <span class="text-caption">訂單數量</span>
-                          </template>
-                        </v-text-field>
-                      </v-col>
-                    </v-row>
-                    <v-row>
-                      <v-col cols="12" md="2" style="margin-top: 25px;">
-                        <v-btn
-                          color="primary"
-                          variant="outlined"
-                          style="width:100px; min-width:100px; font-weight:700;"
-                          @click="modifyExcelFilesFun"
-                        >
-                          <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                          <span style="color: #0D47A1;">匯入BOM</span>
-                        </v-btn>
-                      </v-col>
-                      <v-col cols="12" md="10">
-                        <v-table class="inner" density="compact" fixed-header>
-                          <thead style="color: black;">
-                            <tr>
-                              <th class="text-left">元件</th>
-                              <th class="text-left">物料</th>
-                              <th class="text-left">數量</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr
-                              v-for="(bom_item, index) in modify_boms"
-                              :key="bom_item.seq_num"
-                              :style="{
-                                backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                              }"
-                            >
-                              <td>{{ bom_item.seq_num }}</td>
-                              <td>
-                                <div>
-                                  <div>{{ bom_item.material_num }}</div>
-                                  <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                                </div>
-                              </td>
-                              <td>
-                                <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </v-table>
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
-              </v-dialog>
-            <!--
-              <v-dialog v-model="editDialog" max-width="900">
-                <v-card prepend-icon="mdi-text-box-edit-outline" title="編輯訂單">
-                  <v-card-text>
-                    <v-row>
-
-                      <v-col cols="12" md="5">
-                        <v-text-field
-                          v-model="selectedOrderNum"
-                          @keyup.enter="handleOrderNumSearch"
-                          variant="solo"
-                          readonly
-                          class="modify_order_num"
-                        >
-                          <template #prepend>
-                            <span class="text-caption">訂單編號</span>
-                          </template>
-                        </v-text-field>
-                      </v-col>
-
-
-                      <v-col cols="12" md="3">
-                        <v-menu
-                          v-model="fromDateMenu"
-                          :close-on-content-click="false"
-                          :nudge-right="40"
-                          transition="scale-transition"
-                          offset-y
-                          max-width="300px"
-                          min-width="300px"
-                        >
-                          <template #activator="{ props }">
-                            <v-text-field
-                              prepend-icon="mdi-calendar"
-                              readonly
-                              :value="formattedDate"
-                              v-bind="props"
-                              variant="solo"
-                              class="modify_date"
-                            />
-                          </template>
-                          <v-date-picker
-                            v-model="fromDateVal"
-                            color="blue-lighten-1"
-                            @update:model-value="handleDateChange"
-                          />
-                        </v-menu>
-                      </v-col>
-
-
-                      <v-col cols="12" md="4">
-                        <v-text-field
-                          variant="solo"
-                          required
-                          class="modify_qty"
-                          @keydown="handleKeyDown"
-                          v-model="selectedReqQty"
-                        >
-                          <template #prepend>
-                            <span class="text-caption">訂單數量</span>
-                          </template>
-                        </v-text-field>
-                      </v-col>
-                    </v-row>
-
-                    <v-row>
-                      <v-col cols="12" md="2">
-                        <v-btn
-                          color="primary"
-                          variant="outlined"
-                          style="
-                            width:100px;
-                            min-width:100px;
-                            position:relative;
-                            left:-10px;
-                            top:-10px;
-                            font-weight:700;
-                          "
-                          @click="modifyExcelFilesFun"
-                        >
-                          <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                          <span style="color: #0D47A1;">匯入BOM</span>
-                        </v-btn>
-                      </v-col>
-                      <v-col cols="12" md="10" class="custom-bordered-row">
-                        <v-data-table
-                          :items="modify_boms"
-                          :headers="modify_bom_headers"
-                          items-per-page="5"
-                          style="position: relative; top: -15px;"
-                        />
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                  <v-divider></v-divider>
-                  <v-card-actions>
-                    <v-spacer></v-spacer>
-                    <v-btn
-                      text="Close"
-                      variant="tonal"
-                      prepend-icon="mdi-close-circle"
-                      @click="editDialog = false"
-                    />
-
-                    <v-btn
-                      text="Save"
-                      variant="tonal"
-                      append-icon="mdi-content-save"
-                      @click="editDialog = false"
-                    />
-                  </v-card-actions>
-                </v-card>
-              </v-dialog>
-            -->
-            </div>
-
-            <!--客製化 員工選單-->
-            <div style="position: relative; right: 113px; width: 160px;">
-              <!-- v-text-field 用於顯示選中員工 -->
+            <!--客製化 搜尋輸入框-->
+            <v-col cols="12" md="2">
               <v-text-field
-                v-model="selectedEmployee"
-                @keyup.enter="handleEmployeeSearch"
-
+                v-model="search"
+                label="Search"
+                prepend-inner-icon="mdi-magnify"
                 variant="outlined"
-                density="comfortable"
-                style="
-                  min-width: 160px;
-                  width: 160px;
-                  position: absolute;
-                  z-index: 2;
-                  transition: opacity 0.3s ease, visibility 0.3s ease;
-                "
-                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
+                hide-details
+                single-line
+                class="top_find_field"
               />
+            </v-col>
+            <v-col cols="12" md="3" />
+          </v-row>
+        </v-card-title>
+      </v-card>
+    </template>
 
-              <!-- v-select 用於選擇員工 -->
-              <v-select
-                v-model="inputSelectEmployee"
-                :items="formattedDesserts"
-                item-title="display"
-                item-value="emp_id"
-                :placeholder="placeholderTextForEmployee"
-                variant="outlined"
-                density="comfortable"
-                @update:modelValue="updateEmployeeFieldFromSelect"
-                style="
-                  min-width: 160px;
-                  width: 160px;
-                  position: relative;
-                  top: 20px;
-                  z-index: 1;
-                  transition: opacity 0.3s ease, visibility 0.3s ease;
-                "
-                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
-              />
-            </div>
+    <!-- 客製化 '需求數量' (req_qty) 欄位表頭 -->
+    <template v-slot:header.req_qty="{ column }">
+      <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
+        <div>{{ column.title }}</div>
+        <div style="font-size:12px; margin-top: 5px;">(交貨日期)</div>
+      </div>
+    </template>
 
-            <!--客製化 手動推車/AGV切換按鍵-->
-            <div class="button-container">
-              <v-btn-toggle >
-                <v-btn
-                  variant="outlined"
-                  :style="{
-                    background: toggle_exclusive === 1 ? '#e67e22' : '#e7e9eb',
-                    color: toggle_exclusive === 1 ? '#fff' : '#000',
-                    fontWeight: '700'
-                  }"
-                  @click="setActive(1)"
-                >
-                  <v-icon right color="#003171">mdi-cart-outline</v-icon>
-                  <span>手動推車</span>
-                </v-btn>
-
-                <v-btn
-                  variant="outlined"
-                  :style="{
-                    background: toggle_exclusive === 2 ? '#27ae60' : '#e7e9eb',
-                    color: toggle_exclusive === 2 ? '#fff' : '#000',
-                    fontWeight: '700'
-                  }"
-                  @click="setActive(2)"
-                >
-                  <span>AGV送料</span>
-                  <v-icon right color="#003171">mdi-truck-flatbed</v-icon>
-                </v-btn>
-              </v-btn-toggle>
-            </div>
-
-            <!--客製化 備料送出按鍵-->
-            <v-btn
-              :disabled="c_isBlinking"
-              color="primary"
-              variant="outlined"
-              style="position: relative; left: -100px; top: 0px; font-weight: 700;"
-              @click="callAGV"
-            >
-              <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-              <span>備料送出</span>
-            </v-btn>
-
-            <!-- 客製化黃綠燈 -->
-            <div
-              :style="{
-                display: 'inline-block',
-                borderRadius: '50%',
-                width: '25px',
-                height: '25px',
-                position: 'relative',
-                top: '0px',
-                left: '-90px',
-
-                opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
-                transition: 'opacity 0.5s ease',          // 過渡效果
-                background: background,                   // 背景顏色
-                border: '1px solid black'                 // 黑色邊框
-              }"
-            />
-
-            <!-- Bom 顯示對話視窗-->
-            <v-dialog v-model="dialog" max-width="800px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
-              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  備料資訊
-                  <v-fade-transition mode="out-in">
-                    <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-check-circle-outline"
-                      :disabled="enableDialogBtn"
-                      text="確定"
-                      class="text-none"
-                      @click="updateItem"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
-                </v-card-title>
-
-                <v-card-text>
-                  <v-table class="inner" density="compact" fixed-header>
-                    <thead style="color: black;">
-                      <tr>
-                        <th class="text-left">元件</th>
-                        <th class="text-left">物料</th>
-                        <th class="text-left">數量</th>
-                        <th class="text-left">日期</th>
-                        <th class="text-left">領料</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      <tr
-                        v-for="(bom_item, index) in boms"
-                        :key="bom_item.seq_num"
-                        :style="{
-                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                        }"
-                      >
-                        <td>{{ bom_item.seq_num }}</td>
-                        <td>
-                          <div>
-                            <div>{{ bom_item.material_num }}</div>
-                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                          </div>
-                        </td>
-                        <td>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                        </td>
-                        <td>
-                          <div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                          </div>
-                        </td>
-                        <td>
-                          <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
-                        </td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
-          </v-card-title>
-        </v-card>
-      </template>
-
-      <!-- 客製化 '需求數量' (req_qty) 欄位表頭 -->
-      <template v-slot:header.req_qty="{ column }">
-        <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-          <div>{{ column.title }}</div>
-          <div style="font-size:12px; margin-top: 5px;">(交貨日期)</div>
+    <!-- 自訂 '訂單編號' 欄位 -->
+    <template v-slot:item.order_num="{ item }">
+      <div style="display: flex; align-items: center;">
+        <!-- Order Info -->
+        <div style="color: red; margin-right: 2px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
+          {{ item.order_num }}&nbsp;&nbsp;
+          <span style="font-weight: 700; font-size: 16px;">缺料</span>
+        </div> <!--檢料完成-->
+        <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
+          {{ item.order_num }}
+        </div> <!--檢料完成-->
+        <div style="margin-right: 20px;" v-else>
+          {{ item.order_num }}
         </div>
-      </template>
+      </div>
+    </template>
 
-      <!-- 自訂 '訂單編號' 欄位 -->
-      <template v-slot:item.order_num="{ item }">
-        <div style="display: flex; align-items: center;">
-          <!-- v-icon -->
-          <v-icon
-            style="transition: opacity 0.3s ease, visibility 0.3s ease;"
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-            @click="editOrderNum(item)"
-            small class="mr-2">
-            mdi-pencil
-          </v-icon>
-          <!-- Order Info -->
-          <div style="color: red; margin-right: 2px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
-            {{ item.order_num }}&nbsp;&nbsp;
-            <span style="font-weight: 700; font-size: 16px;">缺料</span>
-          </div> <!--檢料完成-->
-          <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
-            {{ item.order_num }}
-          </div> <!--檢料完成-->
-          <div style="margin-right: 20px;" v-else>
-            {{ item.order_num }}
-          </div>
-        </div>
-      </template>
+    <!--
+    <template v-slot:item.material_num="{ item }">
+      <div>
+        <div>{{ item.material_num }}</div>
+        <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
+      </div>
+    </template>
+    -->
 
-      <!--
-      <template v-slot:item.material_num="{ item }">
-        <div>
-          <div>{{ item.material_num }}</div>
-          <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-        </div>
-      </template>
-      -->
+    <!-- 自訂 '需求數量' (req_qty) 欄位 -->
+    <template v-slot:item.req_qty="{ item }">
+      <div>
+        <div>{{ item.req_qty }}</div>
+        <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+      </div>
+    </template>
 
-      <!-- 自訂 '需求數量' (req_qty) 欄位 -->
-      <template v-slot:item.req_qty="{ item }">
-        <div>
-          <div>{{ item.req_qty }}</div>
-          <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
-        </div>
-      </template>
+    <!-- 自訂 '說明' 欄位 -->
+    <template v-slot:item.comment="{ item }">
+      <div>
+        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+      </div>
+    </template>
 
-      <!-- 自訂 '說明' 欄位 -->
-      <template v-slot:item.comment="{ item }">
-        <div>
-          <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-          <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-        </div>
-      </template>
+    <!-- 自訂 '詳情' 按鍵 -->
+    <template v-slot:item.action="{ item }">
+      <v-btn
+        size="small"
+        variant="tonal"
+        style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
 
-      <!-- 自訂 '詳情' 按鍵 -->
-      <template v-slot:item.action="{ item }">
-        <v-btn
-          size="small"
-          variant="tonal"
-          style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+        @click="toggleExpand(item)"
+      >
+        詳 情
+        <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+      </v-btn>
+    </template>
 
-          @click="toggleExpand(item)"
-        >
-          詳 情
-          <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
-        </v-btn>
-      </template>
+    <!-- 自訂 '到庫數量' 輸入欄位 -->
+    <template v-slot:item.delivery_qty="{ item }">
+      <div>{{ item.delivery_qty }}</div>
+    </template>
 
-      <!-- 自訂 '備料數量' 輸入欄位 -->
-      <template v-slot:item.delivery_qty="{ item }">
-        <div style="position: relative; display: inline-block;">
-          <!--
-          :disabled="item.input_disable"
+    <!-- 自訂 '入庫數量' 輸入欄位 -->
+    <template v-slot:item.allOk_qty="{ item }">
+      <div style="position: relative; display: inline-block;">
+        <v-text-field
+          v-model="item.allOk_qty"
+          dense
+          hide-details
+          style="max-width: 60px; text-align: center; z-index: 1;"
+          :id="`allOkQtyID-${item.id}`"
+          @update:modelValue="checkQtyField(item)"
+          @update:focused="(focused) => checkTextEditField(focused, item)"
+          @keyup.enter="updateItem2(item)"
+          :disabled="selectedItems.includes(item.id) || item.isTakeOk"
           :style="{
-              '--input-text-color': (item.isError || item.input_disable) ? 'red' : 'black'  // 動態設置 CSS 變數
+            '--input-text-color': (item.isError || item.allOk_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
           }"
-          -->
-          <v-text-field
-            v-model="item.delivery_qty"
-            dense
-            hide-details
-            :id="`receiveQtyID-${item.id}`"
-            @keydown="handleKeyDown"
-            @update:modelValue="(value) => { item.delivery_qty = value; checkReceiveQty(item); }"
-            @update:focused="(focused) => checkTextEditField(focused, item)"
-            @keyup.enter="updateItem2(item)"
-            :disabled="!item.isTakeOk"
+        />
+        <span
+          v-show="item.tooltipVisible"
+          style=" position: absolute;
+                  left: 20px;
+                  top: -15px;
+                  z-index: 2;
+                  background-color: transparent;
+                  padding: 0;
+                  min-width: 120px;
+                  white-space: nowrap;
+                  color:red;
+                  text-align: left;
+                  font-weight: 600;
+                  font-size: 12px;"
+        >
+          {{ delivery_qty_alarm }}
+        </span>
+      </div>
+      <div v-show="item.isTakeOk" style=" position: relative; left: -20px; top: -5px; font-weight: 400; font-size: 10px;">
+        入庫日期
+      </div>
+    </template>
 
-            :style="{
-              '--input-text-color': (item.isError || item.delivery_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
-            }"
-          />
-          <span
-            v-show="item.tooltipVisible"
-            style="position: absolute; left: -60px; top: 20; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 400; font-size: 10px !important;"
-          >
-            {{ delivery_qty_alarm }}
-          </span>
-        </div>
-      </template>
+    <!-- 自訂 data table 在沒有資料時, 畫面的顯示資訊 -->
+    <template #no-data>
+      <strong><span style="color: red;">目前沒有資料</span></strong>
+    </template>
+  </v-data-table>
+</div>
+</template>
 
-      <!-- 自訂 data table 在沒有資料時, 畫面的顯示資訊 -->
-      <template #no-data>
-        <strong><span style="color: red;">目前沒有資料</span></strong>
-      </template>
-    </v-data-table>
-  </div>
-  </template>
+<script setup>
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
-  <script setup>
-  import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+import draggable from 'vuedraggable'
+import { useRoute } from 'vue-router';
 
-  import draggable from 'vuedraggable'
-  import { useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
+const router = useRouter();
 
-  import { useRouter } from 'vue-router';
-  const router = useRouter();
+import { myMixin } from '../mixins/common.js';
+import { useSocketio } from '../mixins/SocketioService.js';
 
-  import { myMixin } from '../mixins/common.js';
-  import { useSocketio } from '../mixins/SocketioService.js';
+import { materials, warehouses, boms, currentBoms, desserts, currentAGV, material_copy_id ,socket_server_ip, fileCount }  from '../mixins/crud.js';
+import { apiOperation, setupGetBomsWatcher, setupListUsersWatcher }  from '../mixins/crud.js';
 
-  import { materials, boms, currentBoms, desserts, currentAGV, material_copy_id ,socket_server_ip, fileCount }  from '../mixins/crud.js';
-  import { apiOperation, setupGetBomsWatcher, setupListUsersWatcher }  from '../mixins/crud.js';
+// 使用 apiOperation 函式來建立 API 請求
+const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
+const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
+const countExcelFiles = apiOperation('get', '/countExcelFiles');
+//const listWarehouseForAssemble = apiOperation('get', '/listWarehouseForAssemble');
+const listUsers = apiOperation('get', '/listUsers');
+const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
-  // 使用 apiOperation 函式來建立 API 請求
-  const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
-  const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
-  const countExcelFiles = apiOperation('get', '/countExcelFiles');
-  const listMaterials = apiOperation('get', '/listMaterials');
-  const listUsers = apiOperation('get', '/listUsers');
-  const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+const getBoms = apiOperation('post', '/getBoms');
+const getAGV = apiOperation('post', '/getAGV');
+const updateBoms = apiOperation('post', '/updateBoms');
+const updateMaterial = apiOperation('post', '/updateMaterial');
+const copyMaterial = apiOperation('post', '/copyMaterial');
+const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
+const createProcess = apiOperation('post', '/createProcess');
+const updateAGV = apiOperation('post', '/updateAGV');
+const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
+const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
+const getWarehouseForAssembleByHistory = apiOperation('post', '/getWarehouseForAssembleByHistory');
 
-  const getBoms = apiOperation('post', '/getBoms');
-  const getAGV = apiOperation('post', '/getAGV');
-  const updateBoms = apiOperation('post', '/updateBoms');
-  const updateMaterial = apiOperation('post', '/updateMaterial');
-  const copyMaterial = apiOperation('post', '/copyMaterial');
-  const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-  const createProcess = apiOperation('post', '/createProcess');
-  const updateAGV = apiOperation('post', '/updateAGV');
-  const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
-  const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
+//=== component name ==
+defineComponent({ name: 'MaterialListForAssem' });
 
-  //=== component name ==
-  defineComponent({
-    name: 'MaterialListForAssem'
-  });
+// === mix ==
+const { initAxios } = myMixin();
 
-  // === mix ==
-  const { initAxios } = myMixin();
+//=== props ===
+const props = defineProps({ showFooter: Boolean });
 
-  //=== props ===
-  const props = defineProps({
-    showFooter: Boolean
-  });
+//=== data ===
+const snackbar = ref(false);
+const snackbar_info = ref('');
+const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-  //=== data ===
-  const snackbar = ref(false);
-  const snackbar_info = ref('');
-  const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
+const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV
 
-  const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV
+const editDialogBtnDisable = ref(true);
 
-  const editDialogBtnDisable = ref(true);
+const isVisible = ref(true);                  // 設定初始狀態為顯示
+const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
+let intervalIdForLed = null;
+const background = ref('#ffff00');
+const isCallAGV = ref(false);                 // 確認是否已經按了callAGV按鍵, true:已經按鍵了, 不能重複按鍵
+const showMenu = ref(false);                  // 控制員工選單顯示
 
-  const isVisible = ref(true);                  // 設定初始狀態為顯示
-  const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
-  let intervalIdForLed = null;
-  const background = ref('#ffff00');
-  const isCallAGV = ref(false);                 // 確認是否已經按了callAGV按鍵, true:已經按鍵了, 不能重複按鍵
-  const showMenu = ref(false);                  // 控制員工選單顯示
+const fromDateMenu = ref(false);              // 日期menu 打開/關閉
 
-  const fromDateMenu = ref(false);              // 日期menu 打開/關閉
+const selectedEmployee = ref(null);
 
-  const selectedEmployee = ref(null);
+const selectedId = ref(0);
+const selectedOrderNum = ref(null);
+const selectedReqQty = ref(null);
+const selectedDate = ref(null);
 
-  const selectedId = ref(0);
-  const selectedOrderNum = ref(null);
-  const selectedReqQty = ref(null);
-  const selectedDate = ref(null);
-  const minDate = ref('2014-01-01');
-  const maxDate = ref('2054-12-31');
-  const fromDateVal = ref('');
+const fromDateVal = ref('');
 
-  const placeholderTextForEmployee = ref('請選擇員工');
-  const placeholderTextForOrderNum = ref('請選擇工單');
-  const inputSelectEmployee = ref(null);
-  const inputSelectOrderNum = ref(null);
+const placeholderTextForEmployee = ref('請選擇員工');
+const placeholderTextForOrderNum = ref('請選擇工單');
+const inputSelectEmployee = ref(null);
+const inputSelectOrderNum = ref(null);
 
-  let intervalId = null;                        // 10分鐘, 倒數計時器
+let intervalId = null;                        // 10分鐘, 倒數計時器
 
-  const route = useRoute();                     // Initialize router
+const route = useRoute();                     // Initialize router
 
-  const footerOptions = [
-    { value: 5, title: '5' },
-    { value: 10, title: '10' },
-    { value: -1, title: '全部' }
-  ];
+const footerOptions = [
+  { value: 5, title: '5' },
+  { value: 10, title: '10' },
+  { value: -1, title: '全部' }
+];
 
-  const headers = [
-    { title: '  ', sortable: false, key: 'id', width: '2px' },
-    { title: '訂單編號', sortable: true, key: 'order_num' },
-    { title: '物料編號', sortable: false, key: 'material_num'},
-    { title: '需求數量', sortable: false, key: 'req_qty' },
-    //{ title: '場域位置', sortable: false, key: 'location' },
-    //{ title: '缺料註記', sortable: false, key: 'shortage_note' },
-    { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '備料內容', sortable: false, key: 'action' },
-    //{ title: '待送料總數', sortable: false, key: 'total_delivery_qty' },
-    { title: '應備數量', sortable: false, key: 'total_delivery_qty' },
-    //{ title: '實際送料數', sortable: false, key: 'delivery_qty' },
-    { title: '備料數量', sortable: false, key: 'delivery_qty' },
-  ];
+const headers = [
+  { title: '  ', sortable: false, key: 'id', width: 0, class: 'hidden-column' },
+  { title: '訂單編號', sortable: true, key: 'order_num' },
+  { title: '訂單數量', sortable: false, key: 'req_qty' },
+  { title: '說明', align: 'start', sortable: false, key: 'comment' },
+  { title: '到庫數量', sortable: false, key: 'delivery_qty' },
+  { title: '入庫數量', sortable: false, key: 'allOk_qty' },
+];
 
-  const modify_bom_headers =[
-    {title:'元件', sortable: false, key:'id'},
-    {title:'編號', sortable: false, key:'material_num'},
-    {title:'名稱', sortable: false, key:'mtl_comment'},
-    {title:'數量', sortable: false, key:'qty'},
-  ]
-  const modify_boms = ref([]);
-  const modify_file_name = ref('');
+const search = ref('');
 
-  const selectedItems = ref([]); // 儲存選擇的項目 (基於 id)
-  const inputValueForItems = ref([]); // 儲存輸入的值
+const history = ref(false);
 
-  const inputIDs = ref([]);
+//const modify_boms = ref([]);
+//const modify_file_name = ref('');
 
-  //const localIp = 'localhost';
-  //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
-  //const serverIp = '192.168.0.13';
-  //const serverIp = process.env.VUE_SOCKET_SERVER_IP
-  const userId = 'user_chumpower';
-  //console.log("serverIp:", serverIp)
-  // 初始化Socket連接
-  //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-  const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+const selectedItems = ref([]); // 儲存選擇的項目 (基於 id)
+//const inputValueForItems = ref([]); // 儲存輸入的值
 
-  const delivery_qty_alarm = ref('');
+const inputIDs = ref([]);
 
-  //const localIP = ref('');
-  const from_agv_input_order_num = ref('');
-  const isBlinking = ref(false);          // 控制按鍵閃爍
-  const order_num_on_agv_blink=ref('');
+//const localIp = 'localhost';
+//const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
+//const serverIp = '192.168.0.13';
+//const serverIp = process.env.VUE_SOCKET_SERVER_IP
+const userId = 'user_chumpower';
+//console.log("serverIp:", serverIp)
+// 初始化Socket連接
+//const { socket, setupSocketConnection } = useSocketio(localIp, userId);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
 
-  const currentUser = ref({});
-  const componentKey = ref(0)       // key 值用於強制重新渲染
+const delivery_qty_alarm = ref('');
 
-  const editDialog = ref(false);
-  const enableDialogBtn = ref(false);
+//const localIP = ref('');
+//const from_agv_input_order_num = ref('');
+const isBlinking = ref(false);          // 控制按鍵閃爍
+//const order_num_on_agv_blink=ref('');
 
-  const current_cell = ref(null);
+const currentUser = ref({});
+const componentKey = ref(0)       // key 值用於強制重新渲染
 
-  const currentStartTime = ref(null);   // 記錄開始時間
+const editDialog = ref(false);
+const enableDialogBtn = ref(false);
 
-  const agv1StartTime = ref(null);      //等待agv計時開始
-  const agv1EndTime = ref(null);
-  const agv2StartTime = ref(null);      //運行agv計時開始
-  const agv2EndTime = ref(null);
+const current_cell = ref(null);
 
-  const dialog = ref(false);
+const currentStartTime = ref(null);   // 記錄開始時間
 
-  const selectedItem = ref(null); // 儲存當前點擊的記錄
+const agv1StartTime = ref(null);      //等待agv計時開始
+const agv1EndTime = ref(null);
+const agv2StartTime = ref(null);      //運行agv計時開始
+const agv2EndTime = ref(null);
 
-  const pagination = reactive({
-    itemsPerPage: 5, // 預設值, rows/per page
-    page: 1
-  });
+const dialog = ref(false);
 
-  // 定義 facet 列表
-  const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
-  const userFacets = ref(['Facet 1', 'Facet 4']);
+const selectedItem = ref(null); // 儲存當前點擊的記錄
 
-  //=== watch ===
-  setupGetBomsWatcher();
+const pagination = reactive({
+  itemsPerPage: 5, // 預設值, rows/per page
+  page: 1
+});
 
-  setupListUsersWatcher();
+// 定義 facet 列表
+//const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
+//const userFacets = ref(['Facet 1', 'Facet 4']);
 
-  // 監視 selectedItems 的變化，並將其儲存到 localStorage
-  watch(selectedItems, (newItems) => {
-    console.log("watch(), newItems:", newItems)
-    localStorage.setItem('selectedItems', JSON.stringify(newItems));
-    },
-    { deep: true }
-  );
+//=== watch ===
+setupGetBomsWatcher();
+
+setupListUsersWatcher();
+
+// 監視 selectedItems 的變化，並將其儲存到 localStorage
+watch(selectedItems, (newItems) => {
+  console.log("watch(), newItems:", newItems)
+  localStorage.setItem('selectedItems', JSON.stringify(newItems));
+  },
+  { deep: true }
+);
+
+// 監視 history 的變化，並將其儲存到 localStorage
+watch(history, (newItems) => {
+  console.log("watch(), newItems:", newItems)
+  localStorage.setItem('history', JSON.stringify(newItems));
+  },
+  { deep: true }
+);
+
 
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
 const formatWeekday = computed(() => {
-  return (day) => {
-    console.log('day:', day); // 調試輸出
-    return weekdays[day];
-  };
+return (day) => {
+  console.log('day:', day); // 調試輸出
+  return weekdays[day];
+};
 });
 
 const formattedDesserts = computed(() =>
-  desserts.value.map(emp => ({
-    ...emp,
-    display: `${emp.emp_id} ${emp.emp_name}`,
-  }))
+desserts.value.map(emp => ({
+  ...emp,
+  display: `${emp.emp_id} ${emp.emp_name}`,
+}))
 );
 
 const c_isBlinking = computed(() => selectedItems.value.length === 0);
 
 const containerStyle = computed(() => ({
-  bottom: props.showFooter ? '60px' : '0'
+bottom: props.showFooter ? '60px' : '0'
 }));
 
 const routeName = computed(() => route.name);
 
 // 顯示格式化日期
 const formattedDate = computed(() => {
-  return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
+return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
 });
 
 //=== mounted ===
 onMounted(async () => {
-  console.log("MaterialListForAssem.vue, mounted()...");
+console.log("MaterialListForAssem.vue, mounted()...");
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
-  console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
+let userData = JSON.parse(localStorage.getItem('loginedUser'));
+console.log("current routeName:", routeName.value);
+console.log("current userData:", userData);
 
-  userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+userData.setting_items_per_page = pagination.itemsPerPage;
+userData.setting_lastRoutingName = routeName.value;
+localStorage.setItem('loginedUser', JSON.stringify(userData));
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  console.log("currentUser:", currentUser.value);
+let user = localStorage.getItem("loginedUser");
+currentUser.value = user ? JSON.parse(user) : null;
+console.log("currentUser:", currentUser.value);
 
-  // 取得每個 v-text-field 的唯一 ID
-  inputIDs.value.forEach((item) => {
-    const myIdField = document.getElementById(`receiveQtyID-${item.id}`);
-    myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
+intervalId = setInterval(getWarehouseForAssembleByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+
+// 設定紅黃綠燈閃爍週期
+intervalIdForLed = setInterval(() => {
+  isVisible.value = !isVisible.value;  // 每0.5秒切換顯示狀態
+}, 500);
+
+isBlinking.value = selectedItems.value.length == 0 ? true:false;
+
+// 從 localStorage 中恢復 selectedItems
+let savedItems = localStorage.getItem('selectedItems');
+if (savedItems) {
+  selectedItems.value = JSON.parse(savedItems);
+}
+
+// 從 localStorage 中恢復 history
+savedItems = localStorage.getItem('history');
+if (savedItems) {
+  history.value = JSON.parse(savedItems);
+}
+
+
+console.log('等待socket連線...');
+try {
+  await setupSocketConnection();
+  /*
+  if (!savedItems) {
+    console.log('送出 agv_reset 指令');
+    socket.value.emit('agv_reset');
+  }
+  */
+
+  /*
+  socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
+    console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
+
+    const materialPayload0 = {
+      order_num: data,
+    };
+    const response0 = await getMaterial(materialPayload0);
+
+    if(response0) {
+      console.log('工單 '+ data + ' 已檢料完成!');
+      socket.value.emit('station1_order_ok');
+
+      //from_agv_input_order_num.value = data;
+      //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
+      //isBlinking.value = true; // 開始按鍵閃爍
+
+      // 定義 materialPayload1
+      const materialPayload1 = {
+        order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+        record_name: 'show3_ok',
+        record_data: 1    // 設為 1，等待agv
+      };
+      await updateMaterial(materialPayload1);
+    } else {
+      console.log('工單 '+ data + ' 還沒檢料完成!');
+      socket.value.emit('station1_order_ng');
+      order_num_on_agv_blink.value = '';
+    }
+  });
+  */
+  socket.value.on('station1_agv_start', async () => {
+    console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
+
+    let payload = {};
+    // 依據每個 item 的 id 進行資料更新
+    selectedItems.value.forEach(async (item) => {
+      console.log('selectedItems, item:', item);
+      payload = {
+        id: item,
+        record_name: 'show3_ok',
+        record_data: 16,          // agv start
+      };
+      //await updateMaterial(materialPayload1);
+      try {
+        await updateMaterial(payload);
+        console.log(`資料更新成功，id: ${item}`);
+      } catch (error) {
+        console.error(`資料更新失敗，id: ${item}`, error);
+      }
+    });
   });
 
-  // 每10分鐘讀取excel檔案是否存在? 顯示檔案數目
-  fileCount.value = countExcelFiles();
-  console.log("fileCount:", fileCount.value);
+  socket.value.on('station1_agv_begin', async () => {
+    console.log('AGV暫停, 收到 station1_agv_begin 訊息');
 
-  intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
+    let payload = {};
+    // 記錄agv在站與站之間運行開始時間
+    agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
+    console.log("AGV Start time:", agv2StartTime.value);
 
-  // 設定紅黃綠燈閃爍週期
-  intervalIdForLed = setInterval(() => {
-    isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
-  }, 500);
+    selectedItems.value.forEach(async (item) => {
+      console.log('selectedItems, item:', item);
 
-  isBlinking.value = selectedItems.value.length == 0 ? true:false;
+      payload = {
+        id: item,
+        record_name: 'show3_ok',
+        record_data: 2      // 設為 2，agv移動至組裝區中
+      };
+      try {
+        await updateMaterial(payload);
+        console.log(`資料更新成功，id: ${item}`);
+      } catch (error) {
+        console.error(`資料更新失敗，id: ${item}`, error);
+      }
+    });
 
-  // 從 localStorage 中恢復 selectedItems
-  let savedItems = localStorage.getItem('selectedItems');
-  if (savedItems) {
-    selectedItems.value = JSON.parse(savedItems);
-  }
+    // 記錄AGV狀態資料
+    payload = {
+      id: 1,
+      status: 2,      // 行走中
+      station:  2,    // 行走至組裝區
+    };
+    await updateAGV(payload);
 
-  console.log('等待socket連線...');
-  try {
-    await setupSocketConnection();
-    /*
-    if (!savedItems) {
-      console.log('送出 agv_reset 指令');
-      socket.value.emit('agv_reset');
+    background.value='#10e810'
+  })
+
+  socket.value.on('station2_agv_end', async () => {
+    console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
+
+    // 記錄agv在站與站之間運行結束時間
+    agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
+    console.log("AGV Start time:", agv2EndTime.value);
+
+    let payload = {};
+
+    selectedItems.value.forEach(async (item) => {
+      console.log('selectedItems, item:', item);
+      payload = {
+        id: item,
+        show1_ok: 2,      //組裝站
+        show2_ok: 3,      //未組裝
+        show3_ok: 3,      //等待組裝中
+        whichStation: 2,  //目標途程:組裝站
+      };
+      await updateMaterialRecord(payload);
+    });
+    console.log('agv_end 處理步驟1...');
+
+    let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
+    let formattedStartTime = formatDateTime(agv2StartTime.value);
+    let formattedEndTime = formatDateTime(agv2EndTime.value);
+    console.log("AGV 運行 Start Time:", formattedStartTime);
+    console.log("AGV 運行 End Time:", formattedEndTime);
+    console.log("AGV 運行 Period time:", agv2PeriodTime);
+
+    //let payload1 = {};
+    //let payload2 = {};
+    //let payload_new = {};
+
+    console.log('agv_end 處理步驟2...');
+    selectedItems.value.forEach(async (item) => {
+      console.log('selectedItems, item:', item);
+
+      let myMaterial = materials.value.find(m => m.id == item);
+
+      payload = {
+        begin_time: formattedStartTime,
+        end_time: formattedEndTime,
+        periodTime: agv2PeriodTime,
+        user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
+        order_num: myMaterial.order_num,
+        process_type: 2,                          //在組裝區
+      };
+      await createProcess(payload);
+      console.log('步驟2-1...');
+
+      //紀錄該筆的agv送料數量
+      payload = {
+        id: item,
+        record_name: 'delivery_qty',
+        record_data: myMaterial.delivery_qty
+      };
+      await updateMaterial(payload);
+      console.log('步驟2-2...');
+
+      //紀錄該筆的agv送料狀態
+      payload = {
+        id: item,
+        record_name: 'isShow',
+        record_data: true
+      };
+      await updateMaterial(payload);
+      console.log('步驟2-3...');
+
+      if (Number(myMaterial.allOk_qty) != Number(myMaterial.req_qty)) { // 1張工單多批次運送, 訂單數量與入庫數量不同
+        console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
+
+        let tempDelivery = myMaterial.req_qty - myMaterial.allOk_qty;
+
+        payload = {
+          copy_id: myMaterial.id,
+          //total_delivery_qty: tempDelivery,
+          assemble_qty: tempDelivery,
+          show2_ok: 2,
+          shortage_note: '',
+        }
+        await copyMaterial(payload);
+        console.log('步驟2-4...');
+      }
+    });
+
+    // 記錄AGV狀態資料
+    payload = {
+      id: 1,
+      status: 1,      // 準備中
+      station:  2,    // 已在組裝區
+    };
+    await updateAGV(payload);
+    console.log('agv_end 處理步驟3...');
+
+    // 插入延遲 3 秒
+    await delay(3000);
+
+    isFlashLed.value = false;     //黃綠燈熄滅
+
+    selectedItems.value = [];
+    if (localStorage.getItem('selectedItems')) {
+      localStorage.removeItem('selectedItems');
     }
-    */
 
-    /*
-    socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
-      console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
+    history.value = false;
+    if (localStorage.getItem('history')) {
+      localStorage.removeItem('history');
+    }
 
-      const materialPayload0 = {
-        order_num: data,
-      };
-      const response0 = await getMaterial(materialPayload0);
+    //待待
+    window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  });
 
-      if(response0) {
-        console.log('工單 '+ data + ' 已檢料完成!');
-        socket.value.emit('station1_order_ok');
+  socket.value.on('station2_agv_ready', async () => {
+    console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
 
-        //from_agv_input_order_num.value = data;
-        //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
-        //isBlinking.value = true; // 開始按鍵閃爍
+  });
 
-        // 定義 materialPayload1
-        const materialPayload1 = {
-          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-          record_name: 'show3_ok',
-          record_data: 1    // 設為 1，等待agv
-        };
-        await updateMaterial(materialPayload1);
-      } else {
-        console.log('工單 '+ data + ' 還沒檢料完成!');
-        socket.value.emit('station1_order_ng');
-        order_num_on_agv_blink.value = '';
-      }
-    });
-    */
-    socket.value.on('station1_agv_start', async () => {
-      console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
+  socket.value.on('station1_agv_ready', async () => {
+    console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
+    // 記錄等待agv到站結束時間
+    agv1EndTime.value = new Date();
+    console.log("AGV End time:", agv1EndTime.value);
 
-      let payload = {};
-      // 依據每個 item 的 id 進行資料更新
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-        payload = {
-          id: item,
-          record_name: 'show3_ok',
-          record_data: 1, // 設為 1，等待 agv
-        };
-        //await updateMaterial(materialPayload1);
-        try {
-          await updateMaterial(payload);
-          console.log(`資料更新成功，id: ${item}`);
-        } catch (error) {
-          console.error(`資料更新失敗，id: ${item}`, error);
-        }
-      });
-    });
+    let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
+    let formattedStartTime = formatDateTime(agv1StartTime.value);
+    let formattedEndTime = formatDateTime(agv1EndTime.value);
+    console.log("AGV 等待 Start Time:", formattedStartTime);
+    console.log("AGV 等待 End Time:", formattedEndTime);
+    console.log("AGV 等待 Period time:", agv1PeriodTime);
 
-    socket.value.on('station1_agv_begin', async () => {
-      console.log('AGV暫停, 收到 station1_agv_begin 訊息');
+    let payload = {};
+    // 記錄備料區途程資料, 等待agv時間
+    selectedItems.value.forEach(async (item) => {
+      let myMaterial = materials.value.find(m => m.id == item);
 
-      let payload = {};
-      // 記錄agv在站與站之間運行開始時間
-      agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV Start time:", agv2StartTime.value);
-
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-
-        payload = {
-          id: item,
-          record_name: 'show3_ok',
-          record_data: 2      // 設為 2，agv移動至組裝區中
-        };
-        try {
-          await updateMaterial(payload);
-          console.log(`資料更新成功，id: ${item}`);
-        } catch (error) {
-          console.error(`資料更新失敗，id: ${item}`, error);
-        }
-      });
-
-      // 記錄AGV狀態資料
       payload = {
-        id: 1,
-        status: 2,      // 行走中
-        station:  2,    // 行走至組裝區
+        begin_time: formattedStartTime,
+        end_time: formattedEndTime,
+        periodTime: agv1PeriodTime,
+        user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
+        order_num: myMaterial.order_num,
+        process_type: 1,                          //在備料區
       };
-      await updateAGV(payload);
-
-      background.value='#10e810'
-    })
-
-    socket.value.on('station2_agv_end', async () => {
-      console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
-
-      // 記錄agv在站與站之間運行結束時間
-      agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV Start time:", agv2EndTime.value);
-
-      let payload = {};
-
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-        payload = {
-          id: item,
-          show1_ok: 2,      //組裝站
-          show2_ok: 3,      //未組裝
-          show3_ok: 3,      //等待組裝中
-          whichStation: 2,  //目標途程:組裝站
-        };
-        await updateMaterialRecord(payload);
-      });
-      console.log('agv_end 處理步驟1...');
-
-      let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
-      let formattedStartTime = formatDateTime(agv2StartTime.value);
-      let formattedEndTime = formatDateTime(agv2EndTime.value);
-      console.log("AGV 運行 Start Time:", formattedStartTime);
-      console.log("AGV 運行 End Time:", formattedEndTime);
-      console.log("AGV 運行 Period time:", agv2PeriodTime);
-
-      let payload1 = {};
-      let payload2 = {};
-      let payload_new = {};
-
-      console.log('agv_end 處理步驟2...');
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-
-        let myMaterial = materials.value.find(m => m.id == item);
-
-        payload1 = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv2PeriodTime,
-          user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
-          order_num: myMaterial.order_num,
-          process_type: 2,                          //在組裝區
-        };
-        await createProcess(payload1);
-        console.log('步驟2-1...');
-
-        //紀錄該筆的agv送料數量
-        payload2 = {
-          id: item,
-          record_name: 'delivery_qty',
-          record_data: myMaterial.delivery_qty
-        };
-        await updateMaterial(payload2);
-        console.log('步驟2-2...');
-
-        //紀錄該筆的agv送料狀態
-        //if (Number(myMaterial.delivery_qty) !=0 && Number(myMaterial.total_delivery_qty) !=0) {
-        payload2 = {
-          id: item,
-          record_name: 'isShow',
-          record_data: true
-        };
-        await updateMaterial(payload2);
-        console.log('步驟2-3...');
-
-        if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
-          console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
-
-          let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
-
-          payload_new = {
-            copy_id: myMaterial.id,
-            total_delivery_qty: tempDelivery,
-            show2_ok: 2,
-            shortage_note: '',
-          }
-          await copyMaterial(payload_new);
-          console.log('步驟2-4...');
-        }
-      });
-
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 1,      // 準備中
-        station:  2,    // 已在組裝區
-      };
-      await updateAGV(payload);
-      console.log('agv_end 處理步驟3...');
-
-      // 插入延遲 3 秒
-      await delay(3000);
-
-      isFlashLed.value = false;     //黃綠燈熄滅
-
-      selectedItems.value = [];
-      if (localStorage.getItem('selectedItems')) {
-        localStorage.removeItem('selectedItems');
-      }
-      //待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      await createProcess(payload);
     });
+    // 記錄AGV狀態資料
+    payload = {
+      id: 1,
+      status: 0,
+      station:  1,
+    };
+    await updateAGV(payload);
 
-    socket.value.on('station2_agv_ready', async () => {
-      console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
+    //startFlashing();
+    background.value='#ffff00'
+    isFlashLed.value = true;
+  });
 
-    });
-
-    socket.value.on('station1_agv_ready', async () => {
-      console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
-      // 記錄等待agv到站結束時間
-      agv1EndTime.value = new Date();
-      console.log("AGV End time:", agv1EndTime.value);
-
-      let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-      let formattedStartTime = formatDateTime(agv1StartTime.value);
-      let formattedEndTime = formatDateTime(agv1EndTime.value);
-      console.log("AGV 等待 Start Time:", formattedStartTime);
-      console.log("AGV 等待 End Time:", formattedEndTime);
-      console.log("AGV 等待 Period time:", agv1PeriodTime);
-
-      let payload = {};
-      // 記錄備料區途程資料, 等待agv時間
-      selectedItems.value.forEach(async (item) => {
-        let myMaterial = materials.value.find(m => m.id == item);
-
-        payload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv1PeriodTime,
-          user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
-          order_num: myMaterial.order_num,
-          process_type: 1,                          //在備料區
-        };
-        await createProcess(payload);
-      });
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 0,
-        station:  1,
-      };
-      await updateAGV(payload);
-
-      //startFlashing();
-      background.value='#ffff00'
-      isFlashLed.value = true;
-    });
-
-    //socket.value.on('agv_ack', async () => {
-    //  console.log('收到 agv_ack 回應');
-    //});
-  } catch (error) {
-    console.error('Socket連線失敗:', error);
-  }
+  //socket.value.on('agv_ack', async () => {
+  //  console.log('收到 agv_ack 回應');
+  //});
+} catch (error) {
+  console.error('Socket連線失敗:', error);
+}
 });
 
 //=== unmounted ===
@@ -1126,12 +733,12 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 
 //=== created ===
 onBeforeMount(() => {
-  console.log("Employer, created()...")
+console.log("Employer, created()...")
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
-  initAxios();
-  initialize();
+initAxios();
+initialize();
 });
 
 //=== method ===
@@ -1140,41 +747,65 @@ const initialize = async () => {
     console.log("initialize()...");
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
-    await listMaterials();
+    //await listWarehouseForAssemble();
+    await getWarehouseForAssembleByHistoryFun();
 
     await listUsers();
 
     await listSocketServerIP();
-    console.log("initialize, socket_server_ip:", socket_server_ip.value)
+    //console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
-const handleDateChange = (newDate) => {
-  if (newDate instanceof Date) {
-    // 調整為本地時區日期
-    const localDate = new Date(newDate.getTime() - newDate.getTimezoneOffset() * 60000);
-    fromDateVal.value = localDate;
-    formattedDate.value = localDate.toISOString().split('T')[0]; // 格式化為 YYYY-MM-DD
+const toggleHistory = () => {
+  history.value = !history.value;
+  getWarehouseForAssembleByHistoryFun();
+};
 
-    editDialogBtnDisable.value = false;
-  }
-  fromDateMenu.value = false;
+const getWarehouseForAssembleByHistoryFun = async () => {
+  let payload = {
+    history_flag: history.value,
+  };
+  await getWarehouseForAssembleByHistory(payload);
+}
+
+const getRowProps = (item, index) => {
+// 偶數列與奇數列高度不同
+const backgroundColor = item.index % 2 === 0 ? '#ffffff' : '#edf2f4';
+
+return {
+  style: {
+    backgroundColor,
+  },
+};
+};
+
+const handleDateChange = (newDate) => {
+if (newDate instanceof Date) {
+  // 調整為本地時區日期
+  const localDate = new Date(newDate.getTime() - newDate.getTimezoneOffset() * 60000);
+  fromDateVal.value = localDate;
+  formattedDate.value = localDate.toISOString().split('T')[0]; // 格式化為 YYYY-MM-DD
+
+  editDialogBtnDisable.value = false;
+}
+fromDateMenu.value = false;
 };
 
 const parseDate = (formatted, format) => {
-  const parts = formatted.split('/');
-  switch (format) {
-    case 'MM/DD/YYYY':
-      return { month: parts[0], day: parts[1], year: parts[2] };
-    case 'DD/MM/YYYY':
-      return { day: parts[0], month: parts[1], year: parts[2] };
-    case 'YYYY/MM/DD':
-      return { year: parts[0], month: parts[1], day: parts[2] };
-    default:
-      throw new Error('Unsupported date format');
-  }
+const parts = formatted.split('/');
+switch (format) {
+  case 'MM/DD/YYYY':
+    return { month: parts[0], day: parts[1], year: parts[2] };
+  case 'DD/MM/YYYY':
+    return { day: parts[0], month: parts[1], year: parts[2] };
+  case 'YYYY/MM/DD':
+    return { year: parts[0], month: parts[1], day: parts[2] };
+  default:
+    throw new Error('Unsupported date format');
+}
 };
 
 // 定義一個延遲函數
@@ -1182,54 +813,54 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // 根據輸入搜尋工單編號
 const handleOrderNumSearch = () => {
-  console.log("handleOrderNumSearch()...");
+console.log("handleOrderNumSearch()...");
 
-  let selected = materials.value.find(mat => mat.order_num === selectedOrderNum.value);
-  if (selected) {
-    selectedOrderNum.value = `${selected.order_num}`;
-    console.log("已更新選中工單: ", selectedOrderNum.value);
+let selected = materials.value.find(mat => mat.order_num === selectedOrderNum.value);
+if (selected) {
+  selectedOrderNum.value = `${selected.order_num}`;
+  console.log("已更新選中工單: ", selectedOrderNum.value);
 
-    inputSelectOrderNum.value = placeholderTextForOrderNum.value;
-  } else {
-    selectedOrderNum.value = ''; // 清空值，防止未選擇時顯示錯誤內容
-  }
+  inputSelectOrderNum.value = placeholderTextForOrderNum.value;
+} else {
+  selectedOrderNum.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+}
 
-  // 確保 placeholder 保持靜態文字
-  placeholderTextForOrderNum.value = "請選擇工單";
+// 確保 placeholder 保持靜態文字
+placeholderTextForOrderNum.value = "請選擇工單";
 };
 
 // 根據輸入搜尋員工編號
 const handleEmployeeSearch = () => {
-  console.log("handleEmployeeSearch()...");
+console.log("handleEmployeeSearch()...");
 
-  let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
-  if (selected) {
-    selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
-    console.log("已更新選中員工: ", selectedEmployee.value);
+let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
+if (selected) {
+  selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
+  console.log("已更新選中員工: ", selectedEmployee.value);
 
-    inputSelectEmployee.value = placeholderTextForEmployee.value;
-  } else {
-    selectedEmployee.value = ''; // 清空值，防止未選擇時顯示錯誤內容
-  }
+  inputSelectEmployee.value = placeholderTextForEmployee.value;
+} else {
+  selectedEmployee.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+}
 
-  // 確保 placeholder 保持靜態文字
-  placeholderTextForEmployee.value = "請選擇員工";
+// 確保 placeholder 保持靜態文字
+placeholderTextForEmployee.value = "請選擇員工";
 };
 
 const updateEmployeeFieldFromSelect = () => {
-  console.log("更新 TextField: ", inputSelectEmployee.value);
-  const selected = desserts.value.find(emp => emp.emp_id === inputSelectEmployee.value);
-  if (selected) {
-    selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
-    console.log("已更新選中員工: ", selectedEmployee.value);
+console.log("更新 TextField: ", inputSelectEmployee.value);
+const selected = desserts.value.find(emp => emp.emp_id === inputSelectEmployee.value);
+if (selected) {
+  selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
+  console.log("已更新選中員工: ", selectedEmployee.value);
 
-    inputSelectEmployee.value = placeholderTextForEmployee.value;
-  } else {
-    selectedEmployee.value = ''; // 清空值，防止未選擇時顯示錯誤內容
-  }
+  inputSelectEmployee.value = placeholderTextForEmployee.value;
+} else {
+  selectedEmployee.value = ''; // 清空值，防止未選擇時顯示錯誤內容
+}
 
-    // 確保 placeholder 保持靜態文字
-    placeholderTextForEmployee.value = "請選擇員工";
+  // 確保 placeholder 保持靜態文字
+  placeholderTextForEmployee.value = "請選擇員工";
 };
 
 // 啟動閃爍效果
@@ -1244,500 +875,581 @@ const updateEmployeeFieldFromSelect = () => {
 
 // 停止閃爍效果
 const stopFlashing = () => {
-  console.log("stopFlashing()...")
+console.log("stopFlashing()...")
 
-  clearInterval(intervalIdForLed);
-  isVisible.value = true;               // 重設為顯示
-  isFlashLed.value = false;
+clearInterval(intervalIdForLed);
+isVisible.value = true;               // 重設為顯示
+isFlashLed.value = false;
 }
 
 const setActive = (value) => {
-  toggle_exclusive.value = value; // 設置當前活動按鈕
-  if (toggle_exclusive.value == 1)
-    showMenu.value = true;
-  else
-    showMenu.value = false;
+toggle_exclusive.value = value; // 設置當前活動按鈕
+if (toggle_exclusive.value == 1)
+  showMenu.value = true;
+else
+  showMenu.value = false;
 }
 
-const checkReceiveQty = (item) => {
-  console.log("checkReceiveQty,", item);
+const checkQtyField = (item) => {
+console.log("checkQtyField,", item);
 
-  // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-  const deliveryQty = Number(item.delivery_qty) || 0;
-  //const totalDeliveryQty = Number(item.total_delivery_qty) || 0;
-  //const reqQty = Number(item.req_qty) || 0;
-  const totalQty = Number(item.total_delivery_qty) || 0;
+// 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
+const deliveryQty = Number(item.delivery_qty) || 0;   //到庫數量
+const totalQty = Number(item.allOk_qty) || 0;         //入庫數量
+console.log("deliveryQty , totalQty:", deliveryQty, totalQty)
 
-  //console.log("deliveryQty > reqQty:", deliveryQty, reqQty)
-  console.log("deliveryQty > totalQty:", deliveryQty, totalQty)
-  // 檢查是否超過需求數量
-  if (deliveryQty > totalQty) {
+if (deliveryQty < totalQty) {       // 檢查是否超過到庫數量
+  delivery_qty_alarm.value = '入庫數量超過到庫數量!';
 
-  //const total = Number(item.delivery_qty) + Number(item.total_delivery_qty);
-  //const temp = Number(item.req_qty)
-  //if (total > temp) {
-    delivery_qty_alarm.value = '備料數量超過應備數量!';
-    item.tooltipVisible = true;       // 顯示 Tooltip
-    setTimeout(() => {
-      item.tooltipVisible = false;    // 2秒後隱藏 Tooltip
-      //item.delivery_qty = '';         // 清空輸入欄位
-    }, 2000);
-    //console.error('送料數量超過需求數量');
-  } else {
-    item.tooltipVisible = false;
-    delivery_qty_alarm.value = '';    // 清除警告
-  }
+  item.tooltipVisible = true;       // 顯示 Tooltip
+  setTimeout(() => {
+    item.tooltipVisible = false;    // 2秒後隱藏 Tooltip
+    item.allOk_qty = 0;
+  }, 2000);
+
+} else {
+  item.tooltipVisible = false;
+  delivery_qty_alarm.value = '';    // 清除警告
+}
 };
 
 const handleKeyDown = (event) => {
-  const inputChar = event.key;
+const inputChar = event.key;
 
-  const caps = event.getModifierState && event.getModifierState('CapsLock');
-  console.log("CapsLock is: ", caps); // true when CapsLock is on
+const caps = event.getModifierState && event.getModifierState('CapsLock');
+console.log("CapsLock is: ", caps); // true when CapsLock is on
 
-  // 允許左右方向鍵、backspace 和 delete 鍵
-  if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
-    return;
-  }
+// 允許左右方向鍵、backspace 和 delete 鍵
+if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+  return;
+}
 
 // 如果按下的鍵不是數字，阻止輸入
 if (!/^\d$/.test(inputChar)) {
-  event.preventDefault();  // 阻止非數字輸入
-  return;
+event.preventDefault();  // 阻止非數字輸入
+return;
 }
 
 const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
 // 檢查輸入的長度是否超過3，阻止多餘的輸入
 if (inputValue.length >= 3) {
-  event.preventDefault();
-  return;
+event.preventDefault();
+return;
 }
 
-  /*
+/*
 
-  const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
+const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-  // 使用正規化運算式檢查是否為數字且長度不超過3
-  //if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
-  if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
-    event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
-    return;   // 確保阻止後執行中止
-  }
-  */
-  // 偵測是否按下 Enter 鍵
-  if (event.key === 'Enter' || event.keyCode === 13) {
-    console.log('Return key pressed');
-    // 如果需要，這裡可以執行其他操作，或進行額外的驗證
-    //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
-  }
-  editDialogBtnDisable.value = false;
+// 使用正規化運算式檢查是否為數字且長度不超過3
+//if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
+if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
+  event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
+  return;   // 確保阻止後執行中止
+}
+*/
+// 偵測是否按下 Enter 鍵
+if (event.key === 'Enter' || event.keyCode === 13) {
+  console.log('Return key pressed');
+  // 如果需要，這裡可以執行其他操作，或進行額外的驗證
+}
+editDialogBtnDisable.value = false;
 };
 
 const isSelected = (item) => {
-  //console.log("isSelected(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
-  // 安全檢查，確保 item 和 item.columns 存在
-  if (!item || !item.columns || typeof item.columns.id === 'undefined') {
-    return false; // 預設未被選中
-  }
+//console.log("isSelected(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
+// 安全檢查，確保 item 和 item.columns 存在
+if (!item || !item.columns || typeof item.columns.id === 'undefined') {
+  return false; // 預設未被選中
+}
 
-  return selectedItems.value.includes(item.columns.id); // 根據 columns.id 檢查是否被選中
+return selectedItems.value.includes(item.columns.id); // 根據 columns.id 檢查是否被選中
 };
 
 const toggleSelect = (item) => {
-  //console.log("toggleSelect(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
-  // 檢查是否已呼叫 AGV
-  if (isCallAGV.value) {
-    showSnackbar('已呼叫 AGV，工單不能改變！', 'red accent-2');
-    return; // 不改變選擇狀態
-  }
+const index = selectedItems.value.indexOf(item.columns.id);
+if (index === -1) {
+  selectedItems.value.push(item.columns.id); // 若未選中，則添加 columns.id
 
-  const index = selectedItems.value.indexOf(item.columns.id);
-  if (index === -1) {
-    selectedItems.value.push(item.columns.id); // 若未選中，則添加 columns.id
-  } else {
-    selectedItems.value.splice(index, 1);     // 若已選中，則移除 columns.id
-  }
+
+} else {
+  selectedItems.value.splice(index, 1);     // 若已選中，則移除 columns.id
+
+}
 };
 
 const handleEscClose = async () => {
-  console.log("Dialog closed via ESC key, item:", selectedItem.value);
+console.log("Dialog closed via ESC key, item:", selectedItem.value);
 
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: selectedItem.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
+// 記錄當前途程狀態
+let payload = {
+  order_num: selectedItem.value.order_num,
+  record_name: 'show2_ok',
+  record_data: 0                //未備料
+};
+await updateMaterial(payload);
+//updateMaterial(payload).then(data => {
+//  !data && showSnackbar(data.message, 'red accent-2');
+//});
 
-  dialog.value = false;
+dialog.value = false;
 };
 
 const handleOutsideClick = async () => {
-  console.log("Dialog closed by clicking outside, item:", selectedItem.value);
+console.log("Dialog closed by clicking outside, item:", selectedItem.value);
 
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: selectedItem.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
+// 記錄當前途程狀態
+let payload = {
+  order_num: selectedItem.value.order_num,
+  record_name: 'show2_ok',
+  record_data: 0                //未備料
+};
+await updateMaterial(payload);
+//updateMaterial(payload).then(data => {
+//  !data && showSnackbar(data.message, 'red accent-2');
+//});
 
-  dialog.value = false;
+dialog.value = false;
 };
 
 const editOrderNum = async (item) => {
-  console.log("editOrderNum(),", item);
+console.log("editOrderNum(),", item);
 
-  selectedId.value = item.id;
-  selectedOrderNum.value = item.order_num;
-  selectedReqQty.value = item.req_qty;
-  selectedDate.value = item.date;
+selectedId.value = item.id;
+selectedOrderNum.value = item.order_num;
+selectedReqQty.value = item.req_qty;
+selectedDate.value = item.date;
 
-  fromDateVal.value = new Date(selectedDate.value)
-  console.log("fromDateVal:", fromDateVal.value);
+fromDateVal.value = new Date(selectedDate.value)
+console.log("fromDateVal:", fromDateVal.value);
 
-  let payload = {
-    id: item.id,
-  };
-  await getBoms(payload);
-  console.log("currentBoms:",currentBoms.value)
-  modify_boms.value = [...currentBoms.value];
-  console.log("boms, modify_boms:", currentBoms.value, modify_boms.value)
+let payload = {
+  id: item.id,
+};
+await getBoms(payload);
+console.log("currentBoms:",currentBoms.value)
+//modify_boms.value = [...currentBoms.value];
+//console.log("boms, modify_boms:", currentBoms.value, modify_boms.value)
 
-  editDialogBtnDisable.value = true;
+editDialogBtnDisable.value = true;
 
-  editDialog.value = true;
+editDialog.value = true;
 }
 
 const toggleExpand = async (item) => {
-  console.log("toggleExpand(),", item.order_num);
+console.log("toggleExpand(),", item.order_num);
 
-  enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
+enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
 
-  let payload = {};
+let payload = {};
 
-  payload = {
-    //order_num: item.order_num,
-    id: item.id,
-  };
-  await getBoms(payload);
-  current_cell.value = item.delivery_qty
-  selectedItem.value = item;
-  //console.log("toggleExpand, selectedItem.value", selectedItem.value)
+payload = {
+  //order_num: item.order_num,
+  id: item.id,
+};
+await getBoms(payload);
+current_cell.value = item.delivery_qty
+selectedItem.value = item;
+//console.log("toggleExpand, selectedItem.value", selectedItem.value)
 
-  // 記錄當前開始備料時間
-  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("Start time:", currentStartTime.value, item, item.id);
+// 記錄當前開始備料時間
+currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+console.log("Start time:", currentStartTime.value, item, item.id);
 
-  // 記錄當前途程狀態
-  payload = {
-    id: item.id,
-    //order_num: item.order_num,
-    record_name: 'show2_ok',
-    record_data: 1                //備料中
-  };
-  await updateMaterial(payload);
+// 記錄當前途程狀態
+payload = {
+  id: item.id,
+  //order_num: item.order_num,
+  record_name: 'show2_ok',
+  record_data: 1                //備料中
+};
+await updateMaterial(payload);
 
-  payload = {
-    id: item.id,
-    //order_num: item.order_num,
-    record_name: 'shortage_note',
-    record_data: ''
-  };
-  await updateMaterial(payload);
+payload = {
+  id: item.id,
+  //order_num: item.order_num,
+  record_name: 'shortage_note',
+  record_data: ''
+};
+await updateMaterial(payload);
 
-  dialog.value = true;
+dialog.value = true;
 };
 
 const checkTextEditField = (focused, item) => {
-  if (!focused) { // 當失去焦點時
-    console.log("checkTextEditField(): 失去焦點");
+if (!focused) {
+  console.log("checkTextEditField(): 失去焦點");
 
-    //updateItem2(item);
-  } else {
-    //console.log("checkTextEditField(): 獲得焦點");
-  }
+} else {
+  console.log("checkTextEditField(): 獲得焦點");
+
+}
 };
 
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
-  let deliveryQty = 0;
+  let allOk_qty = 0;
   // 檢查是否輸入了空白或 0
-  if (!item.delivery_qty || Number(item.delivery_qty) === 0) {
-    deliveryQty = Number(item.total_delivery_qty) || 0;
+  if (!item.allOk_qty || Number(item.allOk_qty) === 0) {
+    allOk_qty = Number(item.delivery_qty) || 0;
   } else {
-    deliveryQty = Number(item.delivery_qty) || 0;
+    allOk_qty = Number(item.allOk_qty) || 0;
   }
 
   let payload = {};
 
-  // 記錄當前送料數量
+  // 記錄當前入庫數量
   payload = {
     id: item.id,
-    record_name: 'delivery_qty',
-    record_data: deliveryQty,
+    record_name: 'allOk_qty',
+    record_data: allOk_qty,
   };
   await updateMaterial(payload);
-  item.delivery_qty = deliveryQty
+  item.allOk_qty = allOk_qty
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+
+  payload = {
+    id: item.id,
+    record_name: 'show2_ok',
+    record_data: 11      // 設為 11，入庫進行中
+  };
+  await updateMaterial(payload);
+
+  payload = {
+    id: item.id,
+    record_name: 'show3_ok',
+    record_data: 12      // 設為 12，入庫進行中
+  };
+  await updateMaterial(payload);
 };
 
 const updateItem = async () => {    //編輯 bom, material及process後端table資料
-  console.log("updateItem(),", boms.value);
+console.log("updateItem(),", boms.value);
 
-  let my_material_orderNum = boms.value[0].order_num;
+let my_material_orderNum = boms.value[0].order_num;
 
-  let endTime = new Date();                                               // 記錄當前結束時間
-  let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
-  let formattedStartTime = formatDateTime(currentStartTime.value);
-  let formattedEndTime = formatDateTime(endTime);
+let endTime = new Date();                                               // 記錄當前結束時間
+let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
+let formattedStartTime = formatDateTime(currentStartTime.value);
+let formattedEndTime = formatDateTime(endTime);
 
-  // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
-  let take_out = !boms.value.some(bom => !bom.receive);
-  console.log("take_out:", take_out);
+// 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
+let take_out = !boms.value.some(bom => !bom.receive);
+console.log("take_out:", take_out);
 
-  // 1. 更新 boms 資料
-  let response0 = await updateBoms(boms.value);
-  if (!response0) {
-    showSnackbar(response0.message, 'red accent-2');
-    dialog.value = false;
-    return;
-  }
+// 1. 更新 boms 資料
+let response0 = await updateBoms(boms.value);
+if (!response0) {
+  showSnackbar(response0.message, 'red accent-2');
+  dialog.value = false;
+  return;
+}
 
-  let materialPayload = {}
+let materialPayload = {}
 
-  if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
-    materialPayload = {               // 更新 materials 資料，shortage_note = '(缺料)'
-      //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
-      record_name: 'shortage_note',
-      record_data: '(缺料)'
-    };
-    await updateMaterial(materialPayload);
-    selectedItem.value.shortage_note = '(缺料)';
-
-    materialPayload = {               // 2. 更新 materials 資料，isLackMaterial = 1
-      //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 0,          //缺料
-    };
-    await updateMaterial(materialPayload);
-    selectedItem.value.isLackMaterial = 0;
-  } else {
-    materialPayload = {
-      //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
-      record_name: 'shortage_note',
-      record_data: ''
-    };
-    await updateMaterial(materialPayload);
-    selectedItem.value.shortage_note = '';
-
-    materialPayload = {
-      //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 99,
-    };
-    await updateMaterial(materialPayload);
-    selectedItem.value.isLackMaterial = 0;
-  }
-
-  materialPayload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
+if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
+  materialPayload = {               // 更新 materials 資料，shortage_note = '(缺料)'
     //order_num: my_material_orderNum,
     id: selectedItem.value.id,
-    record_name: 'isTakeOk',
-    record_data: true
+    record_name: 'shortage_note',
+    record_data: '(缺料)'
   };
   await updateMaterial(materialPayload);
-  selectedItem.value.isTakeOk = true;
+  selectedItem.value.shortage_note = '(缺料)';
 
-  if (take_out) {                     // 該筆訂單檢料完成
-    materialPayload = {               // 2. 更新 materials 資料，show2_ok = 2
-      //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
-      record_name: 'show2_ok',
-      record_data: 2                  // 設為 2，表示備料完成
-    };
-    await updateMaterial(materialPayload);
+  materialPayload = {               // 2. 更新 materials 資料，isLackMaterial = 1
+    //order_num: my_material_orderNum,
+    id: selectedItem.value.id,
+    record_name: 'isLackMaterial',
+    record_data: 0,          //缺料
+  };
+  await updateMaterial(materialPayload);
+  selectedItem.value.isLackMaterial = 0;
+} else {
+  materialPayload = {
+    //order_num: my_material_orderNum,
+    id: selectedItem.value.id,
+    record_name: 'shortage_note',
+    record_data: ''
+  };
+  await updateMaterial(materialPayload);
+  selectedItem.value.shortage_note = '';
 
-    console.log("Formatted Start Time:", formattedStartTime);
-    console.log("Formatted End Time:", formattedEndTime);
-    console.log("Period time:", periodTime);
-    let processPayload = {
-      begin_time: formattedStartTime,
-      end_time: formattedEndTime,
-      periodTime: periodTime,
-      user_id: currentUser.value.empID,
-      order_num: my_material_orderNum,
-      process_type: 1,
-    };
-    await createProcess(processPayload);
+  materialPayload = {
+    //order_num: my_material_orderNum,
+    id: selectedItem.value.id,
+    record_name: 'isLackMaterial',
+    record_data: 99,
+  };
+  await updateMaterial(materialPayload);
+  selectedItem.value.isLackMaterial = 0;
+}
 
-    await listMaterials();
-  }
-  dialog.value = false;
+materialPayload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
+  //order_num: my_material_orderNum,
+  id: selectedItem.value.id,
+  record_name: 'isTakeOk',
+  record_data: true
+};
+await updateMaterial(materialPayload);
+selectedItem.value.isTakeOk = true;
+
+if (take_out) {                     // 該筆訂單檢料完成
+  materialPayload = {               // 2. 更新 materials 資料，show2_ok = 2
+    //order_num: my_material_orderNum,
+    id: selectedItem.value.id,
+    record_name: 'show2_ok',
+    record_data: 2                  // 設為 2，表示備料完成
+  };
+  await updateMaterial(materialPayload);
+
+  console.log("Formatted Start Time:", formattedStartTime);
+  console.log("Formatted End Time:", formattedEndTime);
+  console.log("Period time:", periodTime);
+  let processPayload = {
+    begin_time: formattedStartTime,
+    end_time: formattedEndTime,
+    periodTime: periodTime,
+    user_id: currentUser.value.empID,
+    order_num: my_material_orderNum,
+    process_type: 1,
+  };
+  await createProcess(processPayload);
+
+  await listWarehouseForAssemble();
+}
+dialog.value = false;
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
-  const diffMs = end - start;                     // 差異時間（毫秒）
-  const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
+const diffMs = end - start;                     // 差異時間（毫秒）
+const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
 
-  const hours = Math.floor(diffSeconds / 3600);
-  const minutes = Math.floor((diffSeconds % 3600) / 60);
-  const seconds = diffSeconds % 60;
+const hours = Math.floor(diffSeconds / 3600);
+const minutes = Math.floor((diffSeconds % 3600) / 60);
+const seconds = diffSeconds % 60;
 
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
 const formatDateTime = (date) => {
-  if (!date || !(date instanceof Date)) {
-    console.error("Invalid date passed to formatDateTime:", date);
-    return 'Invalid Date';
-  }
+if (!date || !(date instanceof Date)) {
+  console.error("Invalid date passed to formatDateTime:", date);
+  return 'Invalid Date';
+}
 
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
-  const dd = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const min = String(date.getMinutes()).padStart(2, '0');
-  const ss = String(date.getSeconds()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+const yyyy = date.getFullYear();
+const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
+const dd = String(date.getDate()).padStart(2, '0');
+const hh = String(date.getHours()).padStart(2, '0');
+const min = String(date.getMinutes()).padStart(2, '0');
+const ss = String(date.getSeconds()).padStart(2, '0');
+return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
 const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
-  const hours = String(time.getHours()).padStart(2, '0');
-  const minutes = String(time.getMinutes()).padStart(2, '0');
-  const seconds = String(time.getSeconds()).padStart(2, '0');
+const hours = String(time.getHours()).padStart(2, '0');
+const minutes = String(time.getMinutes()).padStart(2, '0');
+const seconds = String(time.getSeconds()).padStart(2, '0');
 
-  return `${hours}:${minutes}:${seconds}`;
+return `${hours}:${minutes}:${seconds}`;
 };
 
 const callAGV = async () => {
   console.log("callAGV()...")
 
+  let payload = {};
+  //let targetItem = {};
+
+  //console.log("step1...")
   if (!isCallAGV.value) {
+    //console.log("step2...")
     if (selectedItems.value.length == 0) {
       showSnackbar("請選擇送料的工單!", 'red accent-2');
       return;
     }
-
-    let payload = {agv_id: 1};
-    await getAGV(payload);
-    //待待
-    //console.log("hello, currentAGV:", currentAGV.value);
-    //if (currentAGV.value.status != 0) {
-    //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
-    //  return;
-    //}
 
     isCallAGV.value = true
   } else {
     showSnackbar("請不要重複按鍵!", 'red accent-2');
     return;
   }
+  //console.log("step3...")
+  selectedItems.value.forEach(async (item) => {
+    //console.log("step4...")
+    let targetItem = warehouses.value.find(
+      (kk) => kk.id === item
+    );
+    console.log("targetItem:", targetItem)
 
-  //isBlinking.value = true;
-  socket.value.emit('station1_call');
-  // 記錄等待agv到站開始時間
-  agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("AGV Start time:", agv1StartTime.value);
-};
+    payload = {
+      id: targetItem.id,
+      record_name: 'show2_ok',
+      record_data: 12      // 設為 12，入庫完成
+    };
+    await updateMaterial(payload);
+    //console.log("step5...")
+    payload = {
+      id: targetItem.id,
+      record_name: 'show3_ok',
+      record_data: 13      // 設為 13，入庫完成
+    };
+    await updateMaterial(payload);
+    //console.log("step6...")
+    //紀錄該筆訂單入庫數量
+    payload = {
+      id: targetItem.id,
+      record_name: 'allOk_qty',
+      record_data: targetItem.allOk_qty
+    };
+    await updateMaterial(payload);
+    //console.log("step7...")
+    //紀錄該筆訂單入庫總數量
+    let temp_total_allOk_qty = targetItem.total_allOk_qty + targetItem.allOk_qty
+    payload = {
+      id: targetItem.id,
+      record_name: 'total_allOk_qty',
+      record_data: temp_total_allOk_qty
+    };
+    await updateMaterial(payload);
+    //console.log("step8...")
+    //紀錄該筆的agv組裝完成狀態
+    payload = {
+      id: targetItem.id,
+      record_name: 'isAllOk',
+      record_data: true
+    };
+    await updateMaterial(payload);
+    //console.log("step9...")
+    //下面這一段, 待討論....
 
-const readAllExcelFun = async () => {
-  console.log("readAllExcelFun()...");
+    if (Number(targetItem.delivery_qty) != temp_total_allOk_qty) { // 1張工單多批次運送
+      console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
 
-  if (fileCount.value === 0) {
-    console.warn("No files available for import.");
-    return;
-  }
+      let tempDelivery = targetItem.delivery_qty - temp_total_allOk_qty;
 
-  try {
-    // 等待 readAllExcelFiles 完成
-    const excel_file_data = await readAllExcelFiles();
-    console.log("data:", excel_file_data);
-
-    if (excel_file_data.status) {
-      fileCount.value = 0;
-      await deleteAssemblesWithNegativeGoodQty();
-      listMaterials();
-    } else {
-      showSnackbar(excel_file_data.message, 'red accent-2');
+      payload = {
+        copy_id: targetItem.id,
+        total_delivery_qty: tempDelivery,
+        allOk_qty: tempDelivery,
+        show2_ok: 2,
+        shortage_note: '',
+      }
+      await copyMaterial(payload);
     }
-  } catch (error) {
-    console.error("Error during execution:", error);
-    showSnackbar("An error occurred.", 'red accent-2');
+    //
+  });
+
+  // 記錄AGV狀態資料
+  payload = {
+    id: 1,
+    status: 0,      // ready
+    station:  3,    // 在成品區
+  };
+  await updateAGV(payload);
+  console.log("step10...")
+  // 插入延遲 3 秒
+  await delay(3000);
+
+  selectedItems.value = [];
+  if (localStorage.getItem('selectedItems')) {
+    localStorage.removeItem('selectedItems');
   }
+
+  history.value = false;
+  if (localStorage.getItem('history')) {
+    localStorage.removeItem('history');
+  }
+  console.log("step11...")
+  //待待
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+};
+/*
+const readAllExcelFun = async () => {
+console.log("readAllExcelFun()...");
+
+if (fileCount.value === 0) {
+  console.warn("No files available for import.");
+  return;
+}
+
+try {
+  // 等待 readAllExcelFiles 完成
+  const excel_file_data = await readAllExcelFiles();
+  console.log("data:", excel_file_data);
+
+  if (excel_file_data.status) {
+    fileCount.value = 0;
+    await deleteAssemblesWithNegativeGoodQty();
+    listWarehouseForAssemble();
+  } else {
+    showSnackbar(excel_file_data.message, 'red accent-2');
+  }
+} catch (error) {
+  console.error("Error during execution:", error);
+  showSnackbar("An error occurred.", 'red accent-2');
+}
 };
 
 const updateModifyMaterialAndBomsFun = async () => {
-  let payload = {
-    id: selectedId.value,
-    date: selectedDate.value,
-    qty: selectedReqQty.value,
-    file_name: modify_file_name.value,
-    bom_data: modify_boms.value,
-  };
+let payload = {
+  id: selectedId.value,
+  date: selectedDate.value,
+  qty: selectedReqQty.value,
+  file_name: modify_file_name.value,
+  bom_data: modify_boms.value,
+};
 
-  await updateModifyMaterialAndBoms(payload)
+await updateModifyMaterialAndBoms(payload)
 
-  editDialog.value = fals
+editDialog.value = fals
 }
 
 const modifyExcelFilesFun = async () => {
-  console.log("modifyExcelFilesFun()...");
+console.log("modifyExcelFilesFun()...");
 
-  let payload = {
-    id: selectedId.value,
-    material_id: selectedOrderNum.value,
-  };
-
-  try {
-    const modify_result = await modifyExcelFiles(payload);
-
-    if (modify_result.status) {
-      modify_boms.value = [...modify_result.modifyBom];
-      modify_file_name.value = modify_result.modifyFileName;
-      //console.log("modify_file_name:", modify_file_name.value);
-
-      editDialogBtnDisable.value = false;
-    } else {
-      showSnackbar(modify_result.message, 'red accent-2');
-    }
-  } catch (error) {
-    console.error("Error during execution:", error);
-    showSnackbar("An error occurred.", 'red accent-2');
-  }
+let payload = {
+  id: selectedId.value,
+  material_id: selectedOrderNum.value,
 };
 
+try {
+  const modify_result = await modifyExcelFiles(payload);
+
+  if (modify_result.status) {
+    modify_boms.value = [...modify_result.modifyBom];
+    modify_file_name.value = modify_result.modifyFileName;
+    //console.log("modify_file_name:", modify_file_name.value);
+
+    editDialogBtnDisable.value = false;
+  } else {
+    showSnackbar(modify_result.message, 'red accent-2');
+  }
+} catch (error) {
+  console.error("Error during execution:", error);
+  showSnackbar("An error occurred.", 'red accent-2');
+}
+};
+*/
 const showSnackbar = (message, color) => {
-  snackbar_info.value = message;
-  snackbar_color.value = color;
-  snackbar.value = true;
+snackbar_info.value = message;
+snackbar_color.value = color;
+snackbar.value = true;
 };
 
 // 雙擊事件處理函式（箭頭函式）
-const moveToUserFacets = (index) => {
-  const item = allFacets.value.splice(index, 1)[0];
-  userFacets.value.push(item);
-};
+//const moveToUserFacets = (index) => {
+//  const item = allFacets.value.splice(index, 1)[0];
+//  userFacets.value.push(item);
+//};
 
-const moveToAllFacets = (index) => {
-  const item = userFacets.value.splice(index, 1)[0];
-  allFacets.value.push(item);
-};
+//const moveToAllFacets = (index) => {
+//  const item = userFacets.value.splice(index, 1)[0];
+//  allFacets.value.push(item);
+//};
 </script>
 
 <style lang="scss" scoped>
@@ -2210,4 +1922,15 @@ p {
   border-radius: 8px;        /* 可選: 為邊框添加圓角 */
   padding: 16px;
 }
+
+.hidden-column {
+  display: none;
+}
+
+:deep(.top_find_field .v-input__control) {
+  position: relative;
+  left: 50px;
+  top: 10px;
+}
+
 </style>

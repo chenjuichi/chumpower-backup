@@ -323,11 +323,15 @@ def update_assemble_process_step():
 
   # 如果條件滿足，更新 material 表
   if all_process_step_zero:
+    print("updateAssembleProcessStep , all_process_step_zero")
+
     material_record.isAssembleStation3TakeOk = True
     assemble_record.isAssembleStationShow = True
     return_value = True
     #return jsonify({"message": "Material updated successfully"}), 200
   else:
+    print("updateAssembleProcessStep , not all_process_step_zero")
+
     material_record.isAssembleStation3TakeOk = False
     assemble_record.isAssembleStationShow = False
     return_value = False
@@ -485,6 +489,8 @@ def update_assemble():
   _assemble_id = request_data['assemble_id']
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
+
+  print("_record_name:", _record_name)
 
   return_value = True  # true: 資料正確, 註冊成功
   s = Session()

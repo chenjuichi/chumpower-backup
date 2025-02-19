@@ -100,7 +100,7 @@ def count_excel_files():
       'count': count
     })
 
-
+'''
 @excelTable.route("/readAllExcelFiles", methods=['GET'])
 def read_all_excel_files():
   print("readAllExcelFiles....")
@@ -258,11 +258,171 @@ def read_all_excel_files():
     'status': return_value,
     'message': return_message1,
   })
+'''
+
+
+@excelTable.route("/readAllExcelFiles", methods=['GET'])
+def read_all_excel_files():
+  print("readAllExcelFiles....")
+
+  global global_var
+
+  return_value = False
+  return_message1 = '錯誤, 沒有工單檔案!'
+  return_message2 = ''
+  return_message = ''
+  file_count_total = 0  #檔案總數目
+  file_count_ok = 0     #檔案內總筆數
+
+  code_to_assembleStep = {'109': 3, '106': 2, '110': 1}
+
+  _base_dir = current_app.config['baseDir']
+  _target_dir = _base_dir.replace("_in", "_out")
+  print("read excel files, 目錄: ", _base_dir)
+  print("move excel files to, 目錄: ", _target_dir)
+
+  # 讀取指定目錄下的所有指定檔案名稱
+  files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  if (files):   #有工單檔案, if condition_a
+    sheet_names_to_check = [
+      current_app.config['excel_product_sheet'],
+      current_app.config['excel_bom_sheet'],
+      current_app.config['excel_work_time_sheet']
+    ]
+    _startRow = int(current_app.config['startRow'])
+
+    s = Session()
+
+    for _file_name in files:  #檔案讀取, for loop_1
+      file_count_total +=1
+      _path = _base_dir + '\\' + _file_name
+      global_var = _path + ' 檔案讀取中...'
+
+      with open(_path, 'rb') as file:   # with loop_1_a
+        workbook = openpyxl.load_workbook(filename=file, read_only=True)
+        return_value = True
+        return_message1 = ''
+        missing_sheets = [sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames]
+
+        if missing_sheets:
+          return_value = False
+          return_message1 = '錯誤, 工單檔案內沒有相關工作表!'
+          print(return_message1)
+          break
+
+        print(sheet_names_to_check[0] + ' sheet exists, data reading...')
+
+        material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
+        bom_df = pd.read_excel(_path, sheet_name=1)       # Second sheet for Bom
+        assemble_df = pd.read_excel(_path, sheet_name=2)  # 3rd sheet for Assemble
+
+        # Insert Material data, for loop_1_a_1
+        for index, row in material_df.iloc[0:].iterrows():
+          tempQty=row['數量']
+          material = Material(
+            order_num=row['單號'],
+            material_num=row['料號'],
+            material_comment=row['說明'],
+            material_qty=tempQty,
+            material_date=convert_date(row['立單日']),
+            material_delivery_date=convert_date(row['交期']),
+            total_delivery_qty=tempQty,
+          )
+          s.add(material)
+          s.flush()
+
+          product = Product(
+              material_id=material.id,
+          )
+          s.add(product)
+
+          s.commit()
+
+          material_order = str(row.iloc[1]).strip()                 #確保 row.iloc[1] 為 str 型別
+
+          bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)      #檢查是否存在 NaN 值
+          bom_df['訂單'] = bom_df['訂單'].fillna('').astype(str)     #保持字串型態
+          bom_entries = bom_df[bom_df.iloc[:, 0] == material_order] # 查詢對應的 BOM 項目
+          print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
+
+          # Insert corresponding BOM entries, for loop_1_a_1_a
+          for bom_index, bom_row in bom_entries.iterrows():
+
+            bom = Bom(
+                material_id=material.id,                  # Use the ID of the inserted material
+                seq_num=bom_row['預留項目'],
+                material_num=bom_row['物料'],
+                material_comment=bom_row['物料說明'],
+                req_qty=bom_row['需求數量'],
+                start_date=convert_date(row['交期'])
+            )
+            s.add(bom)
+          #end for loop_1_a_1_a
+          s.commit()
+
+          assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str).str.strip() == material_order.strip()]  #清除空格
+          print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+
+          order_nums = set()  # 用於追踪已處理過的 order_num
+
+          # Insert corresponding Assemble entries, for loop_1_a_1_b
+          for assemble_index, assemble_row in assemble_entries.iterrows():
+            # 處理 NaN 值，將 NaN 替換為 None（SQLAlchemy 可以接受 None）
+            #reason = assemble_row['差異原因'] if not pd.isna(assemble_row['差異原因']) else None
+            emp_num = assemble_row['員工號碼'] if not pd.isna(assemble_row['員工號碼']) else None
+            #confirm_comment = assemble_row['確認內文'] if not pd.isna(assemble_row['確認內文']) else None
+
+            #GMEIN = assemble_row['確認良品率 (GMEIN)']
+            #if GMEIN == 0:
+            #  continue
+
+            workNum = assemble_row['工作中心']
+            if workNum in order_nums:
+              continue
+            order_nums.add(workNum)
+
+            code = workNum[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
+            step_code = code_to_assembleStep.get(code, 0)   #
+
+            assemble = Assemble(
+              material_id=material.id,                    # Use the ID of the inserted material
+              material_num=assemble_row['物料'],
+              material_comment=assemble_row['物料說明'],
+              seq_num=assemble_row['作業'],
+              work_num = workNum,
+              process_step_code = step_code,
+
+              user_id = emp_num,
+            )
+            s.add(assemble)
+          #end for loop_1_a_1_b
+          s.commit()
+        #end for loop_1_a_1
+      #end with loop_1_a
+
+      try:
+        unique_filename = get_unique_filename(_target_dir, _file_name, "copy")  # 生成唯一檔案名稱
+        unique_target_path = os.path.join(_target_dir, unique_filename)         # 獲取完整目標路徑
+        print("unique_target_path:",unique_target_path)
+        shutil.move(_path, unique_target_path)                                  # 移動檔案到目標路徑
+        print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+      except PermissionError as e:
+        print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
+      except Exception as e:
+        print(f"移動檔案時發生錯誤: {e}")
+
+    #end for loop_1
+    s.close()
+  #end if condition_a
+
+  return jsonify({
+    'status': return_value,
+    'message': return_message1,
+  })
 
 
 @excelTable.route("/modifyExcelFiles", methods=['POST'])
 def modify_excel_files():
-  print("modifyExcelFiles....")
 
   data = request.json
   material_id = data.get("material_id")

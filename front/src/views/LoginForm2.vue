@@ -75,6 +75,7 @@
             @click:append="eyeShow = !eyeShow"
             v-model="loginUser.loginPassword"
             :rules="[requiredRule, passwordRule]"
+            @keydown="handleCapsLock"
             @keydown.enter="userLogin"
             @keydown.tab.prevent="handlePasswordTab"
             ref="passwordInput"
@@ -86,6 +87,22 @@
             <i class="fa-solid fa-right-to-bracket fa-fade" style="color: #63E6BE;"></i>
             登入
           </v-btn>
+
+          <v-icon
+            dark
+
+            :style="{
+              position: 'relative',
+              top: '5px',
+              left: '20px',
+
+              opacity: caps ? 1 : 0,
+              transition: 'opacity 0.5s ease',
+            }"
+          >
+            mdi-caps-lock
+          </v-icon>
+
         </div>
         <p class="mark_texts">員工註冊 <a href="#" @click.prevent="togglePanel">註冊</a></p>
 
@@ -239,6 +256,8 @@ const foundDessert = ref(null);
 const eyeShow = ref(true);
 const eyeShow1 = ref(true);
 const popStateHandler = ref(null);
+
+const caps =ref(false);
 
 const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 
@@ -475,11 +494,19 @@ const handlePasswordTab = (event) => {
   event.shiftKey ? loginEmpIDInput.value.focus() : loginButton.value.$el.focus();
 };
 
+
+const handleCapsLock = (event) => {
+  caps.value = event.getModifierState && event.getModifierState('CapsLock');
+  console.log("CapsLock is: ", caps.value);
+};
+
 const handleKeyDown = (event) => {
+  //console.log("handleKeyDown()...", event.getModifierState('CapsLock'))
   const inputChar = event.key;
 
-  const caps = event.getModifierState && event.getModifierState('CapsLock');
-  console.log("CapsLock is: ", caps); // true when you press the keyboard CapsLock key
+  caps.value = event.getModifierState && event.getModifierState('CapsLock');
+  //const caps = event.getModifierState('CapsLock');
+  console.log("CapsLock is: ", caps.value); // true when you press the keyboard CapsLock key
 
   // 允許左右方向鍵、backspace和delete鍵
   if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {

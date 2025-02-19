@@ -728,7 +728,7 @@
   const selectedItems = ref([]); // 儲存選擇的項目 (基於 id)
   const inputValueForItems = ref([]); // 儲存輸入的值
 
-  const inputIDs = ref([]);
+  //const inputIDs = ref([]);
 
   //const localIp = 'localhost';
   //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
@@ -834,11 +834,12 @@ onMounted(async () => {
   console.log("currentUser:", currentUser.value);
 
   // 取得每個 v-text-field 的唯一 ID
-  inputIDs.value.forEach((item) => {
-    const myIdField = document.getElementById(`receiveQtyID-${item.id}`);
-    myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
-  });
-
+  //2025-02-13 mark the following function
+  //inputIDs.value.forEach((item) => {
+  //  const myIdField = document.getElementById(`receiveQtyID-${item.id}`);
+  //  myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
+  //});
+  //
   // 每10分鐘讀取excel檔案是否存在? 顯示檔案數目
   fileCount.value = countExcelFiles();
   console.log("fileCount:", fileCount.value);
@@ -909,15 +910,15 @@ onMounted(async () => {
         payload = {
           id: item,
           record_name: 'show3_ok',
-          record_data: 1, // 設為 1，等待 agv
+          record_data: 16,  // agv start
         };
-        //await updateMaterial(materialPayload1);
-        try {
-          await updateMaterial(payload);
-          console.log(`資料更新成功，id: ${item}`);
-        } catch (error) {
-          console.error(`資料更新失敗，id: ${item}`, error);
-        }
+        await updateMaterial(payload);
+        //try {
+        //  await updateMaterial(payload);
+        //  console.log(`資料更新成功，id: ${item}`);
+        //} catch (error) {
+        //  console.error(`資料更新失敗，id: ${item}`, error);
+        //}
       });
     });
 
@@ -955,6 +956,7 @@ onMounted(async () => {
 
       background.value='#10e810'
     })
+    //以下帶確認
 
     socket.value.on('station2_agv_end', async () => {
       console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
@@ -985,9 +987,9 @@ onMounted(async () => {
       console.log("AGV 運行 End Time:", formattedEndTime);
       console.log("AGV 運行 Period time:", agv2PeriodTime);
 
-      let payload1 = {};
-      let payload2 = {};
-      let payload_new = {};
+      //let payload1 = {};
+      //let payload2 = {};
+      //let payload_new = {};
 
       console.log('agv_end 處理步驟2...');
       selectedItems.value.forEach(async (item) => {
@@ -995,7 +997,7 @@ onMounted(async () => {
 
         let myMaterial = materials.value.find(m => m.id == item);
 
-        payload1 = {
+        payload = {
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: agv2PeriodTime,
@@ -1003,26 +1005,26 @@ onMounted(async () => {
           order_num: myMaterial.order_num,
           process_type: 2,                          //在組裝區
         };
-        await createProcess(payload1);
+        await createProcess(payload);
         console.log('步驟2-1...');
 
         //紀錄該筆的agv送料數量
-        payload2 = {
+        payload = {
           id: item,
           record_name: 'delivery_qty',
           record_data: myMaterial.delivery_qty
         };
-        await updateMaterial(payload2);
+        await updateMaterial(payload);
         console.log('步驟2-2...');
 
         //紀錄該筆的agv送料狀態
         //if (Number(myMaterial.delivery_qty) !=0 && Number(myMaterial.total_delivery_qty) !=0) {
-        payload2 = {
+        payload = {
           id: item,
           record_name: 'isShow',
           record_data: true
         };
-        await updateMaterial(payload2);
+        await updateMaterial(payload);
         console.log('步驟2-3...');
 
         if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
@@ -1030,13 +1032,13 @@ onMounted(async () => {
 
           let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
 
-          payload_new = {
+          payload = {
             copy_id: myMaterial.id,
             total_delivery_qty: tempDelivery,
             show2_ok: 2,
             shortage_note: '',
           }
-          await copyMaterial(payload_new);
+          await copyMaterial(payload);
           console.log('步驟2-4...');
         }
       });
@@ -1446,7 +1448,7 @@ const toggleExpand = async (item) => {
     record_data: 1                //備料中
   };
   await updateMaterial(payload);
-
+  //2025-02-07 mark the following function
   payload = {
     id: item.id,
     //order_num: item.order_num,
@@ -1479,10 +1481,11 @@ const updateItem2 = async (item) => {
     deliveryQty = Number(item.delivery_qty) || 0;
   }
 
-  let payload = {};
+  //let payload = {};
 
-  // 記錄當前送料數量
-  payload = {
+  // 記錄當前備料數量
+  //2025-02-07 mark the following function
+  let payload = {
     id: item.id,
     record_name: 'delivery_qty',
     record_data: deliveryQty,
@@ -1503,75 +1506,84 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   let formattedStartTime = formatDateTime(currentStartTime.value);
   let formattedEndTime = formatDateTime(endTime);
 
-  // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
+  // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目
+  // 若有則將 `take_out` 設為 false, 缺料且檢料完成
+  // 若無則將 `take_out` 設為 true, 沒有缺料且檢料完成
   let take_out = !boms.value.some(bom => !bom.receive);
   console.log("take_out:", take_out);
 
   // 1. 更新 boms 資料
-  let response0 = await updateBoms(boms.value);
-  if (!response0) {
-    showSnackbar(response0.message, 'red accent-2');
-    dialog.value = false;
-    return;
-  }
+  //2025-02-11 mark and update the following block
+  //let response0 = await updateBoms(boms.value);
+  //if (!response0) {
+  //  showSnackbar(response0.message, 'red accent-2');
+  //  dialog.value = false;
+  //  return;
+  //}
+  await updateBoms(boms.value);
+  //
 
-  let materialPayload = {}
+  let payload = {}
 
   if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
-    materialPayload = {               // 更新 materials 資料，shortage_note = '(缺料)'
+    payload = {               // 更新 materials 資料，shortage_note = '(缺料)'
       //order_num: my_material_orderNum,
       id: selectedItem.value.id,
       record_name: 'shortage_note',
       record_data: '(缺料)'
     };
-    await updateMaterial(materialPayload);
+    await updateMaterial(payload);
     selectedItem.value.shortage_note = '(缺料)';
 
-    materialPayload = {               // 2. 更新 materials 資料，isLackMaterial = 1
+    payload = {               // 2. 更新 materials 資料，isLackMaterial = 1
       //order_num: my_material_orderNum,
       id: selectedItem.value.id,
       record_name: 'isLackMaterial',
       record_data: 0,          //缺料
     };
-    await updateMaterial(materialPayload);
+    await updateMaterial(payload);
+
     selectedItem.value.isLackMaterial = 0;
   } else {
-    materialPayload = {
+    payload = {
       //order_num: my_material_orderNum,
       id: selectedItem.value.id,
       record_name: 'shortage_note',
       record_data: ''
     };
-    await updateMaterial(materialPayload);
+    await updateMaterial(payload);
     selectedItem.value.shortage_note = '';
 
-    materialPayload = {
+    payload = {
       //order_num: my_material_orderNum,
       id: selectedItem.value.id,
       record_name: 'isLackMaterial',
       record_data: 99,
     };
-    await updateMaterial(materialPayload);
+    await updateMaterial(payload);
+
     selectedItem.value.isLackMaterial = 0;
   }
 
-  materialPayload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
+  payload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
     //order_num: my_material_orderNum,
     id: selectedItem.value.id,
     record_name: 'isTakeOk',
     record_data: true
   };
-  await updateMaterial(materialPayload);
+  await updateMaterial(payload);
+
   selectedItem.value.isTakeOk = true;
 
-  if (take_out) {                     // 該筆訂單檢料完成
-    materialPayload = {               // 2. 更新 materials 資料，show2_ok = 2
+  //2025-02-07 mark the if condition
+  //if (take_out) {                     // 該筆訂單檢料完成且沒有缺料
+    payload = {               // 2. 更新 materials 資料，show2_ok = 2
       //order_num: my_material_orderNum,
       id: selectedItem.value.id,
       record_name: 'show2_ok',
       record_data: 2                  // 設為 2，表示備料完成
     };
-    await updateMaterial(materialPayload);
+    await updateMaterial(payload);
 
     console.log("Formatted Start Time:", formattedStartTime);
     console.log("Formatted End Time:", formattedEndTime);
@@ -1586,8 +1598,9 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     };
     await createProcess(processPayload);
 
-    await listMaterials();
-  }
+    await listMaterials();    //2025-02-07 mark this line
+  //}
+
   dialog.value = false;
 };
 
@@ -1626,35 +1639,59 @@ const formatTime = (time) => {                            // 格式化時間為 
 };
 
 const callAGV = async () => {
-  console.log("callAGV()...")
-
+  console.log("callAGV()...");
+  //console.log("step1...");
+  let payload = {};
   if (!isCallAGV.value) {
+    //console.log("step2...");
     if (selectedItems.value.length == 0) {
+      //console.log("step2-1...");
       showSnackbar("請選擇送料的工單!", 'red accent-2');
       return;
     }
+    //console.log("step3...");
+    if (toggle_exclusive.value == 2) {   //AGV自動送料
+      //console.log("step3-1...");
+      payload = {agv_id: 1};
+      await getAGV(payload);
+      console.log("hello, 備料站叫車, AGV 狀態:", currentAGV.value);
 
-    let payload = {agv_id: 1};
-    await getAGV(payload);
-    //待待
-    //console.log("hello, currentAGV:", currentAGV.value);
-    //if (currentAGV.value.status != 0) {
-    //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
-    //  return;
-    //}
+      //待待
+      //if (currentAGV.value.status != 0) {
+      //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
+      //  return;
+      //}
 
-    isCallAGV.value = true
+      isCallAGV.value = true
+    }
+    //console.log("step4...");
   } else {
+    //console.log("step5...");
     showSnackbar("請不要重複按鍵!", 'red accent-2');
     return;
   }
-
+  //console.log("step6...");
   //isBlinking.value = true;
   socket.value.emit('station1_call');
+  console.log("送出 station1_call訊息...")
   // 記錄等待agv到站開始時間
   agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
   console.log("AGV Start time:", agv1StartTime.value);
+
+  selectedItems.value.forEach(async (item) => {
+    console.log('selectedItems, item:', item);
+
+    payload = {
+      id: item,
+      record_name: 'show3_ok',
+      record_data: 1      // 設為 1，等待agv
+    };
+    await updateMaterial(payload);
+  });
+  //console.log("step7...");
 };
+
+
 
 const readAllExcelFun = async () => {
   console.log("readAllExcelFun()...");

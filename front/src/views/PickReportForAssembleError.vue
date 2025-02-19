@@ -1,653 +1,657 @@
 <template>
-  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
-    <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
-      {{ snackbar_info }}
-      <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
-          <v-icon dark>mdi-close-circle</v-icon>
-        </v-btn>
-      </template>
-    </v-snackbar>
+<div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
+  <!-- Snackbar -->
+  <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+    {{ snackbar_info }}
+    <template v-slot:actions>
+      <v-btn color="#adadad" @click="snackbar = false">
+        <v-icon dark>mdi-close-circle</v-icon>
+      </v-btn>
+    </template>
+  </v-snackbar>
 
-    <v-data-table
-      :headers="headers"
-      :items="informations_for_assemble_error"
-      :row-props="getRowProps"
-      :search="search"
-      fixed-header
-      style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
-      class="custom-data-table"
-      items-per-page="5"
-      item-value="order_num"
-      v-model:page="pagination.page"
-      items-per-page-text="每頁的資料筆數"
-    >
-      <template v-slot:top>
-        <v-card>
-          <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height:70px; height:70px;">
-            <v-row>
-              <v-col cols="12" md="3">
-                組裝區異常填報
-              </v-col>
-              <v-col cols="12" md="2"></v-col>
-              <v-col cols="12" md="2">
-                <v-btn
-                  @click="toggleHistory"
-                  :active="history"
-                  color="primary"
-                  variant="outlined"
-                  class="top_btn_field"
-                >
-                  <v-icon left color="blue">mdi-history</v-icon>
-                  歷史紀錄
-                </v-btn>
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-text-field
-                  v-model="search"
-                  label="Search"
-                  prepend-inner-icon="mdi-magnify"
-                  variant="outlined"
-                  hide-details
-                  single-line
-                  class="top_find_field"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="3"></v-col>
-            </v-row>
-          </v-card-title>
-        </v-card>
-      </template>
+  <v-data-table
+    :headers="headers"
+    :items="informations_for_assemble_error"
+    :row-props="getRowProps"
+    :search="search"
+    fixed-header
+    style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
 
-      <!-- 客製化 '現況進度' (show1_ok) 欄位的表頭 -->
-      <template v-slot:header.show1_ok = "{ column }">
-        <div
-          style="line-height: 1;
-          margin: 0; padding: 0;
-          display: flex;
-          cursor: pointer;
-          position: relative; left: 8px;
-          width: 80px;"
-        >
-          <span>{{ column.title }}</span>
-        </div>
-        <div
-          style=" color: #a6a6a6;
-                  font-size: 10px;
-                  font-weight: 600;
-                  text-align: center;
-                  line-height: 1;
-                  position:relative;
-                  right: 5px;
+    item-value="order_num"
+    items-per-page="5"
+    v-model:page="pagination.page"
+    items-per-page-text="每頁的資料筆數"
+  >
+    <template v-slot:top>
+      <v-card>
+        <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height:70px; height:70px;">
+          <v-row>
+            <v-col cols="12" md="3">
+              組裝區異常填報
+            </v-col>
+            <v-col cols="12" md="2" />
+            <v-col cols="12" md="2">
+              <v-btn
+                @click="toggleHistory"
+                :active="history"
+                color="primary"
+                variant="outlined"
+                class="top_btn_field"
+              >
+                <v-icon left color="blue">mdi-history</v-icon>
+                歷史紀錄
+              </v-btn>
+            </v-col>
+            <v-col cols="12" md="2">
+              <v-text-field
+                v-model="search"
+                label="Search"
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                hide-details
+                single-line
+                class="top_find_field"
+                density="compact"
+              />
+            </v-col>
+            <v-col cols="12" md="3" />
+          </v-row>
+        </v-card-title>
+      </v-card>
+    </template>
 
-                "
-        >
-          組裝/雷射/檢驗
-        </div>
-      </template>
+    <!-- 客製化 '現況進度' (show1_ok) 欄位的表頭 -->
+    <template v-slot:header.show1_ok = "{ column }">
+      <div
+        style="line-height: 1;
+        margin: 0; padding: 0;
+        display: flex;
+        cursor: pointer;
+        position: relative; left: 8px;
+        width: 80px;"
+      >
+        <span>{{ column.title }}</span>
+      </div>
+      <div
+        style=" color: #a6a6a6;
+                font-size: 10px;
+                font-weight: 600;
+                text-align: center;
+                line-height: 1;
+                position:relative;
+                right: 5px;
 
-      <!-- 客製化 '訂單數量' (req_qty) 欄位表頭 -->
-      <template v-slot:header.req_qty="{ column }">
-        <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
-          訂單<br />數量
-        </div>
-      </template>
+              "
+      >
+        組裝/雷射/檢驗
+      </div>
+    </template>
 
-      <!-- 客製化 '現況數量' (delivery_qty) 欄位表頭 -->
-      <template v-slot:header.delivery_qty="{ column }">
-        <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
-          現況<br />數量
-        </div>
-      </template>
+    <!-- 客製化 '訂單數量' (req_qty) 欄位表頭 -->
+    <template v-slot:header.req_qty="{ column }">
+      <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
+        訂單<br />數量
+      </div>
+    </template>
 
-      <!-- 自訂 '現況進度' 欄位 -->
-      <template v-slot:item.show1_ok="{ item }">
-        <div>
-          <div style="font-weight:600;">{{ item.show1_ok }}</div>
-          <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
-        </div>
-      </template>
+    <!-- 客製化 '現況數量' (delivery_qty) 欄位表頭 -->
+    <template v-slot:header.delivery_qty="{ column }">
+      <div style="text-align: center; white-space: normal; line-height: 1.2; font-size: 14px;">
+        現況<br />數量
+      </div>
+    </template>
 
-      <!-- 自訂 '現況備註' 欄位 -->
-      <template v-slot:item.show3_ok="{ item }">
-        <div style="font-weight:600;">{{ item.show3_ok }}</div>
-      </template>
+    <!-- 自訂 '現況進度' 欄位 -->
+    <template v-slot:item.show1_ok="{ item }">
+      <div>
+        <div style="font-weight:600;">{{ item.show1_ok }}</div>
+        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
+      </div>
+    </template>
 
-      <!-- 自訂 '訂單數量' 欄位 -->
-      <template v-slot:item.req_qty="{ item }">
-        <div>
-          <div>{{ item.req_qty }}</div>
-          <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
-        </div>
-      </template>
+    <!-- 自訂 '現況備註' 欄位 -->
+    <template v-slot:item.show3_ok="{ item }">
+      <div style="font-weight:600;">{{ item.show3_ok }}</div>
+    </template>
 
-      <!-- 自訂 '說明' 欄位 -->
-      <template v-slot:item.comment="{ item }">
-        <div>
-          <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-          <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-        </div>
-      </template>
+    <!-- 自訂 '訂單數量' 欄位 -->
+    <template v-slot:item.req_qty="{ item }">
+      <div>
+        <div>{{ item.req_qty }}</div>
+        <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+      </div>
+    </template>
 
-      <!-- 自訂 '異常原因填寫' 欄位 -->
-      <template v-slot:item.cause_message="{ item }">
-        <v-combobox
-          v-model="item.cause_message"
-          :items="abnormal_causes_msg"
-          density="compact"
-          hide-details="true"
-          item-color="blue"
-          @change="handleInput(item)"
-          @update:modelValue="updateItem2(item)"
-          style="position: relative; left: -140px;"
-          v-if="!item.cause_message || item.cause_message.length == 0"
-        />
-        <!--<span class="text-span fixed-width" v-else>{{ item.cause_message }}</span>-->
-        <v-text-field
-          v-model="item.cause_message"
-          @update:modelValue="handleInputInField(item)"
-          style="position: relative; left: -140px; top:12px;"
-          class="text_field"
-          v-else>
-        </v-text-field>
+    <!-- 自訂 '說明' 欄位 -->
+    <template v-slot:item.comment="{ item }">
+      <div>
+        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+      </div>
+    </template>
 
-      </template>
+    <!-- 自訂 '異常原因填寫' 欄位 -->
+    <template v-slot:item.cause_message="{ item }">
+      <v-combobox
+        v-model="item.cause_message"
+        :items="abnormal_causes_msg"
+        density="compact"
+        hide-details="true"
+        item-color="blue"
+        @change="handleInput(item)"
+        @update:modelValue="updateItem2(item)"
+        style="position: relative; left: -140px;"
+        v-if="!item.cause_message || item.cause_message.length == 0"
+      />
+      <!--<span class="text-span fixed-width" v-else>{{ item.cause_message }}</span>-->
+      <v-text-field
+        v-model="item.cause_message"
+        @update:modelValue="handleInputInField(item)"
+        style="position: relative; left: -140px; top:12px;"
+        class="text_field"
+        v-else>
+      </v-text-field>
 
-      <template #no-data>
-        <strong><span style="color: red;">目前沒有資料</span></strong>
-      </template>
-    </v-data-table>
-  </div>
-  </template>
+    </template>
 
-  <script setup>
-  import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+    <template #no-data>
+      <strong><span style="color: red;">目前沒有資料</span></strong>
+    </template>
+  </v-data-table>
+</div>
+</template>
 
-  import { useRoute } from 'vue-router'; // Import useRouter
+<script setup>
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
-  import { myMixin } from '../mixins/common.js';
+import { useRoute } from 'vue-router'; // Import useRouter
 
-  //import { useSocketio } from '../mixins/SocketioService.js';
+import { myMixin } from '../mixins/common.js';
 
-  import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+//import { useSocketio } from '../mixins/SocketioService.js';
 
-  import { abnormal_causes, boms, informations_for_assemble_error }  from '../mixins/crud.js';
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-  import { apiOperation }  from '../mixins/crud.js';
+import { abnormal_causes, boms, informations_for_assemble_error }  from '../mixins/crud.js';
 
-  // 使用 apiOperation 函式來建立 API 請求
-  //const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
-  const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
+import { apiOperation }  from '../mixins/crud.js';
 
-  const updateAssemble = apiOperation('post', '/updateAssemble');
-  const getInformationsForAssembleErrorByHistory = apiOperation('post', '/getInformationsForAssembleErrorByHistory');
+// 使用 apiOperation 函式來建立 API 請求
+//const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
+const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
 
-  //=== component name ==
-  defineComponent({
-    name: 'PickReportForAssembleError'
-  });
+const updateAssemble = apiOperation('post', '/updateAssemble');
+const getInformationsForAssembleErrorByHistory = apiOperation('post', '/getInformationsForAssembleErrorByHistory');
 
-  // === mix ==
-  const { initAxios } = myMixin();
+//=== component name ==
+defineComponent({ name: 'PickReportForAssembleError' });
 
-  //=== props ===
-  const props = defineProps({
-    showFooter: Boolean
-  });
+// === mix ==
+const { initAxios } = myMixin();
 
-  //=== data ===
-  let intervalId = null;              // 10分鐘, 倒數計時器
+//=== props ===
+const props = defineProps({ showFooter: Boolean });
 
-  const route = useRoute(); // Initialize router
+//=== data ===
+let intervalId = null;              // 10分鐘, 倒數計時器
 
-  const headers = [
-    { title: '訂單編號', sortable: true, key: 'order_num', width:130 },
-    { title: '現況進度', sortable: false, key: 'show1_ok', width:80 },
-    { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
-    { title: '交期', sortable: false, key: 'delivery_date', width:110 },
-    { title: '訂單數量', sortable: false, key: 'req_qty', width:60 },
-    { title: '現況數量', sortable: false, key: 'delivery_qty', width:60 },
-    { title: '點檢人員', sortable: false, key: 'user', width:100 },
-    { title: '說明', align: 'start', sortable: false, key: 'comment', width:180 },
-    { title: '異常原因填寫', sortable: false, key: 'cause_message', width:110 },
-  ];
+const route = useRoute(); // Initialize router
 
-  const search = ref('');
+const headers = [
+  { title: '訂單編號', sortable: true, key: 'order_num', width:130 },
+  { title: '現況進度', sortable: false, key: 'show1_ok', width:80 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
+  { title: '交期', sortable: false, key: 'delivery_date', width:110 },
+  { title: '訂單數量', sortable: false, key: 'req_qty', width:60 },
+  { title: '現況數量', sortable: false, key: 'delivery_qty', width:60 },
+  { title: '點檢人員', sortable: false, key: 'user', width:100 },
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:180 },
+  { title: '異常原因填寫', sortable: false, key: 'cause_message', width:110 },
+];
 
-  const currentUser = ref({});
-  const componentKey = ref(0)             // key值用於強制重新渲染
-  const permDialog = ref(false);
+const search = ref('');
 
-  const history = ref(true);
+const currentUser = ref({});
+const componentKey = ref(0)             // key值用於強制重新渲染
+const permDialog = ref(false);
 
-  const pagination = reactive({
-    itemsPerPage: 5, // 預設值, rows/per page
-    page: 1,
-  });
+const history = ref(true);
 
-  //=== watch ===
-  watch(currentUser, (newUser) => {
-    if (newUser.perm < 1) {
-      permDialog.value = true;
-    }
-  });
+const pagination = reactive({
+  itemsPerPage: 5, // 預設值, rows/per page
+  page: 1,
+});
 
-  //=== computed ===
-  const containerStyle = computed(() => ({
-    bottom: props.showFooter ? '60px' : '0'
-  }));
+//=== watch ===
+watch(currentUser, (newUser) => {
+  if (newUser.perm < 1) {
+    permDialog.value = true;
+  }
+});
 
-  const routeName = computed(() => route.name);
+//=== computed ===
+const containerStyle = computed(() => ({
+  bottom: props.showFooter ? '60px' : '0'
+}));
 
-  const abnormal_causes_msg = computed(() =>
-  abnormal_causes.value.map(cause => `${cause.message}(${cause.number})`)
+const routeName = computed(() => route.name);
+
+const abnormal_causes_msg = computed(() =>
+abnormal_causes.value.map(cause => `${cause.message}(${cause.number})`)
 );
 
-  //=== mounted ===
-  onMounted(async () => {
-    console.log("PickReportForAssembleError.vue, mounted()...");
+//=== mounted ===
+onMounted(async () => {
+  console.log("PickReportForAssembleError.vue, mounted()...");
 
-    let userData = JSON.parse(localStorage.getItem('loginedUser'));
-    console.log("current routeName:", routeName.value);
-    console.log("current userData:", userData);
+  let userData = JSON.parse(localStorage.getItem('loginedUser'));
+  console.log("current routeName:", routeName.value);
+  console.log("current userData:", userData);
 
-    userData.setting_items_per_page = pagination.itemsPerPage;
-    userData.setting_lastRoutingName = routeName.value;
-    localStorage.setItem('loginedUser', JSON.stringify(userData));
+  userData.setting_items_per_page = pagination.itemsPerPage;
+  userData.setting_lastRoutingName = routeName.value;
+  localStorage.setItem('loginedUser', JSON.stringify(userData));
 
-    let user = localStorage.getItem("loginedUser");
-    currentUser.value = user ? JSON.parse(user) : null;
-    console.log("currentUser:", currentUser.value);
+  let user = localStorage.getItem("loginedUser");
+  currentUser.value = user ? JSON.parse(user) : null;
+  console.log("currentUser:", currentUser.value);
 
-    intervalId = setInterval(getInformationsForAssembleErrorByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
-  });
+  intervalId = setInterval(getInformationsForAssembleErrorByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+});
 
-  //=== unmounted ===
-  onUnmounted(() => {   // 清除計時器（當元件卸載時）
-    clearInterval(intervalId);
-  });
+//=== unmounted ===
+onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  clearInterval(intervalId);
+});
 
-  //=== created ===
-  onBeforeMount(() => {
-    console.log("PickReportForAssembleError.vue, created()...", currentUser.value)
+//=== created ===
+onBeforeMount(() => {
+  console.log("PickReportForAssembleError.vue, created()...", currentUser.value)
 
-    pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
-    initAxios();
-    initialize();
-  });
+  initAxios();
+  initialize();
+});
 
-  //=== method ===
-  const initialize = () => {
-    console.log("initialize()...")
+//=== method ===
+const initialize = async () => {
+  console.log("initialize()...");
 
-    listAbnormalCauses();
-
-    getInformationsForAssembleErrorByHistoryFun();
-  };
-
-  const toggleHistory = () => {
-    history.value = !history.value;
-    getInformationsForAssembleErrorByHistoryFun();
-  };
-
-  const getInformationsForAssembleErrorByHistoryFun = async () => {
-    let payload = {
-      history_flag: history.value,
-    };
-    await getInformationsForAssembleErrorByHistory(payload);
+  try {
+    await listAbnormalCauses();
+  } catch (error) {
+    console.error("Initialize Error in listAbnormalCauses():", error);
   }
 
-  const handleInputInField = async (item) => {
-    console.log("handleInputInField(), item.cause_message:", item.cause_message);
+  try {
+    await getInformationsForAssembleErrorByHistoryFun();
+  } catch (error) {
+    console.error("InitializeError in getInformationsForAssembleErrorByHistoryFun():", error);
+  }
+};
 
-    let payload = {
-      assemble_id: item.assemble_id,
-      record_name: 'alarm_message',
-      record_data: item.cause_message,
-    };
-    await updateAssemble(payload);
+const toggleHistory = () => {
+  history.value = !history.value;
+  getInformationsForAssembleErrorByHistoryFun();
+};
+
+const getInformationsForAssembleErrorByHistoryFun = async () => {
+  let payload = {
+    history_flag: history.value,
   };
+  await getInformationsForAssembleErrorByHistory(payload);
+}
 
-  // 更新當前資料行
-  const handleInput = async (item) => {
-    console.log("handleInput(), item.cause_message:", item.cause_message);
+const handleInputInField = async (item) => {
+  console.log("handleInputInField(), item.cause_message:", item.cause_message);
 
-    // 找到匹配的異常原因
-    const match = abnormal_causes_msg.value.find((msg) => {
-      const regex = new RegExp(`\\(${item.cause_message}\\)$`); // 檢查是否以 (number) 結尾
-      return regex.test(msg);
-    });
-
-    if (match) {
-      console.log("找到匹配的異常原因:", match);
-      // 更新資料行的 cause_message
-      item.cause_message = match;
-      console.log("item:", item.assemble_id, item.cause_message)
-      // 記錄當前送料數量
-      let payload = {
-        assemble_id: item.assemble_id,
-        record_name: 'alarm_message',
-        record_data: match,
-      };
-      await updateAssemble(payload);
-    } else {
-      console.log("未找到匹配的異常原因!");
-      showSnackbar('未找到匹配的異常原因!', 'red accent-2');
-    }
+  let payload = {
+    assemble_id: item.assemble_id,
+    record_name: 'alarm_message',
+    record_data: item.cause_message,
   };
+  await updateAssemble(payload);
+};
 
-  const getRowProps = (item, index) => {
+// 更新當前資料行
+const handleInput = async (item) => {
+  console.log("handleInput(), item.cause_message:", item.cause_message);
 
-    // 偶數列與奇數列高度不同
-    const backgroundColor = item.index % 2 === 0 ? '#ffffff' : '#edf2f4';
+  // 找到匹配的異常原因
+  const match = abnormal_causes_msg.value.find((msg) => {
+    const regex = new RegExp(`\\(${item.cause_message}\\)$`); // 檢查是否以 (number) 結尾
+    return regex.test(msg);
+  });
 
-    return {
-      style: {
-        backgroundColor,
-      },
-    };
-  };
-
-  const updateItem2 = async (item) => {
-    console.log("updateItem2(),", item);
-
+  if (match) {
+    console.log("找到匹配的異常原因:", match);
+    // 更新資料行的 cause_message
+    item.cause_message = match;
+    console.log("item:", item.assemble_id, item.cause_message)
+    // 記錄當前送料數量
     let payload = {
       assemble_id: item.assemble_id,
       record_name: 'alarm_message',
-      record_data: item.cause_message,
+      record_data: match,
     };
     await updateAssemble(payload);
+  } else {
+    console.log("未找到匹配的異常原因!");
+    showSnackbar('未找到匹配的異常原因!', 'red accent-2');
+  }
+};
+
+const getRowProps = (item, index) => {
+
+  // 偶數列與奇數列高度不同
+  const backgroundColor = item.index % 2 === 0 ? '#ffffff' : '#edf2f4';
+
+  return {
+    style: {
+      backgroundColor,
+    },
   };
+};
 
-  const showSnackbar = (message, color) => {
-    console.log("showSnackbar,", message, color)
+const updateItem2 = async (item) => {
+  console.log("updateItem2(),", item);
 
-    snackbar_info.value = message;
-    snackbar_color.value = color;
-    snackbar.value = true;
+  let payload = {
+    assemble_id: item.assemble_id,
+    record_name: 'alarm_message',
+    record_data: item.cause_message,
   };
-  </script>
+  await updateAssemble(payload);
+};
 
-  <style lang="scss" scoped>
-  @import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
+const showSnackbar = (message, color) => {
+  console.log("showSnackbar,", message, color)
 
-  @import "../styles/variables.scss";
+  snackbar_info.value = message;
+  snackbar_color.value = color;
+  snackbar.value = true;
+};
+</script>
 
-  .page_contain {
-    position: fixed;
-    left: 0px !important;
-    top: 60px !important;       // 確保在導航欄下方
-    bottom: 60px !important;    // 確保在頁腳上方
-    padding: 0px 10px;
-    width: 100vw;               // 視窗寬度
-    margin: 0;
-    overflow-y: auto;           // 添加scrollbar，防止內容溢出
-    overflow-x:hidden;
+<style lang="scss" scoped>
+@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
+
+@import "../styles/variables.scss";
+
+.page_contain {
+  position: fixed;
+  left: 0px !important;
+  top: 60px !important;       // 確保在導航欄下方
+  bottom: 60px !important;    // 確保在頁腳上方
+  padding: 0px 10px;
+  width: 100vw;               // 視窗寬度
+  margin: 0;
+  overflow-y: auto;           // 添加scrollbar，防止內容溢出
+  overflow-x:hidden;
+}
+
+.table_border_radius {
+  border-radius: 0px 0px 10px;
+}
+
+.card_container {
+    // width: 100%;
+    // max-width: 400px;
+    // max-height: 251px;
+    // height: 54vw;
+  padding: 20px;
+}
+
+:deep(.v-overlay__content) {
+    //overflow: hidden !important;
+  overflow-y: hidden !important;
+  top: 20px !important;
+  border-radius: 40px;
+}
+
+.card-no-padding .v-card {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:deep(.v-card-text .card_container) {
+  padding: 0px;
+}
+
+.no-rounded-icon-btn .v-btn__icon {
+  border-radius: 0 !important;
+}
+
+.v-input--custom-text-input-density .v-field--variant-underlined {
+  --v-input-control-height: 30px; //change here
+  --v-field-padding-top: 0px;
+  --v-field-padding-bottom: 0px;
+}
+
+.elevation-1.table_border_radius {
+  overflow-y: hidden;
+}
+
+:deep(.v-messages .v-messages__message) {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  //width: auto;
+  //position: absolute;
+  //left: 0;
+  //right: 0;
+  width: 200px;
+}
+
+:deep(.v-table.outer .v-table__wrapper) {
+  overflow-y: hidden;
+  max-height: 320px;
+}
+
+:deep(.v-data-table-footer__items-per-page) {
+  display: none;
+}
+
+:deep(.v-table .v-table__wrapper table thead tr th) {
+  height: 46px;
+  line-height: 46px;
+}
+
+.sticky-card-title {
+  //position: -webkit-sticky;
+  //position: sticky;
+  //top: 50; // 固定在容器顶部
+  z-index: 10;              // 保证标题在内容上方显示
+  background: white;    // 避免内容滚动时标题被遮盖
+  top: 10px;
+  position: relative;
+  font-size: 24px;
+  font-weight: 600;
+  font-family: 'cwTeXYen', sans-serif;
+}
+
+.card-container {
+  height: 440px;    // 设置明确的高度以允许滚动
+  //overflow: auto; // 确保容器可以滚动
+  overflow-y: hidden;
+}
+
+:deep(.v-data-table-footer) {
+  position: relative;
+  top: -20px;
+}
+
+:deep(.v-overlay__content) {
+  border-radius: 0px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+
+  --v-scrollbar-offset: 0px !important;
+  border-radius: 5px !important;
+}
+
+:deep(.v-card .v-data-table-footer) {
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
+
+:deep(.v-card .v-data-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.v-card .v-data-table thead th) {
+  background-color: white;  // 確保標題背景與卡片一致
+  z-index: 2;                   // 提高z-index以確保標題在其他內容之上
+}
+
+.sticky-title {
+  position: sticky;
+  top: 0px;
+  background-color: white;
+  z-index: 10;
+  //padding-top: 10px;
+  //padding-bottom: 10px;
+}
+
+.v-table.inner thead.sticky-thead tr.inner_header th {
+  position: sticky;
+  top: 0px;
+  background-color: white;
+  z-index: 9;
+}
+
+.table-container {
+  position: relative;   // 讓 sticky 定位相對於這個元素
+  max-height: 440px;    // 設定合適的高度來產生滾動條
+  overflow-y: auto;     // 允許垂直滾動
+}
+
+.red-text {
+  color: red;
+}
+
+:deep(.v-input__control) {
+  //min-height: 36px;
+  //height: 36px;
+  left: 150px;
+  position: relative;
+  width: 250px;
+}
+
+:deep(.v-field__field) {
+  min-height : 20px;
+  height: 34px;
+}
+
+:deep(.v-data-table-footer__info) {
+  min-height : 30px;
+  height: 40px;
+}
+
+.custom-header theader th {
+  background-color: #85aef2;  // 自訂背景顏色
+}
+
+.blinking {
+  animation: blink-animation 1s steps(5, start) infinite;
+}
+
+@keyframes blink-animation {
+  to {
+    visibility: hidden;
   }
+}
 
-  .table_border_radius {
-    border-radius: 0px 0px 10px;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
 
-  .card_container {
-     // width: 100%;
-     // max-width: 400px;
-     // max-height: 251px;
-     // height: 54vw;
-    padding: 20px;
-  }
+:deep(.v-data-table tbody td) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
 
-  :deep(.v-overlay__content) {
-      //overflow: hidden !important;
-    overflow-y: hidden !important;
-    top: 20px !important;
-    border-radius: 40px;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:first-child div ) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 130px !important;
+}
 
-  .card-no-padding .v-card {
-    margin: 0 !important;
-    padding: 0 !important;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(2))  {
+  width: 80px !important;
+}
 
-  :deep(.v-card-text .card_container) {
-    padding: 0px;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(3) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 110px !important;
+}
 
-  .no-rounded-icon-btn .v-btn__icon {
-    border-radius: 0 !important;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(4) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 110px !important;
+}
 
-  .v-input--custom-text-input-density .v-field--variant-underlined {
-    --v-input-control-height: 30px; //change here
-    --v-field-padding-top: 0px;
-    --v-field-padding-bottom: 0px;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(7) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100px !important;
+}
 
-  .elevation-1.table_border_radius {
-    overflow-y: hidden;
-  }
+:deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(9) div) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 140px !important;
+}
 
-  :deep(.v-messages .v-messages__message) {
-    white-space: nowrap;
-    overflow: visible;
-    text-overflow: clip;
-    max-width: none;
-    //width: auto;
-    //position: absolute;
-    //left: 0;
-    //right: 0;
-    width: 200px;
-  }
+:deep(.v-table__wrapper > table > tbody > tr > td:first-child) {
+  text-align: center !important;
+}
 
-  :deep(.v-table.outer .v-table__wrapper) {
-    overflow-y: hidden;
-    max-height: 320px;
-  }
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(2) div) {
+  width: 80px !important;
+}
 
-  :deep(.v-data-table-footer__items-per-page) {
-    display: none;
-  }
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(3) div) {
+  width: 110px !important;
+}
 
-  :deep(.v-table .v-table__wrapper table thead tr th) {
-    height: 46px;
-    line-height: 46px;
-  }
+:deep(.v-table__wrapper > table > tbody > tr > td:nth-child(9) .v-input__control) {
+  width: 140px !important;
+}
 
-  .sticky-card-title {
-    //position: -webkit-sticky;
-    //position: sticky;
-    //top: 50; // 固定在容器顶部
-    z-index: 10;              // 保证标题在内容上方显示
-    background: white;    // 避免内容滚动时标题被遮盖
-    top: 10px;
-    position: relative;
-    font-size: 24px;
-    font-weight: 600;
-    font-family: 'cwTeXYen', sans-serif;
-  }
+:deep(.v-table__wrapper > table > tbody > tr > td > v-input .v-combobox__selection span) {
+  font-size:12px !important;
+  font-weight: 600 !important;
+}
 
-  .card-container {
-    height: 440px;    // 设置明确的高度以允许滚动
-    //overflow: auto; // 确保容器可以滚动
-    overflow-y: hidden;
-  }
+:deep(.text_field input){
+  color: red;
+  height: 20px;
+  min-height: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
 
-  :deep(.v-data-table-footer) {
-    position: relative;
-    top: -20px;
-  }
-
-  :deep(.v-overlay__content) {
-    border-radius: 0px !important;
-    max-height: 320px !important;
-    overflow-y: auto !important;
-
-    --v-scrollbar-offset: 0px !important;
-    border-radius: 5px !important;
-  }
-
-  :deep(.v-card .v-data-table-footer) {
-    padding-top: 0px;
-    padding-bottom: 0px;
-  }
-
-  :deep(.v-card .v-data-table) {
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  :deep(.v-card .v-data-table thead th) {
-    background-color: white;  // 確保標題背景與卡片一致
-    z-index: 2;                   // 提高z-index以確保標題在其他內容之上
-  }
-
-  .sticky-title {
-    position: sticky;
-    top: 0px;
-    background-color: white;
-    z-index: 10;
-    //padding-top: 10px;
-    //padding-bottom: 10px;
-  }
-
-  .v-table.inner thead.sticky-thead tr.inner_header th {
-    position: sticky;
-    top: 0px;
-    background-color: white;
-    z-index: 9;
-  }
-
-  .table-container {
-    position: relative;   // 讓 sticky 定位相對於這個元素
-    max-height: 440px;    // 設定合適的高度來產生滾動條
-    overflow-y: auto;     // 允許垂直滾動
-  }
-
-  .red-text {
-    color: red;
-  }
-
-  :deep(.v-input__control) {
-    //min-height: 36px;
-    //height: 36px;
-    left: 150px;
-    position: relative;
-    width: 250px;
-  }
-
-  :deep(.v-field__field) {
-    min-height : 20px;
-    height: 34px;
-  }
-
-  :deep(.v-data-table-footer__info) {
-    min-height : 30px;
-    height: 40px;
-  }
-
-  .custom-header theader th {
-    background-color: #85aef2;  // 自訂背景顏色
-  }
-
-  .blinking {
-    animation: blink-animation 1s steps(5, start) infinite;
-  }
-
-  @keyframes blink-animation {
-    to {
-      visibility: hidden;
-    }
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th) {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-
-  :deep(.v-data-table tbody td) {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:first-child div ) {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 130px !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(2))  {
-    width: 80px !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(3) div) {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 110px !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(4) div) {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 110px !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(7) div) {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100px !important;
-  }
-
-  :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:nth-child(9) div) {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 140px !important;
-  }
-
-  :deep(.v-table__wrapper > table > tbody > tr > td:first-child) {
-    text-align: center !important;
-  }
-
-  :deep(.v-table__wrapper > table > tbody > tr > td:nth-child(2) div) {
-    width: 80px !important;
-  }
-
-  :deep(.v-table__wrapper > table > tbody > tr > td:nth-child(3) div) {
-    width: 110px !important;
-  }
-
-  :deep(.v-table__wrapper > table > tbody > tr > td:nth-child(9) .v-input__control) {
-    width: 140px !important;
-  }
-
-  :deep(.v-table__wrapper > table > tbody > tr > td > v-input .v-combobox__selection span) {
-    font-size:12px !important;
-    font-weight: 600 !important;
-  }
-
-  :deep(.text_field input){
-    color: red;
-    height: 20px;
-    min-height: 20px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  :deep(.top_find_field .v-input__control) {
-    position: relative;
-    left: -50px;
-  }
+:deep(.top_find_field .v-input__control) {
+  position: relative;
+  left: -50px;
+}
 /*
-  :deep(.top_find_field) {
-    position: relative;
-    left: 200px;
-  }
-  */
+:deep(.top_find_field) {
+  position: relative;
+  left: 200px;
+}
+*/
 </style>

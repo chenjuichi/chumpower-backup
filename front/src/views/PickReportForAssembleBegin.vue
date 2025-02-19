@@ -258,12 +258,12 @@ import { useSocketio } from '../mixins/SocketioService.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { materials_and_assembles, boms, socket_server_ip }  from '../mixins/crud.js';
-
+import { begin_count, end_count }  from '../mixins/crud.js';
 import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
-
+const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const updateAssemble = apiOperation('post', '/updateAssemble');
@@ -273,17 +273,13 @@ const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
 
 //=== component name ==
-defineComponent({
-  name: 'PickReportForAssembleBegin'
-});
+defineComponent({ name: 'PickReportForAssembleBegin' });
 
 //=== mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
@@ -685,7 +681,7 @@ const updateItem = async (item) => {
     await updateAssemble(payload);
   }
 
-  // 2.記錄當前領取數量
+  // 2.記錄當前途程領取數量
   payload = {
     assemble_id: item.assemble_id,
     record_name: 'ask_qty',
@@ -738,7 +734,8 @@ const updateItem = async (item) => {
   await updateMaterial(payload);
 
   let temp = Number(item.req_qty)
-  // 確認 已領取總數量=需求數量
+  // 確認 已領取總數量=需求數量(訂單數量)
+  console.log("total == temp ?",total, temp)
   if (total == temp) {
     // 記錄當前紀錄, 不能再輸入
     payload = {
@@ -748,8 +745,14 @@ const updateItem = async (item) => {
     };
     await updateAssemble(payload);
     item.input_disable = true;
+    //
+    await listWaitForAssembleFun();
   }
 };
+
+const listWaitForAssembleFun = async () => {
+  await listWaitForAssemble();
+}
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)

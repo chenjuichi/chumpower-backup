@@ -136,9 +136,9 @@ class Material(BASE):
     order_num = Column(String(20), nullable=False)                  #訂單編號(1)
     material_num = Column(String(20), nullable=False)               #成品料號(2)
     material_comment = Column(String(70), nullable=False)           #料號說明(3)
-    material_qty = Column(Integer, nullable=False)                  #(成品)需求數量(4)
-    delivery_qty = Column(Integer, default=0)                       #送料數量(現況數量)
-    total_delivery_qty = Column(Integer, default=0)                 #已送料總數量
+    material_qty = Column(Integer, nullable=False)                  #(成品)需求數量(4),訂單數量
+    delivery_qty = Column(Integer, default=0)                       #送料數量(現況數量), 備料數量
+    total_delivery_qty = Column(Integer, default=0)                 #已送料總數量, 應備數量
     input_disable = Column(Boolean, default=False)                  #送料數量達上限(需求數量), 或尚未備料, 則禁止再輸入
 
     material_date = Column(String(12), nullable=False)              #建置日期(5)
@@ -161,7 +161,9 @@ class Material(BASE):
     show2_ok = Column(String(20), server_default='0')
     show3_ok = Column(String(20), server_default='0')
     shortage_note = Column(String(20), server_default='')           # 缺料註釋說明
-    isAllOk = Column(Boolean, default=False)                        # true:已成品入庫
+    isAllOk = Column(Boolean, default=False)                        # true:成品已入庫
+    allOk_qty = Column(Integer, default=0)                          # (成品）確認完成數量
+    total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
     isLackMaterial = Column(Integer, default=99)                    # 0:備料缺料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
@@ -291,9 +293,9 @@ class Assemble(BASE):
     completed_qty = Column(Integer, default=0)                    #完成數量
     total_completed_qty = Column(Integer, default=0)              #已完成總數量
 
-    reason = Column(String(50))                                   #差異原因
+    reason = Column(String(50), default='')                                   #差異原因
     #emp_num = Column(String(8))                                  #員工編號 8碼
-    confirm_comment = Column(String(70))                          #確認內文
+    confirm_comment = Column(String(70), default='')                          #確認內文
     is_assemble_ok = Column(Boolean, default=False)               # true: 目前途程為組裝, false: 不是
 
     currentStartTime = Column(String(30))                         #領料生產報工開始時間
@@ -349,20 +351,24 @@ class Product(BASE):
     #seq_num = Column(String(20), nullable=False)                  #序號
     #work_num = Column(String(20))                                 #工作中心
     #process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
-    ask_qty = Column(Integer, default=0)                          #領取數量(移入到站數量)
+    delivery_qty = Column(Integer, default=0)                     #備料完成數量
+    assemble_qty = Column(Integer, default=0)                     #組裝完成數量
+    allOk_qty = Column(Integer, default=0)                        # (成品）確認完成數量
+
+    #ask_qty = Column(Integer, default=0)                          #領取數量(移入到站數量)
     #total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
-    ask_qty_end = Column(Integer, default=0)                      #結束數量(到站確認數量)
+    #ask_qty_end = Column(Integer, default=0)                      #結束數量(到站確認數量)
     #total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量
-    user_id = Column(String(8))                                   #員工編號(領料)
+    #user_id = Column(String(8))                                   #員工編號(領料)
     good_qty = Column(Integer, default=0)                         #交付確認良品數量
     non_good_qty = Column(Integer, default=0)                     #廢品數量
     reason = Column(String(50))                                   #差異原因
     confirm_comment = Column(String(70))                          #確認內文
-    is_product_ok = Column(Boolean, default=False)                # true: 目前到站途程為成品站, false: 不是
-    currentStartTime = Column(String(30))                         #報工開始時間
-    currentEndTime = Column(String(30))                           #報工結束時間
-    input_disable = Column(Boolean, default=False)                #禁止再輸入
-    isProductStationShow = Column(Boolean, default=False)         # true:完成報工(入庫checkbox on), 最後一個途程,
+    #is_product_ok = Column(Boolean, default=False)                # true: 目前到站途程為成品站, false: 不是
+    #currentStartTime = Column(String(30))                         #報工開始時間
+    #currentEndTime = Column(String(30))                           #報工結束時間
+    #input_disable = Column(Boolean, default=False)                #禁止再輸入
+    #isProductStationShow = Column(Boolean, default=False)         # true:完成報工(入庫checkbox on), 最後一個途程,
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容

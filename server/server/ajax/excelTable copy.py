@@ -253,6 +253,7 @@ def read_all_excel_files():
           assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str).str.strip() == material_order.strip()]  #清除空格
           print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
           #print("index:", index)
+          work_numprocessed_order_nums = set()  # 用於追踪已處理過的 order_num
 
           # Insert corresponding Assemble entries
           for assemble_index, assemble_row in assemble_entries.iterrows():

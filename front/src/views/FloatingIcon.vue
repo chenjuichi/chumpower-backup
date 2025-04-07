@@ -59,16 +59,28 @@
 					@close="showColorPicker = false"
 					style="position: relative; top: 5px; right: 30px;"
 				/>
+
+
       </div>
     </div>
   </div>
+
+  <!--WebRTC-->
+  <WebRTC
+    v-if="showWebRTC"
+    class="webrtc-container"
+    @close="showWebRTC = false"
+    :targetRouteName=routeName
+  />
 </template>
 
 <script setup>
 import { ref,reactive, computed, onMounted, watch, defineComponent } from "vue";
+import { useRoute } from 'vue-router'; // Import useRouter
 import interact from "interactjs";
 
 import ColorPicker from './ColorPicker.vue';
+import WebRTC from './WebRTC.vue';
 
 //import eventBus from '../mixins/enentBus.js';
 
@@ -89,6 +101,7 @@ const emit = defineEmits(['update:showFooter', 'update:navBarColor']);
 
 //=== data ===
 const showColorPicker = ref(false);
+const showWebRTC = ref(false);
 
 const localShowFooter = ref(props.showFooter);
 
@@ -107,13 +120,18 @@ const state = reactive({
 const icons = [
   { class: "fa-solid fa-laptop", color: "red" },
   { class: "fa-solid fa-palette", color: "green" },
+  { class: "fa-solid fa-camera", color: "yellow" },
 ];
+
+const route = useRoute();               // Initialize router
 
 //=== computed ===
 // 主按鈕與彈出圖示容器的實時位置
 const getContainerStyle = computed(() => {
   return `transform: translate(${state.item.x}px, ${state.item.y}px)`;
 });
+
+const routeName = computed(() => route.name);
 
 watch(() => props.showFooter, (newValue) => {
   localShowFooter.value = newValue; // 同步父層變更到 localShowFooter
@@ -146,6 +164,7 @@ const handleMainButtonClick = (event) => {
   if (state.iconsVisible) {
     state.iconsVisible = false;				// 如果彈出圖示已顯示，隱藏圖示
 		showColorPicker.value = false;
+    showWebRTC.value = false;
   } else {
     state.iconsVisible = true;				// 如果彈出圖示未顯示，滑出圖示
   }
@@ -162,6 +181,10 @@ const handleIconClick = (iconClass) => {
 
 	if (iconClass === 'fa-solid fa-palette' && state.iconsVisible) {
 		showColorPicker.value = !showColorPicker.value;
+	}
+
+	if (iconClass === 'fa-solid fa-camera' && state.iconsVisible) {
+		showWebRTC.value = !showWebRTC.value;
 	}
 };
 /*
@@ -287,7 +310,7 @@ const toggleIcons = () => {
 }
 
 .icon.green {
-  background-color: #5CD1FF;
+  background-color: #00E676;
 	color: #000;
 	border-radius: 50%;
 	height: 36px;
@@ -296,4 +319,28 @@ const toggleIcons = () => {
 	justify-content: center;
 	align-items: center;
 }
+
+.icon.yellow {
+  background-color: #FFF176;
+	color: #000;
+	border-radius: 50%;
+	height: 36px;
+	width: 36px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+.webrtc-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000; /* 確保它顯示在最上層 */
+  background: white;
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  border-radius: 8px;
+}
+
 </style>

@@ -1,8 +1,9 @@
 import math
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
-from database.tables import User, Process, Agv, Material, Bom, Permission, Product, Setting, Session
+from database.tables import User, Process, Agv, Material, Bom, Permission, Product, Process, Setting, Session
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 
@@ -328,43 +329,51 @@ def create_process():
   print("createProcess....")
 
   request_data = request.get_json()
+  print("request_data:", request_data)
 
   _begin_time = request_data['begin_time']
   _end_time = request_data['end_time']
   _period_time = request_data['periodTime']
   _user_id = request_data['user_id']
   _order_num = request_data['order_num']
+  _id = request_data['id']
   _process_type= request_data['process_type']
+  print("id:", _id, type(_id))
 
-  return_value = True
-  return_message = ''
   s = Session()
 
-  record = Process(
-    order_num = _order_num,
+  material = s.query(Material).filter(Material.id == _id).first()
+
+  if not material:
+    print("error, order_num 不存在!")
+    return jsonify({"error": "order_num 不存在"}), 400  # 找不到對應的 Material 記錄
+  print("step1...", material.id)
+
+  # 計算期間時間
+  time_diff = datetime.strptime(_end_time, "%Y-%m-%d %H:%M:%S") - datetime.strptime(_begin_time, "%Y-%m-%d %H:%M:%S")
+  period_time = str(time_diff).split('.')[0]  # 去除微秒，格式為 'HH:MM:SS'
+  print("step2-1...")
+
+  # 3️⃣ 直接新增 process 記錄（無論是否已存在）
+  new_process = Process(
+    material_id = _id,
     user_id = _user_id,
     begin_time = _begin_time,
     end_time = _end_time,
+    period_time = period_time,  # 計算期間時間
     process_type = _process_type,
-    #process_status = _process_status,
   )
+  print("step3...")
 
-  s.add(record)
-
-  try:
-    s.commit()
-    print("Process data create successfully.")
-  except Exception as e:
-    s.rollback()
-    print("Error:", str(e))
-    return_message = '錯誤! 資料新增沒有成功...'
-    return_value = False
+  s.add(new_process)
+  print("step4...")
+  s.commit()
+  print("step5...")
 
   s.close()
 
   return jsonify({
-    'status': return_value,
-    #'message': return_message,
+    'status': True,
   })
 
 

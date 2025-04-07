@@ -10,242 +10,209 @@
     </template>
   </v-snackbar>
 
-  <v-data-table
-    :headers="headers"
-    :items="informations"
-    :row-props="getRowProps"
-    :search="search"
-    item-value="order_num"
-    class="outer custom-header"
-    :style="tableStyle"
-    style="min-height: 420px; height: auto;"
-    :items-per-page-options="footerOptions"
-    items-per-page="5"
-    v-model:page="pagination.page"
-  >
-    <template v-slot:top>
-      <v-card style="min-height: 100px; overflow: visible;">
-        <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; padding:16px;">
-          <span style="position:relative; top:-10px;">組裝區在製品生產資訊</span>
-          <v-spacer />
-          <v-row style="margin-left:3vw;">
-            <v-col cols="12" md="6">
-              <div style="display: flex; justify-content: center; gap: 25px; font-size: 20px; color: blue">
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span style="font-size: 16px;">{{ todayDate }}</span>
-                </div>
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>工單數</span>
-                  <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
-                </div>
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>備料送出</span>
-                  <v-progress-circular
-                    :model-value="progress_value2"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="primary"
+  <!--<v-row align="center" justify="center" v-if="currentUser.perm >= 1">-->
+    <v-card flat class="card-container" :max-width="dialogWidth" style="width: 100%;">
+      <v-card-title class="d-flex align-center pe-2 sticky-card-title">
+        組裝區在製品生產資訊
+        <v-divider class="mx-4" inset vertical></v-divider>
+        <v-spacer></v-spacer>
+      <!--
+        <v-btn
+          color="primary"
+          variant="outlined"
+          style="position: relative; left: 125px; top: 0px;"
+        >
+          <v-icon left color="green">mdi-microsoft-excel</v-icon>
+          更新現況
+        </v-btn>
+      -->
+        <v-btn
+          color="primary"
+          variant="outlined"
+          style="position: relative; left: 130px; top: 10px; min-height: 20px; height: 34px;"
+        >
+          <v-icon left color="blue">mdi-history</v-icon>
+          歷史紀錄
+        </v-btn>
 
-                  >
-                    {{ prepare_count }}
-                  </v-progress-circular>
-                </div>
+        <v-text-field
+          v-model="search"
+          label="Search"
+          prepend-inner-icon="mdi-magnify"
+          variant="outlined"
+          hide-details
+          single-line
+          style="position: relative; top: -2px; min-height: 10px; height:10px;"
+          density="compact"
+        ></v-text-field>
+      </v-card-title>
+      <v-divider></v-divider>
+      <v-data-table
+        :headers="headers"
+        :items="informations"
+        :row-props="getRowProps"
+        :search="search"
+        fixed-header
+        items-per-page="5"
+        item-value="order_num"
+        :items-length="informations.length"
+        v-model:page="pagination.page"
+        class="outer custom-header"
+        style="max-width: 100%; overflow-x: auto;"
+        :style="tableStyle"
+        :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
+      >
+        <template #top>
+          <v-dialog v-model="dialog" max-width="960px">
+            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+                裝配紀錄
+                <v-fade-transition mode="out-in">
+                  <v-btn
+                    style="position: relative; right: -550px;"
+                    color="success"
+                    prepend-icon="mdi-check-circle-outline"
 
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝送出</span>
-                  <v-progress-circular
-                    :model-value="progress_value3"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="red"
-                  >
-                    {{ assemble_count }}
-                  </v-progress-circular>
-                </div>
+                    text="關閉"
+                    class="text-none"
+                    @click="updateItem"
+                    variant="flat"
+                    flat
+                  />
+                </v-fade-transition>
+              </v-card-title>
 
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>入庫登記</span>
-                  <v-progress-circular
-                    :model-value="progress_value4"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="pink"
-                  >
-                    {{ warehouse_count }}
-                  </v-progress-circular>
-                </div>
-              </div>
-            </v-col>
+              <v-card-text>
+                <v-table class="inner" density="compact" fixed-header>
+                  <thead style="color: black;">
+                    <tr>
+                      <th class="text-left">備料/裝配</th>
+                      <th class="text-left">開始時間</th>
+                      <th class="text-left">結束時間</th>
+                      <th class="text-left">領料數量</th>
+                      <th class="text-left">實際耗時(分)</th>
+                      <th class="text-left">實際工時(分)</th>
+                      <th class="text-left">單件標工(分)</th>
+                      <th class="text-left">人員註記</th>
+                    </tr>
+                  </thead>
 
-            <v-col cols="12" md="2">
-              <v-btn
-                @click="toggleHistory"
-                :active="history"
-                color="#c39898"
-                variant="outlined"
-                style="position:relative; right:-4vw;"
-              >
-                <v-icon left color="#664343">mdi-history</v-icon>
-                歷史紀錄
-              </v-btn>
-            </v-col>
-            <v-col cols="12" md="4" >
-              <v-text-field
-                v-model="search"
-                label="Search"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                single-line
-                style="position:relative; left:2vw; top:2px; "
-                density="compact"
-              />
-            </v-col>
-          </v-row>
-          <div class="pa-4 text-center">
-            <v-dialog v-model="dialog" max-width="1280px">
-              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  裝配紀錄
-                  <v-fade-transition mode="out-in">
-                    <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-check-circle-outline"
+                  <tbody>
+                    <tr
+                      v-for="(detail_item, index) in informationDetails"
+                      :key="bom_item.seq_num"
+                      :style="{
+                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
+                      }"
+                    >
+                      <td>{{ bom_item.seq_num }}</td>
+                      <td>
+                        <div>
+                          <div>{{ bom_item.material_num }}</div>
+                          <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                      </td>
+                      <td>
+                        <div>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                        </div>
+                      </td>
+                      <td><v-checkbox-btn v-model="bom_item.receive" /></td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </v-card-text>
+            </v-card>
+          </v-dialog>
+        </template>
 
-                      text="關閉"
-                      class="text-none"
-                      @click="updateItem"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
-                </v-card-title>
-
-                <v-card-text>
-                  <v-table class="inner" density="compact" fixed-header>
-                    <thead style="color: black;">
-                      <tr>
-                        <th class="text-left"></th>
-                        <th class="text-left">備料/組裝</th>
-                        <th class="text-left">開始時間</th>
-                        <th class="text-left">結束時間</th>
-                        <th class="text-left">領料數量</th>
-                        <th class="text-left">實際耗時(分)</th>
-                        <th class="text-left">實際工時(分)</th>
-                        <th class="text-left">單件標工(分)</th>
-                        <th class="text-left">人員註記</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      <tr
-                        v-for="(process_item, index) in processes"
-                        :key="process_item.seq_num"
-                        :style="{
-                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                        }"
-                      >
-                        <td>{{ process_item.seq_num }}</td>
-                        <td>{{ process_item.process_type }}</td>
-                        <td>{{ process_item.begin_time }}</td>
-                        <td>{{ process_item.end_time }}</td>
-                        <td>{{ process_item.total_delivery_qty }}</td>
-                        <td>{{ process_item.period_time }}</td>
-                        <td>{{ process_item.work_time }}</td>
-                        <td>{{ process_item.single_std_time }}</td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
+        <!--
+        <template v-slot:item.order_num="{ item }">
+          <div>
+            <div>{{ item.order_num }}</div>
+            <div style="color: #a6a6a6; font-size:12px;">{{ item.process_num }}</div>
           </div>
-        </v-card-title>
-      </v-card>
-    </template>
+        </template>
 
-    <!-- 客製化 '現況進度' (show1_ok) 欄位的表頭 -->
-    <template v-slot:header.show1_ok = "{ column }">
-      <div
-        style="line-height: 1;
-        margin: 0; padding: 0;
-        display: flex;
-        cursor: pointer;
-        position: relative; left: 8px;"
-      >
-        <span>{{ column.title }}</span>
-      </div>
-      <div
-        style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
-      >
-        組裝/雷射/檢驗
-      </div>
-    </template>
+        <template v-slot:item.material_num="{ item }">
+          <div>
+            <div>{{ item.material_num }}</div>
+            <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
+          </div>
+        </template>
+        -->
+        <!-- 使用動態插槽來客製化 '現況進度' (show1_ok) 欄位的表頭 -->
+        <template v-slot:header.show1_ok = "{ column }">
+          <div
+            style="line-height: 1;
+            margin: 0; padding: 0;
+            display: flex;
+            cursor: pointer;
+            position: relative; left: 8px;"
+          >
+            <span>{{ column.title }}</span>
+          </div>
+          <div
+            style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
+          >
+            組裝/雷射/檢驗
+          </div>
+        </template>
 
-    <!-- 自訂 '訂單編號' 欄位 -->
-    <template v-slot:item.order_num="{ item }">
-      <div style="display: flex; align-items: start;">
-        <div style="margin-right: 20px;">
-          {{ item.order_num }}
-        </div>
-      </div>
-    </template>
+        <template v-slot:item.show1_ok="{ item }">
+          <div>
+            <div style="font-weight:600;">{{ item.show1_ok }}</div>
+            <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
+          </div>
+        </template>
 
-    <!-- 自訂 '現況進度' 欄位 -->
-    <template v-slot:item.show1_ok="{ item }">
-      <div>
-        <div style="font-weight:600;">{{ item.show1_ok }}</div>
-        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
-      </div>
-    </template>
+        <template v-slot:item.show3_ok="{ item }">
+          <div style="font-weight:600;">{{ item.show3_ok }}</div>
+        </template>
 
-    <!-- 自訂 '現況備註' 欄位 -->
-    <template v-slot:item.show3_ok="{ item }">
-      <div style="font-weight:600;">{{ item.show3_ok }}</div>
-    </template>
+        <template v-slot:item.req_qty="{ item }">
+          <div>
+            <div>{{ item.req_qty }}</div>
+            <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+          </div>
+        </template>
 
-    <template v-slot:item.req_qty="{ item }">
-      <div>
-        <div>{{ item.req_qty }}</div>
-        <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
-      </div>
-    </template>
+        <template v-slot:item.comment="{ item }">
+          <div>
+            <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+            <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+          </div>
+        </template>
 
-    <template v-slot:item.comment="{ item }">
-      <div>
-        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-      </div>
-    </template>
+        <template v-slot:item.action="{ item }">
+          <v-btn
+            :disabled="!item.isTakeOk && item.whichStation == 1"
+            size="small"
+            variant="tonal"
+            style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
 
-    <template v-slot:item.action="{ item }">
-      <v-btn
-        :disabled="!item.isTakeOk && item.whichStation == 1"
-        size="small"
-        variant="tonal"
-        style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+            @click="toggleExpand(item)"
+          >
+            詳 情
+            <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+          </v-btn>
+        </template>
 
-        @click="toggleExpand(item)"
-      >
-        詳 情
-        <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
-      </v-btn>
-    </template>
-
-    <template #no-data>
-      <strong><span style="color: red;">目前沒有資料</span></strong>
-    </template>
-  </v-data-table>
+        <template #no-data>
+          <strong><span style="color: red;">目前沒有資料</span></strong>
+        </template>
+      </v-data-table>
+    </v-card>
   <!--</v-row>-->
 </div>
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount ,nextTick } from 'vue';
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
 import { useRoute } from 'vue-router'; // Import useRouter
 
@@ -256,7 +223,6 @@ import { myMixin } from '../mixins/common.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
-import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
 
 import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
 
@@ -264,38 +230,31 @@ import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listInformations = apiOperation('get', '/listInformations');
-const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
-
 const getBoms = apiOperation('post', '/getBoms');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-//const createProcess = apiOperation('post', '/createProcess');
-const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
+const createProcess = apiOperation('post', '/createProcess');
+//const getMaterial = apiOperation('post', '/getMaterial');
 
 //=== component name ==
-defineComponent({ name: 'InformationForAssem' });
+defineComponent({
+  name: 'MaterialListForAssem'
+});
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({ showFooter: Boolean });
+const props = defineProps({
+  showFooter: Boolean
+});
 
 //=== data ===
-let intervalId = null;                    // 10秒, 倒數計時器
-let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
-const route = useRoute();                 // Initialize router
+let intervalId = null;              // 10分鐘, 倒數計時器
+const route = useRoute(); // Initialize router
 
 const screenWidth = ref(window.innerWidth);
-// 取得今日日期 (格式：YYYY/MM/DD)
-const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
-
-const footerOptions = [
-  { value: 5, title: '5' },
-  //{ value: 10, title: '10' },
-  //{ value: -1, title: '全部' }
-];
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
@@ -310,18 +269,18 @@ const headers = [
 
 //const localIp = 'localhost';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
-//const userId = 'user_chumpower';
+const userId = 'user_chumpower';
 // 初始化Socket連接
 //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
+//const { socket, setupSocketConnection } = useSocketio(serverIp, userId);
 //const localIP = ref('');
 const from_agv_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv=ref('');
 const search = ref('');
-const history = ref(false);
+
 const currentUser = ref({});
 const permDialog = ref(false);
-
 //const rightDialog = ref(false);
 //const showExplore = ref(false);
 //const showVirtualTable = ref(false);
@@ -335,9 +294,6 @@ const pagination = reactive({
   page: 1,
 });
 
-const wakeLock = ref(null);           // 用於存儲 Wake Lock 物件
-const isWakeLockActive = ref(false);  // 是否啟用螢幕鎖定
-
 //=== watch ===
 watch(currentUser, (newUser) => {
   if (newUser.perm < 1) {
@@ -350,14 +306,13 @@ setupGetBomsWatcher();
 //=== computed ===
 const tableStyle = computed(() => ({
   height: props.showFooter ? 'calc(100vh - 120px)' : 'calc(100vh - 60px)',
-  width: 'min(100%, 1500px)', // 讓表格最多1200px，但不超過螢幕
+  width: 'min(100%, 1200px)', // 讓表格最多1200px，但不超過螢幕
   minWidth: '700px',           // 避免過小
   maxWidth: '100%',            // 不超過父容器
   //width: '1050px',
   overflowY: 'hidden',
-  overflowX: 'auto',
   position: 'relative',
-  top: '50px',
+  top: '-10px',
   marginBottom: '5px',
 }));
 
@@ -369,17 +324,9 @@ const routeName = computed(() => route.name);
 
 const dialogWidth = computed(() => (screenWidth.value > 1200 ? '1400px' : '80vw'));
 
-order_count, prepare_count, assemble_count, warehouse_count
-const progress_value1 = computed(() => order_count.value);
-const progress_value2 = computed(() => order_count.value !=0 ? (prepare_count.value / order_count.value)* 100 : 0 );
-const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.value / order_count.value)* 100 : 0 );
-const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
-
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
-
-  console.log("裝置像素比 (DPR):", window.devicePixelRatio);
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -396,16 +343,14 @@ onMounted(async () => {
   //fileCount.value = countExcelFiles();
   //console.log("fileCount:", fileCount.value);
 
-  intervalId = setInterval(listInformationsFun, 10 * 1000);  // 每 10秒鐘調用一次 API
-  intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 1000);  // 每 5秒鐘調用一次 API
+
+  intervalId = setInterval(listInformations, 10 * 1000);  // 每 10秒鐘調用一次 API
 
   //window.addEventListener('resize', () => {
   //  screenWidth.value = window.innerWidth;
   //});
   window.addEventListener('resize', updateScreenWidth);
   updateScreenWidth(); // 確保初始時執行一次
-
-  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   /*
   console.log('取得本機ip...');
@@ -487,8 +432,6 @@ onMounted(async () => {
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   clearInterval(intervalId);
 
-  clearInterval(intervalIdForProgressCircle);
-
   window.removeEventListener('resize', updateScreenWidth);
 });
 
@@ -502,45 +445,13 @@ onBeforeMount(() => {
   initialize();
 });
 
-
-onBeforeUnmount(() => {
-  // 卸載時釋放鎖定
-  releaseWakeLock();
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
-});
-
 //=== method ===
-const initialize = async () => {
-  try {
-    console.log("initialize()...")
+const initialize = () => {
 
-    await listInformations();
+  console.log("initialize()...")
 
-    await listWorkingOrderStatus();
-  } catch (error) {
-    console.error("Error during initialize():", error);
-  }
+  listInformations();
 };
-
-const listInformationsFun = async () => {
-  await listInformations();
-};
-
-const listWorkingOrderStatusFun = async () => {
-  await listWorkingOrderStatus();
-};
-
-const toggleHistory = async () => {
-  history.value = !history.value;
-  await getInformationsByHistoryFun();
-};
-
-const getInformationsByHistoryFun = async () => {
-  let payload = {
-    history_flag: history.value,
-  };
-  await getInformationsByHistory(payload);
-}
 
 // 監聽視窗變化
 const updateScreenWidth = () => {
@@ -558,6 +469,7 @@ const getRowProps = (item, index) => {
   };
 };
 
+
 const getStatusStyle = (status) =>{
   const colorMap = {
     0: '#ff4000',
@@ -572,44 +484,6 @@ const getStatusStyle = (status) =>{
     fontSize: '12px',
   };
 };
-
-// 請求螢幕鎖定
-const requestWakeLock = async () => {
-  try {
-    if ("wakeLock" in navigator) {
-      wakeLock.value = await navigator.wakeLock.request("screen");
-      isWakeLockActive.value = true;
-      console.log("✅ 螢幕鎖定成功");
-
-      // 監聽鎖定被釋放的情況
-      wakeLock.value.addEventListener("release", () => {
-        isWakeLockActive.value = false;
-        console.log("⚠️ 螢幕鎖定已解除");
-      });
-    } else {
-      console.warn("❌ 你的瀏覽器不支援 Wake Lock API");
-    }
-  } catch (err) {
-    console.error("❌ 無法鎖定螢幕:", err);
-  }
-};
-
-// 釋放螢幕鎖定
-const releaseWakeLock = async () => {
-  if (wakeLock.value) {
-    await wakeLock.value.release();
-    wakeLock.value = null;
-    isWakeLockActive.value = false;
-    console.log("🔓 螢幕鎖定已釋放");
-  }
-};
-
-// 當網頁可見性變化時，確保鎖定不會被打斷
-const handleVisibilityChange = () => {
-  if (document.visibilityState === "visible" && isWakeLockActive.value) {
-    requestWakeLock();
-  }
-};
 /*
 const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
   try {
@@ -621,21 +495,34 @@ const getServerIP = async () => {   // 定義一個異步函數來請求socket�
   }
 };
 */
-const toggleExpand = async (item) => {
+const toggleExpand = (item) => {
   console.log("toggleExpand(),", item.order_num);
 
   let payload = {
-    order_num: item.order_num,
+    //order_num: item.order_num,
+    id: item.id,
   };
-  await getProcessesByOrderNum(payload);
-  console.log("processes:", processes.value);
+  getBoms(payload);
+
+  // 記錄當前開始時間
+  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+  console.log("Start time:", currentStartTime.value);
+
+  payload = {
+    order_num: item.order_num,
+    record_name: 'show2_ok',
+    record_data: 1                //備料中
+  };
+  updateMaterial(payload).then(data => {
+    !data && showSnackbar(data.message, 'red accent-2');
+  });
 
   dialog.value = true;
 };
 
 const updateItem = async () => {              //編輯 bom, material及process後端table資料
-  console.log("updateItem()...");
-  /*
+  console.log("updateItem(),", boms.value);
+
   let my_material_orderNum = boms.value[0].order_num;
 
   let endTime = new Date();                                               // 記錄當前結束時間
@@ -710,7 +597,7 @@ const updateItem = async () => {              //編輯 bom, material及process�
 
     listMaterials();
   }
-  */
+
   dialog.value = false;
 };
 
@@ -905,9 +792,9 @@ const showSnackbar = (message, color) => {
   max-height: 320px;
 }
 
-//:deep(.v-data-table-footer__items-per-page) {
-//  display: none;
-//}
+:deep(.v-data-table-footer__items-per-page) {
+  display: none;
+}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -947,10 +834,10 @@ const showSnackbar = (message, color) => {
   border-radius: 5px !important;
 }
 
-//:deep(.v-card .v-data-table-footer) {
-//  padding-top: 0px;
-//  padding-bottom: 0px;
-//}
+:deep(.v-card .v-data-table-footer) {
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
 
 :deep(.v-card .v-data-table) {
   border-radius: 8px;
@@ -958,90 +845,65 @@ const showSnackbar = (message, color) => {
 }
 
 :deep(.v-card .v-data-table thead th) {
-  background-color: white;  // 確保標題背景與卡片一致
-  z-index: 2;                 // 提高z-index以確保標題在其他內容之上
+  background-color: white; /* 確保標題背景與卡片一致 */
+  z-index: 2; /* 提高z-index以確保標題在其他內容之上 */
 }
 
 .sticky-title {
-  position: sticky;
-  top: 0px;
-  background-color: white;
-  z-index: 10;
-  //padding-top: 10px;
-  //padding-bottom: 10px;
+position: sticky;
+top: 0px;
+background-color: white;
+z-index: 10;
+//padding-top: 10px;
+//padding-bottom: 10px;
 }
 
 .v-table.inner thead.sticky-thead tr.inner_header th {
-  position: sticky;
-  top: 0px;
-  background-color: white;
-  z-index: 9;
+position: sticky;
+top: 0px;
+background-color: white;
+z-index: 9;
 }
 
-//.table-container {
-//  position: relative; /* 讓 sticky 定位相對於這個元素 */
-//  max-height: 440px; /* 設定合適的高度來產生滾動條 */
-//  overflow-y: auto; /* 允許垂直滾動 */
-//}
+.table-container {
+position: relative; /* 讓 sticky 定位相對於這個元素 */
+max-height: 440px; /* 設定合適的高度來產生滾動條 */
+overflow-y: auto; /* 允許垂直滾動 */
+}
 
 .red-text {
-  color: red;
+color: red;
 }
 
-//:deep(.v-input__control) {
-//left: 150px;
-//position: relative;
-//width: 250px;
-//}
+:deep(.v-input__control) {
+//min-height: 36px;
+//height: 36px;
+left: 150px;
+position: relative;
+width: 250px;
+}
 
 :deep(.v-field__field) {
   min-height : 20px;
   height: 34px;
 }
 
-:deep(.v-progress-circular__content) {
-  font-size: 25px;
+:deep(.v-data-table-footer__info) {
+min-height : 30px;
+height: 40px;
 }
 
-//:deep(.v-data-table-footer__info) {
-//min-height : 30px;
-//height: 40px;
-//}
-
 .custom-header theader th {
-  background-color: #85aef2; /* 自訂背景顏色 */
+background-color: #85aef2; /* 自訂背景顏色 */
 }
 
 .blinking {
-  animation: blink-animation 1s steps(5, start) infinite;
+animation: blink-animation 1s steps(5, start) infinite;
 }
 
 @keyframes blink-animation {
-  to {
-    visibility: hidden;
-  }
+to {
+  visibility: hidden;
 }
-
-// 預設 left: 180px
-.search-field {
-  position: relative;
-  top: -20px;
-  left: 180px;
-  min-height: 10px;
-  height: 10px;
-}
-
-// 小螢幕 調整 left
-@media (max-width: 1600px) {
-  .search-field {
-    left: 140px;
-  }
-}
-
-// 大螢幕 調整 left
-@media (min-width: 1920px) {
-  .search-field {
-    left: 220px;
-  }
 }
 </style>

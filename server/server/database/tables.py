@@ -146,6 +146,7 @@ class Material(BASE):
     isTakeOk = Column(Boolean, default=False)                       # true:檢料區檢料完成,指定訂單可以派車
     isShow = Column(Boolean, default=False)                         # true:檢料完成且已call AGV, 就disable詳情按鍵
     isAssembleAlarm = Column(Boolean, default=True)                 # false:組裝異常,
+    isAssembleAlarmRpt = Column(Boolean, default=False)             # false:未填報異常原因,
     isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成,
     isAssembleStation2TakeOk = Column(Boolean, default=False)       # true:組裝站製程2完成, 即完成生產報工中, 按結束鍵
     isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:組裝站製程3必須顯示(異常)
@@ -166,11 +167,19 @@ class Material(BASE):
     total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
     isLackMaterial = Column(Integer, default=99)                    # 0:備料缺料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
+    sd_time_B109 = Column(String(30))
+    sd_time_B106 = Column(String(30))
+    sd_time_B110 = Column(String(30))
+    rt_total_time_B109 = Column(String(30))
+    rt_total_time_B106 = Column(String(30))
+    rt_total_time_B110 = Column(String(30))
+
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),
     _assemble =  relationship('Assemble', backref="material")       # 一對多(一),
     _abnormal_cause = relationship("AbnormalCause", secondary=association_material_abnormal, back_populates="_material")
     _product =  relationship('Product', backref="material")         # 一對多(一),
+    _process =  relationship('Process', backref="material")         # 一對多(一),
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
@@ -272,7 +281,7 @@ class Assemble(BASE):
     __tablename__ = 'assemble'
 
     id = Column(Integer, primary_key=True, autoincrement=True)    #
-    material_id = Column(Integer, ForeignKey('material.id'))      #訂單號碼
+    material_id = Column(Integer, ForeignKey('material.id'))      #material table id
     material_num = Column(String(20), nullable=False)             #料號
     material_comment = Column(String(70), nullable=False)         #料號說明
     seq_num = Column(String(20), nullable=False)                  #序號
@@ -281,7 +290,8 @@ class Assemble(BASE):
     ask_qty = Column(Integer, default=0)                          #領取數量
     total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
-    user_id = Column(String(8))                                   #員工編號(領料)
+    user_id = Column(String(8))                                   #工序作業員工編號(領料)
+    writer_id = Column(String(8))                                 #工序異常資料填寫員工編號
     good_qty = Column(Integer, default=0)                         #確認良品數量
     total_good_qty = Column(Integer, default=0)                   #已交付確認良品總數
     non_good_qty = Column(Integer, default=0)                     #廢品數量
@@ -304,7 +314,8 @@ class Assemble(BASE):
     input_end_disable = Column(Boolean, default=False)            #完成數量達上限(作業數量), 禁止再輸入
     isAssembleStationShow = Column(Boolean, default=False)        # true:完成生產報工(最後途程的結束鍵按下), 且是最後1個製成, 且已經call AGV, disable,
     alarm_enable = Column(Boolean, default=True)                 # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
-    alarm_message = Column(String(30), default='')
+    alarm_message = Column(String(100), default='')
+    update_time = Column(String(30))                               #alarm 更新時間
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容
@@ -345,7 +356,7 @@ class Product(BASE):
     __tablename__ = 'product'
 
     id = Column(Integer, primary_key=True, autoincrement=True)    #
-    material_id = Column(Integer, ForeignKey('material.id'))      #訂單號碼
+    material_id = Column(Integer, ForeignKey('material.id'))      #material table id
     #material_num = Column(String(20), nullable=False)             #料號
     #material_comment = Column(String(70), nullable=False)         #料號說明
     #seq_num = Column(String(20), nullable=False)                  #序號
@@ -388,14 +399,21 @@ class Process(BASE):
     __tablename__ = 'process'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    order_num = Column(String(20), nullable=False)                #訂單編號
+    material_id = Column(Integer, ForeignKey('material.id'))      #material table id
+    #material_id = Column(Integer, ForeignKey('material.id'), nullable=False)  # 確保有這行
+    #order_num = Column(String(20), nullable=False)                #訂單編號
     work_num =  Column(String(20))                                #工作中心
     user_id = Column(String(8), nullable=False)                   #員工編號
     begin_time = Column(String(30))                               #開始時間
     end_time = Column(String(30))                                 #結束時間
     period_time =  Column(String(30))
     process_type = Column(Integer, default=1)                     #1:備料區,
-                                                                  #2:組裝區(含21, 22, 23)
+                                                                  #2:組裝區(含20, 21, 22, 23)
+                                                                  # 20:AGV運行到組裝區
+                                                                  # 21:在第1途程
+                                                                  # 22:在第2途程
+                                                                  # 23:在第3途程
+                                                                  # (含20, 21, 22, 23)
                                                                   #3:成品區(含31, 32, 33)
                                                                   #4:加工區(含41, 42, 43)
                                                                   #99:agv
@@ -436,7 +454,7 @@ class Agv(BASE):
 
   id = Column(Integer, primary_key=True, autoincrement=True)
   status = Column(Integer, default=0)                             # 0: ready, 1:準備中, 2:行走中, 99:error alarm
-  station =  Column(Integer)                                      # 1:備料區, 2:組裝區, 3:成品區, 4:加工區
+  station =  Column(Integer, default=1)                           # 1:備料區, 2:組裝區, 3:成品區, 4:加工區
   create_at = Column(DateTime, server_default=func.now())
 
   def __repr__(self):

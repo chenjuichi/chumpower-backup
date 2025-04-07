@@ -9,7 +9,7 @@
         </v-btn>
       </template>
     </v-snackbar>
-
+    <!--items-per-page-text="每頁的資料筆數"-->
     <!-- data table -->
     <v-data-table
       :headers="headers"
@@ -24,7 +24,7 @@
       :value="selectedItems"
 
       class="elevation-10 custom-table"
-      items-per-page-text="每頁的資料筆數"
+
     >
 
       <!-- 客製化 '選擇框' 欄位表頭 -->
@@ -66,7 +66,7 @@
             </v-btn>
 
             <!--客製化 編輯訂單按鍵-->
-          <!--
+            <!--
             <v-btn
               :disabled="fileCount != 0"
               color="primary"
@@ -85,7 +85,7 @@
               <v-icon left color="blue">mdi-text-box-edit-outline</v-icon>
               <span style="color: #000;">編輯訂單</span>
             </v-btn>
-          -->
+            -->
 
             <!-- Bom 編輯對話視窗-->
             <div class="pa-4 text-center">
@@ -410,6 +410,14 @@
               <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
               <span>備料送出</span>
             </v-btn>
+            <span :style="{
+                  'fontSize': '14px',
+                  'display': 'inline-block',
+                  'min-width': '120px',
+                  'visibility': (!isFlashLed && isCallAGV) ? 'visible' : 'hidden',
+                  }">
+              {{order_num_on_agv_blink}}
+            </span>
 
             <!-- 客製化黃綠燈 -->
             <div
@@ -617,6 +625,8 @@
   import draggable from 'vuedraggable'
   import { useRoute } from 'vue-router';
 
+  import { useLocale } from 'vuetify';
+
   import { useRouter } from 'vue-router';
   const router = useRouter();
 
@@ -725,7 +735,8 @@
   const modify_boms = ref([]);
   const modify_file_name = ref('');
 
-  const selectedItems = ref([]); // 儲存選擇的項目 (基於 id)
+  const selectedItems = ref([]);      // 儲存選擇的項目 (基於 id)
+  const selectedOrderNums = ref([]);  // 儲存選擇的項目 (基於 orderNum)
   const inputValueForItems = ref([]); // 儲存輸入的值
 
   //const inputIDs = ref([]);
@@ -735,10 +746,11 @@
   //const serverIp = '192.168.0.13';
   //const serverIp = process.env.VUE_SOCKET_SERVER_IP
   const userId = 'user_chumpower';
+  const clientAppName = 'MaterialListForAssem';
   //console.log("serverIp:", serverIp)
   // 初始化Socket連接
   //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-  const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+  const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
   const delivery_qty_alarm = ref('');
 
@@ -764,7 +776,7 @@
 
   const dialog = ref(false);
 
-  const selectedItem = ref(null); // 儲存當前點擊的記錄
+  const editedRecord = ref(null); // 儲存當前點擊的記錄
 
   const pagination = reactive({
     itemsPerPage: 5, // 預設值, rows/per page
@@ -820,6 +832,9 @@ const formattedDate = computed(() => {
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
+
+  const { current } = useLocale();
+  console.log("目前語系:", current.value); // 應該輸出 "zhHant"
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -958,8 +973,8 @@ onMounted(async () => {
     })
     //以下帶確認
 
-    socket.value.on('station2_agv_end', async () => {
-      console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
+    socket.value.on('station2_agv_end', async (data) => {
+      console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
 
       // 記錄agv在站與站之間運行結束時間
       agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
@@ -1003,7 +1018,8 @@ onMounted(async () => {
           periodTime: agv2PeriodTime,
           user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
           order_num: myMaterial.order_num,
-          process_type: 2,                          //在組裝區
+          process_type: 2,                          //agv到組裝區
+          id: item,
         };
         await createProcess(payload);
         console.log('步驟2-1...');
@@ -1067,11 +1083,13 @@ onMounted(async () => {
 
     socket.value.on('station2_agv_ready', async () => {
       console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
-
     });
 
     socket.value.on('station1_agv_ready', async () => {
       console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
+
+      order_num_on_agv_blink.value='';
+
       // 記錄等待agv到站結束時間
       agv1EndTime.value = new Date();
       console.log("AGV End time:", agv1EndTime.value);
@@ -1086,7 +1104,7 @@ onMounted(async () => {
       let payload = {};
       // 記錄備料區途程資料, 等待agv時間
       selectedItems.value.forEach(async (item) => {
-        let myMaterial = materials.value.find(m => m.id == item);
+        let myMaterial = materials.value.find(kk => kk.id == item);
 
         payload = {
           begin_time: formattedStartTime,
@@ -1094,7 +1112,8 @@ onMounted(async () => {
           periodTime: agv1PeriodTime,
           user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
           order_num: myMaterial.order_num,
-          process_type: 1,                          //在備料區
+          process_type: 19,                          //在備料區
+          id: item,
         };
         await createProcess(payload);
       });
@@ -1146,8 +1165,8 @@ const initialize = async () => {
 
     await listUsers();
 
-    await listSocketServerIP();
-    console.log("initialize, socket_server_ip:", socket_server_ip.value)
+    //await listSocketServerIP();
+    //console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -1363,11 +1382,11 @@ const toggleSelect = (item) => {
 };
 
 const handleEscClose = async () => {
-  console.log("Dialog closed via ESC key, item:", selectedItem.value);
+  console.log("Dialog closed via ESC key, item:", editedRecord.value);
 
   // 記錄當前途程狀態
   let payload = {
-    order_num: selectedItem.value.order_num,
+    order_num: editedRecord.value.order_num,
     record_name: 'show2_ok',
     record_data: 0                //未備料
   };
@@ -1380,11 +1399,11 @@ const handleEscClose = async () => {
 };
 
 const handleOutsideClick = async () => {
-  console.log("Dialog closed by clicking outside, item:", selectedItem.value);
+  console.log("Dialog closed by clicking outside, item:", editedRecord.value);
 
   // 記錄當前途程狀態
   let payload = {
-    order_num: selectedItem.value.order_num,
+    order_num: editedRecord.value.order_num,
     record_name: 'show2_ok',
     record_data: 0                //未備料
   };
@@ -1433,8 +1452,8 @@ const toggleExpand = async (item) => {
   };
   await getBoms(payload);
   current_cell.value = item.delivery_qty
-  selectedItem.value = item;
-  //console.log("toggleExpand, selectedItem.value", selectedItem.value)
+  editedRecord.value = item;
+  //console.log("toggleExpand, editedRecord", editedRecord.value)
 
   // 記錄當前開始備料時間
   currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
@@ -1528,58 +1547,58 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
     payload = {               // 更新 materials 資料，shortage_note = '(缺料)'
       //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
+      id: editedRecord.value.id,
       record_name: 'shortage_note',
       record_data: '(缺料)'
     };
     await updateMaterial(payload);
-    selectedItem.value.shortage_note = '(缺料)';
+    editedRecord.value.shortage_note = '(缺料)';
 
     payload = {               // 2. 更新 materials 資料，isLackMaterial = 1
       //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
+      id: editedRecord.value.id,
       record_name: 'isLackMaterial',
       record_data: 0,          //缺料
     };
     await updateMaterial(payload);
 
-    selectedItem.value.isLackMaterial = 0;
+    editedRecord.value.isLackMaterial = 0;
   } else {
     payload = {
       //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
+      id: editedRecord.value.id,
       record_name: 'shortage_note',
       record_data: ''
     };
     await updateMaterial(payload);
-    selectedItem.value.shortage_note = '';
+    editedRecord.value.shortage_note = '';
 
     payload = {
       //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
+      id: editedRecord.value.id,
       record_name: 'isLackMaterial',
       record_data: 99,
     };
     await updateMaterial(payload);
 
-    selectedItem.value.isLackMaterial = 0;
+    editedRecord.value.isLackMaterial = 0;
   }
 
   payload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
     //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
+    id: editedRecord.value.id,
     record_name: 'isTakeOk',
     record_data: true
   };
   await updateMaterial(payload);
 
-  selectedItem.value.isTakeOk = true;
+  editedRecord.value.isTakeOk = true;
 
   //2025-02-07 mark the if condition
   //if (take_out) {                     // 該筆訂單檢料完成且沒有缺料
     payload = {               // 2. 更新 materials 資料，show2_ok = 2
       //order_num: my_material_orderNum,
-      id: selectedItem.value.id,
+      id: editedRecord.value.id,
       record_name: 'show2_ok',
       record_data: 2                  // 設為 2，表示備料完成
     };
@@ -1595,6 +1614,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       user_id: currentUser.value.empID,
       order_num: my_material_orderNum,
       process_type: 1,
+      id: editedRecord.value.id,
     };
     await createProcess(processPayload);
 
@@ -1640,8 +1660,9 @@ const formatTime = (time) => {                            // 格式化時間為 
 
 const callAGV = async () => {
   console.log("callAGV()...");
-  //console.log("step1...");
+
   let payload = {};
+
   if (!isCallAGV.value) {
     //console.log("step2...");
     if (selectedItems.value.length == 0) {
@@ -1649,18 +1670,18 @@ const callAGV = async () => {
       showSnackbar("請選擇送料的工單!", 'red accent-2');
       return;
     }
-    //console.log("step3...");
+
     if (toggle_exclusive.value == 2) {   //AGV自動送料
       //console.log("step3-1...");
       payload = {agv_id: 1};
       await getAGV(payload);
-      console.log("hello, 備料站叫車, AGV 狀態:", currentAGV.value);
+      console.log("hello, 備料區叫車, AGV 狀態:", currentAGV.value);
 
       //待待
-      //if (currentAGV.value.status != 0) {
+      if (currentAGV.value.station != 1 || currentAGV.value.status != 0) {
       //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
       //  return;
-      //}
+      }
 
       isCallAGV.value = true
     }
@@ -1671,9 +1692,18 @@ const callAGV = async () => {
     return;
   }
   //console.log("step6...");
+
   //isBlinking.value = true;
-  socket.value.emit('station1_call');
+  //2025-02-24 add the following block
+  payload = {
+    items: selectedItems.value,
+    orderNums: selectedOrderNums.value,
+  };
+  //
+  //socket.value.emit('station1_call', payload);  //2025-02-24 add payload
+  socket.value.emit('station1_call');  //2025-02-24 add payload
   console.log("送出 station1_call訊息...")
+  order_num_on_agv_blink.value='叫車進站中...'
   // 記錄等待agv到站開始時間
   agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
   console.log("AGV Start time:", agv1StartTime.value);
@@ -1690,8 +1720,6 @@ const callAGV = async () => {
   });
   //console.log("step7...");
 };
-
-
 
 const readAllExcelFun = async () => {
   console.log("readAllExcelFun()...");
@@ -2063,8 +2091,7 @@ const moveToAllFacets = (index) => {
 // 客製化 手推車/AGV切換按鍵
 .button-container {
   position: relative;
-  width: fit-content;     // 可調整寬度以適應按鈕
-
+  width: fit-content;     // 調整寬度以適應按鈕
   right: 100px;
   top: 0px;
 }

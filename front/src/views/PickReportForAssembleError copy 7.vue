@@ -22,17 +22,18 @@
     item-value="order_num"
     items-per-page="5"
     v-model:page="pagination.page"
+    items-per-page-text="每頁的資料筆數"
   >
     <template v-slot:top>
       <v-card>
-        <v-card-title class="align-center pe-2" style="font-weight:700; min-height:120px; height:120px;">
+        <v-card-title class="align-center pe-2" style="font-weight:700; min-height:100px; height:100px;">
           <v-row class="mt-0">
-            <v-col cols="12" md="3" class="pb-2">
+            <v-col cols="12" md="3" class="pb-1">
               組裝區異常填報
             </v-col>
             <v-col cols="12" md="2" class="pb-1" />
             <!-- 歷史紀錄按鍵 -->
-            <v-col cols="12" md="2" class="pb-6">
+            <v-col cols="12" md="2" class="pb-1">
               <v-btn
                 @click="toggleHistory"
                 :active="history"
@@ -45,10 +46,10 @@
               </v-btn>
             </v-col>
             <!--搜尋欄位-->
-            <v-col cols="12" md="2" class="pb-6">
+            <v-col cols="12" md="2" class="pb-1">
               <v-text-field
                 v-model="search"
-                label="搜尋"
+                label="Search"
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
                 hide-details
@@ -57,7 +58,7 @@
                 density="compact"
               />
             </v-col>
-
+            <!-- excel報表按鍵 -->
             <v-col cols="12" md="3" class="pb-1">
             <!--
               <v-btn
@@ -71,184 +72,127 @@
                 <span style="color:black; font-weight:600;">Excel</span>
               </v-btn>
             -->
-
-            <!--
-            <div class="flip_btn">
-              <v-btn color="primary" class="side default-side mt-n1 mr-15 mx-auto">
-                <v-icon left>mdi-content-save-edit-outline</v-icon>
-                在庫資料更新
-              </v-btn>
-              <v-btn color="primary" class="side hover-side mt-n1 mr-15 mx-auto" @click="updateStockInDataByInv">
-                <v-icon left size="24px">mdi-check-circle-outline</v-icon>
-                確定?
-              </v-btn>
-            </div>
-            -->
             </v-col>
           </v-row>
-          <v-row class="mt-0 mb-0 row-hidden" style="min-height: 48px; height: 48px; flex-wrap: nowrap;">
-            <!--日期範圍-->
-            <v-col cols="4" class="d-flex justify-end align-center pt-0">
-              <Transition name="slide">
-                <v-locale-provider locale="zhHant" v-if="showFields">
-                  <v-date-input
-                    label="日期範圍"
-                    variant="underlined"
-                    v-model="fromDateValStart"
-                    cancel-text="取消"
-                    ok-text="確定"
-                    :value="formattedRange"
-                    placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
-                    multiple="range"
-                    density="compact"
-                    class="small-date-input"
-                  />
-                </v-locale-provider>
-              </Transition>
-            </v-col>
-            <!--工單範圍-->
-            <v-col cols="4" class="d-flex justify-start align-center pt-0">
-              <Transition name="slide">
-              <v-text-field
-                v-if="showFields"
-                label="工單範圍"
-                variant="outlined"
-                v-model="creditCardNumber"
-                maxlength="25"
-                inputmode="numeric"
-                density="compact"
-                prepend-icon="mdi-archive-check-outline"
-                placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
-                @input="formatCreditCard"
-              />
-              </Transition>
-            </v-col>
-            <!--Excel按鍵-->
-            <v-col cols="4" class="d-flex justify-center align-center pb-12">
-              <div class="flip_btn">
-                <v-btn
-                  color="white"
-                  style="min-width: 90px; max-height: 34px; border-radius: 6px; border-width:1.5px; border-color:#64B5F6;"
-                  class="side default-side primary thin mt-n1 mx-auto"
-                  :disable="isAssembleErrorEmpty"
-                  @mouseenter="showFields = true"
-                >
-                  <v-icon left color="green" style="font-weight:700;">mdi-microsoft-excel</v-icon>
-                  <span style="color:black; font-weight:600;">Excel</span>
-                </v-btn>
-                <div class="side hover-side">
-                  <v-btn color="primary" style="position:relative; right:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="showFields = false">
-                    <v-icon left size="24px">mdi-close-circle-outline</v-icon>
-                    取消
-                  </v-btn>
-                  <v-btn color="primary" style="position:relative; left:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="exportToExcelFun">
-                    <v-icon left size="24px">mdi-check-circle-outline</v-icon>
-                    確定
-                  </v-btn>
-                </div>
+          <v-row class="mt-0 mb-0 row-hidden" style="min-height:48px; height:48px;">
+            <v-col cols="12" md="2" class="pt-3" />
+
+            <!-- 這裡的 transition-group 只包裹 div，內部 v-col 不受影響 -->
+            <transition-group name="fade-in-up" tag="div" appear>
+              <div v-if="showFields" key="date-input">
+                <!-- 日期範圍輸入 -->
+                <v-col cols="12" md="2" class="myPadding1" style="animation-delay: 0.2s">
+                  <v-locale-provider locale="zhHant">
+                    <v-date-input
+                      label="日期範圍"
+                      variant="underlined"
+                      v-model="fromDateValStart"
+                      cancel-text="取消"
+                      ok-text="確定"
+                      :value="formattedRange"
+                      placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+                      multiple="range"
+                      density="compact"
+                      position="relative"
+                      class="small-date-input"
+                    />
+                  </v-locale-provider>
+                </v-col>
               </div>
+
+              <div v-if="showFields" key="work-order">
+                <!-- 工單範圍輸入 -->
+                <v-col cols="12" md="2" class="myPadding2" style="animation-delay: 0.4s">
+                  <v-text-field
+                    label="工單範圍"
+                    variant="outlined"
+                    v-model="creditCardNumber"
+                    maxlength="25"
+                    inputmode="numeric"
+                    density="compact"
+                    prepend-icon="mdi-archive-check-outline"
+                    placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
+                    @input="formatCreditCard"
+                  />
+                </v-col>
+              </div>
+            </transition-group>
+
+            <!-- Excel 按鈕 -->
+            <v-col cols="12" md="2" class="myPadding3">
+              <v-btn
+                color="white"
+                style="min-width: 90px; max-height: 34px; border-radius: 6px; border-width:1.5px; border-color:#64B5F6;"
+                class="primary thin mt-n1 mr-15 mx-auto"
+                :disable="isAssembleErrorEmpty"
+                @click="showFields = !showFields"
+              >
+                <v-icon left color="green" style="font-weight: 700;">mdi-microsoft-excel</v-icon>
+                <span style="color:black; font-weight:600;">Excel</span>
+              </v-btn>
             </v-col>
+
+            <v-col cols="12" md="4" class="pt-3" />
           </v-row>
         </v-card-title>
       </v-card>
     </template>
 
-    <!-- 客製化 '訂單編號' (order_num) 欄位的表頭 -->
-    <template v-slot:header.order_num = "{ column }">
-      <div style="line-height: 1;
-        margin: 0; padding: 0;
-        display: flex;
-        justify-content: flex-start;
-        cursor: pointer;
-        position: relative; left: 8px;
-        width: 60px;
-      ">
-        <span style="color:black; font-weight:600">{{ column.title }}</span>
-      </div>
-      <div style="color: #a6a6a6;
-        font-size: 10px;
-        font-weight: 600;
-        text-align: center;
-        line-height: 1;
-        position:relative;
-        right: 20px;
-        top: 5px;
-      ">
-        途程
-      </div>
-    </template>
-
     <!-- 客製化 '現況進度' (show1_ok) 欄位的表頭 -->
     <template v-slot:header.show1_ok = "{ column }">
-      <div style="line-height: 1;
+      <div
+        style="line-height: 1;
         margin: 0; padding: 0;
         display: flex;
         justify-content: flex-start;
         cursor: pointer;
         position: relative; left: 8px;
-        width: 80px;
-      ">
+        width: 80px;"
+      >
         <span style="color:black; font-weight:600">{{ column.title }}</span>
       </div>
-      <div style="color: #a6a6a6;
-        font-size: 10px;
-        font-weight: 600;
-        text-align: center;
-        line-height: 1;
-        position:relative;
-        right: 20px;
-        top: 5px;
-      ">
+      <div
+        style=" color: #a6a6a6;
+                font-size: 10px;
+                font-weight: 600;
+                text-align: center;
+                line-height: 1;
+                position:relative;
+                right: 20px;
+                top: 5px;
+              "
+      >
         組裝/雷射/檢驗
       </div>
     </template>
 
     <!-- 客製化 '訂單數量' (req_qty) 欄位表頭 -->
     <template v-slot:header.req_qty="{ column }">
-      <div style="text-align:center;
-        white-space:normal;
-        line-height:1.2;
-        font-size:14px;
-        color:black;
-        font-weight:600;
-      ">
+      <div
+        style=" text-align:center;
+                white-space:normal;
+                line-height:1.2;
+                font-size:14px;
+                color:black;
+                font-weight:600;
+              "
+      >
         訂單<br />數量
       </div>
     </template>
 
-    <!-- 客製化 '交期' 欄位表頭 -->
-    <template v-slot:header.delivery_date="{ column }">
-      <span style=" position:relative;
-        left:20px;
-        text-align:center;
-        white-space:normal;
-        line-height:1.2;
-        font-size:14px;
-        color:black;
-        font-weight:600;
-      ">
-        {{ column.title }}
-      </span>
-    </template>
-
     <!-- 客製化 '現況數量' (delivery_qty) 欄位表頭 -->
     <template v-slot:header.delivery_qty="{ column }">
-      <div style="text-align:center;
-        white-space:normal;
-        line-height:1.2;
-        font-size: 14px;
-        color:black;
-        font-weight:600;
-      ">
+      <div
+        style=" text-align:center;
+                white-space:normal;
+                line-height:1.2;
+                font-size: 14px;
+                color:black;
+                font-weight:600;
+              "
+      >
         現況<br />數量
-      </div>
-    </template>
-
-    <!-- 自訂 '訂單編號' 欄位 -->
-    <template v-slot:item.order_num="{ item }">
-      <div style="position:relative; right: 0.2vw;">
-        <div>{{ item.order_num }}</div>
-        <div style="color: #1a1aff; font-size:12px; position:relative; right: 1.2vw;">{{ item.work}}</div>
       </div>
     </template>
 
@@ -263,13 +207,6 @@
     <!-- 自訂 '現況備註' 欄位 -->
     <template v-slot:item.show3_ok="{ item }">
       <div style="font-weight:600;">{{ item.show3_ok }}</div>
-    </template>
-
-    <!-- 自訂 '交期' 欄位 -->
-    <template v-slot:item.delivery_date="{ item }">
-      <span style="position:relative; left:30px;">
-        {{ item.delivery_date }}
-      </span>
     </template>
 
     <!-- 自訂 '訂單數量' 欄位 -->
@@ -295,15 +232,12 @@
         :items="abnormal_causes_msg"
         chips
         multiple
-
-        class="custom-combobox"
         @update:search="onSearchUpdate"
         @update:menu="onMenuUpdate"
-        @update:modelValue="onValueUpdate(item)"
       >
-        <template v-slot:selection="{ item }">
-          <v-chip>{{ item.raw }}</v-chip>
-        </template>
+      <template v-slot:selection="{ item }">
+        <v-chip>{{ item.raw }}</v-chip>
+      </template>
       </v-combobox>
     </template>
 
@@ -327,10 +261,9 @@ import { myMixin } from '../mixins/common.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { abnormal_causes, informations_for_assemble_error, alarm_objects_list }  from '../mixins/crud.js';
+import { abnormal_causes, informations_for_assemble_error }  from '../mixins/crud.js';
 
 import { apiOperation }  from '../mixins/crud.js';
-import { apiOperationB } from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 //const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
@@ -339,7 +272,6 @@ const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const getInformationsForAssembleErrorByHistory = apiOperation('post', '/getInformationsForAssembleErrorByHistory');
 const exportToExcelForError = apiOperation('post', '/exportToExcelForError');
-const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleError' });
@@ -352,24 +284,21 @@ const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 let intervalId = null;              // 10分鐘, 倒數計時器
-let observer = null
 
 const route = useRoute(); // Initialize router
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:110 },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:140 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
   { title: '交期', sortable: false, key: 'delivery_date', width:90 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:40 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:40 },
   { title: '點檢人員', sortable: false, key: 'user', width:110 },
-  { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:300 },
   { title: '異常原因', sortable: false, key: 'cause_message' },
   //{ title: '異常原因填寫', sortable: false, key: 'cause_message' },
 ];
-
-const causeMessageMap = ref([]); // 儲存用戶輸入的 cause_message，使用 order_num 作為鍵
 
 const comboboxRef = ref(null);
 const searchText = ref("");
@@ -396,10 +325,8 @@ const fromDateValEnd = ref(null);
 const creditCardNumber = ref("");
 const orderNumRange = ref(["", ""]); // 用來儲存第一組與第二組的數字
 
-//const minDate = ref("2024-07-01");
-//const maxDate = ref("2054-06-30");
-
-//const comboboxWidth = ref(220);
+const minDate = ref("2024-07-01");
+const maxDate = ref("2054-06-30");
 
 const history = ref(true);
 
@@ -407,11 +334,6 @@ const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
   page: 1,
 });
-
-const selectedFile = ref(null); 						                // 儲存已選擇檔案的名稱
-const topPath = ref('C:\\vue\\chumpower\\excel_export'); 	  // 初始路徑
-const downloadFilePath = ref('');
-const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
 
 //=== watch ===
 watch(currentUser, (newUser) => {
@@ -439,13 +361,6 @@ watch(fromDateValStart, (val) => {
     fromDateStart.value = val.map((date) => formatDate3(date));
   }
   console.log("watch: fromDateStart.value:", fromDateStart.value);
-});
-
-watch(selectedFile, (newVal) => {
-  if (newVal) {
-    console.log("📥 selectedFile 更新，現在下載檔案:", newVal);
-    downloadFileFun();
-  }
 });
 
 //=== computed ===
@@ -512,14 +427,7 @@ const formattedRange = computed(() => {
 
 // 計算屬性 - 過濾符合條件的資訊
 const filteredInformations = computed(() => {
-  return informations_for_assemble_error.value
-  .map(item => ({
-    ...item,
-    // 確保 `cause_message` 不會被更新
-    //cause_message: item.cause_message,
-    cause_message: causeMessageMap.value[item.order_num] || item.cause_message,
-  }))
-  .filter(item => {
+  return informations_for_assemble_error.value.filter(item => {
     const isWithinDateRange = checkDateInRange(item.delivery_date);
     const isWithinOrderRange = checkOrderInRange(item.order_num);
     return isWithinDateRange && isWithinOrderRange;
@@ -557,8 +465,20 @@ onMounted(async () => {
   let user = localStorage.getItem("loginedUser");
   currentUser.value = user ? JSON.parse(user) : null;
   console.log("currentUser:", currentUser.value);
-  //
-  observer = new MutationObserver(() => {
+  //setTimeout(moveWin, 600);
+  intervalId = setInterval(getInformationsForAssembleErrorByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+
+  /*
+  requestAnimationFrame(() => {
+    const buttons = document.querySelectorAll(".v-date-picker-month__day--selected > button");
+    buttons.forEach(button => {
+      button.style.backgroundColor = "red";
+      button.style.color = "white";
+    });
+  });
+  */
+
+  const observer = new MutationObserver(() => {
     const buttons = document.querySelectorAll(".v-date-picker-month__day--selected > button");
     buttons.forEach(button => {
       button.style.backgroundColor = "red";
@@ -576,20 +496,6 @@ onMounted(async () => {
     childList: true,
     subtree: true,
   });
-  //
-
-  //setTimeout(moveWin, 600);
-  intervalId = setInterval(getInformationsForAssembleErrorByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
-
-  /*
-  requestAnimationFrame(() => {
-    const buttons = document.querySelectorAll(".v-date-picker-month__day--selected > button");
-    buttons.forEach(button => {
-      button.style.backgroundColor = "red";
-      button.style.color = "white";
-    });
-  });
-  */
 });
 
 //=== onUpdated ===
@@ -654,13 +560,7 @@ const getInformationsForAssembleErrorByHistoryFun = async () => {
     history_flag: history.value,
   };
   await getInformationsForAssembleErrorByHistory(payload);
-};
-
-//const exportAndDownFile = () => {
-//  exportToExcelFun();
-//
-//  //downloadFileFun();
-//};
+}
 
 const exportToExcelFun = async () => {
   console.log('PickReportForAssembleError, exportToExcelFun()...');
@@ -672,61 +572,12 @@ const exportToExcelFun = async () => {
     req_qty: '訂單數量',
     delivery_qty: '現況數量',
     user: '點檢人員',
-    cause_message_str: '異常原因',
-    cause_user: '填寫人員',
-    cause_date: '填寫日期',
+    cause_message: '異常原因',
+    cause_user: '異常原因填寫人員',
+    cause_date: '異常原因填寫日期',
   };
 
-  // 先取得 filteredInformations.value
-  let filteredData = filteredInformations.value;
-  console.log("1. filteredData: ", filteredData);
-
-  // 再手動應用 customFilter()
-  if (search.value) {
-    filteredData = filteredData.filter(item => customFilter(search.value, item));
-  }
-  console.log("2. filteredData: ", filteredData);
-
-  // 最終要匯出的資料
-  //let object_Desserts = [obj, ...filteredData];
-
-  //let updatedData = object_Desserts.map(item => ({
-  //  ...item,
-  //  cause_message_str: item.cause_message_str ?? ( // 若已存在則保留，否則轉換
-  //    Array.isArray(item.cause_message) ? item.cause_message.join(',') : ''
-  //  )
-  //}));
-
-  //let updatedData = object_Desserts.map(item => ({
-  //  ...item,
-  //  cause_message_str: Array.isArray(item.cause_message) ? item.cause_message.join(',') : ''
-  //}));
-
-  //let updatedData = filteredData.map(item => ({
-  //  ...item,
-  //  cause_message_str: Array.isArray(item.cause_message) && item.cause_message.length > 0
-  //    ? item.cause_message.join(',')
-  //    : ''
-  //}));
-
-  // 確保欄位名稱與 obj 一致
-  let updatedData = filteredData.map(item => ({
-    order_num: item.order_num ?? '',
-    comment: item.comment ?? '',
-    delivery_date: item.delivery_date ?? '',
-    req_qty: item.req_qty ?? '',
-    delivery_qty: item.delivery_qty ?? '',
-    user: item.user ?? '',
-    cause_message_str: Array.isArray(item.cause_message) && item.cause_message.length > 0
-      ? item.cause_message.join(',')
-      : '',
-    cause_user: item.cause_user ?? '',
-    cause_date: item.cause_date ?? '',
-  }));
-  console.log("3. updatedData: ", updatedData);
-
-  let object_Desserts = [obj, ...updatedData];
-  console.log("4. object_Desserts: ", object_Desserts);
+  const object_Desserts = [obj, ...informations_for_assemble_error.value];
 
   let payload = {
     blocks: object_Desserts,
@@ -739,12 +590,7 @@ const exportToExcelFun = async () => {
     console.log("data:", export_file_data);
 
     if (export_file_data.status) {
-      selectedFile.value = export_file_data.file_name;
-      downloadFilePath.value = export_file_data.message;
-      console.log("✅ 更新後的 selectedFile:", selectedFile.value); // 確保它不是 null
-
-      //let temp_message = `庫存記錄(${export_file_data.message})轉檔完成!`;
-      let temp_message = '轉檔完成!';
+      let temp_message = `庫存記錄(${export_file_data.message})轉檔完成!`;
       showSnackbar(temp_message, '#008184');
     } else {
       showSnackbar(excel_file_data.message, 'red accent-2');
@@ -752,45 +598,6 @@ const exportToExcelFun = async () => {
   } catch (error) {
     console.error("Error during execution:", error);
     showSnackbar("存檔錯誤!", 'red accent-2');
-  }
-  showFields.value = false;
-};
-
-const downloadFileFun = async () => {
-	console.log("downloadFileFun()...", downloadFilePath.value)
-  //console.log("file_name:", topPath.value, selectedFile.value, downloadFilePath.value)
-
-	const payload = {
-    filepath: downloadFilePath.value,
-	};
-
-	try {
-		const response = await downloadFile(payload);
-
-		console.log("response:", response);                   // 檢查是否為 Blob
-		console.log("Response headers:", response.headers);   // 檢查headers
-
-		selectedFileName.value = null;
-
-		if (response.data instanceof Blob) {
-			const fileName = response.headers['X-File-Name'] || response.headers['x-file-name'] || `${selectedFile.value}`;
-      console.log('下載的檔案名稱:', fileName);
-
-			// 建立下載鏈接並觸發下載
-      const url = window.URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      //link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-			return true; 													// 成功下載
-    }
-  } catch (error) {
-    showSnackbar('下載檔案錯誤！', 'red accent-2');
-    console.error('下載檔案錯誤:', error);
   }
 };
 
@@ -807,24 +614,6 @@ const onMenuUpdate = (isOpen) => {
     searchText.value = ""; // 清空搜尋框
   }
 };
-
-const onValueUpdate = async (item) => {
-  console.log("onValueUpdate(),", item);
-
-  let matchingIds = alarm_objects_list.value
-    .filter(obj => item.cause_message.some(msg => msg.includes(obj.message)))
-    .map(obj => obj.id)
-    .join(',');
-
-  console.log("matchingIds:",matchingIds);
-
-  //let payload = {
-  //  assemble_id: item.assemble_id,
-  //  record_name: 'alarm_message',
-  //  record_data: item.cause_message.join(', '),
-  //};
-  //await updateAssemble(payload);
-}
 
 // 格式化日期顯示
 const formatDate = () => {
@@ -921,10 +710,8 @@ const checkOrderInRange = (orderNum) => {
   return orderNum >= minOrder && orderNum <= maxOrder;
 };
 
-
-//const customFilter = (value, search, item) => {
-const customFilter = (search, item) => {
-    if (!search) return true;
+const customFilter = (value, search, item) => {
+  if (!search) return true;
   search = search.toLowerCase();
 
   return Object.values(item).some(val =>
@@ -932,14 +719,6 @@ const customFilter = (search, item) => {
   );
 };
 
-/*
-const customFilter = (value, search, item) => {
-  return value != null &&
-          query != null &&
-          typeof value === 'string' &&
-          value.toString().toLocaleUpperCase().indexOf(query) !== -1
-}
-*/
 const dateClicked = (newValue) => {
   console.log("dateClicked(), 選擇的日期範圍：", newValue);
 };
@@ -1298,14 +1077,14 @@ const showSnackbar = (message, color) => {
   display: flex;
   justify-content: center;
   align-items: center;
-
+  //width: 100px !important;
 }
 
 :deep(.v-data-table .v-table__wrapper > table > thead > tr > th:last-child) {
   display: flex;
   justify-content: center;
   align-items: center;
-
+  //width: 140px !important;
 }
 
 :deep(.v-field__input) {
@@ -1365,8 +1144,7 @@ const showSnackbar = (message, color) => {
 
 //調整v-combobox輸入欄位的寬度
 :deep(.v-combobox .v-input__control) {
-  min-width: 200px;
-  width: 200px;
+  min-width: 300px;
 }
 
 //調整v-combobox輸入欄位的位置
@@ -1405,19 +1183,8 @@ const showSnackbar = (message, color) => {
   font-weight: 600;
   color: blue;
 }
-/*
-:deep(.custom-combobox > .v-input__control) {
-  max-height: 28px !important;
-  min-height: 28px !important;
-}
 
-:deep(.custom-combobox > .v-input__control .v-field__input) {
-  max-height: 28px !important;
-  min-height: 28px !important;
-}
-*/
-
-//===excel按鍵
+//excel按鍵
 :deep(.excel_wrapper) {
   //position: relative;
   //top: -4px !important;
@@ -1425,8 +1192,7 @@ const showSnackbar = (message, color) => {
   width: 90px !important;
 }
 
-//===日期
-
+///日期
 /*
 :deep(.v-picker__body) {
   transform: scale(0.8); // 整體縮小 80%
@@ -1457,17 +1223,16 @@ const showSnackbar = (message, color) => {
 }
 */
 
-/*
 :deep(.small-date-input) {
-  font-size: 12px;    // 調整日曆整體文字大小
+  font-size: 12px;    // 調整整體文字大小
 }
 
 :deep(.small-date-input .v-field__content) {
-  min-height: 32px;   // 控制日曆高度
+  min-height: 32px;   // 控制高度
 }
 
 :deep(.small-date-input .v-input__control) {
-  padding: 2px 8px;   // 縮小日曆內邊距
+  padding: 2px 8px;   // 縮小內邊距
 }
 
 :deep(.small-date-input .v-icon) {
@@ -1478,58 +1243,95 @@ const showSnackbar = (message, color) => {
   min-width: 24px;    // 縮小按鈕大小
   height: 24px;
 }
+/*
+:deep(.v-input--plain-underlined input::placeholder) {
+  color: red;
+
+}
 */
-:deep(.v-picker__actions .v-btn) {
-    background-color: blue !important;
-    color: #fff;
+/*
+:deep(.small-date-input .v-date-picker-month__day--selected .v-btn) {
+  background-color: red !important;
+  color: white;
 }
 
-:deep(.v-input__prepend) {
-  position:relative;
-  left: 12vw;
+:deep(.small-date-input .v-date-picker-month__day--selected.v-date-picker-month__day--week-start .btn) {
+  background-color: red !important;
+  color: white;
+}
+
+:deep(.small-date-input .v-date-picker-month__day--selected.v-date-picker-month__day--week-end .btn) {
+  background-color: red !important;
+  color: white;
+}
+*
+/*
+.v-date-picker-month__day--selected > button {
+  background: red !important;
+  color: white;
+}
+*/
+:deep(.myPadding1 > .v-locale-provider > .v-input > .v-input__control) {
+  max-width: 220px;
+  position: relative;
+  left: 140px;
+  top: 5px;
+}
+
+:deep(.myPadding1 > .v-locale-provider > .v-input > .v-input__prepend) {
+  position: relative;
+  left: 150px;
+  top: 5px;
+}
+
+:deep(.myPadding1 > .v-locale-provider > .v-input > .v-input__prepend > i.mdi-calendar) {
   color: #64B5F6;
 }
 
-.slide-enter-from
-{
-  transform: translateX(-100%);
-}
-
-.slide-leave-to {
-  transform: translateX(100%);
-}
-
-//===過場特效
-
-.flip_btn {
+:deep(.myPadding2 > .v-input > .v-input__control) {
+  min-width: 270px;
   position: relative;
-  top: -5px;
-  left: 30px;
-  height: 20px;
-  width: 130px;
-  transform-style: preserve-3d;
-  transition: transform 500ms ease-in-out;
-  transform: translateZ(-20px);
+  left: 200px;
+  top: 5px;
 }
 
-.flip_btn:hover {
-  transform: rotateX(-90deg) translateY(20px);
+:deep(.myPadding2 > .v-input > .v-input__prepend) {
+  position: relative;
+  left: 210px;
+  top: 5px;
 }
 
-.side {
-  position: absolute;
-  backface-visibility: hidden;
-  width: 130px;
-  //width: 100%;
-  height: 100%;
-  display: flex;
+:deep(.myPadding2 > .v-input > .v-input__prepend > i.mdi-archive-check-outline) {
+  color:#64B5F6;
 }
 
-.default-side {
-  transform: translateZ(20px);
+:deep(.myPadding3 > button) {
+  position: relative;
+  left: 270px;
+  top: 5px;
 }
 
-.hover-side {
-  transform: rotateX(90deg) translateZ(20px);
+.myPadding1, .myPadding2, .myPadding3 {
+  padding-top: 12px;
+}
+
+:deep(.v-picker__actions .v-btn) {
+    background-color: blue !important;
+    color: #fff;
+
+}
+
+.fade-in-up-enter-active, .fade-in-up-leave-active {
+  transition: opacity 0.5s ease, transform 0.5s ease-out;
+}
+
+.fade-in-up-enter-from {
+  opacity: 0;
+  transform: translateY(-15px);
+}
+
+.fade-in-up-leave-to {
+  opacity: 0;
+  transform: translateY(15px);
 }
 </style>

@@ -1,11 +1,15 @@
+import re
+
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash
-from database.tables import User, Material, Bom, Agv, Permission, Setting, Session
-from sqlalchemy import and_, or_, not_
+from database.tables import User, Material, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from sqlalchemy import and_, or_, not_, func
 
 from flask_cors import CORS
 
-from operator import itemgetter   # 2023-08-25  add
+from operator import itemgetter
+
+from datetime import datetime
 
 getTable = Blueprint('getTable', __name__)
 
@@ -288,6 +292,134 @@ def get_information_details():
     'information_details': results
   })
 
+
+# get all processes data by order number
+@getTable.route("/getProcessesByOrderNum", methods=['POST'])
+def get_processes_by_order_num():
+    print("getProcessesByOrderNum....")
+
+    request_data = request.get_json()
+    _order_num = request_data['order_num']
+    print("order_num:", _order_num)
+
+    code_to_name = {
+      1 : '備料',
+      19: '等待AGV(備料區)',
+      2: 'AGV運行(備料區->組裝區)',
+      22: '雷射',  #第2個動作b106
+      21: '組裝',  #第1個動作b110
+      23: '檢驗',   #第3個動作b109
+      29: '等待AGV(組裝區)',
+      3: 'AGV運行(組裝區->成品區)',
+      31: '成品入庫',
+    }
+    _results = []
+
+    s = Session()
+
+    material = s.query(Material).filter(Material.order_num == _order_num).first()
+    work_qty = material.total_delivery_qty
+    #processes = s.query(Process).filter(Process.order_num == _order_num).all()
+    seq_num =0
+    for record in material._process:
+
+        # 轉換為 datetime 物件
+        start_time = datetime.strptime(record.begin_time, "%Y-%m-%d %H:%M:%S")
+        end_time = datetime.strptime(record.end_time, "%Y-%m-%d %H:%M:%S")
+
+        # 計算時間差
+        time_diff = end_time - start_time
+
+        # 轉換為分鐘數（小數點去掉）
+        period_time = int(time_diff.total_seconds() // 60)
+
+        work_time = period_time / work_qty
+        work_time = round(period_time / work_qty, 1)  # 取小數點後 1 位
+
+
+        # 轉換為字串格式
+        time_diff_str = str(time_diff)
+        period_time_str = str(period_time)
+        work_time_str = str(work_time)  if (record.process_type == 21 or record.process_type == 22 or record.process_type == 23) else ''
+        single_std_time_str = ''
+        if record.process_type == 21:
+          single_std_time_str = str(material.sd_time_B110)
+        if record.process_type == 22:
+          single_std_time_str = str(material.sd_time_B106)
+        if record.process_type == 23:
+          single_std_time_str = str(material.sd_time_B109)
+
+        if record.process_type == 31:
+          single_std_time_str = str(material.sd_time_B110)
+
+        print("period_time:",period_time_str)
+
+        status = code_to_name.get(record.process_type, '空白')
+        print("name:", record.user_id)
+        name = record.user_id.lstrip("0")
+        if record.process_type == 1:
+          user = s.query(User).filter_by(emp_id=record.user_id).first()
+          status = status + '(' + name + user.emp_name + ')'
+        print("status:", status)
+        seq_num = seq_num + 1
+        _object = {
+            'seq_num': seq_num,
+            'id': material.id,
+            'order_num': material.order_num,
+            'total_delivery_qty': material.total_delivery_qty,
+            'sd_time_B109': material.sd_time_B109,
+            'sd_time_B106': material.sd_time_B106,
+            'sd_time_B110': material.sd_time_B110,
+            'user_id': name,
+            'begin_time': record.begin_time,
+            'end_time': record.end_time if record.process_type != 31 else '',
+            'period_time': period_time_str if record.process_type != 31 else '',
+            'work_time': work_time_str if record.process_type != 31 else '',
+            'single_std_time': single_std_time_str if record.process_type != 31 else '',
+            'process_type': status,
+            'create_at': record.create_at
+        }
+        _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("getProcessesByOrderNum, 總數: ", temp_len)
+
+    # 根據 create_at 屬性的值進行排序
+    _results = sorted(_results, key=lambda x: x['create_at'])
+
+    return jsonify({
+
+      'processes': _results
+    })
+
+
+# # get all all Warehouse For Assemble
+@getTable.route("/getAbnormalCausesByHistory", methods=['POST'])
+def get_abnormal_causes_by_history():
+    print("getAbnormalCausesByHistory....")
+
+    data = request.json
+    _history_flag = data.get('history_flag', False)
+    print("history_flag:", _history_flag)
+
+    s = Session()
+
+    _results = []
+    return_value = True
+
+    materials = [u.__dict__ for u in s.query(Material).all()]
+
+    # 過濾 isAssembleAlarm 為 True 的資料
+    filtered_materials = [record for record in materials if record['isAssembleAlarm']]
+    for record in filtered_materials:
+      #包含歷史檔：_history_flag=true
+      #不包含歷史檔:_history_flag=false and record['isAssembleAlarmRpt']=false
+      if not (_history_flag==True or (record['isAssembleAlarmRpt']==False and _history_flag==False)):
+        continue
+
+
 # # get all all Warehouse For Assemble
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
@@ -303,7 +435,7 @@ def get_Warehouse_For_assemble_by_history():
     return_value = True
 
     materials = [u.__dict__ for u in s.query(Material).all()]
-    processed_order_nums = set()
+    #processed_order_nums = set()
 
     # 過濾掉 isAssembleStationShow 為 True 的資料
     filtered_materials = [record for record in materials if record['isAssembleStationShow']]
@@ -354,10 +486,277 @@ def get_Warehouse_For_assemble_by_history():
       'warehouse_for_assemble': _results
     })
 
+'''
+@getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])
+def get_informations_for_assemble_error_by_history():
+    print("getInformationsForAssembleErrorByHistory....")
+
+    data = request.json
+    _history_flag = data.get('history_flag', False)
+    print("history_flag:", _history_flag)
+
+    s = Session()
+
+    _results = []
+    return_value = True
+    str1=['備料站', '組裝站', '成品站']
+    #       0        1         2                3              4             5           6             7            8             9           10                 11           12            13          14                15            16          17
+    str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
+    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)    16(agv_start)
+    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業',  'agv Start']
+
+    _objects = s.query(Material).all()  # 取得所有 Material 物件
+
+    for material_record in _objects:    # for loop a
+      #包含歷史檔：_history_flag=true
+      #不包含歷史檔:_history_flag=false and record['isAssembleAlarmRpt']=false
+      if not (_history_flag==True or (material_record.isAssembleAlarm==False and material_record.isAssembleAlarmRpt==False and _history_flag==False)):
+        continue
+
+      skip_material = False   # 標誌變數，預設為 False
+      assemble_ok = False
+      assemble_users = []               # 用於存儲處理後的 user_id
+      assemble_work_nums = []           # 用於存儲處理後的 user_id
+      for assemble_record in material_record._assemble:   # for loop b
+        if assemble_record.alarm_enable:   #False:異常
+          continue
+
+        assemble_ok = True
+
+        user_id = assemble_record.user_id.lstrip('0')       # 去除前導的 0
+        writer_id = assemble_record.writer_id.lstrip('0')   # 去除前導的 0
+
+        #if user_id not in assemble_user_ids: # 於 user_ids 中, 檢查 user_id
+        assemble_users.append(user_id)
+        assemble_work_nums.append(assemble_record.work_num)
+      #end for loop b
+
+      temp_alarm_message=assemble_record.alarm_message.strip()
+      temp_alarm_enable=assemble_record.alarm_enable
+
+      user = ', '.join(assemble_users)        # 將列表轉換為以逗號分隔的字符串
+      work =  ', '.join(assemble_work_nums)
+
+      abnormal_cause_ids = [str(abnormal.id) for abnormal in material_record._abnormal_cause]       # 轉換為字串列表
+      abnormal_cause_id_str = ",".join(abnormal_cause_ids) if len(abnormal_cause_ids) > 0 else ''   # 用逗號合併
+
+      # 取得 material_record 關聯的 AbnormalCause
+      abnormal_cause_strs = [
+          f"{abnormal.message}({abnormal.number})" for abnormal in material_record._abnormal_cause
+      ]
+      abnormal_cause_message_str = ",".join(abnormal_cause_strs)  if len(abnormal_cause_strs) > 0 else '' #用逗號連接所有字串
+
+      print("abnormal_cause_id_str:", len(abnormal_cause_ids), abnormal_cause_id_str)
+      print("abnormal_cause_message_str:",len(abnormal_cause_strs), abnormal_cause_message_str)
+
+      print("user:", user)
+      print("work:", work)
+      print("material order num:", material_record.order_num)
+      cleaned_comment = material_record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
+
+      temp_temp_show2_ok_str = str2[int(material_record.show2_ok)]
+      temp_show2_ok = int(material_record.show2_ok)
+      if (temp_show2_ok == 1):
+        temp_temp_show2_ok_str = temp_temp_show2_ok_str + material_record.shortage_note
+
+      _object = {
+        'id': material_record.id,                                # 訂單編號的 table id
+        'order_num': material_record.order_num,                  # 訂單編號
+        'material_num': material_record.material_num,            # 物料編號
+        'isTakeOk': material_record.isTakeOk,
+        'whichStation': material_record.whichStation,
+        'req_qty': material_record.material_qty,                 # 需求數量
+        'delivery_date': material_record.material_delivery_date, # 交期
+        'delivery_qty': material_record.delivery_qty,            # 現況數量
+        'comment': cleaned_comment,                              # 說明
+        'show1_ok': str1[int(material_record.show1_ok) - 1],     # 現況進度
+        'show2_ok': temp_temp_show2_ok_str,
+        'show3_ok': str3[int(material_record.show3_ok)],         # 現況備註
+        'user': user,
+        'work': work,
+        #**abnormal_cause                                         # 將 cause_id, cause_number, cause_message 展開加入字典
+        #'cause_number': '',
+        'cause_id': abnormal_cause_id_str,
+        'cause_message': abnormal_cause_message_str,
+        #'assemble_id': assemble_record.id,
+      }
+
+      _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("listInformationsForAssembleError, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    # 根據 'order_num' 排序
+    _results = sorted(_results, key=lambda x: x['order_num'])
+
+    return jsonify({
+      'status': return_value,
+      'informations_for_assemble_error': _results
+    })
+'''
+
+
+@getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])
+def get_informations_for_assemble_error_by_history():
+    print("getInformationsForAssembleErrorByHistory....")
+
+    data = request.json
+    _history_flag = data.get('history_flag', False)
+    print("history_flag:", _history_flag)
+
+    s = Session()
+
+    _results = []
+    return_value = True
+
+    code_to_name = {
+      '106': '雷射',  #第2個動作
+      '109': '組裝',  #第1個動作
+      '110': '檢驗'   #第3個動作
+    }
+
+    str1=['備料站', '組裝站', '成品站']
+    #       0        1         2                3              4             5           6             7            8             9           10                 11           12            13          14                15            16          17
+    str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
+    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)    16(agv_start)
+    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業',  'agv Start']
+
+    _alarm_objects = s.query(AbnormalCause).all()  # 取得所有 AbnormalCause 物件
+    _alarm_objects_list = [
+      {"id": item.id, "message": item.message}
+      for item in _alarm_objects
+    ]
+    print("_alarm_objects_list: ", _alarm_objects_list)
+
+    _objects = s.query(Material).all()  # 取得所有 Material 物件
+
+    for material_record in _objects:    # for loop a
+      #包含歷史檔：_history_flag=true
+      #不包含歷史檔:_history_flag=false and record['isAssembleAlarmRpt']=false
+      if not (_history_flag==True or (material_record.isAssembleAlarm==False and material_record.isAssembleAlarmRpt==False and _history_flag==False)):
+        continue
+
+      skip_material = False   # 標誌變數，預設為 False
+      assemble_ok = False
+      assemble_users = []               # 用於存儲處理後的 user_id
+      assemble_work_nums = []           # 用於存儲處理後的 user_id
+
+      temp_temp_show2_ok_str = str2[int(material_record.show2_ok)]
+      temp_show2_ok = int(material_record.show2_ok)
+
+      for assemble_record in material_record._assemble:   # for loop b
+        if assemble_record.alarm_enable:   #False:異常
+          continue
+
+        assemble_ok = True
+
+        #user_id = assemble_record.user_id.lstrip('0')       # 去除前導的 0
+        user = s.query(User).filter_by(emp_id=assemble_record.user_id).first()
+        #writer_id = assemble_record.writer_id.lstrip('0') if assemble_record.writer_id else ''
+        if assemble_record.writer_id:
+          writer = s.query(User).filter_by(emp_id=assemble_record.writer_id).firstChild()
+          writerName = writer.emp_name
+        else:
+          writerName = ''
+
+        #temp_alarm_message=assemble_record.alarm_message.strip()
+        temp_alarm_message=assemble_record.alarm_message
+        print("temp_alarm_message:", temp_alarm_message)
+        temp_alarm_message_list = temp_alarm_message.split(', ')  if temp_alarm_message else []
+        print("temp_alarm_message_list:", temp_alarm_message_list)
+        filtered_list = [msg for msg in temp_alarm_message_list if msg]
+        print("filtered_list:", filtered_list)
+        temp_alarm_enable=assemble_record.alarm_enable
+
+        #abnormal_cause_ids = [str(abnormal.id) for abnormal in material_record._abnormal_cause]       # 轉換為字串列表
+        #abnormal_cause_id_str = ",".join(abnormal_cause_ids) if len(abnormal_cause_ids) > 0 else ''   # 用逗號合併
+
+        # 取得 material_record 關聯的 AbnormalCause
+        #abnormal_cause_strs = [
+        #    f"{abnormal.message}({abnormal.number})" for abnormal in material_record._abnormal_cause
+        #]
+        #abnormal_cause_message_str = ",".join(abnormal_cause_strs)  if len(abnormal_cause_strs) > 0 else '' #用逗號連接所有字串
+
+        cleaned_comment = material_record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
+
+        code = assemble_record.work_num[1:]                           # 取得字串中的代碼 (去掉字串中的第一個字元)
+        work = code_to_name.get(code, '')                             # 查找對應的中文名稱
+        '''
+        temp_temp_show2_ok_str = str2[int(material_record.show2_ok)]
+        temp_show2_ok = int(material_record.show2_ok)
+
+        if (temp_show2_ok == 1):
+          temp_temp_show2_ok_str = temp_temp_show2_ok_str + material_record.shortage_note
+        '''
+
+        # 處理 show2_ok 的情況
+        if temp_show2_ok == 5 or temp_show2_ok == 7 or temp_show2_ok == 9:
+          for _record in material_record._assemble:
+            # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+            if _record.total_ask_qty_end in [1, 2, 3]:
+              completed_qty = str(_record.completed_qty)  # 將數值轉換為字串
+              date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+              date_parts[_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+              temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
+
+        if (temp_show2_ok == 1):
+          temp_temp_show2_ok_str = temp_temp_show2_ok_str + material_record.shortage_note
+
+        temp_temp_show2_ok_str = re.sub(r'\b00\b', 'na', temp_temp_show2_ok_str)
+
+        _object = {
+          'id': material_record.id,                                # 訂單編號的 table id
+          'assemble_id': assemble_record.id,
+          'order_num': material_record.order_num,                  # 訂單編號
+          'material_num': material_record.material_num,            # 物料編號
+          'isTakeOk': material_record.isTakeOk,
+          'whichStation': material_record.whichStation,
+          'req_qty': material_record.material_qty,                  # 需求數量
+          'delivery_date': material_record.material_delivery_date,  # 交期
+          'delivery_qty': material_record.delivery_qty,             # 現況數量
+          'comment': cleaned_comment,                               # 說明
+          'show1_ok': str1[int(material_record.show1_ok) - 1],      # 現況進度
+          'show2_ok' : temp_temp_show2_ok_str,                      #現況進度(途程)
+          'show3_ok': str3[int(material_record.show3_ok)],          # 現況備註
+          'cause_user': writerName,   #填寫人員
+          'user': user.emp_name,      #檢點人員
+          #'user': user_id,
+          'work': work,
+          #**abnormal_cause                                         # 將 cause_id, cause_number, cause_message 展開加入字典
+          #'cause_number': '',
+          #'cause_id': abnormal_cause_id_str,
+          #'cause_message': abnormal_cause_message_str,
+          'cause_message':filtered_list,
+          #'assemble_id': assemble_record.id,
+        }
+
+        _results.append(_object)
+        #end loop b
+    #end loop a
+    s.close()
+
+    temp_len = len(_results)
+    print("listInformationsForAssembleError, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    # 根據 'order_num' 排序
+    _results = sorted(_results, key=lambda x: x['order_num'])
+
+    return jsonify({
+      'status': return_value,
+      'informations_for_assemble_error': _results,
+      'alarm_objects_list': _alarm_objects_list,
+    })
+
 
 # get all assemble error information by history
 @getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])
-def get_informations_for_assemble_error_by_history():
+def get_2_informations_for_assemble_error_by_history():
     print("getInformationsForAssembleErrorByHistory....")
 
     data = request.json
@@ -405,6 +804,7 @@ def get_informations_for_assemble_error_by_history():
       temp_alarm_enable=assemble_record.alarm_enable
       if not _history_flag and temp_alarm_enable and temp_alarm_message:
         continue
+      print("temp_alarm_message:",temp_alarm_message)
 
       user = ', '.join(user_ids)  # 將列表轉換為以逗號分隔的字符串
       print("user:", user)
@@ -431,6 +831,8 @@ def get_informations_for_assemble_error_by_history():
         }
       )
       '''
+
+      temp_list = [x.strip("'") for x in temp_alarm_message.split(",")] if temp_alarm_message else []
       _object = {
         'id': material_record.id,                                # 訂單編號的 table id
         'order_num': material_record.order_num,                  # 訂單編號
@@ -447,7 +849,7 @@ def get_informations_for_assemble_error_by_history():
         'user': user,
         #**abnormal_cause                                         # 將 cause_id, cause_number, cause_message 展開加入字典
         #'cause_number': '',
-        'cause_message': temp_alarm_message,
+        'cause_message': temp_list,
         'assemble_id': assemble_record.id,
       }
 

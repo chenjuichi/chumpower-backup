@@ -12,6 +12,7 @@
 
     <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
       <v-card width="60vw" class="pa-md-4 mt-3 pb-2 mx-lg-auto">
+        <!--items-per-page-text="每頁的資料筆數"-->
         <v-data-table
           :headers="headers"
           :items="desserts"
@@ -21,7 +22,7 @@
           :items-per-page-options="footerOptions"
           :items-length="totalItems"
           v-model:page="pagination.page"
-          items-per-page-text="每頁的資料筆數"
+
           :style="['margin-bottom: 5px', tableStyle]"
         >
           <template #top>

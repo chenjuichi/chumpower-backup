@@ -6,6 +6,7 @@ import time
 import shutil
 import psutil
 import glob
+import math
 
 import pymysql
 from sqlalchemy import exc
@@ -21,6 +22,7 @@ excelTable = Blueprint('excelTable', __name__)
 
 
 # ------------------------------------------------------------------
+
 
 # 生成唯一檔案名稱的函式
 def get_unique_filename(target_dir, filename, chip):
@@ -318,7 +320,12 @@ def read_all_excel_files():
 
         # Insert Material data, for loop_1_a_1
         for index, row in material_df.iloc[0:].iterrows():
+          ### 新增 Material table 資料
           tempQty=row['數量']
+          temp_sd_time_B109 =  0 if math.isnan(row['B109組裝工時(分)']) else row['B109組裝工時(分)']
+          temp_sd_time_B106 =  0 if math.isnan(row['B106雷刻工時(分)']) else row['B106雷刻工時(分)']
+          temp_sd_time_B110 =  0 if math.isnan(row['B110檢驗工時(分)']) else row['B110檢驗工時(分)']
+
           material = Material(
             order_num=row['單號'],
             material_num=row['料號'],
@@ -327,17 +334,25 @@ def read_all_excel_files():
             material_date=convert_date(row['立單日']),
             material_delivery_date=convert_date(row['交期']),
             total_delivery_qty=tempQty,
+            sd_time_B109 = "{:.2f}".format(temp_sd_time_B109),
+            sd_time_B106 = "{:.2f}".format(temp_sd_time_B106),
+            sd_time_B110 = "{:.2f}".format(temp_sd_time_B110),
           )
           s.add(material)
-          s.flush()
 
+          s.flush()
+          ###
+
+          ### 新增 Product table 資料
           product = Product(
-              material_id=material.id,
+            material_id=material.id,
           )
           s.add(product)
 
           s.commit()
+          ###
 
+          ### 新增 Bom table 資料
           material_order = str(row.iloc[1]).strip()                 #確保 row.iloc[1] 為 str 型別
 
           bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)      #檢查是否存在 NaN 值
@@ -359,7 +374,9 @@ def read_all_excel_files():
             s.add(bom)
           #end for loop_1_a_1_a
           s.commit()
+          ###
 
+          ### 新增 Assemble table 資料
           assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str).str.strip() == material_order.strip()]  #清除空格
           print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
 
@@ -392,11 +409,13 @@ def read_all_excel_files():
               work_num = workNum,
               process_step_code = step_code,
 
-              user_id = emp_num,
+              #user_id = emp_num,
+              user_id = '',
             )
             s.add(assemble)
           #end for loop_1_a_1_b
           s.commit()
+          ###
         #end for loop_1_a_1
       #end with loop_1_a
 
@@ -611,3 +630,138 @@ def delete_assembles_with_negative_good_qty():
     'status': True,
     #'message': return_message1,
   })
+
+
+@excelTable.route("/exportToExcelForError", methods=['POST'])
+def export_to_excel_for_error():
+    print("exportToExcelForError....")
+
+    request_data = request.get_json()
+
+    _blocks = request_data['blocks']
+    _count = request_data['count']
+    _name = request_data['name']
+    #temp = len(_blocks)
+
+    print("_blocks:", _blocks)
+
+    date = datetime.datetime.now()
+    today = date.strftime('%Y-%m-%d-%H%M')
+    file_name = '組裝異常記錄查詢_'+today + '.xlsx'
+    current_file = 'C:\\vue\\chumpower\\excel_export\\'+ file_name
+
+    print("filename:", current_file)
+    file_check = os.path.exists(current_file)  # true:excel file exist
+
+    return_value = True  # true: export into excel成功
+
+    if file_check:
+      try:
+        os.remove(current_file)  # 刪除舊檔案
+      except PermissionError:
+        print(f"無法刪除 {current_file}，請確認是否已關閉該檔案")
+        return_value = False
+        return jsonify({"success": False, "message": "請關閉 Excel 檔案後重試"})
+    #if file_check:
+    #  wb = openpyxl.load_workbook(current_file)  # 開啟現有的 Excel 活頁簿物件
+    #else:
+    #  wb = Workbook()     # 建立空白的 Excel 活頁簿物件
+    wb = Workbook()     # 建立空白的 Excel 活頁簿物件
+    # ws = wb.active
+    ws = wb.worksheets[0]   # 取得第一個工作表
+
+    ws.title = '組裝異常記錄查詢-' + _name                # 修改工作表 1 的名稱為 oxxo
+    ws.sheet_properties.tabColor = '7da797'  # 修改工作表 1 頁籤顏色為紅色
+
+    for obj in _blocks:
+      temp_array = []
+
+      temp_array.append(obj['order_num'])
+      temp_array.append(obj['comment'])
+      temp_array.append(obj['delivery_date'])
+      temp_array.append(obj['req_qty'])
+      temp_array.append(obj['delivery_qty'])
+      temp_array.append(obj['user'])
+      temp_array.append(obj['cause_message_str'])
+      temp_array.append(obj['cause_user'])
+      temp_array.append(obj['cause_date'])
+
+      ws.append(temp_array)
+
+    for col in ws.columns:
+      column = col[0].column_letter  # Get the column name
+      temp_cell = column + '1'
+      ws[temp_cell].font = Font(
+          name='微軟正黑體', color='ff0000', bold=True)  # 設定儲存格的文字樣式
+      ws[temp_cell].alignment = Alignment(horizontal='center')
+      ws.column_dimensions[column].bestFit = True
+
+    #wb.save(current_file)
+    #預防 Excel 檔案被鎖定
+    temp_file = current_file.replace(".xlsx", "_temp.xlsx")
+    wb.save(temp_file)
+    os.replace(temp_file, current_file)  # 用新檔案取代舊檔案
+
+    #myDrive = pathlib.Path.home().drive
+    #mypath = 'e:\\CMUHCH\\print.csv'
+    #mypath = myDrive + '\\CMUHCH\\print.csv'
+    #myDir = 'e:\\CMUHCH\\'
+    #myDir = myDrive + "\\CMUHCH\\" + current_file0
+    #myDir = "e:\\CMUHCH\\" + current_file0
+    #print("myDir", myDir)
+
+    print("file_name:", file_name)
+
+    return jsonify({
+      'status': return_value,
+      'message': current_file,
+      'file_name': file_name,
+      # 'outputs': myDir,
+    })
+
+
+# 上傳.xlsx工單檔案的 API
+@excelTable.route('/uploadExcelFile', methods=['POST'])
+def upload_excel_file():
+  print("uploadExcelFile....")
+
+  _base_dir = current_app.config['baseDir']
+
+  if not os.path.exists(_base_dir):
+    os.makedirs(_base_dir)
+
+  file = request.files.get('file')
+
+  if not file:
+    return jsonify({'message': '沒有選擇檔案'}), 400
+
+  # 確保是 Excel 檔案
+  if not file.filename.endswith(('.xlsx', '.xls')):
+    return jsonify({'message': '只允許上傳 Excel 檔案'}), 400
+
+  if file.filename == '':
+    return jsonify({'message': '沒有選擇檔案'}), 400
+
+
+  file_path = os.path.join(_base_dir, file.filename)
+  # 檢查檔案是否已存在
+  if os.path.exists(file_path):
+    #return jsonify({'message': f'檔案 "{file.filename}" 已存在'}), 400
+    unique_filename = get_unique_filename(_base_dir, file.filename, "copy")
+    file_path = os.path.join(_base_dir, unique_filename)
+
+  file.save(file_path)
+
+  try:
+    with open(file_path, 'rb') as f:
+        print(f"檔案成功儲存並可讀取: {file_path}")
+        return jsonify({
+          'message': '上傳成功',
+          'filename': file.filename,
+          'status': True,
+        })
+  except Exception as e:
+      print(f"檔案儲存後讀取失敗: {str(e)}")
+      return jsonify({'message': f'檔案儲存後讀取失敗: {str(e)}'}), 500
+
+  #return jsonify({'message': '上傳成功', 'filename': file.filename}), 200

@@ -1,5 +1,6 @@
 from tables import Session, engine
-from sqlalchemy.ext.declarative import declarative_base
+#from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy import text, MetaData
 
 s = Session()
@@ -22,6 +23,7 @@ s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
 drop_table('bom')
 drop_table('assemble')
 drop_table('product')
+drop_table('process')
 
 drop_table('association_material_abnormal')
 drop_table('material')

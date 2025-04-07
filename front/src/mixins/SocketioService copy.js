@@ -8,13 +8,12 @@ export const useSocketio = (localIp, userId, clientAppName) => {
   const setupSocketConnection = () => {
     return new Promise((resolve, reject) => {
 
-      let serverIp = '192.168.200.171';
+      let serverIp = '192.168.32.241';
       localIp = serverIp;
 
       console.log(`Attempting to connect to http://${localIp}:6500 with user_id ${userId}`);
       socket.value = io(`http://${localIp}:6500`, {
         transports: ['websocket'], // 強制使用 websocket 傳輸
-        timeout: 10000, // 設定超時時間為 10 秒
         query: {
           userId: userId,
           existingSockId: '00.00.00.00', // 傳遞 existingSockId

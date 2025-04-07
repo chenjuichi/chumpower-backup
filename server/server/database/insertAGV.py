@@ -15,7 +15,7 @@ s.add(new_agv)
 
 try:
   s.commit()
-  print("Agv data committed successfully")
+  #print("Agv data committed successfully")
 except pymysql.err.IntegrityError as e:
   print(f"IntegrityError: {e}")
   s.rollback()

@@ -73,7 +73,7 @@ _startRow = app.config['startRow']
 
 #print("Excel檔案在目錄:", _base_dir)
 app.config['file_ok'] = False                         # 初始化file_ok
-#app.config['socket_server_ip'] = '192.168.32.50'
+#app.config['socket_server_ip'] = '192.168.32.241'
 app.config['socket_server_ip'] = local_ip
 f.close()
 

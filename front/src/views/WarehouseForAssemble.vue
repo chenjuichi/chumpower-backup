@@ -152,19 +152,19 @@
     </template>
 
     <!-- 自訂 '詳情' 按鍵 -->
+    <!--
     <template v-slot:item.action="{ item }">
       <v-btn
         size="small"
         variant="tonal"
         style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-
         @click="toggleExpand(item)"
       >
         詳 情
         <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
       </v-btn>
     </template>
-
+    -->
     <!-- 自訂 '到庫數量' 輸入欄位 -->
     <template v-slot:item.delivery_qty="{ item }">
       <div>{{ item.delivery_qty }}</div>
@@ -239,11 +239,11 @@ const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssembles
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 //const listWarehouseForAssemble = apiOperation('get', '/listWarehouseForAssemble');
 const listUsers = apiOperation('get', '/listUsers');
-const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const getBoms = apiOperation('post', '/getBoms');
 const getAGV = apiOperation('post', '/getAGV');
-const updateBoms = apiOperation('post', '/updateBoms');
+//const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const copyMaterial = apiOperation('post', '/copyMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
@@ -254,7 +254,7 @@ const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialA
 const getWarehouseForAssembleByHistory = apiOperation('post', '/getWarehouseForAssembleByHistory');
 
 //=== component name ==
-defineComponent({ name: 'MaterialListForAssem' });
+defineComponent({ name: 'WarehouseForAssemble' });
 
 // === mix ==
 const { initAxios } = myMixin();
@@ -330,10 +330,12 @@ const inputIDs = ref([]);
 //const serverIp = '192.168.0.13';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP
 const userId = 'user_chumpower';
+const clientAppName = 'WarehouseForAssemble';
+
 //console.log("serverIp:", serverIp)
 // 初始化Socket連接
 //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
 const delivery_qty_alarm = ref('');
 
@@ -458,10 +460,9 @@ if (savedItems) {
   history.value = JSON.parse(savedItems);
 }
 
-
-console.log('等待socket連線...');
-try {
-  await setupSocketConnection();
+//console.log('等待socket連線...');
+//try {
+//  await setupSocketConnection();
   /*
   if (!savedItems) {
     console.log('送出 agv_reset 指令');
@@ -500,6 +501,7 @@ try {
     }
   });
   */
+  /*
   socket.value.on('station1_agv_start', async () => {
     console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
 
@@ -602,6 +604,7 @@ try {
         periodTime: agv2PeriodTime,
         user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
         order_num: myMaterial.order_num,
+        id: myMaterial.id,                        //2025-02-24 add
         process_type: 2,                          //在組裝區
       };
       await createProcess(payload);
@@ -699,6 +702,7 @@ try {
         periodTime: agv1PeriodTime,
         user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
         order_num: myMaterial.order_num,
+        id: myMaterial.id,                        //2025-02-24 add
         process_type: 1,                          //在備料區
       };
       await createProcess(payload);
@@ -715,13 +719,13 @@ try {
     background.value='#ffff00'
     isFlashLed.value = true;
   });
-
+  */
   //socket.value.on('agv_ack', async () => {
   //  console.log('收到 agv_ack 回應');
   //});
-} catch (error) {
-  console.error('Socket連線失敗:', error);
-}
+//} catch (error) {
+//  console.error('Socket連線失敗:', error);
+//}
 });
 
 //=== unmounted ===
@@ -752,16 +756,16 @@ const initialize = async () => {
 
     await listUsers();
 
-    await listSocketServerIP();
+    //await listSocketServerIP();
     //console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
-const toggleHistory = () => {
+const toggleHistory = async () => {
   history.value = !history.value;
-  getWarehouseForAssembleByHistoryFun();
+  await getWarehouseForAssembleByHistoryFun();
 };
 
 const getWarehouseForAssembleByHistoryFun = async () => {
@@ -875,216 +879,210 @@ if (selected) {
 
 // 停止閃爍效果
 const stopFlashing = () => {
-console.log("stopFlashing()...")
+  console.log("stopFlashing()...")
 
-clearInterval(intervalIdForLed);
-isVisible.value = true;               // 重設為顯示
-isFlashLed.value = false;
+  clearInterval(intervalIdForLed);
+  isVisible.value = true;               // 重設為顯示
+  isFlashLed.value = false;
 }
 
 const setActive = (value) => {
-toggle_exclusive.value = value; // 設置當前活動按鈕
-if (toggle_exclusive.value == 1)
-  showMenu.value = true;
-else
-  showMenu.value = false;
+  toggle_exclusive.value = value; // 設置當前活動按鈕
+  if (toggle_exclusive.value == 1)
+    showMenu.value = true;
+  else
+    showMenu.value = false;
 }
 
 const checkQtyField = (item) => {
-console.log("checkQtyField,", item);
+  console.log("checkQtyField,", item);
 
-// 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-const deliveryQty = Number(item.delivery_qty) || 0;   //到庫數量
-const totalQty = Number(item.allOk_qty) || 0;         //入庫數量
-console.log("deliveryQty , totalQty:", deliveryQty, totalQty)
+  // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
+  const deliveryQty = Number(item.delivery_qty) || 0;   //到庫數量
+  const totalQty = Number(item.allOk_qty) || 0;         //入庫數量
+  console.log("deliveryQty , totalQty:", deliveryQty, totalQty)
 
-if (deliveryQty < totalQty) {       // 檢查是否超過到庫數量
-  delivery_qty_alarm.value = '入庫數量超過到庫數量!';
+  if (deliveryQty < totalQty) {       // 檢查是否超過到庫數量
+    delivery_qty_alarm.value = '入庫數量超過到庫數量!';
 
-  item.tooltipVisible = true;       // 顯示 Tooltip
-  setTimeout(() => {
-    item.tooltipVisible = false;    // 2秒後隱藏 Tooltip
-    item.allOk_qty = 0;
-  }, 2000);
+    item.tooltipVisible = true;       // 顯示 Tooltip
+    setTimeout(() => {
+      item.tooltipVisible = false;    // 2秒後隱藏 Tooltip
+      item.allOk_qty = 0;
+    }, 2000);
 
-} else {
-  item.tooltipVisible = false;
-  delivery_qty_alarm.value = '';    // 清除警告
-}
+  } else {
+    item.tooltipVisible = false;
+    delivery_qty_alarm.value = '';    // 清除警告
+  }
 };
 
 const handleKeyDown = (event) => {
-const inputChar = event.key;
+  const inputChar = event.key;
 
-const caps = event.getModifierState && event.getModifierState('CapsLock');
-console.log("CapsLock is: ", caps); // true when CapsLock is on
+  const caps = event.getModifierState && event.getModifierState('CapsLock');
+  console.log("CapsLock is: ", caps); // true when CapsLock is on
 
-// 允許左右方向鍵、backspace 和 delete 鍵
-if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
-  return;
-}
+  // 允許左右方向鍵、backspace 和 delete 鍵
+  if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+    return;
+  }
 
-// 如果按下的鍵不是數字，阻止輸入
-if (!/^\d$/.test(inputChar)) {
-event.preventDefault();  // 阻止非數字輸入
-return;
-}
+  // 如果按下的鍵不是數字，阻止輸入
+  if (!/^\d$/.test(inputChar)) {
+    event.preventDefault();  // 阻止非數字輸入
+    return;
+  }
 
-const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
+  const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-// 檢查輸入的長度是否超過3，阻止多餘的輸入
-if (inputValue.length >= 3) {
-event.preventDefault();
-return;
-}
+  // 檢查輸入的長度是否超過3，阻止多餘的輸入
+  if (inputValue.length >= 3) {
+    event.preventDefault();
+    return;
+  }
 
-/*
+  /*
+  const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
-
-// 使用正規化運算式檢查是否為數字且長度不超過3
-//if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
-if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
-  event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
-  return;   // 確保阻止後執行中止
-}
-*/
-// 偵測是否按下 Enter 鍵
-if (event.key === 'Enter' || event.keyCode === 13) {
-  console.log('Return key pressed');
-  // 如果需要，這裡可以執行其他操作，或進行額外的驗證
-}
-editDialogBtnDisable.value = false;
+  // 使用正規化運算式檢查是否為數字且長度不超過3
+  //if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
+  if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
+    event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
+    return;   // 確保阻止後執行中止
+  }
+  */
+  // 偵測是否按下 Enter 鍵
+  if (event.key === 'Enter' || event.keyCode === 13) {
+    console.log('Return key pressed');
+    // 如果需要，這裡可以執行其他操作，或進行額外的驗證
+  }
+  editDialogBtnDisable.value = false;
 };
 
 const isSelected = (item) => {
-//console.log("isSelected(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
-// 安全檢查，確保 item 和 item.columns 存在
-if (!item || !item.columns || typeof item.columns.id === 'undefined') {
-  return false; // 預設未被選中
-}
+  //console.log("isSelected(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
+  // 安全檢查，確保 item 和 item.columns 存在
+  if (!item || !item.columns || typeof item.columns.id === 'undefined') {
+    return false; // 預設未被選中
+  }
 
-return selectedItems.value.includes(item.columns.id); // 根據 columns.id 檢查是否被選中
+  return selectedItems.value.includes(item.columns.id); // 根據 columns.id 檢查是否被選中
 };
 
 const toggleSelect = (item) => {
-const index = selectedItems.value.indexOf(item.columns.id);
-if (index === -1) {
-  selectedItems.value.push(item.columns.id); // 若未選中，則添加 columns.id
-
-
-} else {
-  selectedItems.value.splice(index, 1);     // 若已選中，則移除 columns.id
-
-}
+  const index = selectedItems.value.indexOf(item.columns.id);
+  if (index === -1) {
+    selectedItems.value.push(item.columns.id); // 若未選中，則添加 columns.id
+  } else {
+    selectedItems.value.splice(index, 1);     // 若已選中，則移除 columns.id
+  }
 };
 
 const handleEscClose = async () => {
-console.log("Dialog closed via ESC key, item:", selectedItem.value);
+  console.log("Dialog closed via ESC key, item:", selectedItem.value);
 
-// 記錄當前途程狀態
-let payload = {
-  order_num: selectedItem.value.order_num,
-  record_name: 'show2_ok',
-  record_data: 0                //未備料
-};
-await updateMaterial(payload);
-//updateMaterial(payload).then(data => {
-//  !data && showSnackbar(data.message, 'red accent-2');
-//});
+  // 記錄當前途程狀態
+  let payload = {
+    order_num: selectedItem.value.order_num,
+    record_name: 'show2_ok',
+    record_data: 0                //未備料
+  };
+  await updateMaterial(payload);
+  //updateMaterial(payload).then(data => {
+  //  !data && showSnackbar(data.message, 'red accent-2');
+  //});
 
-dialog.value = false;
+  dialog.value = false;
 };
 
 const handleOutsideClick = async () => {
-console.log("Dialog closed by clicking outside, item:", selectedItem.value);
+  console.log("Dialog closed by clicking outside, item:", selectedItem.value);
 
-// 記錄當前途程狀態
-let payload = {
-  order_num: selectedItem.value.order_num,
-  record_name: 'show2_ok',
-  record_data: 0                //未備料
-};
-await updateMaterial(payload);
-//updateMaterial(payload).then(data => {
-//  !data && showSnackbar(data.message, 'red accent-2');
-//});
+  // 記錄當前途程狀態
+  let payload = {
+    order_num: selectedItem.value.order_num,
+    record_name: 'show2_ok',
+    record_data: 0                //未備料
+  };
+  await updateMaterial(payload);
+  //updateMaterial(payload).then(data => {
+  //  !data && showSnackbar(data.message, 'red accent-2');
+  //});
 
-dialog.value = false;
+  dialog.value = false;
 };
 
 const editOrderNum = async (item) => {
-console.log("editOrderNum(),", item);
+  console.log("editOrderNum(),", item);
 
-selectedId.value = item.id;
-selectedOrderNum.value = item.order_num;
-selectedReqQty.value = item.req_qty;
-selectedDate.value = item.date;
+  selectedId.value = item.id;
+  selectedOrderNum.value = item.order_num;
+  selectedReqQty.value = item.req_qty;
+  selectedDate.value = item.date;
 
-fromDateVal.value = new Date(selectedDate.value)
-console.log("fromDateVal:", fromDateVal.value);
+  fromDateVal.value = new Date(selectedDate.value)
+  console.log("fromDateVal:", fromDateVal.value);
 
-let payload = {
-  id: item.id,
-};
-await getBoms(payload);
-console.log("currentBoms:",currentBoms.value)
-//modify_boms.value = [...currentBoms.value];
-//console.log("boms, modify_boms:", currentBoms.value, modify_boms.value)
+  let payload = {
+    id: item.id,
+  };
+  await getBoms(payload);
+  console.log("currentBoms:",currentBoms.value)
+  //modify_boms.value = [...currentBoms.value];
+  //console.log("boms, modify_boms:", currentBoms.value, modify_boms.value)
 
-editDialogBtnDisable.value = true;
+  editDialogBtnDisable.value = true;
 
-editDialog.value = true;
+  editDialog.value = true;
 }
-
+/*
 const toggleExpand = async (item) => {
-console.log("toggleExpand(),", item.order_num);
+  console.log("toggleExpand(),", item.order_num);
 
-enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
+  enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
 
-let payload = {};
+  let payload = {};
 
-payload = {
-  //order_num: item.order_num,
-  id: item.id,
+  payload = {
+    //order_num: item.order_num,
+    id: item.id,
+  };
+  await getBoms(payload);
+  current_cell.value = item.delivery_qty
+  selectedItem.value = item;
+  //console.log("toggleExpand, selectedItem.value", selectedItem.value)
+
+  // 記錄當前開始備料時間
+  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+  console.log("Start time:", currentStartTime.value, item, item.id);
+
+  // 記錄當前途程狀態
+  payload = {
+    id: item.id,
+    //order_num: item.order_num,
+    record_name: 'show2_ok',
+    record_data: 1                //備料中
+  };
+  await updateMaterial(payload);
+
+  payload = {
+    id: item.id,
+    //order_num: item.order_num,
+    record_name: 'shortage_note',
+    record_data: ''
+  };
+  await updateMaterial(payload);
+
+  dialog.value = true;
 };
-await getBoms(payload);
-current_cell.value = item.delivery_qty
-selectedItem.value = item;
-//console.log("toggleExpand, selectedItem.value", selectedItem.value)
-
-// 記錄當前開始備料時間
-currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
-console.log("Start time:", currentStartTime.value, item, item.id);
-
-// 記錄當前途程狀態
-payload = {
-  id: item.id,
-  //order_num: item.order_num,
-  record_name: 'show2_ok',
-  record_data: 1                //備料中
-};
-await updateMaterial(payload);
-
-payload = {
-  id: item.id,
-  //order_num: item.order_num,
-  record_name: 'shortage_note',
-  record_data: ''
-};
-await updateMaterial(payload);
-
-dialog.value = true;
-};
-
+*/
 const checkTextEditField = (focused, item) => {
-if (!focused) {
-  console.log("checkTextEditField(): 失去焦點");
-
-} else {
-  console.log("checkTextEditField(): 獲得焦點");
-
-}
+  if (!focused) {
+    console.log("checkTextEditField(): 失去焦點");
+  } else {
+    console.log("checkTextEditField(): 獲得焦點");
+  }
 };
 
 const updateItem2 = async (item) => {
@@ -1125,131 +1123,132 @@ const updateItem2 = async (item) => {
   };
   await updateMaterial(payload);
 };
-
+//2025 mark the following function
+/*
 const updateItem = async () => {    //編輯 bom, material及process後端table資料
-console.log("updateItem(),", boms.value);
+  console.log("updateItem(),", boms.value);
 
-let my_material_orderNum = boms.value[0].order_num;
+  let my_material_orderNum = boms.value[0].order_num;
 
-let endTime = new Date();                                               // 記錄當前結束時間
-let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
-let formattedStartTime = formatDateTime(currentStartTime.value);
-let formattedEndTime = formatDateTime(endTime);
+  let endTime = new Date();                                               // 記錄當前結束時間
+  let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
+  let formattedStartTime = formatDateTime(currentStartTime.value);
+  let formattedEndTime = formatDateTime(endTime);
 
-// 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
-let take_out = !boms.value.some(bom => !bom.receive);
-console.log("take_out:", take_out);
+  // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
+  let take_out = !boms.value.some(bom => !bom.receive);
+  console.log("take_out:", take_out);
 
-// 1. 更新 boms 資料
-let response0 = await updateBoms(boms.value);
-if (!response0) {
-  showSnackbar(response0.message, 'red accent-2');
+  // 1. 更新 boms 資料
+  let response0 = await updateBoms(boms.value);
+  if (!response0) {
+    showSnackbar(response0.message, 'red accent-2');
+    dialog.value = false;
+    return;
+  }
+
+  let materialPayload = {}
+
+  if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
+    materialPayload = {               // 更新 materials 資料，shortage_note = '(缺料)'
+      //order_num: my_material_orderNum,
+      id: selectedItem.value.id,
+      record_name: 'shortage_note',
+      record_data: '(缺料)'
+    };
+    await updateMaterial(materialPayload);
+    selectedItem.value.shortage_note = '(缺料)';
+
+    materialPayload = {               // 2. 更新 materials 資料，isLackMaterial = 1
+      //order_num: my_material_orderNum,
+      id: selectedItem.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 0,          //缺料
+    };
+    await updateMaterial(materialPayload);
+    selectedItem.value.isLackMaterial = 0;
+  } else {
+    materialPayload = {
+      //order_num: my_material_orderNum,
+      id: selectedItem.value.id,
+      record_name: 'shortage_note',
+      record_data: ''
+    };
+    await updateMaterial(materialPayload);
+    selectedItem.value.shortage_note = '';
+
+    materialPayload = {
+      //order_num: my_material_orderNum,
+      id: selectedItem.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 99,
+    };
+    await updateMaterial(materialPayload);
+    selectedItem.value.isLackMaterial = 0;
+  }
+
+  materialPayload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
+    //order_num: my_material_orderNum,
+    id: selectedItem.value.id,
+    record_name: 'isTakeOk',
+    record_data: true
+  };
+  await updateMaterial(materialPayload);
+  selectedItem.value.isTakeOk = true;
+
+  if (take_out) {                     // 該筆訂單檢料完成
+    materialPayload = {               // 2. 更新 materials 資料，show2_ok = 2
+      //order_num: my_material_orderNum,
+      id: selectedItem.value.id,
+      record_name: 'show2_ok',
+      record_data: 2                  // 設為 2，表示備料完成
+    };
+    await updateMaterial(materialPayload);
+
+    console.log("Formatted Start Time:", formattedStartTime);
+    console.log("Formatted End Time:", formattedEndTime);
+    console.log("Period time:", periodTime);
+    let processPayload = {
+      begin_time: formattedStartTime,
+      end_time: formattedEndTime,
+      periodTime: periodTime,
+      user_id: currentUser.value.empID,
+      order_num: my_material_orderNum,
+      process_type: 1,
+    };
+    await createProcess(processPayload);
+
+    await listWarehouseForAssemble();
+  }
   dialog.value = false;
-  return;
-}
-
-let materialPayload = {}
-
-if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
-  materialPayload = {               // 更新 materials 資料，shortage_note = '(缺料)'
-    //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
-    record_name: 'shortage_note',
-    record_data: '(缺料)'
-  };
-  await updateMaterial(materialPayload);
-  selectedItem.value.shortage_note = '(缺料)';
-
-  materialPayload = {               // 2. 更新 materials 資料，isLackMaterial = 1
-    //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
-    record_name: 'isLackMaterial',
-    record_data: 0,          //缺料
-  };
-  await updateMaterial(materialPayload);
-  selectedItem.value.isLackMaterial = 0;
-} else {
-  materialPayload = {
-    //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
-    record_name: 'shortage_note',
-    record_data: ''
-  };
-  await updateMaterial(materialPayload);
-  selectedItem.value.shortage_note = '';
-
-  materialPayload = {
-    //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
-    record_name: 'isLackMaterial',
-    record_data: 99,
-  };
-  await updateMaterial(materialPayload);
-  selectedItem.value.isLackMaterial = 0;
-}
-
-materialPayload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
-  //order_num: my_material_orderNum,
-  id: selectedItem.value.id,
-  record_name: 'isTakeOk',
-  record_data: true
 };
-await updateMaterial(materialPayload);
-selectedItem.value.isTakeOk = true;
-
-if (take_out) {                     // 該筆訂單檢料完成
-  materialPayload = {               // 2. 更新 materials 資料，show2_ok = 2
-    //order_num: my_material_orderNum,
-    id: selectedItem.value.id,
-    record_name: 'show2_ok',
-    record_data: 2                  // 設為 2，表示備料完成
-  };
-  await updateMaterial(materialPayload);
-
-  console.log("Formatted Start Time:", formattedStartTime);
-  console.log("Formatted End Time:", formattedEndTime);
-  console.log("Period time:", periodTime);
-  let processPayload = {
-    begin_time: formattedStartTime,
-    end_time: formattedEndTime,
-    periodTime: periodTime,
-    user_id: currentUser.value.empID,
-    order_num: my_material_orderNum,
-    process_type: 1,
-  };
-  await createProcess(processPayload);
-
-  await listWarehouseForAssemble();
-}
-dialog.value = false;
-};
-
+*/
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
-const diffMs = end - start;                     // 差異時間（毫秒）
-const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
+  const diffMs = end - start;                     // 差異時間（毫秒）
+  const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
 
-const hours = Math.floor(diffSeconds / 3600);
-const minutes = Math.floor((diffSeconds % 3600) / 60);
-const seconds = diffSeconds % 60;
+  const hours = Math.floor(diffSeconds / 3600);
+  const minutes = Math.floor((diffSeconds % 3600) / 60);
+  const seconds = diffSeconds % 60;
 
-return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
 const formatDateTime = (date) => {
-if (!date || !(date instanceof Date)) {
-  console.error("Invalid date passed to formatDateTime:", date);
-  return 'Invalid Date';
-}
+  if (!date || !(date instanceof Date)) {
+    console.error("Invalid date passed to formatDateTime:", date);
+    return 'Invalid Date';
+  }
 
-const yyyy = date.getFullYear();
-const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
-const dd = String(date.getDate()).padStart(2, '0');
-const hh = String(date.getHours()).padStart(2, '0');
-const min = String(date.getMinutes()).padStart(2, '0');
-const ss = String(date.getSeconds()).padStart(2, '0');
-return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
-
+/*
 const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
 const hours = String(time.getHours()).padStart(2, '0');
 const minutes = String(time.getMinutes()).padStart(2, '0');
@@ -1257,7 +1256,7 @@ const seconds = String(time.getSeconds()).padStart(2, '0');
 
 return `${hours}:${minutes}:${seconds}`;
 };
-
+*/
 const callAGV = async () => {
   console.log("callAGV()...")
 
@@ -1277,7 +1276,7 @@ const callAGV = async () => {
     showSnackbar("請不要重複按鍵!", 'red accent-2');
     return;
   }
-  //console.log("step3...")
+
   selectedItems.value.forEach(async (item) => {
     //console.log("step4...")
     let targetItem = warehouses.value.find(
@@ -1341,6 +1340,21 @@ const callAGV = async () => {
       await copyMaterial(payload);
     }
     //
+    //let allOkTime = new Date();  // 使用 Date 來記錄當時時間
+    let formattedallOkTime = formatDateTime(new Date());
+
+    let processPayload = {
+      begin_time: formattedallOkTime,
+      end_time: formattedallOkTime,
+      periodTime: '',
+      user_id: currentUser.value.empID,
+      order_num: targetItem.order_num,
+      process_type: 31,
+      id: targetItem.id,
+    };
+    await createProcess(processPayload);
+
+
   });
 
   // 記錄AGV狀態資料
@@ -1363,7 +1377,7 @@ const callAGV = async () => {
   if (localStorage.getItem('history')) {
     localStorage.removeItem('history');
   }
-  console.log("step11...")
+
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };

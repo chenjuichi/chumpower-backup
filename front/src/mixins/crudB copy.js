@@ -4,24 +4,25 @@ import { ref } from 'vue';
 // 定義 apiOperation，用來處理不同的 API 操作
 export const apiOperationB = (operation, path) => {
   return (payload) => {
-    if (payload !== undefined) {
+    if (payload != undefined)
       console.log(`${operation.toUpperCase()} ${path} with payload`, payload);
-    } else {
+    else
       console.log(`${operation.toUpperCase()} ${path}`);
-    }
 
     // 構建 Axios 的配置
     const options = {
-      responseType: path.includes('download') ? 'blob' : 'json', // 自動判斷是否下載檔案
-      headers: {
-        'Accept': path.includes('download')
-          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : 'application/json'
-      }
+      ...(path === '/downloadXlsxFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
     };
+
+    const options = {
+      ...(path === '/downloadFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
+    };
+
+
 
     // 根據請求類型處理
     if (operation === 'post') {
+      // POST 請求的參數放在 `data`
       return axios.post(path, payload, options).then((res) => handleResponse(res, path));
     }
   };

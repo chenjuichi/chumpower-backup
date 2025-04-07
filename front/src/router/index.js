@@ -22,7 +22,8 @@ import G3 from '../views/g3.vue';
 import H1 from '../views/h1.vue';
 import H2 from '../views/h2.vue';
 import H3 from '../views/h3.vue';
-import J1 from '../views/dataForMachine.vue';
+//import J1 from '../views/dataForMachine.vue';
+import J1 from '../views/SocketTest.vue';
 import J2 from '../views/dataForAssemble.vue';
 import J3 from '../views/dataForProcessAlarm.vue';
 import J4 from '../views/dataForMachineAlarm.vue';
@@ -33,6 +34,8 @@ import LoginRegister from '../views/LoginForm2.vue';
 import Employer from '../views/Employer.vue';
 import Main from '../views/Main.vue';
 import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面
+
+import UploadXlsFile from '../views/UploadXlsFile.vue';   // 404 Not Found 頁面
 
 const routes = [
   { path: '/', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
@@ -64,6 +67,8 @@ const routes = [
   { path: '/j2', name: 'J2', component: J2 },
   { path: '/j3', name: 'J3', component: J3 },
   { path: '/j4', name: 'J4', component: J4 },
+
+  { path: '/upload', name: 'Upload', component: UploadXlsFile },
 
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: NotFound, meta: { hideNavAndFooter: true } }, // 404 Not Found 路由
 ];

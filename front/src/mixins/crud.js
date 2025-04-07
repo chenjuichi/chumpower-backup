@@ -15,6 +15,9 @@ export const materials = ref([]);
 // for listWarehouseForAssemble
 export const warehouses = ref([]);
 
+// for getProcessesByOrderNum
+export const processes = ref([]);
+
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
 
@@ -26,6 +29,7 @@ export const informations = ref([]);
 
 // for listInformationsForAssembleError
 export const informations_for_assemble_error = ref([]);
+export const alarm_objects_list = ref([]);
 
 // for listAssembleInformations
 export const assembleInformations = ref([]);
@@ -36,6 +40,12 @@ export const abnormal_causes = ref([]);
 // for listWaitForAssemble
 export const begin_count = ref(0);
 export const end_count = ref(0);
+
+// for listWorkingOrderStatus
+export const order_count = ref(0);
+export const prepare_count = ref(0);
+export const assemble_count = ref(0);
+export const warehouse_count = ref(0);
 
 // for getBoms
 export const boms = ref([]);
@@ -95,7 +105,7 @@ export const apiOperation = (operation, path, payload) => {
     const options = {
       ...(operation === 'get' ? { params: payload } : payload),
       //...(path === '/saveFile' || path === '/downloadFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
-      ...(path === '/saveFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
+      //...(path === '/saveFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
     };
 
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
@@ -158,6 +168,13 @@ export const apiOperation = (operation, path, payload) => {
             end_count.value = res.data.end_count;
           }
 
+          if (path == '/listWorkingOrderStatus') {
+            order_count.value = res.data.order_count;
+            prepare_count.value = res.data.prepare_count;
+            assemble_count.value = res.data.assemble_count;
+            warehouse_count.value = res.data.warehouse_count;
+          }
+
           if (path == '/listUsers') {
             temp_desserts.value = res.data.users;
 
@@ -194,19 +211,84 @@ export const apiOperation = (operation, path, payload) => {
             return res.data.status;
           }
 
-          if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles') {
+          if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
+              path == '/exportToExcelForError') {
             //console.log("res.data:", res.data);
             return res.data;
           }
-
+          /*
           if (path == '/getInformationsForAssembleErrorByHistory') {
             informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];
+          }
+          */
+         /*
+          if (path == "/getInformationsForAssembleErrorByHistory") {
+            informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
+              // 找出舊資料中相同 `order_num` 的資料
+              const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
+
+              return {
+                ...newItem,
+                cause_message: oldItem ? oldItem.cause_message : newItem.cause_message, // 保留原值
+              };
+            });
+          }
+          */
+          /*
+          if (path == "/getInformationsForAssembleErrorByHistory") {
+            informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
+              // 找出舊資料中相同 `order_num` 的資料
+              const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
+
+              return {
+                ...newItem,
+                cause_message: oldItem && oldItem.cause_message ? oldItem.cause_message : (newItem.cause_message || ""), // 避免 undefined/null
+              };
+            });
+          }
+          */
+
+          if (path == "/getInformationsForAssembleErrorByHistory") {
+            alarm_objects_list.value = [...res.data.alarm_objects_list];
+            console.log("alarm_objects_list.value:",alarm_objects_list.value);
+
+
+            // 更新資訊，保留原來的 cause_message
+            informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(item => ({
+              ...item,
+              cause_message: item.cause_message,  // 確保 cause_message 不會被覆蓋
+            }));
+
+
+          //  informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
+          //    // 找出舊資料中相同 `order_num` 的資料
+          //    const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
+          //
+          //    return {
+          //      ...newItem,
+                /*
+                cause_message: oldItem && Array.isArray(oldItem.cause_message)
+                  ? oldItem.cause_message
+                  : (Array.isArray(newItem.cause_message) ? newItem.cause_message : []), // 確保是陣列
+
+                cause_message: oldItem && Array.isArray(oldItem.cause_message)
+                  ? JSON.parse(JSON.stringify(oldItem.cause_message))
+                  : (Array.isArray(newItem.cause_message) ? JSON.parse(JSON.stringify(newItem.cause_message)) : []),
+                */
+          //      cause_message: oldItem && Array.isArray(oldItem.cause_message)
+          //        ? [...oldItem.cause_message]  // 創建新的陣列副本
+          //        : (Array.isArray(newItem.cause_message) ? [...newItem.cause_message] : []),
+          //      };
+          //  });
           }
 
           if (path == '/getWarehouseForAssembleByHistory') {
             warehouses.value = [...res.data.warehouse_for_assemble];
           }
 
+          if (path == '/getProcessesByOrderNum') {
+            processes.value = [...res.data.processes];
+          }
           /*
           if (path === '/saveFile') {
             console.log(res.data instanceof Blob); // 應該顯示 true

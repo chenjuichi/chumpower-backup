@@ -86,11 +86,13 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 22, text: "1.機台資料維護", to: '/j1', isEnabled: false, isSegment: false },
+      { id: 22, text: "1.AGV連線維護", to: '/j1', isEnabled: false, isSegment: false },
       { id: 23, text: "2.組裝站資料維護", to: '/j2', isEnabled: false, isSegment: false },
       { id: 24, text: "3.加工異常原因維護", to: '/j3', isEnabled: false, isSegment: false },
       { id: 25, text: "4.組裝異常原因維護", to: '/j4', isEnabled: false, isSegment: false },
       { id: 26, text: "5.人員資料維護", to: '/employer', isEnabled: false, isSegment: false },
+
+      { id: 27, text: "6.工單上傳", to: '/upload', isEnabled: false, isSegment: false },
     ]
   }
 ];

@@ -22,6 +22,8 @@ from pathlib import Path
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
+import urllib.parse
+
 browseDirectory = Blueprint('browseDirectory', __name__)
 
 # ------------------------------------------------------------------
@@ -108,6 +110,7 @@ def delete_pdf_files():
   except Exception as e:
       print(f"無法訪問目錄 {download_dir}: {e}")
 
+
 def delete_pdf_files_on_directory():
   print("delete_pdf_files_on_directory()....")
 
@@ -137,6 +140,38 @@ def delete_pdf_files_on_directory():
                   print(f"無法刪除檔案 {file_path}: {e}")
   except Exception as e:
       print(f"無法訪問目錄 {pdf_dir}: {e}")
+
+
+def delete_xlsx_files_on_directory():
+  print("delete_xlsx_files_on_directory()....")
+
+  """
+  自動獲取當前指定目錄，並刪除其中所有 .xlsx 檔案
+  """
+  try:
+    # 獲取當前用戶的下載目錄
+    #xlsx_dir = str(Path(r'C:\vue\chumpower\excel_export'))
+    xlsx_dir = r'C:\vue\chumpower\excel_export'
+
+    # 檢查目錄是否存在
+    if not os.path.exists(xlsx_dir):
+      print(f"指定目錄不存在: {xlsx_dir}")
+      return
+
+    # 遍歷下載目錄中的檔案
+    for file_name in os.listdir(xlsx_dir):
+      # 檢查是否為 .crdownload 文件
+      if file_name.endswith(".xlsx"):
+        file_path = os.path.join(xlsx_dir, file_name)
+        try:
+          # 刪除 .crdownload 文件
+          os.remove(file_path)
+          print(f"已刪除檔案: {file_path}")
+        except Exception as e:
+          print(f"無法刪除檔案 {file_path}: {e}")
+  except Exception as e:
+    print(f"無法訪問目錄 {xlsx_dir}: {e}")
+
 
 def process_and_resize_image(input_path, output_path, scale_factor, text_data):
   with Image.open(input_path) as img:
@@ -471,6 +506,57 @@ def download_file():
     #在回應頭中添加檔案名稱
     response.headers['X-File-Name'] = download_file_name
     print(f"Response headers: {response.headers}")
+    return response
+  except Exception as e:
+    print(f"Error while sending file: {e}")
+    return jsonify({'error': str(e)}), 500
+
+
+#下載XLSX API
+@browseDirectory.route('/downloadXlsxFile', methods=['POST'])
+def download_xlsx_file():
+  print("downloadXlsxFile....")
+
+  # 檢查請求是否包含 JSON
+  if not request.json:
+    return jsonify({'error': 'Invalid request, missing JSON data'}), 400
+
+  data = request.json
+  filepath = data.get('filepath')
+  if not filepath or not os.path.exists(filepath):
+    print(f"❌ Error: File not found at {filepath}")
+    return jsonify({'error': 'File not found'}), 404
+
+  download_file_name = os.path.basename(filepath)         # 從完整的檔路徑中取得檔案名稱
+  print("下載檔案名稱:", download_file_name)
+
+  # 清理 .xlsx 文件
+  @after_this_request
+  def cleanup_xlsx_files(response):
+      def delete_temp_files():
+          time.sleep(5)                                 # 等待下載完成
+          try:
+            delete_xlsx_files_on_directory()            # 刪除 .xlsx 文件
+            print("Temporary .xlsx files cleaned up.")
+          except Exception as e:
+            print(f"Error deleting .xlsx files: {e}")
+      threading.Thread(target=delete_temp_files).start()
+      return response
+
+  try:
+    response = send_file(
+      filepath,
+      as_attachment=True,
+      download_name=download_file_name,
+      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+    # 確保 Content-Disposition 使用 RFC 8187 格式，避免 UnicodeEncodeError
+    encoded_filename = urllib.parse.quote(download_file_name.encode('utf-8'))
+    response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{encoded_filename}"
+
+    #在回應頭中添加檔案名稱
+    #response.headers['X-File-Name'] = download_file_name
     return response
   except Exception as e:
     print(f"Error while sending file: {e}")

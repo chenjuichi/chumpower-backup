@@ -10,6 +10,7 @@
     </template>
   </v-snackbar>
 
+  <!--items-per-page-text="每頁的資料筆數"-->
   <v-data-table
     :headers="headers"
     :items="materials_and_assembles"
@@ -22,7 +23,7 @@
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
-    items-per-page-text="每頁的資料筆數"
+
   >
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
@@ -253,7 +254,7 @@ import { useRoute } from 'vue-router';          // Import useRouter
 
 import { myMixin } from '../mixins/common.js';
 
-import { useSocketio } from '../mixins/SocketioService.js';
+//import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
@@ -264,12 +265,12 @@ import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
-const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-const createProcess = apiOperation('post', '/createProcess');
+//const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
 
 //=== component name ==
@@ -316,8 +317,8 @@ const headers = [
   { title: '', sortable: false, key: 'action' },
 ];
 
-const userId = 'user_chumpower';
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+//const userId = 'user_chumpower';
+//const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
 
 // 排序欄位及方向（需為陣列）
 const sortBy = ref(['order_num'])
@@ -416,10 +417,11 @@ onMounted(async () => {
   // 在組件掛載時添加事件監聽器
   window.addEventListener('mousemove', updateMousePosition);
 
+  //2025-02-24 mark socket連線
   // 處理socket連線
-  console.log('等待socket連線...');
-  try {
-    await setupSocketConnection();
+  //console.log('等待socket連線...');
+  //try {
+  //  await setupSocketConnection();
     /*
     socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
       console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
@@ -484,8 +486,10 @@ onMounted(async () => {
       await createProcess(processPayload);
     })
     */
+    //2025-02-24 mark the following socket function
+    /*
     socket.value.on('station2_agv_end', async (data) => {
-      console.log('AGV暫停, 收到 station2_agv_end 訊息, 工單:', data);
+      console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
 
       const materialPayload1 = {
         order_num: data,
@@ -513,9 +517,12 @@ onMounted(async () => {
         user_id: 'AGV2',
         order_num: data,
         process_type: 2,        //組裝區
+        id: myAssemble.id       ////2025-02-24 add
       };
       await createProcess(processPayload);
     });
+    */
+
     /*
     socket.value.on('station1_agv_ready', async () => {
       console.log('AGV 已到達裝卸站, 收到 station1_agv_ready 訊息...');
@@ -525,9 +532,9 @@ onMounted(async () => {
 
     });
     */
-  } catch (error) {
-    console.error('Socket連線失敗:', error);
-  }
+  //} catch (error) {
+  //  console.error('Socket連線失敗:', error);
+  //}
 });
 
 //=== unmounted ===
@@ -559,8 +566,8 @@ const initialize = async () => {
     item.pickBegin = [];
   });
 
-  await listSocketServerIP();
-    console.log("initialize, socket_server_ip:", socket_server_ip.value)
+  //await listSocketServerIP();
+  //  console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -653,7 +660,7 @@ const updateItem2 = async (item) => {
 };
 
 const updateItem = async (item) => {
-  console.log("updateItem(),", item);
+  console.log("PickReportForAssembleBegin, updateItem(),", item);
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -670,8 +677,15 @@ const updateItem = async (item) => {
 
   let payload = {};
 
+  let startTime = new Date();                                                         // 記錄當前結束時間
+  let formattedStartTime = formatDateTime(startTime); //完工生產報工開始時間
+  console.log("formattedStartTime:", formattedStartTime)
+  console.log("item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0:", item.pickBegin.length, Number(item.total_receive_qty_num));
+  console.log("startTime step 1...")
+  //2025-02-24 mark if condition
   // 確認是第1次領料
-  if (item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0) {
+  //if (item.pickBegin.length ==1 && Number(item.total_receive_qty_num)!=0) {
+    console.log("startTime step 2...")
     // 記錄當前領料生產開始時間
     payload = {
       assemble_id: item.assemble_id,
@@ -679,8 +693,8 @@ const updateItem = async (item) => {
       record_data: formatDateTime(new Date()),
     };
     await updateAssemble(payload);
-  }
-
+  //}
+  //
   // 2.記錄當前途程領取數量
   payload = {
     assemble_id: item.assemble_id,
@@ -746,13 +760,13 @@ const updateItem = async (item) => {
     await updateAssemble(payload);
     item.input_disable = true;
     //
-    await listWaitForAssembleFun();
+    await listWaitForAssemble();
   }
 };
 
-const listWaitForAssembleFun = async () => {
-  await listWaitForAssemble();
-}
+//const listWaitForAssembleFun = async () => {
+//  await listWaitForAssemble();
+//}
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)

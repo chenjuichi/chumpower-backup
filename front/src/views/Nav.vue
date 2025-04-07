@@ -288,6 +288,16 @@
               >
                 {{ localNavLinks[25].text }}
               </router-link>
+
+              <!--menu 27-->
+              <router-link
+                :to="localNavLinks[26].isEnabled ? localNavLinks[26].to : '#'"
+                :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[26].isEnabled }]"
+                @click.prevent="!openMenuItem && $event.stopPropagation()"
+              >
+                {{ localNavLinks[26].text }}
+              </router-link>
+
             </div>
           </li>
           <!--item7-->

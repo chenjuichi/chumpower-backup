@@ -13,17 +13,17 @@ s = Session()
 
 # create setting table data
 obj_list = []
-settings = [                                                                          #  1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6
-  {'items_per_page': 5,  'message': '#f9f9f9#f9f9f9', 'lastRoutingName': 'Main', 'routingPriv': '1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1'},
-  {'items_per_page': 10, 'message': 'hello user2', 'lastRoutingName': '',     'routingPriv': '1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'},
-  {                      'message': 'hello user3', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0'},
-  {                      'message': 'hello user4', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user5', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user6', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user7', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user8', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user9', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
-  {                      'message': 'hello user10', 'lastRoutingName': '',     'routingPriv': '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0'},
+settings = [                                                                                  #  1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7
+  {'items_per_page': 5,  'message': '#f9f9f9#f9f9f9', 'lastRoutingName': 'Main', 'routingPriv': '1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1'},
+  {'items_per_page': 10, 'message': 'hello user2', 'lastRoutingName': '',     'routingPriv':    '1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user3', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0'},
+  {                      'message': 'hello user4', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user5', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user6', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user7', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user8', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user9', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {                      'message': 'hello user10', 'lastRoutingName': '',     'routingPriv':   '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
 ]
 
 for record in settings:
@@ -159,7 +159,7 @@ user_count += 1
 
 try:
   s.commit()
-  print("User data committed successfully")
+  #print("User data committed successfully")
 except pymysql.err.IntegrityError as e:
   print(f"IntegrityError: {e}")
   s.rollback()

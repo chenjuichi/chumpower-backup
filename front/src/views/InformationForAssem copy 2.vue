@@ -10,83 +10,50 @@
     </template>
   </v-snackbar>
 
+  <!--<v-row align="center" justify="center" v-if="currentUser.perm >= 1">-->
   <v-data-table
     :headers="headers"
     :items="informations"
     :row-props="getRowProps"
     :search="search"
+    fixed-header
+    items-per-page="5"
     item-value="order_num"
+    :items-length="informations.length"
+    v-model:page="pagination.page"
     class="outer custom-header"
     :style="tableStyle"
-    style="min-height: 420px; height: auto;"
-    :items-per-page-options="footerOptions"
-    items-per-page="5"
-    v-model:page="pagination.page"
+    :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
   >
     <template v-slot:top>
-      <v-card style="min-height: 100px; overflow: visible;">
+      <v-card style="min-height:60px;">
         <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; padding:16px;">
           <span style="position:relative; top:-10px;">組裝區在製品生產資訊</span>
           <v-spacer />
           <v-row style="margin-left:3vw;">
             <v-col cols="12" md="6">
-              <div style="display: flex; justify-content: center; gap: 25px; font-size: 20px; color: blue">
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span style="font-size: 16px;">{{ todayDate }}</span>
-                </div>
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>工單數</span>
-                  <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
-                </div>
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>備料送出</span>
-                  <v-progress-circular
-                    :model-value="progress_value2"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="primary"
-
-                  >
-                    {{ prepare_count }}
-                  </v-progress-circular>
-                </div>
-
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝送出</span>
-                  <v-progress-circular
-                    :model-value="progress_value3"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="red"
-                  >
-                    {{ assemble_count }}
-                  </v-progress-circular>
-                </div>
-
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>入庫登記</span>
-                  <v-progress-circular
-                    :model-value="progress_value4"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
-                    color="pink"
-                  >
-                    {{ warehouse_count }}
-                  </v-progress-circular>
-                </div>
+              <div style="display: flex; justify-content: center; gap: 50px;font-size: 20px; color:blue">
+                <span style="flex:1; text-align:right; font-size: 16px; position:relative; left:2vw; top: 2px;">{{ todayDate }}</span>
+                <span style="flex:1; text-align:left;">工單數</span>
+                <span style="flex:1; text-align:center;">已備料數</span>
+                <span style="flex:1; text-align:center;">已組裝數</span>
+                <span style="flex:1; text-align:center;">已入庫數</span>
+              </div>
+              <div style="display: flex; justify-content: center; gap: 50px; font-size: 20px;">
+                <span style="flex:1; text-align:right; font-size: 16px; position:relative; left:3vw;">&nbsp;&nbsp;</span>
+                <span style="flex: 1; text-align: left;">hello1</span>
+                <span style="flex: 1; text-align: center;">hello2</span>
+                <span style="flex: 1; text-align: center;">hello3</span>
+                <span style="flex: 1; text-align: center;">hello4</span>
               </div>
             </v-col>
-
             <v-col cols="12" md="2">
               <v-btn
                 @click="toggleHistory"
                 :active="history"
                 color="#c39898"
                 variant="outlined"
-                style="position:relative; right:-4vw;"
+                style="position:relative; right:-4vw; top:-1px; min-height:20px; height:34px;"
               >
                 <v-icon left color="#664343">mdi-history</v-icon>
                 歷史紀錄
@@ -100,13 +67,13 @@
                 variant="outlined"
                 hide-details
                 single-line
-                style="position:relative; left:2vw; top:2px; "
+                style="position:relative; right:8vw; top:4px; min-height: 10px; height: 10px;"
                 density="compact"
               />
             </v-col>
           </v-row>
           <div class="pa-4 text-center">
-            <v-dialog v-model="dialog" max-width="1280px">
+            <v-dialog v-model="dialog" max-width="960px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配紀錄
@@ -129,8 +96,7 @@
                   <v-table class="inner" density="compact" fixed-header>
                     <thead style="color: black;">
                       <tr>
-                        <th class="text-left"></th>
-                        <th class="text-left">備料/組裝</th>
+                        <th class="text-left">備料/裝配</th>
                         <th class="text-left">開始時間</th>
                         <th class="text-left">結束時間</th>
                         <th class="text-left">領料數量</th>
@@ -143,20 +109,29 @@
 
                     <tbody>
                       <tr
-                        v-for="(process_item, index) in processes"
-                        :key="process_item.seq_num"
+                        v-for="(detail_item, index) in informationDetails"
+                        :key="bom_item.seq_num"
                         :style="{
                           backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
                         }"
                       >
-                        <td>{{ process_item.seq_num }}</td>
-                        <td>{{ process_item.process_type }}</td>
-                        <td>{{ process_item.begin_time }}</td>
-                        <td>{{ process_item.end_time }}</td>
-                        <td>{{ process_item.total_delivery_qty }}</td>
-                        <td>{{ process_item.period_time }}</td>
-                        <td>{{ process_item.work_time }}</td>
-                        <td>{{ process_item.single_std_time }}</td>
+                        <td>{{ bom_item.seq_num }}</td>
+                        <td>
+                          <div>
+                            <div>{{ bom_item.material_num }}</div>
+                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                        </td>
+                        <td>
+                          <div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                          </div>
+                        </td>
+                        <td><v-checkbox-btn v-model="bom_item.receive" /></td>
                       </tr>
                     </tbody>
                   </v-table>
@@ -195,7 +170,6 @@
       </div>
     </template>
 
-    <!-- 自訂 '現況進度' 欄位 -->
     <template v-slot:item.show1_ok="{ item }">
       <div>
         <div style="font-weight:600;">{{ item.show1_ok }}</div>
@@ -203,7 +177,6 @@
       </div>
     </template>
 
-    <!-- 自訂 '現況備註' 欄位 -->
     <template v-slot:item.show3_ok="{ item }">
       <div style="font-weight:600;">{{ item.show3_ok }}</div>
     </template>
@@ -245,7 +218,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount ,nextTick } from 'vue';
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
 import { useRoute } from 'vue-router'; // Import useRouter
 
@@ -256,7 +229,6 @@ import { myMixin } from '../mixins/common.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
-import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
 
 import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
 
@@ -264,39 +236,33 @@ import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listInformations = apiOperation('get', '/listInformations');
-const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
-
 const getBoms = apiOperation('post', '/getBoms');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-//const createProcess = apiOperation('post', '/createProcess');
-const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
+const createProcess = apiOperation('post', '/createProcess');
+//const getMaterial = apiOperation('post', '/getMaterial');
 
 //=== component name ==
-defineComponent({ name: 'InformationForAssem' });
+defineComponent({
+  name: 'MaterialListForAssem'
+});
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({ showFooter: Boolean });
+const props = defineProps({
+  showFooter: Boolean
+});
 
 //=== data ===
-let intervalId = null;                    // 10秒, 倒數計時器
-let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
-const route = useRoute();                 // Initialize router
+let intervalId = null;              // 10分鐘, 倒數計時器
+const route = useRoute(); // Initialize router
 
 const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
 const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
-
-const footerOptions = [
-  { value: 5, title: '5' },
-  //{ value: 10, title: '10' },
-  //{ value: -1, title: '全部' }
-];
-
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
@@ -310,9 +276,10 @@ const headers = [
 
 //const localIp = 'localhost';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
-//const userId = 'user_chumpower';
+const userId = 'user_chumpower';
 // 初始化Socket連接
 //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
+//const { socket, setupSocketConnection } = useSocketio(serverIp, userId);
 //const localIP = ref('');
 const from_agv_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
@@ -321,7 +288,6 @@ const search = ref('');
 const history = ref(false);
 const currentUser = ref({});
 const permDialog = ref(false);
-
 //const rightDialog = ref(false);
 //const showExplore = ref(false);
 //const showVirtualTable = ref(false);
@@ -334,9 +300,6 @@ const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
   page: 1,
 });
-
-const wakeLock = ref(null);           // 用於存儲 Wake Lock 物件
-const isWakeLockActive = ref(false);  // 是否啟用螢幕鎖定
 
 //=== watch ===
 watch(currentUser, (newUser) => {
@@ -369,12 +332,6 @@ const routeName = computed(() => route.name);
 
 const dialogWidth = computed(() => (screenWidth.value > 1200 ? '1400px' : '80vw'));
 
-order_count, prepare_count, assemble_count, warehouse_count
-const progress_value1 = computed(() => order_count.value);
-const progress_value2 = computed(() => order_count.value !=0 ? (prepare_count.value / order_count.value)* 100 : 0 );
-const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.value / order_count.value)* 100 : 0 );
-const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
-
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
@@ -396,16 +353,14 @@ onMounted(async () => {
   //fileCount.value = countExcelFiles();
   //console.log("fileCount:", fileCount.value);
 
-  intervalId = setInterval(listInformationsFun, 10 * 1000);  // 每 10秒鐘調用一次 API
-  intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 1000);  // 每 5秒鐘調用一次 API
+
+  intervalId = setInterval(listInformations, 10 * 1000);  // 每 10秒鐘調用一次 API
 
   //window.addEventListener('resize', () => {
   //  screenWidth.value = window.innerWidth;
   //});
   window.addEventListener('resize', updateScreenWidth);
   updateScreenWidth(); // 確保初始時執行一次
-
-  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   /*
   console.log('取得本機ip...');
@@ -487,8 +442,6 @@ onMounted(async () => {
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   clearInterval(intervalId);
 
-  clearInterval(intervalIdForProgressCircle);
-
   window.removeEventListener('resize', updateScreenWidth);
 });
 
@@ -502,45 +455,17 @@ onBeforeMount(() => {
   initialize();
 });
 
-
-onBeforeUnmount(() => {
-  // 卸載時釋放鎖定
-  releaseWakeLock();
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
-});
-
 //=== method ===
-const initialize = async () => {
-  try {
-    console.log("initialize()...")
+const initialize = () => {
+  console.log("initialize()...")
 
-    await listInformations();
-
-    await listWorkingOrderStatus();
-  } catch (error) {
-    console.error("Error during initialize():", error);
-  }
+  listInformations();
 };
 
-const listInformationsFun = async () => {
-  await listInformations();
-};
-
-const listWorkingOrderStatusFun = async () => {
-  await listWorkingOrderStatus();
-};
-
-const toggleHistory = async () => {
+const toggleHistory = () => {
   history.value = !history.value;
-  await getInformationsByHistoryFun();
+  //getWarehouseForAssembleByHistoryFun();
 };
-
-const getInformationsByHistoryFun = async () => {
-  let payload = {
-    history_flag: history.value,
-  };
-  await getInformationsByHistory(payload);
-}
 
 // 監聽視窗變化
 const updateScreenWidth = () => {
@@ -558,6 +483,7 @@ const getRowProps = (item, index) => {
   };
 };
 
+
 const getStatusStyle = (status) =>{
   const colorMap = {
     0: '#ff4000',
@@ -572,44 +498,6 @@ const getStatusStyle = (status) =>{
     fontSize: '12px',
   };
 };
-
-// 請求螢幕鎖定
-const requestWakeLock = async () => {
-  try {
-    if ("wakeLock" in navigator) {
-      wakeLock.value = await navigator.wakeLock.request("screen");
-      isWakeLockActive.value = true;
-      console.log("✅ 螢幕鎖定成功");
-
-      // 監聽鎖定被釋放的情況
-      wakeLock.value.addEventListener("release", () => {
-        isWakeLockActive.value = false;
-        console.log("⚠️ 螢幕鎖定已解除");
-      });
-    } else {
-      console.warn("❌ 你的瀏覽器不支援 Wake Lock API");
-    }
-  } catch (err) {
-    console.error("❌ 無法鎖定螢幕:", err);
-  }
-};
-
-// 釋放螢幕鎖定
-const releaseWakeLock = async () => {
-  if (wakeLock.value) {
-    await wakeLock.value.release();
-    wakeLock.value = null;
-    isWakeLockActive.value = false;
-    console.log("🔓 螢幕鎖定已釋放");
-  }
-};
-
-// 當網頁可見性變化時，確保鎖定不會被打斷
-const handleVisibilityChange = () => {
-  if (document.visibilityState === "visible" && isWakeLockActive.value) {
-    requestWakeLock();
-  }
-};
 /*
 const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
   try {
@@ -621,21 +509,34 @@ const getServerIP = async () => {   // 定義一個異步函數來請求socket�
   }
 };
 */
-const toggleExpand = async (item) => {
+const toggleExpand = (item) => {
   console.log("toggleExpand(),", item.order_num);
 
   let payload = {
-    order_num: item.order_num,
+    //order_num: item.order_num,
+    id: item.id,
   };
-  await getProcessesByOrderNum(payload);
-  console.log("processes:", processes.value);
+  getBoms(payload);
+
+  // 記錄當前開始時間
+  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+  console.log("Start time:", currentStartTime.value);
+
+  payload = {
+    order_num: item.order_num,
+    record_name: 'show2_ok',
+    record_data: 1                //備料中
+  };
+  updateMaterial(payload).then(data => {
+    !data && showSnackbar(data.message, 'red accent-2');
+  });
 
   dialog.value = true;
 };
 
 const updateItem = async () => {              //編輯 bom, material及process後端table資料
-  console.log("updateItem()...");
-  /*
+  console.log("updateItem(),", boms.value);
+
   let my_material_orderNum = boms.value[0].order_num;
 
   let endTime = new Date();                                               // 記錄當前結束時間
@@ -710,7 +611,7 @@ const updateItem = async () => {              //編輯 bom, material及process�
 
     listMaterials();
   }
-  */
+
   dialog.value = false;
 };
 
@@ -905,9 +806,9 @@ const showSnackbar = (message, color) => {
   max-height: 320px;
 }
 
-//:deep(.v-data-table-footer__items-per-page) {
-//  display: none;
-//}
+:deep(.v-data-table-footer__items-per-page) {
+  display: none;
+}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -947,10 +848,10 @@ const showSnackbar = (message, color) => {
   border-radius: 5px !important;
 }
 
-//:deep(.v-card .v-data-table-footer) {
-//  padding-top: 0px;
-//  padding-bottom: 0px;
-//}
+:deep(.v-card .v-data-table-footer) {
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
 
 :deep(.v-card .v-data-table) {
   border-radius: 8px;
@@ -958,68 +859,66 @@ const showSnackbar = (message, color) => {
 }
 
 :deep(.v-card .v-data-table thead th) {
-  background-color: white;  // 確保標題背景與卡片一致
-  z-index: 2;                 // 提高z-index以確保標題在其他內容之上
+  background-color: white; /* 確保標題背景與卡片一致 */
+  z-index: 2; /* 提高z-index以確保標題在其他內容之上 */
 }
 
 .sticky-title {
-  position: sticky;
-  top: 0px;
-  background-color: white;
-  z-index: 10;
-  //padding-top: 10px;
-  //padding-bottom: 10px;
+position: sticky;
+top: 0px;
+background-color: white;
+z-index: 10;
+//padding-top: 10px;
+//padding-bottom: 10px;
 }
 
 .v-table.inner thead.sticky-thead tr.inner_header th {
-  position: sticky;
-  top: 0px;
-  background-color: white;
-  z-index: 9;
+position: sticky;
+top: 0px;
+background-color: white;
+z-index: 9;
 }
 
-//.table-container {
-//  position: relative; /* 讓 sticky 定位相對於這個元素 */
-//  max-height: 440px; /* 設定合適的高度來產生滾動條 */
-//  overflow-y: auto; /* 允許垂直滾動 */
-//}
+.table-container {
+position: relative; /* 讓 sticky 定位相對於這個元素 */
+max-height: 440px; /* 設定合適的高度來產生滾動條 */
+overflow-y: auto; /* 允許垂直滾動 */
+}
 
 .red-text {
-  color: red;
+color: red;
 }
 
-//:deep(.v-input__control) {
-//left: 150px;
-//position: relative;
-//width: 250px;
-//}
+:deep(.v-input__control) {
+//min-height: 36px;
+//height: 36px;
+left: 150px;
+position: relative;
+width: 250px;
+}
 
 :deep(.v-field__field) {
   min-height : 20px;
   height: 34px;
 }
 
-:deep(.v-progress-circular__content) {
-  font-size: 25px;
+:deep(.v-data-table-footer__info) {
+min-height : 30px;
+height: 40px;
 }
 
-//:deep(.v-data-table-footer__info) {
-//min-height : 30px;
-//height: 40px;
-//}
-
 .custom-header theader th {
-  background-color: #85aef2; /* 自訂背景顏色 */
+background-color: #85aef2; /* 自訂背景顏色 */
 }
 
 .blinking {
-  animation: blink-animation 1s steps(5, start) infinite;
+animation: blink-animation 1s steps(5, start) infinite;
 }
 
 @keyframes blink-animation {
-  to {
-    visibility: hidden;
-  }
+to {
+  visibility: hidden;
+}
 }
 
 // 預設 left: 180px

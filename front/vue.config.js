@@ -15,6 +15,8 @@ module.exports = defineConfig({
         // Vue CLI is in maintenance mode, and probably won't merge my PR to fix this in their tooling
         // https://github.com/vuejs/vue-cli/pull/7443
         __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
+        // 模擬 process 物件以防止 "process is not defined" 錯誤
+        //'process.env': JSON.stringify(process.env),  // 傳遞 process.env 變數, 2025-03-31 add
       })
     ],
   },

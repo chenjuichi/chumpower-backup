@@ -1,7 +1,11 @@
 import math
 import random
+import re
+from datetime import datetime, date
+#from sqlalchemy import distinct, func, and_, not_
+from sqlalchemy import distinct, func, case
 from flask import Blueprint, jsonify, request, current_app
-from sqlalchemy.sql import func
+#from sqlalchemy.sql import func
 from database.tables import User, Material, Bom, Permission, AbnormalCause, Product, Setting, Session
 
 from flask_cors import CORS
@@ -278,6 +282,156 @@ def list_materials():
     })
 
 
+# list working order status in the material table
+@listTable.route("/listWorkingOrderStatus", methods=['GET'])
+def list_working_order_status():
+    print("listWorkingOrderStatus....")
+
+    s = Session()
+    '''
+    #_objects = s.query(Material).with_for_update().all()
+    _objects = s.query(Material).filter(func.date(Material.create_at) == func.current_date()).all()
+    # 針對當天資料，計算 order_count、prepare_count、assemble_count、warehouse_count
+    order_counts = (
+      s.query(
+        Material.order_num,
+        func.count().label("order_count"),  # 總數
+        func.sum(func.if_(Material.isShow == True, 1, 0)).label("prepare_count"),  # isShow = True
+        func.sum(func.if_(Material.isAssembleStationShow == True, 1, 0)).label("assemble_count"),  # isAssembleStationShow = True
+        func.sum(func.if_(Material.isAllOk == True, 1, 0)).label("warehouse_count")  # isAllOk = True
+      )
+      .filter(func.date(Material.create_at) == func.current_date())  # 當天資料
+      .group_by(Material.order_num)  # 按 order_num 分組
+      .all()
+    )
+
+    # 轉換成字典格式
+    result = {
+      order_num: {
+        "order_count": order_count,
+        "prepare_count": prepare_count,
+        "assemble_count": assemble_count,
+        "warehouse_count": warehouse_count
+      }
+      for order_num, order_count, prepare_count, assemble_count, warehouse_count in order_counts
+    }
+
+    for order_num, order_count, prepare_count, assemble_count, warehouse_count in order_counts:
+      print(f"Order: {order_num}, Order Count: {order_count}, Prepare: {prepare_count}, Assemble: {assemble_count}, Warehouse: {warehouse_count}")
+    '''
+
+    '''
+    # 1️⃣ 計算不同 order_num 的數量
+    order_count = s.query(func.count(distinct(Material.order_num))).scalar()
+
+    # 2️⃣ prepare_count：所有 isShow 都是 True 的 order_num
+    prepare_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(~s.query(Material).filter(Material.order_num == Material.order_num, Material.isShow == False).exists())
+        .scalar()
+    )
+
+    # 3️⃣ assemble_count：所有 isAssembleStationShow 都是 True 的 order_num
+    assemble_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(~s.query(Material).filter(Material.order_num == Material.order_num, Material.isAssembleStationShow == False).exists())
+        .scalar()
+    )
+
+    # 4️⃣ warehouse_count：所有 isAllOk 都是 True 的 order_num
+    warehouse_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(~s.query(Material).filter(Material.order_num == Material.order_num, Material.isAllOk == False).exists())
+        .scalar()
+    )
+    '''
+
+    '''
+    # 1️⃣ 計算不同 order_num 的數量
+    order_count = s.query(func.count(distinct(Material.order_num))).scalar()
+
+    # 2️⃣ prepare_count：至少有一筆 isShow=True 的 order_num 數量
+    prepare_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(Material.isShow == True)
+        .scalar()
+    )
+
+    # 3️⃣ assemble_count：至少有一筆 isAssembleStationShow=True 的 order_num 數量
+    assemble_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(Material.isAssembleStationShow == True)
+        .scalar()
+    )
+
+    # 4️⃣ warehouse_count：至少有一筆 isAllOk=True 的 order_num 數量
+    warehouse_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(Material.isAllOk == True)
+        .scalar()
+    )
+    '''
+
+    today = date.today()  # 取得今天的日期
+    print("today:",today)
+
+
+    # 1️⃣ 計算不同 order_num 的數量
+    order_count = s.query(func.count(distinct(Material.order_num))) \
+        .filter(func.date(Material.create_at) == today) \
+        .scalar()
+
+
+    # 2️⃣ prepare_count：該 order_num 內所有 isShow = True
+    prepare_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(func.date(Material.create_at) == today)
+        .filter(~Material.order_num.in_(
+            s.query(Material.order_num)
+            .group_by(Material.order_num)
+            .having(func.sum(case((Material.isShow == False, 1), else_=0)) > 0)  # 如果該 order_num 內有 False，就排除
+        ))
+        .scalar()
+    )
+
+    # 3️⃣ assemble_count：該 order_num 內所有 isAssembleStationShow = True
+    assemble_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(func.date(Material.create_at) == today)
+        .filter(~Material.order_num.in_(
+            s.query(Material.order_num)
+            .group_by(Material.order_num)
+            .having(func.sum(case((Material.isAssembleStationShow == False, 1), else_=0)) > 0)
+        ))
+        .scalar()
+    )
+
+    # 4️⃣ warehouse_count：該 order_num 內所有 isAllOk = True
+    warehouse_count = (
+        s.query(func.count(distinct(Material.order_num)))
+        .filter(func.date(Material.create_at) == today)
+        .filter(~Material.order_num.in_(
+            s.query(Material.order_num)
+            .group_by(Material.order_num)
+            .having(func.sum(case((Material.isAllOk == False, 1), else_=0)) > 0)
+        ))
+        .scalar()
+    )
+
+    # 組裝結果
+    result = {
+        "order_count": order_count,
+        "prepare_count": prepare_count,
+        "assemble_count": assemble_count,
+        "warehouse_count": warehouse_count,
+    }
+
+    print(result)
+
+    s.close()
+    return jsonify(result)
+
+
 # list some data in the material table
 @listTable.route("/listWaitForAssemble", methods=['GET'])
 def list_wait_for_assemble():
@@ -287,6 +441,7 @@ def list_wait_for_assemble():
 
     begin_count = 0
     end_count = 0
+    allOk_count = 0
 
     _objects = s.query(Material).with_for_update().all()
     for material_record in _objects:
@@ -306,10 +461,9 @@ def list_wait_for_assemble():
         if begin_record.material_num in nums:
           break
         if begin_record.process_step_code!=0 and not begin_record.input_disable:
-          print("begin_record id:",begin_record.id)
+          #print("begin_record id:",begin_record.id)
           begin_count += 1
           break
-
 
     s.close()
 
@@ -583,6 +737,8 @@ def list_informations():
       if (temp_show2_ok == 1):
         temp_temp_show2_ok_str = temp_temp_show2_ok_str + record.shortage_note
 
+      temp_temp_show2_ok_str = re.sub(r'\b00\b', 'na', temp_temp_show2_ok_str)
+
       _object = {
         'id': record.id,                                #訂單編號的table id
         'order_num': record.order_num,                  #訂單編號
@@ -594,7 +750,7 @@ def list_informations():
         'delivery_qty':record.delivery_qty,             #現況數量
         'comment': cleaned_comment,                     #說明
         'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度
-        'show2_ok' : temp_temp_show2_ok_str,
+        'show2_ok' : temp_temp_show2_ok_str,            #現況進度(途程)
         'show3_ok' : str3[int(record.show3_ok)],        #現況備註
       }
 

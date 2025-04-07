@@ -12,6 +12,7 @@
 
   <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
     <v-card width="60vw" class="pa-md-4 mt-3 pb-2 mx-lg-auto">
+      <!--items-per-page-text="每頁的資料筆數"-->
       <v-data-table
         :headers="headers"
         :items="desserts"
@@ -21,7 +22,7 @@
         :items-per-page-options="footerOptions"
         :items-length="totalItems"
         v-model:page="pagination.page"
-        items-per-page-text="每頁的資料筆數"
+
         :style="['margin-bottom: 5px', tableStyle]"
       >
         <template #top>
@@ -525,7 +526,7 @@ const editItem = (item) => {
   console.log("routingPrivArray,", routingPrivArray)
 
   treeViewSelection.value = Array(26).fill(0);
-  treeViewSelection.value = getSelectedIds(treeViewItems, routingPrivArray);
+  treeViewSelection.value = getSelectedIds(treeViewItems.value, routingPrivArray);
 
   console.log("treeViewSelection:", treeViewSelection.value)
   editedItem.password_reset = 'no'
@@ -650,6 +651,8 @@ const getSelectedIds = (items, privArray) => {
   let index = 0;
 
   const traverse = (itemList) => {
+    console.log("itemList:", itemList);
+
     itemList.forEach((item) => {
       if (privArray[index] === 1) {
         selectedIds.push(item.id);

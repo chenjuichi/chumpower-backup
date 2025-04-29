@@ -16,9 +16,12 @@ from ajax.updateTable import updateTable
 from ajax.deleteTable import deleteTable
 from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
+from ajax.hardware import hardware
 
-#from travel.kuka_car import kuka_car
+import subprocess
 
+from log_util import setup_logger
+logger = setup_logger('main')  # 將 app 取名為 main
 
 # --------------------------
 
@@ -28,11 +31,15 @@ app = Flask(__name__)  # 初始化Flask物件
 hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
-print('Build:  ' + '\033[42m' + '2024-07-08' + '\033[0m' + '\n')
+logger.info(f'Lan ip: {local_ip}')
+print('Build:  ' + '\033[42m' + '2025-04-15' + '\033[0m' + '\n')
 host_ip = local_ip
 
-# prevent the screen saver or sleep.
-ctypes.windll.kernel32.SetThreadExecutionState(0x80000002)
+# 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
+#ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000002)
+# 呼叫 wakeup.exe，保持常亮
+#subprocess.Popen([r"C:\chumpower\server\dist\wakeup.exe"])
+
 #Flask 在處理 JSON 資料時，針對中文、日文、韓文等非 ASCII 字符, 避免將非 ASCII 字符轉換為 Unicode escape 序列
 app.config['JSON_AS_ASCII'] = False
 
@@ -43,8 +50,7 @@ app.register_blueprint(updateTable)
 app.register_blueprint(deleteTable)
 app.register_blueprint(excelTable)
 app.register_blueprint(browseDirectory)
-
-#app.register_blueprint(kuka_car)
+app.register_blueprint(hardware)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
 
@@ -56,6 +62,8 @@ with open('database/data.json', 'r', encoding='utf-8') as f:      # 開啟系統
 app.config['envDir'] = data[0]['envDir']
 env_vars = dotenv_values(app.config['envDir'])
 app.config['baseDir'] = env_vars["baseDir"]
+app.config['pdfBaseDir'] = env_vars["pdfBaseDir"]
+
 _base_dir = env_vars["baseDir"]
 print("Excel檔案在目錄:", _base_dir)
 
@@ -96,6 +104,7 @@ def hello():
 
 # --------------------------
 
+'''
 def my_job1():
     print("hello, Scheduled job1 is running...")
     with app.app_context():
@@ -122,6 +131,7 @@ if schedule_2_str:
     if len(schedule_2) >= 2:
         print("schedule_2預計於" + schedule_2[0] + ' :' + schedule_2[1] + " 啟動")
         scheduler.add_job(my_job2, 'cron', hour=int(schedule_2[0]), minute=int(schedule_2[1]))
+'''
 
 # --------------------------
 

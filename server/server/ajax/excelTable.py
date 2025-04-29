@@ -18,7 +18,12 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from database.tables import User, Session, Material, Bom, Assemble, Product
 from flask import Blueprint, jsonify, request, current_app
 
+#from werkzeug.utils import secure_filename
+
 excelTable = Blueprint('excelTable', __name__)
+
+from log_util import setup_logger
+logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 # ------------------------------------------------------------------
@@ -90,7 +95,8 @@ def count_excel_files():
     _base_dir = current_app.config['baseDir']
 
     # 構建路徑模式，匹配以 "Report_" 開頭的 .xlsx 檔案
-    path_pattern = f"{_base_dir}/Report_*.xlsx"
+    #path_pattern = f"{_base_dir}/Report_*.xlsx"
+    path_pattern = f"{_base_dir}/*.xlsx"
     # 使用 glob 找到所有符合條件的檔案
     files = glob.glob(path_pattern)
     # 計算檔案數量
@@ -284,7 +290,8 @@ def read_all_excel_files():
   print("move excel files to, 目錄: ", _target_dir)
 
   # 讀取指定目錄下的所有指定檔案名稱
-  files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  #files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.endswith('.xlsx')]
   if (files):   #有工單檔案, if condition_a
     sheet_names_to_check = [
       current_app.config['excel_product_sheet'],
@@ -462,7 +469,8 @@ def modify_excel_files():
   print("read modify excel files, 目錄: ", _modify_dir)
   print("move excel files to, 目錄: ", _target_dir)
   # 讀取指定目錄下的所有指定檔案名稱
-  files = [f for f in os.listdir(_modify_dir) if os.path.isfile(os.path.join(_modify_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  #files = [f for f in os.listdir(_modify_dir) if os.path.isfile(os.path.join(_modify_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
+  files = [f for f in os.listdir(_modify_dir) if os.path.isfile(os.path.join(_modify_dir, f)) and f.endswith('.xlsx')]
   if (files):   #有工單檔案
     sheet_names_to_check = [
       current_app.config['excel_product_sheet'],
@@ -742,7 +750,6 @@ def upload_excel_file():
   if file.filename == '':
     return jsonify({'message': '沒有選擇檔案'}), 400
 
-
   file_path = os.path.join(_base_dir, file.filename)
   # 檢查檔案是否已存在
   if os.path.exists(file_path):
@@ -763,5 +770,52 @@ def upload_excel_file():
   except Exception as e:
       print(f"檔案儲存後讀取失敗: {str(e)}")
       return jsonify({'message': f'檔案儲存後讀取失敗: {str(e)}'}), 500
-
   #return jsonify({'message': '上傳成功', 'filename': file.filename}), 200
+
+
+@excelTable.route('/uploadPdfFiles', methods=['POST'])
+def upload_pdf_files():
+  print("uploadPdfFiles....")
+
+  _base_dir = current_app.config['pdfBaseDir']
+
+  upload_type = request.form.get('uploadType')
+  # 根據 uploadType 動態調整儲存目錄
+  if upload_type == 'pdf1':
+      _base_dir = _base_dir.replace('物料清單', '領退料單')
+  if not os.path.exists(_base_dir):
+    os.makedirs(_base_dir)
+  print("實際儲存路徑:", _base_dir)
+
+  files = request.files.getlist('files')  # multiple files
+  #print("files:",files)
+
+  if not files or len(files) == 0:
+    return jsonify({'message': '沒有選擇檔案'}), 400
+
+  saved_files = []
+  for file in files:
+    print("file.filename:",file.filename)
+
+    if not file.filename.endswith('.pdf'):
+      return jsonify({'message': f'檔案 {file.filename} 不是 PDF'}), 400
+
+    #filename = secure_filename(file.filename)
+    filename = file.filename
+    filename = os.path.basename(filename)
+    file_path = os.path.join(_base_dir, filename)
+    #print("filename:",filename)
+    #print("file_path:",file_path)
+
+    if os.path.exists(file_path):
+      filename = get_unique_filename(_base_dir, filename, "copy")
+      file_path = os.path.join(_base_dir, filename)
+
+    file.save(file_path)
+    saved_files.append(filename)
+
+  return jsonify({
+    'message': f'{len(saved_files)} 個 PDF 檔案上傳成功',
+    'files': saved_files,
+    'status': True
+  })

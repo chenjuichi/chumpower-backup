@@ -19,6 +19,9 @@ from operator import itemgetter, attrgetter   # 2023-08-27  add
 
 updateTable = Blueprint('updateTable', __name__)
 
+from log_util import setup_logger
+logger = setup_logger(__name__)  # 每個模組用自己的名稱
+
 
 # ------------------------------------------------------------------
 
@@ -245,47 +248,50 @@ def update_bom(material_id):
 
 @updateTable.route("/updateBomsInMaterial", methods=['POST'])
 def update_bom(material_id):
-    data = request.json
-    material_id = data.get("material_id")
-    _bom_data = data.get("bom_data", [])
+  data = request.json
+  material_id = data.get("material_id")
+  _bom_data = data.get("bom_data", [])
 
-    # 驗證 Material 是否存在
-    material = session.query(Material).filter_by(id=material_id).first()
-    if not material:
-        return jsonify({"status": "error", "message": "Material ID not found"}), 404
+  s = Session()
 
-    # 取得現有的 BOM 資料
-    existing_bom = session.query(Bom).filter_by(material_id=material_id).all()
-    existing_material_nums = {bom.material_num for bom in existing_bom}
+  # 驗證 Material 是否存在
+  material = s.query(Material).filter_by(id=material_id).first()
+  if not material:
+    return jsonify({"status": "error", "message": "Material ID not found"}), 404
 
-    # 新增的 material_num
-    new_entries = []
-    for bom_entry in _bom_data:
-        material_num = bom_entry.get("material_num")
-        if material_num not in existing_material_nums:
-            new_bom = Bom(
-                material_id=material_id,
-                material_num=material_num,
-                seq_num=f"SEQ-{len(existing_bom) + len(new_entries) + 1}",  # 自動生成序號
-                material_comment=f"Generated for {material_num}",
-                req_qty=0
-            )
-            session.add(new_bom)
-            session.flush()  # 提交後才能取得新 ID
-            new_entries.append({
-                "id": new_bom.id,
-                "material_id": material_id,
-                "material_num": material_num
-            })
+  # 取得現有的 BOM 資料
+  existing_bom = s.query(Bom).filter_by(material_id=material_id).all()
+  existing_material_nums = {bom.material_num for bom in existing_bom}
 
-    # 提交到資料庫
-    session.commit()
+  # 新增的 material_num
+  new_entries = []
+  for bom_entry in _bom_data:
+    material_num = bom_entry.get("material_num")
+    if material_num not in existing_material_nums:
+      new_bom = Bom(
+        material_id=material_id,
+        material_num=material_num,
+        seq_num=f"SEQ-{len(existing_bom) + len(new_entries) + 1}",  # 自動生成序號
+        material_comment=f"Generated for {material_num}",
+        req_qty=0
+      )
+      s.add(new_bom)
+      s.flush()  # 提交後才能取得新 ID
+      new_entries.append({
+        "id": new_bom.id,
+        "material_id": material_id,
+        "material_num": material_num
+      })
 
-    return jsonify({
-        "status": "success",
-        "message": "BOM updated successfully",
-        "new_entries": new_entries
-    })
+  # 提交到資料庫
+  s.commit()
+
+  return jsonify({
+      "status": "success",
+      "message": "BOM updated successfully",
+      "new_entries": new_entries
+  })
+
 
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
@@ -310,7 +316,7 @@ def update_assemble_process_step():
   assemble_record = s.query(Assemble).filter_by(id=assemble_id, material_id=material_id).first()
 
   if not assemble_record:
-    return jsonify({"error": f"Assemble with id {asm_id} and material_id {material_id} not found"}), 404
+    return jsonify({"error": f"Assemble with id {assemble_id} and material_id {material_id} not found"}), 404
 
 
   assemble_records = material_record._assemble

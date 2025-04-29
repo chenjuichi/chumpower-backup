@@ -289,6 +289,9 @@
     </template>
 
     <!-- 自訂 '異常原因填寫' 欄位 -->
+     <!--當使用者在 combobox 裡打字時，觸發 onSearchUpdate 方法-->
+     <!--當 combobox 的選單打開或關閉時，觸發 onMenuUpdate 方法-->
+     <!--當使用者選擇（或輸入）新值時，觸發 onValueUpdate 方法，並 item 當參數傳進去-->
     <template v-slot:item.cause_message="{ item }">
       <v-combobox
         v-model="item.cause_message"
@@ -319,7 +322,7 @@ import { ref, reactive, defineComponent, computed, watch, onUpdated , onMounted,
 
 import { useRoute } from 'vue-router'; // Import useRouter
 
-import { useLocale } from 'vuetify';
+//import { useLocale } from 'vuetify';
 
 import { myMixin } from '../mixins/common.js';
 
@@ -351,8 +354,12 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+/*
 let intervalId = null;              // 10分鐘, 倒數計時器
-let observer = null
+*/
+let observer = null;
+
+const showBackWarning = ref(true);
 
 const route = useRoute(); // Initialize router
 
@@ -539,12 +546,18 @@ const fromDateValStartComputed = computed({
   }
 });
 */
+
 //=== mounted ===
 onMounted(async () => {
   console.log("PickReportForAssembleError.vue, mounted()...");
 
-  const { current } = useLocale();
-  console.log("目前語系:", current.value); // 應該輸出 "zhHant"
+  // 阻止直接後退
+  window.history.pushState(null, null, document.URL);
+  //history.pushState(null, null, document.URL);
+  window.addEventListener('popstate', handlePopState);
+
+  //const { current } = useLocale();
+  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -579,7 +592,9 @@ onMounted(async () => {
   //
 
   //setTimeout(moveWin, 600);
+  /*
   intervalId = setInterval(getInformationsForAssembleErrorByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+  */
 
   /*
   requestAnimationFrame(() => {
@@ -600,8 +615,10 @@ onUpdated(() => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  window.removeEventListener('popstate', handlePopState)
+  /*
   clearInterval(intervalId);
-
+  */
 //  // 在組件卸載前停止監聽
 //  if (observer) {
 //    observer.disconnect();
@@ -641,6 +658,28 @@ const initialize = async () => {
     console.error("InitializeError in getInformationsForAssembleErrorByHistoryFun():", error);
   }
 };
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL)
+  window.history.pushState(history.state, '', document.URL)
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
 
 const toggleHistory = () => {
   history.value = !history.value;

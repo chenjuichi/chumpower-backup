@@ -53,7 +53,7 @@
             @keydown.tab.prevent="focusPasswordInput"
 
             id="loginEmpID"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
 
           <v-text-field
@@ -61,7 +61,7 @@
             readonly
             prepend-icon="mdi-account-edit"
             v-model="loginUser.loginName"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
           <!--
             @change='checkEmpty("loginPassword")'
@@ -80,7 +80,7 @@
             @keydown.tab.prevent="handlePasswordTab"
             ref="passwordInput"
             class="password-field"
-            style="width: 100% !important; max-width: 143px !important; transition: none;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em; transition:none;"
           />
 
           <v-btn ref="loginButton" type="submit" color="primary" class="btns" id="login" @click="userLogin">
@@ -148,7 +148,7 @@
             @update:focused ="checkUsers"
             @keypress="handleKeyDown"
             ref="registerEmpIDInput"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
 
           <v-text-field
@@ -157,7 +157,7 @@
             prepend-icon="mdi-account-edit"
             v-model="registerUser.name"
             :rules="[requiredRule, nameRule]"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
 
           <v-select
@@ -171,7 +171,7 @@
             @update:menu="handleMenuUpdate"
             @update:modelValue="handleModelValueUpdate"
 
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
 
           <v-text-field
@@ -184,7 +184,7 @@
             v-model="registerUser.password"
             :rules="[requiredRule, passwordRule]"
             ref="registerPasswordInput"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
 
           <v-text-field
@@ -196,7 +196,7 @@
             :rules="[requiredRule, confirmPasswordRule]"
             @keydown.enter="register"
             @keydown.tab.prevent="handlePasswordConfirmTab"
-            style="width: 100% !important; max-width: 183px !important;"
+            style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
           <v-btn ref="registerButton" type="submit" color="primary" class="btns" id="register" @click="userRegister">
             <i class="fa-solid fa-user-plus fa-fade" style="color: #63E6BE;"></i>
@@ -291,14 +291,26 @@ let loginEmpID_max_length = 8;
 
 const router = useRouter();
 
+const showBackWarning = ref(true);
+
+const isOnline = ref(navigator.onLine);
+
 //=== mounted ===
 onMounted(() => {
   console.log("LoginForm, onMounted()...")
 
   // 禁用 BackButton 功能
-  disableBackButton();
+  //disableBackButton();
+  // 阻止直接後退
+  window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
+  //history.pushState(null, null, document.URL)
+  window.addEventListener('popstate', handlePopState)
+
 
   document.addEventListener('keydown', allowBackspaceInInputs);
+
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
   /*
   window.history.pushState(null, '', window.location.href);
   popStateHandler.value = (event) => {
@@ -329,6 +341,11 @@ onMounted(() => {
 // 在組件卸載時移除事件監聽器
 onUnmounted(() => {
   document.removeEventListener('keydown', allowBackspaceInInputs);
+
+  window.removeEventListener('popstate', handlePopState);
+
+  window.removeEventListener('online', updateOnlineStatus);
+  window.removeEventListener('offline', updateOnlineStatus);
 });
 
 //=== destroyed ===
@@ -394,6 +411,27 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL)
+  window.history.pushState(history.state, '', document.URL)
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+};
+
+const updateOnlineStatus = () => {
+  isOnline.value = navigator.onLine
+  if (!isOnline.value) {
+    showSnackbar('⚠️ 網路連線中斷，請檢查您的網路狀態', 'yellow lighten-5');
+
+  } else {
+    console.log('✅ 網路恢復正常')
+  }
+}
 
 const setupListUsers = (focused) => {
   if (!focused) { // 當失去焦點時

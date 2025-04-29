@@ -10,21 +10,48 @@
 		</template>
 	</v-snackbar>
 
-	<v-card class="align-center pa-5">
-		<v-card-title>上傳 Excel 檔案</v-card-title>
-		<v-card-text class="d-flex flex-column align-center">
-			<v-file-input
-				v-model="file"
-				label="選擇 Excel 檔案"
-				accept=".xlsx, .xls"
-				show-size
-				prepend-icon="mdi-file-arrow-left-right"
-    		variant="filled"
-				style="min-width:500px; max-width:500px;"
-			/>
-			<v-btn color="primary" @click="uploadExcelFileFun">上傳</v-btn>
-		</v-card-text>
-	</v-card>
+  <v-dialog
+    v-model="uploadDialog"
+    max-width="400"
+    @update:model-value="onDialogClose"
+  >
+    <v-card class="align-center pa-5">
+      <v-card-title class="text-h6">選擇上傳類型</v-card-title>
+      <v-card-text class="d-flex flex-column align-center">
+        <v-radio-group v-model="uploadType" column>
+          <v-radio label="上傳工單 (Excle)" value="excel" />
+          <v-radio label="上傳物料清單 (PDF)" value="pdf" />
+          <v-radio label="上傳領退料單 (PDF)" value="pdf1" />
+        </v-radio-group>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn color="primary" @click="cancelAndGo">取消</v-btn>
+        <v-btn color="primary" @click="confirmUploadType">確定</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+  <!-- 主卡片區域 -->
+  <v-card class="align-center pa-5">
+    <v-card-title>
+      {{ uploadTitle }}
+    </v-card-title>
+    <v-card-text class="d-flex flex-column align-center">
+      <v-file-input
+        v-model="file"
+        :label="uploadType === 'excel' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (可複選, 按住Shift鍵)'"
+        :accept="uploadType === 'excel' ? '.xlsx,.xls' : '.pdf'"
+        :multiple="uploadType === 'pdf'"
+        show-size
+        prepend-icon="mdi-file-arrow-left-right"
+
+        variant="underlined"
+        style="min-width:500px; max-width:500px;"
+      />
+      <v-btn color="primary" @click="handleUpload">上傳</v-btn>
+    </v-card-text>
+  </v-card>
+  <v-btn color="info" class="ma-5" @click="uploadDialog = true">開啟上傳選單</v-btn>
 </div>
 </template>
 
@@ -32,6 +59,7 @@
 import { ref, reactive, defineComponent, computed, watch, onUpdated , onMounted, onUnmounted, onBeforeMount, onBeforeUnmount } from 'vue';
 
 import { useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
 
@@ -39,6 +67,7 @@ import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { apiOperationF }  from '../mixins/crudF.js';
 const uploadExcelFile = apiOperationF('post', '/uploadExcelFile');
+const uploadPdfFiles = apiOperationF('post', '/uploadPdfFiles');
 
 //=== component name ==
 defineComponent({ name: 'UploadXlsFile' });
@@ -51,9 +80,16 @@ const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 const route = useRoute(); 			// Initialize router
+const router = useRouter();
 const currentUser = ref({});
 const componentKey = ref(0)    	// key值用於強制重新渲染
-const file = ref(null);
+const file = ref([]);         // 儲存 Excel 檔案
+//const pdfFiles = ref([]);       // 以陣列儲存多個 PDF 檔案
+
+const uploadDialog = ref(true);  // 預設先打開
+const uploadType = ref('excel');
+
+const showBackWarning = ref(true)
 
 const pagination = reactive({
   itemsPerPage: 5, 							// 預設值, rows/per page
@@ -74,9 +110,27 @@ const containerStyle = computed(() => ({
 
 const routeName = computed(() => route.name);
 
+const uploadTitle = computed(() => {
+  switch (uploadType.value) {
+    case 'excel':
+      return '上傳工單 (Excel)'
+    case 'pdf':
+      return '上傳物料清單 (PDF)'
+    case 'pdf1':
+      return '上傳領退料單 (PDF)'
+    default:
+      return '請選擇上傳類型'
+  }
+})
+
 //=== mounted ===
 onMounted(async () => {
   console.log("UploadXlsFile.vue, mounted()...");
+
+  // 阻止直接後退
+  window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
+  //history.pushState(null, null, document.URL);
+  window.addEventListener('popstate', handlePopState);
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -98,6 +152,7 @@ onUpdated(() => {
 
 //=== unmounted ===
 onUnmounted(() => {
+  window.removeEventListener('popstate', handlePopState)
 
 });
 
@@ -119,26 +174,116 @@ const initialize = async () => {
 
 };
 
-const uploadExcelFileFun = async () => {
-	console.log("uploadExcelFileFun()...");
+const onDialogClose = (val) => {
+  if (!val) {
+    console.log("Dialog 被關閉，導向 /main");
+    uploadType.value = '';          // 可選：清空選擇
+    router.push({ name: 'Main' });  // 或 path: '/main'
+  }
+};
 
-  if (!file.value) {
-		showSnackbar('請選擇檔案', 'red accent-2');
+const cancelAndGo = () => {
+  console.log("cancelAndGo()...");
+
+  uploadDialog.value = false
+  uploadType.value = ''
+  router.push({ name: 'Main' })
+};
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  // history.pushState(history.state, '', document.URL)
+
+  // 重新導向到當前頁面，強制中止「後退」行為
+  //router.replace(router.currentRoute.value.fullPath)
+
+  // 導回目前頁面（取消後退）
+  router.replace(route.fullPath)
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
+
+const confirmUploadType = () => {
+  uploadDialog.value = false;
+  //file.value = null; // 清空上次選擇
+  file.value = []; // 清空上次選擇
+};
+
+const handleUpload = async () => {
+  //if (!file.value || (Array.isArray(file.value) && file.value.length === 0)) {
+  if (!file.value || file.value.length === 0) {
+      showSnackbar('請選擇檔案', 'red accent-2');
     return;
   }
 
-  let formData = new FormData();					//封裝表單資料，以用於上傳檔案
-  formData.append('file', file.value);		//將所選擇的檔案 (file.value) 加入 FormData 物件中
+  if (uploadType.value === 'excel') {
+    await uploadExcelFileFun();
+  } else {
+    await uploadPdfFilesFun();
+  }
+};
+
+const uploadExcelFileFun = async () => {
+	console.log("uploadExcelFileFun()...");
+
+  //if (!file.value) {
+	//	showSnackbar('請選擇檔案', 'red accent-2');
+  //  return;
+  //}
+
+  let formData = new FormData();					  //封裝表單資料，以用於上傳檔案
+  formData.append('file', file.value[0]);		//將所選擇的檔案 (file.value) 加入 FormData 物件中
+
+  // 多個檔案，要用 getlist('files') 方式處理，所以 key 要用 'files'
+  //file.value.forEach((f) => {
+  //  formData.append('files', f); // ✅ 注意：key 是 'files'（要配合後端 Flask）
+  //});
 
 	try {
 		const response = await uploadExcelFile(formData);
 		console.log("response:", response);
 		//let temp_message = '檔案上傳成功: ' + response.message;
 		showSnackbar(response.message, '#008184');
-		file.value = null;
+		//file.value = null;
+		file.value = [];
   } catch (error) {
-		let temp_message = '上傳失敗: ' + (error.response.message || '未知錯誤');
+		let temp_message = 'Excel 上傳失敗: ' + (error.response.message || '未知錯誤');
 		showSnackbar(temp_message, 'red accent-2');
+  }
+};
+
+const uploadPdfFilesFun = async () => {
+  let formData = new FormData();
+  //for (let f of file.value) {
+  //  formData.append('files', f);
+  //}
+  file.value.forEach(pdf => {
+    formData.append('files', pdf); // 名稱需為 'files'
+  });
+
+  formData.append('uploadType', uploadType.value);  // 加入 uploadType
+
+  try {
+    const response = await uploadPdfFiles(formData);
+    showSnackbar(response.message, '#008184');
+    //file.value = null;
+    file.value = [];
+  } catch (error) {
+    showSnackbar('PDF 上傳失敗: ' + error?.response?.message || '未知錯誤', 'red accent-2');
   }
 };
 

@@ -19,6 +19,9 @@ from sqlalchemy import exc
 
 listTable = Blueprint('listTable', __name__)
 
+from log_util import setup_logger
+logger = setup_logger(__name__)  # 每個模組用自己的名稱
+
 
 # ------------------------------------------------------------------
 
@@ -608,6 +611,7 @@ def list_materials_and_assembles():
     # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
     #_objects = s.query(Material).all()
     print("start:")
+    index = 0
     for material_record in _objects:
       if material_record.isAssembleStationShow:
       #if not material_record.isShow or material_record.isAssembleStationShow:
@@ -648,8 +652,9 @@ def list_materials_and_assembles():
 
         format_name = f"{assemble_record.work_num}({name})"
         #num = int(material_record.show2_ok)
-
+        index=index+1
         _object = {
+          'index': index,
           'id': material_record.id,                                 #訂單編號的table id
           'order_num': material_record.order_num,                   #訂單編號
           'assemble_work': format_name,                             #工序

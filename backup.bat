@@ -72,6 +72,18 @@ copy "C:\vue\chumpower\pdf_file\物料清單\*.*" "C:\chumpower-backup\server\pd
 ::)
 ::copy "C:\vue\chumpower\server\travel\*.py" "C:\chumpower-backup\server\server\travel"
 
+:: 確保目標目錄存在
+if not exist "C:\chumpower-backup\gateway"                        mkdir "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\app.js" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\package.json" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\.env" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\update-env.js" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\service.log" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\ip-log.txt" "C:\chumpower-backup\gateway"
+
+:: 確保目標目錄存在
+if not exist "C:\chumpower-backup\console"                        mkdir "C:\chumpower-backup\console"
+xcopy "C:\vue\chumpower\console\SocketIOServer" "C:\chumpower-backup\console\SocketIOServer" /E /I /Y
 
 echo 複製完成
 pause

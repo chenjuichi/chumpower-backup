@@ -106,6 +106,7 @@ export const apiOperation = (operation, path, payload) => {
       ...(operation === 'get' ? { params: payload } : payload),
       //...(path === '/saveFile' || path === '/downloadFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
       //...(path === '/saveFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
+      timeout: 10000, // 新增 timeout 設定（10秒）
     };
 
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
@@ -206,7 +207,8 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
-              path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep') {
+              path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+              path == '/copyFile') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }

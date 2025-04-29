@@ -24,6 +24,7 @@ settings = [                                                                    
   {                      'message': 'hello user8', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
   {                      'message': 'hello user9', 'lastRoutingName': '',     'routingPriv':    '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
   {                      'message': 'hello user10', 'lastRoutingName': '',     'routingPriv':   '0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0'},
+  {'items_per_page': 5,  'message': '#f9f9f9#f9f9f9', 'lastRoutingName': 'Main', 'routingPriv': '1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1'},
 ]
 
 for record in settings:
@@ -153,6 +154,16 @@ emp_name = "蕭宇志"
 password = "a12345"
 dep_name = "11112220-配件加工課"
 new_user = User(emp_id=emp_id, emp_name=emp_name, dep_name=dep_name, perm_id=5, setting_id=3,
+                password=generate_password_hash(password, method='scrypt'))
+s.add(new_user)
+user_count += 1
+
+# user 11
+emp_id = "01023034"
+emp_name = "劉時瑋"
+password = "a12345"
+dep_name = "11112220-配件加工課"
+new_user = User(emp_id=emp_id, emp_name=emp_name, dep_name=dep_name, perm_id=2, setting_id=1,
                 password=generate_password_hash(password, method='scrypt'))
 s.add(new_user)
 user_count += 1

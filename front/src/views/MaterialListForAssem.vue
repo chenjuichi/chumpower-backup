@@ -18,13 +18,10 @@
       style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
       :items-per-page-options="footerOptions"
       items-per-page="5"
-
       item-value="id"
       show-select
       :value="selectedItems"
-
       class="elevation-10 custom-table"
-
     >
 
       <!-- 客製化 '選擇框' 欄位表頭 -->
@@ -46,7 +43,10 @@
       <!-- 客製化 top 區域 -->
       <template v-slot:top>
         <v-card>
-          <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
+          <v-card-title
+            class="d-flex align-center pe-2"
+            style="font-weight:700; position: relative; right: 10px;"
+          >
             組裝區備料清單
             <v-spacer />
 
@@ -55,7 +55,7 @@
               :disabled="fileCount === 0"
               color="primary"
               variant="outlined"
-              style="position: relative; right: 210px; top: 0px; font-weight: 700;"
+              style="position: relative; right: 90px; top: 0px; font-weight: 700; width:120px;"
               @click="readAllExcelFun"
             >
               <v-icon left color="green">mdi-microsoft-excel</v-icon>
@@ -410,32 +410,49 @@
               <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
               <span>備料送出</span>
             </v-btn>
-            <span :style="{
-                  'fontSize': '14px',
-                  'display': 'inline-block',
-                  'min-width': '120px',
-                  'visibility': (!isFlashLed && isCallAGV) ? 'visible' : 'hidden',
-                  }">
+            <span
+              :style="{
+                'fontSize': '14px',
+                'display': 'inline-block',
+                'min-width': '120px',
+                'visibility': (!isFlashLed && isCallAGV) ? 'visible' : 'hidden',
+              }"
+            >
               {{order_num_on_agv_blink}}
             </span>
 
-            <!-- 客製化黃綠燈 -->
-            <div
-              :style="{
-                display: 'inline-block',
-                borderRadius: '50%',
-                width: '25px',
-                height: '25px',
-                position: 'relative',
-                top: '0px',
-                left: '-90px',
+            <div style="display: flex; flex-direction: column; align-items: center;">
+              <!-- 客製化黃綠燈 -->
+              <div
+                :style="{
+                  display: 'inline-block',
+                  borderRadius: '50%',
+                  width: '25px',
+                  height: '25px',
+                  position: 'relative',
+                  top: '0px',
+                  left: '-90px',
 
-                opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
-                transition: 'opacity 0.5s ease',          // 過渡效果
-                background: background,                   // 背景顏色
-                border: '1px solid black'                 // 黑色邊框
-              }"
-            />
+                  opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
+                  transition: 'opacity 0.5s ease',          // 過渡效果
+                  background: background,                   // 背景顏色
+                  border: '1px solid black'                 // 黑色邊框
+                }"
+              />
+
+              <!-- 客製化barcode輸入 -->
+              <v-text-field
+                v-model="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details="auto"
+                prepend-icon="mdi-barcode"
+                style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+                class="align-center"
+                density="compact"
+
+              />
+            </div>
 
             <!-- Bom 顯示對話視窗-->
             <v-dialog v-model="dialog" max-width="800px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
@@ -625,7 +642,7 @@
   import draggable from 'vuedraggable'
   import { useRoute } from 'vue-router';
 
-  import { useLocale } from 'vuetify';
+  //import { useLocale } from 'vuetify';
 
   import { useRouter } from 'vue-router';
   const router = useRouter();
@@ -696,6 +713,9 @@
   const maxDate = ref('2054-12-31');
   const fromDateVal = ref('');
 
+  const bar_code = ref('');
+  const barcodeInput = ref(null);
+
   const placeholderTextForEmployee = ref('請選擇員工');
   const placeholderTextForOrderNum = ref('請選擇工單');
   const inputSelectEmployee = ref(null);
@@ -765,6 +785,8 @@
   const editDialog = ref(false);
   const enableDialogBtn = ref(false);
 
+  const showBackWarning = ref(true);
+
   const current_cell = ref(null);
 
   const currentStartTime = ref(null);   // 記錄開始時間
@@ -800,6 +822,13 @@
     { deep: true }
   );
 
+  // 當輸入滿 12 碼，就自動處理條碼
+  watch(bar_code, (newVal) => {
+    if (newVal.length === 12) {
+      handleBarCode();
+    }
+  })
+
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
 const formatWeekday = computed(() => {
@@ -833,8 +862,13 @@ const formattedDate = computed(() => {
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
 
-  const { current } = useLocale();
-  console.log("目前語系:", current.value); // 應該輸出 "zhHant"
+  // 阻止直接後退
+  window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
+  //history.pushState(null, null, document.URL)
+  window.addEventListener('popstate', handlePopState)
+
+  //const { current } = useLocale();
+  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -872,6 +906,11 @@ onMounted(async () => {
   let savedItems = localStorage.getItem('selectedItems');
   if (savedItems) {
     selectedItems.value = JSON.parse(savedItems);
+  }
+
+  // 自動 focus
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
   }
 
   console.log('等待socket連線...');
@@ -915,6 +954,20 @@ onMounted(async () => {
       }
     });
     */
+    socket.value.emit('station1_loading');
+
+    socket.value.on('station1_loading_ready', async(data) => {
+      const num = parseInt(data.message, 10);
+
+      if ([1, 2, 3].includes(num)) {
+        const temp_msg = `物料已經進入第${num}號裝卸站!`;
+        console.warn(temp_msg);
+        //showSnackbar(temp_msg, 'yellow lighten-5');
+      } else {
+        console.error('接收到不合法的裝卸站號碼:', data.message);
+      }
+    });
+
     socket.value.on('station1_agv_start', async () => {
       console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
 
@@ -1062,7 +1115,7 @@ onMounted(async () => {
       // 記錄AGV狀態資料
       payload = {
         id: 1,
-        status: 1,      // 準備中
+        status: 0,      // ready
         station:  2,    // 已在組裝區
       };
       await updateAGV(payload);
@@ -1120,7 +1173,7 @@ onMounted(async () => {
       // 記錄AGV狀態資料
       payload = {
         id: 1,
-        status: 0,
+        status: 1,
         station:  1,
       };
       await updateAGV(payload);
@@ -1128,6 +1181,12 @@ onMounted(async () => {
       //startFlashing();
       background.value='#ffff00'
       isFlashLed.value = true;
+    });
+
+    socket.value.on('kuka_server_not_ready', async (data) => {
+      let temp_msg= data?.message || 'kuka端伺服器未準備好';
+      console.warn(temp_msg);
+      showSnackbar(temp_msg, 'red accent-2');
     });
 
     //socket.value.on('agv_ack', async () => {
@@ -1140,6 +1199,7 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  window.removeEventListener('popstate', handlePopState)
   clearInterval(intervalId);
   //clearInterval(intervalIdForLed);
   stopFlashing();
@@ -1171,6 +1231,28 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL)
+  window.history.pushState(history.state, '', document.URL)
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
 
 const handleDateChange = (newDate) => {
   if (newDate instanceof Date) {
@@ -1217,6 +1299,30 @@ const handleOrderNumSearch = () => {
 
   // 確保 placeholder 保持靜態文字
   placeholderTextForOrderNum.value = "請選擇工單";
+};
+
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = materials.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.id);
+
+    // 展開對應的項目
+    toggleExpand(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+
+  // 清空輸入框（或依需求保留）
+  bar_code.value = ''
 };
 
 // 根據輸入搜尋員工編號
@@ -1677,9 +1783,11 @@ const callAGV = async () => {
       await getAGV(payload);
       console.log("hello, 備料區叫車, AGV 狀態:", currentAGV.value);
 
-      //待待
-      if (currentAGV.value.station != 1 || currentAGV.value.status != 0) {
-      //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
+      //確定AGV目前是閒置
+      if (currentAGV.value.status != 0) {
+      //  const stationMap = {1: '備料區', 2: '組裝區',  3: '成品區'};
+      //  const buf = stationMap[currentAGV.value.station] || '未知區域';
+      //  showSnackbar(`${buf}已經叫車, AGV目前忙碌中...`, 'red accent-2');
       //  return;
       }
 
@@ -1692,6 +1800,14 @@ const callAGV = async () => {
     return;
   }
   //console.log("step6...");
+
+  // 記錄AGV狀態資料, AGV忙碌中
+  payload = {
+    id: 1,
+    status: 1,
+    station:  1,
+  };
+  await updateAGV(payload);
 
   //isBlinking.value = true;
   //2025-02-24 add the following block
@@ -2270,8 +2386,20 @@ p {
 }
 //.v-input--horizontal .v-input__prepend {
 .custom-bordered-row {
-  border: 2px solid #0D47A1; /* 設定邊框寬度與顏色 */
-  border-radius: 8px;        /* 可選: 為邊框添加圓角 */
+  border: 2px solid #0D47A1;  // 設定邊框寬度與顏色
+  border-radius: 8px;             // 可選: 為邊框添加圓角
   padding: 16px;
 }
+
+:deep(i.mdi-barcode) {
+  color: #000000;
+  font-weight: 600;
+  font-size: 36px;
+  position: relative;
+  left: 15px;
+}
+
+//:deep(.red-border .v-field) {
+//  border: 1px solid red !important;
+//  border-radius: 4px;
 </style>

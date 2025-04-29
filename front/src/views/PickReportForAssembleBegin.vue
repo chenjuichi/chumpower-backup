@@ -43,6 +43,20 @@
             <v-icon left color="blue">mdi-refresh</v-icon>
             更新訂單
           </v-btn>
+
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <!-- 客製化barcode輸入 -->
+            <v-text-field
+              v-model="bar_code"
+              ref="barcodeInput"
+              @keyup.enter="handleBarCode"
+              hide-details="auto"
+              prepend-icon="mdi-barcode"
+              style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+              class="align-center"
+              density="compact"
+            />
+          </div>
         </v-card-title>
       </v-card>
     </template>
@@ -288,6 +302,11 @@ const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
 const hoveredItemIndexForReqQty = ref(null);
 const inputIDs = ref([]);
 
+const showBackWarning = ref(true);
+
+const bar_code = ref('');
+const barcodeInput = ref(null);
+
 const hoveredItemIndex = ref(null); // 追蹤目前懸停在哪一筆資料上的 index
 const isTableVisible = ref(false);  // 用來控制表格是否顯示
 // 滑鼠位置(x, y)
@@ -361,6 +380,13 @@ const pagination = reactive({
 //});
 setupGetBomsWatcher();
 
+// 當輸入滿 12 碼，就自動處理條碼
+watch(bar_code, (newVal) => {
+  if (newVal.length === 12) {
+    handleBarCode();
+  }
+})
+
 //=== computed ===
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -394,7 +420,12 @@ const adjustTablePosition = computed(() => ({
 
 //=== mounted ===
 onMounted(async () => {
-  console.log("PickReportForAssemble.vue, mounted()...");
+  console.log("PickReportForAssembleBegin.vue, mounted()...");
+
+  // 阻止直接後退
+  //history.pushState(null, null, document.URL)
+  window.history.pushState(null, null, document.URL)
+  window.addEventListener('popstate', handlePopState)
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -539,6 +570,8 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  window.removeEventListener('popstate', handlePopState)
+
   //clearInterval(intervalId);
   window.removeEventListener('mousemove', updateMousePosition);
 });
@@ -572,6 +605,81 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = materials_and_assembles.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.index);
+
+    // focus到對應項目的欄位
+    focusItemField(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+}
+
+const focusItemField = async (item) => {
+  console.log("focusItemField()...");
+
+  await nextTick() // 確保 DOM 已更新
+  // 找到外層 v-text-field DOM
+  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  if (wrapper) {
+    // 聚焦到 v-text-field 本身
+    console.log("wrapper ok...")
+    wrapper.focus();
+
+    // 往內找真正的 <input> 元素
+    const input = wrapper.querySelector('input');
+    if (input) {
+      input.focus();
+
+      // 模擬按下 Enter 鍵事件
+      const enterEvent = new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(enterEvent);
+    }
+  } else {
+    console.warn(`找不到欄位: receiveQtyID-${item.index}`)
+  }
+}
+
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL);
+  window.history.pushState(history.state, '', document.URL);
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
 
 const isButtonDisabled = (item) => {
   console.log("item.whichStation:",item.whichStation, item.whichStation != 2);
@@ -1017,4 +1125,13 @@ const updateMousePosition = (event) => {
   height: 15px !important;
   font-size: 12px !important;
 }
+
+:deep(i.mdi-barcode) {
+  color: #000000;
+  font-weight: 600;
+  font-size: 36px;
+  position: relative;
+  left: 15px;
+}
+
 </style>

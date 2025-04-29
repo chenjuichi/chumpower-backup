@@ -151,6 +151,12 @@ onMounted(async () => {
       messages.value.push(`接收 station2_agv_ready`);
     });
 
+    socket.value.on('kuka_server_not_ready', (data) => {
+      let temp_msg= data?.message || 'kuka端伺服器未準備好';
+      console.warn(temp_msg);
+      showSnackbar(temp_msg, 'red accent-2');
+    });
+
     // event :接收到的事件名稱（例如 'station2_agv_start', 'station3_agv_ready'）。
     //...args:事件所附帶的資料（可以是單一變數，也可以是多個參數）。
     socket.value.onAny((event, ...args) => {
@@ -203,9 +209,24 @@ const initialize = async () => {
 const sendMessage = () => {
   console.log("sendMessage(), socketName:", socketName.value);
 
+  let keyword_message = [
+    'candidate', 'answer', 'offer', 'join', 'disconnect', 'error',
+    'station1_call', 'station1_agv_ready','station1_agv_start', 'station1_agv_begin', 'station1_agv_end',
+    'station2_call', 'station2_agv_ready','station2_agv_start', 'station2_agv_begin', 'station2_agv_end',
+    'station3_call', 'station3_agv_ready','station3_agv_start', 'station3_agv_begin', 'station3_agv_end',
+    'agv_reset',
+  ];
+
+  const subArr = keyword_message.indexOf(socketName.value);
+  if (subArr != -1) {
+    showSnackbar(`不可以使用本系統之關鍵字!`, 'red accent-2');
+    return;
+  }
+
   socket.value.emit(socketName.value);
   console.log(`發送: ${socketName.value}`)
   messages.value.push(`發送 ${socketName.value}`);
+  socketName.value="";
 };
 
 const showSnackbar = (message, color) => {

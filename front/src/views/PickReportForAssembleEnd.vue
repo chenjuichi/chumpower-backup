@@ -150,23 +150,38 @@
               {{order_num_on_agv_blink}}
             </span>
 
-            <!-- 客製化黃綠燈 -->
-            <div
-              :style="{
-                display: 'inline-block',
-                borderRadius: '50%',
-                width: '25px',
-                height: '25px',
-                position: 'relative',
-                top: '0px',
-                left: '-90px',
+            <div style="display: flex; flex-direction: column; align-items: center;">
+              <!-- 客製化黃綠燈 -->
+              <div
+                :style="{
+                  display: 'inline-block',
+                  borderRadius: '50%',
+                  width: '25px',
+                  height: '25px',
+                  position: 'relative',
+                  top: '0px',
+                  left: '-90px',
 
-                opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
-                transition: 'opacity 0.5s ease',          // 過渡效果
-                background: background,                   // 背景顏色
-                border: '1px solid black'                 // 黑色邊框
-              }"
-            />
+                  opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
+                  transition: 'opacity 0.5s ease',          // 過渡效果
+                  background: background,                   // 背景顏色
+                  border: '1px solid black'                 // 黑色邊框
+                }"
+              />
+
+              <!-- 客製化barcode輸入 -->
+              <v-text-field
+                v-model="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details="auto"
+                prepend-icon="mdi-barcode"
+                style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+                class="align-center"
+                density="compact"
+              />
+            </div>
+
           </v-card-title>
         </v-card>
       </template>
@@ -385,7 +400,7 @@
   </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
 
 import { useRoute } from 'vue-router'; // Import useRouter
 
@@ -446,6 +461,11 @@ const hoveredItemIndexForReqQty = ref(null);  // 追蹤目前懸停在哪一筆�
 //const inputRefs = ref(new Map()); // 用來存放所有的 input refs
 const inputIDs = ref([]);
 const selectedItems = ref([]);          // 儲存選擇的項目 (基於 id)
+
+const showBackWarning = ref(true);
+
+const bar_code = ref('');
+const barcodeInput = ref(null);
 
 const route = useRoute();               // Initialize router
 
@@ -521,6 +541,13 @@ watch(selectedItems, (newItems) => {
   { deep: true }
 );
 
+// 當輸入滿 12 碼，就自動處理條碼
+watch(bar_code, (newVal) => {
+  if (newVal.length === 12) {
+    handleBarCode();
+  }
+})
+
 //=== computed ===
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -547,7 +574,12 @@ const c_isBlinking = computed(() => selectedItems.value.length === 0);
 
 //=== mounted ===
 onMounted(async () => {
-  console.log("PickReportForAssemble.vue, mounted()...");
+  console.log("PickReportForAssembleEnd.vue, mounted()...");
+
+  // 阻止直接後退
+  window.history.pushState(null, null, document.URL);
+  //history.pushState(null, null, document.URL);
+  window.addEventListener('popstate', handlePopState);
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -871,6 +903,12 @@ onMounted(async () => {
       isFlashLed.value = true;
     });
 
+    socket.value.on('kuka_server_not_ready', (data) => {
+      let temp_msg= data?.message || 'kuka端伺服器未準備好';
+      console.warn(temp_msg);
+      showSnackbar(temp_msg, 'red accent-2');
+    });
+
     //socket.value.on('agv_ack', async () => {
     //  console.log('收到 agv_ack 回應');
     //});
@@ -881,6 +919,8 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  //window.removeEventListener('popstate', handlePopState)
+
   //clearInterval(intervalId);
 });
 
@@ -919,6 +959,81 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = materials_and_assembles_by_user.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.id);
+
+    // focus到對應項目的欄位
+    focusItemField(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+}
+
+const focusItemField = async (item) => {
+  console.log("focusItemField()...");
+
+  await nextTick() // 確保 DOM 已更新
+  // 找到外層 v-text-field DOM
+  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  if (wrapper) {
+    // 聚焦到 v-text-field 本身
+    console.log("wrapper ok...")
+    wrapper.focus();
+
+    // 往內找真正的 <input> 元素
+    const input = wrapper.querySelector('input');
+    if (input) {
+      input.focus();
+
+      // 模擬按下 Enter 鍵事件
+      const enterEvent = new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(enterEvent);
+    }
+  } else {
+    console.warn(`找不到欄位: receiveQtyID-${item.index}`)
+  }
+}
+
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL)
+  window.history.pushState(history.state, '', document.URL)
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
 
 const isButtonDisabled = (item) => {
   return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable;
@@ -1620,5 +1735,14 @@ const toggleSort = (key) => {
   //color: red;
   font-weight: 700;
 }
+
+:deep(i.mdi-barcode) {
+  color: #000000;
+  font-weight: 600;
+  font-size: 36px;
+  position: relative;
+  left: 15px;
+}
+
 </style>
 

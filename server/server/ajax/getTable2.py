@@ -236,6 +236,7 @@ def get_abnormal_causes():
   })
 '''
 
+'''
 # list detail information by order_num
 @getTable.route("/getInformationDetails", methods=['POST'])
 def get_information_details():
@@ -270,7 +271,7 @@ def get_information_details():
       'mtl_comment': information_details.material_comment,  # 物料說明
       'receive_qty': information_details.ask_qty,       # 領取數量
       'delivery_date': material.material_delivery_date,     # 交期
-      'actual_spent_time':  spent,
+      #'actual_spent_time':  spent,
       'isPickOK': bom.isPickOK
     }
     for bom in boms if bom.good_qty !=0
@@ -287,7 +288,7 @@ def get_information_details():
     'status': return_value,
     'information_details': results
   })
-
+'''
 
 # get all assemble error information by history
 @getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])

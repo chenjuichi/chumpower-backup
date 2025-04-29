@@ -12,6 +12,10 @@ from sqlalchemy import exc
 
 createTable = Blueprint('createTable', __name__)
 
+from log_util import setup_logger
+logger = setup_logger(__name__)  # 每個模組用自己的名稱
+
+
 # ------------------------------------------------------------------
 
 # create user data and perm.id=4 into table

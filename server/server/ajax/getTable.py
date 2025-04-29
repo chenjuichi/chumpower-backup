@@ -13,6 +13,9 @@ from datetime import datetime
 
 getTable = Blueprint('getTable', __name__)
 
+from log_util import setup_logger
+logger = setup_logger(__name__)  # 每個模組用自己的名稱
+
 
 # ------------------------------------------------------------------
 
@@ -240,6 +243,7 @@ def get_abnormal_causes():
   })
 '''
 
+'''
 # list detail information by order_num
 @getTable.route("/getInformationDetails", methods=['POST'])
 def get_information_details():
@@ -272,9 +276,9 @@ def get_information_details():
       'work_name': work_name,                               # 工作中心名稱
       'material_num': information_details.material_num,     # 物料編號
       'mtl_comment': information_details.material_comment,  # 物料說明
-      'receive_qty': information_details.ask_qty,       # 領取數量
+      'receive_qty': information_details.ask_qty,           # 領取數量
       'delivery_date': material.material_delivery_date,     # 交期
-      'actual_spent_time':  spent,
+      #'actual_spent_time':  spent,
       'isPickOK': bom.isPickOK
     }
     for bom in boms if bom.good_qty !=0
@@ -291,7 +295,7 @@ def get_information_details():
     'status': return_value,
     'information_details': results
   })
-
+'''
 
 # get all processes data by order number
 @getTable.route("/getProcessesByOrderNum", methods=['POST'])
@@ -600,12 +604,13 @@ def get_informations_for_assemble_error_by_history():
 '''
 
 
+# 取得訂單「組裝異常」相關的歷史資訊清單
 @getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])
 def get_informations_for_assemble_error_by_history():
     print("getInformationsForAssembleErrorByHistory....")
 
     data = request.json
-    _history_flag = data.get('history_flag', False)
+    _history_flag = data.get('history_flag', False)   # 是否包含歷史資料
     print("history_flag:", _history_flag)
 
     s = Session()
@@ -640,7 +645,7 @@ def get_informations_for_assemble_error_by_history():
       if not (_history_flag==True or (material_record.isAssembleAlarm==False and material_record.isAssembleAlarmRpt==False and _history_flag==False)):
         continue
 
-      skip_material = False   # 標誌變數，預設為 False
+      skip_material = False             # 標誌變數，預設為 False
       assemble_ok = False
       assemble_users = []               # 用於存儲處理後的 user_id
       assemble_work_nums = []           # 用於存儲處理後的 user_id

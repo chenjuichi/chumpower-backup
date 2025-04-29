@@ -92,7 +92,7 @@ export const menuData = [
       { id: 25, text: "4.組裝異常原因維護", to: '/j4', isEnabled: false, isSegment: false },
       { id: 26, text: "5.人員資料維護", to: '/employer', isEnabled: false, isSegment: false },
 
-      { id: 27, text: "6.工單上傳", to: '/upload', isEnabled: false, isSegment: false },
+      { id: 27, text: "6.上傳檔案(工單/物料單)", to: '/upload', isEnabled: false, isSegment: false },
     ]
   }
 ];

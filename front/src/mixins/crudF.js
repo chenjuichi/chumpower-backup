@@ -12,6 +12,7 @@ export const apiOperationF = (operation, path) => {
 
     // 構建 Axios 的配置
     const options = {
+      timeout: payload instanceof FormData ? 30000 : 10000, // 檔案上傳 30秒，其他 10秒
       headers: {
         //'Content-Type': 'multipart/form-data', // 設置檔案上傳標頭
       }
@@ -26,6 +27,7 @@ export const apiOperationF = (operation, path) => {
       if (payload instanceof FormData) {
         options.headers['Content-Type'] = 'multipart/form-data';
       }
+      console.log("path:", path)
       request = axios.post(path, payload, options);
     }
 

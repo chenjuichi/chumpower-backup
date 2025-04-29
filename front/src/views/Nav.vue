@@ -582,6 +582,7 @@ const browserDialog = () => {
 const updateDialog = (newVal) => {
   openDialog.value = newVal;
 };
+
 const updatePdfDialog = (newVal) => {
   openPdfDialog.value = newVal;
 };

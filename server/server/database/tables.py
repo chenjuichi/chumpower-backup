@@ -294,6 +294,7 @@ class Assemble(BASE):
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
     user_id = Column(String(8))                                   #工序作業員工編號(領料)
     writer_id = Column(String(8))                                 #工序異常資料填寫員工編號
+    write_date = Column(String(18))                               #工序異常資料填寫日期 2025-05-12 add
     good_qty = Column(Integer, default=0)                         #確認良品數量
     total_good_qty = Column(Integer, default=0)                   #已交付確認良品總數
     non_good_qty = Column(Integer, default=0)                     #廢品數量
@@ -315,7 +316,7 @@ class Assemble(BASE):
     input_disable = Column(Boolean, default=False)                #領取數量達上限(作業數量), 禁止再輸入
     input_end_disable = Column(Boolean, default=False)            #完成數量達上限(作業數量), 禁止再輸入
     isAssembleStationShow = Column(Boolean, default=False)        # true:完成生產報工(最後途程的結束鍵按下), 且是最後1個製成, 且已經call AGV, disable,
-    alarm_enable = Column(Boolean, default=True)                 # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
+    alarm_enable = Column(Boolean, default=True)                  # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
     alarm_message = Column(String(100), default='')
     update_time = Column(String(30))                               #alarm 更新時間
     create_at = Column(DateTime, server_default=func.now())
@@ -470,8 +471,14 @@ class Agv(BASE):
 # ------------------------------------------------------------------
 
 
-# 建立連線
+# 建立連線（設定 charset=utf8mb4）
 engine = create_engine("mysql+pymysql://root:77974590@localhost:3306/chumpower?charset=utf8mb4", echo=False)
+
+# 建立與資料庫連線的 Session 類別
+Session = sessionmaker(bind=engine)
+
+## 建立連線
+#engine = create_engine("mysql+pymysql://root:77974590@localhost:3306/chumpower?charset=utf8mb4", echo=False)
 if __name__ == "__main__":
   # 建立表格
   BASE.metadata.create_all(engine)
@@ -489,5 +496,5 @@ if __name__ == "__main__":
       connection.execute(text("ALTER TABLE setting CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"))
       connection.execute(text("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"))
 
-# 將己連結的資料庫engine綁定到這個session
-Session = sessionmaker(bind=engine)
+## 將己連結的資料庫engine綁定到這個session
+#Session = sessionmaker(bind=engine)

@@ -1,191 +1,237 @@
 <template>
-  <div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle">
-    <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
-      {{ snackbar_info }}
-      <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
-          <v-icon dark>mdi-close-circle</v-icon>
-        </v-btn>
-      </template>
-    </v-snackbar>
+<div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle">
+  <!-- Snackbar -->
+  <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
 
-    <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
-      <v-card flat class="card-container">
-        <v-card-title class="d-flex align-center pe-2 sticky-card-title">
-          組裝區備料清單
-          <v-divider class="mx-4" inset vertical></v-divider>
-          <v-spacer></v-spacer>
-          <v-btn
-            :disabled="fileCount === 0"
-            color="primary"
-            variant="outlined"
-            style="position: relative; left: -10px; top: 0px;"
-            @click="readAllExcelFun"
-          >
-            <v-icon left color="green">mdi-microsoft-excel</v-icon>
-            匯入清單
-            <template v-if="fileCount > 0" v-slot:append>
-              <v-badge
-                color="info"
-                :content="fileCount"
-                inline
-              ></v-badge>
-            </template>
-          </v-btn>
+    {{ snackbar_info }}
+    <template v-slot:actions>
+      <v-btn color="#adadad" @click="snackbar = false">
+        <v-icon dark>mdi-close-circle</v-icon>
+      </v-btn>
+    </template>
+  </v-snackbar>
 
-          <v-btn
-            color="primary"
-            variant="outlined"
-            style="position: relative; left: 0px; top: 0px;"
-            @click="addItem"
-          >
-            <v-icon left color="blue">mdi-truck-flatbed</v-icon>
-            呼叫AGV
-          </v-btn>
-        </v-card-title>
-        <v-divider></v-divider>
-        <v-data-table
-          :headers="headers"
-          :items="materials"
-          fixed-header
-          items-per-page="5"
-          item-value="order_num"
-          :items-length="roles.length"
-          v-model:page="pagination.page"
-          class="outer custom-header"
-          :style="tableStyle"
-          :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
+  <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
+    <v-card flat class="card-container">
+      <v-card-title class="d-flex align-center pe-2 sticky-card-title">
+        組裝區備料清單
+        <v-divider class="mx-4" inset vertical></v-divider>
+        <v-spacer></v-spacer>
+
+        <v-btn
+          :disabled="fileCount === 0"
+          color="primary"
+          variant="outlined"
+          style="position: relative; left: -10px; top: 0px;"
+          @click="readAllExcelFun"
         >
-          <template #top>
-            <v-dialog v-model="dialog" style="top: 30px;">
-              <v-table
-                class="inner"
-                density="compact"
-                height="280px"
-                fixed-header
-              >
-                <template #top>
-                  <div class="text-h5 sticky-title">
-                    備料資訊
-                    <v-btn
-                      color="primary"
-                      variant="outlined"
-                      @click="updateItem"
-                      style="position: relative; left: 990px; top:10px;">
-                      <v-icon left color="blue" >mdi-check-circle-outline</v-icon>確定
-                    </v-btn>
-                  </div>
-                </template>
-
-                <thead>
-                  <tr>
-                    <th class="text-left">元件</th>
-                    <th class="text-left">物料</th>
-                    <th class="text-left">數量</th>
-                    <th class="text-left">日期</th>
-                    <th class="text-left">領料</th>
-                    <!--<th class="text-left">缺料</th>-->
-                  </tr>
-                </thead>
-
-                <tbody style="overflow-y:auto;">
-                  <tr v-for="bom_item in boms" :key="bom_item.element_num">
-                    <td>{{ bom_item.element_num }}</td>
-                    <td>
-                      <div>
-                        <div>{{ bom_item.material_num }}</div>
-                        <div style="color: #33cccc; font-weight:600">{{ bom_item.mtl_comment }}</div>
-                      </div>
-                    </td>
-                    <td>
-                      <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                    </td>
-                    <td>
-                      <div>
-                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                      </div>
-                    </td>
-                    <td><v-checkbox-btn v-model="bom_item.receive" /></td>
-                    <!--<td><v-checkbox-btn v-model="bom_item.lack" /></td>-->
-                  </tr>
-                </tbody>
-              </v-table>
-            </v-dialog>
+          <v-icon left color="green">mdi-microsoft-excel</v-icon>
+          匯入清單
+          <template v-if="fileCount > 0" v-slot:append>
+            <v-badge
+              color="info"
+              :content="fileCount"
+              inline
+            ></v-badge>
           </template>
-          <!--
-          <template v-slot:item.order_num="{ item }">
-            <div>
-              <div>{{ item.order_num }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.process_num }}</div>
-            </div>
-          </template>
+        </v-btn>
+        <!-- disable:agv已到站及agv運行中-->
+        <v-btn
+          :disabled="isBlinking"
+          color="primary"
+          variant="outlined"
+          style="position: relative; left: 0px; top: 0px;"
+          @click="callAGV"
+        >
+          <v-icon left color="blue">mdi-truck-flatbed</v-icon>
+          呼叫AGV
+        </v-btn>
+        <div>
+          <span
+            :style="{
+              display: 'inline-block',
+              borderRadius: '50%',
+              width: '25px',
+              height: '25px',
+              position: 'relative',
+              top: '7px',
+              left: '5px',
 
-          <template v-slot:item.material_num="{ item }">
-            <div>
-              <div>{{ item.material_num }}</div>
-              <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-            </div>
-          </template>
-          -->
-          <template v-slot:item.req_qty="{ item }">
-            <div>
-              <div>{{ item.req_qty }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
-            </div>
-          </template>
+              opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
+              transition: 'opacity 0.5s ease',    // 過渡效果
+              background: background,             // 背景顏色
+              border: '1px solid black'           // 黑色邊框
+            }"
+          />
+          <span style="margin-left: 10px; font-size: 14px;" :class="{ 'blinking': isBlinking }">
+            {{order_num_on_agv_blink}}
+          </span>
+        </div>
+      </v-card-title>
+      <v-divider></v-divider>
+      <v-data-table
+        :headers="headers"
+        :items="materials"
+        fixed-header
+        items-per-page="5"
+        item-value="order_num"
+        :items-length="materials.length"
+        v-model:page="pagination.page"
+        class="outer custom-header"
+        :style="tableStyle"
+        :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
+      >
+        <template #top>
+          <v-dialog
+            v-model="dialog"
+            max-width="800px"
+            @keydown.esc="handleEscClose"
+            @click:outside="handleOutsideClick"
+          >
+            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+                備料資訊
+                <v-fade-transition mode="out-in">
+                  <v-btn
+                    style="position: relative; right: -550px;"
+                    color="success"
+                    prepend-icon="mdi-check-circle-outline"
 
-          <template v-slot:item.comment="{ item }">
-            <div>
-              <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-              <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-            </div>
-          </template>
+                    text="確定"
+                    class="text-none"
+                    @click="updateItem"
+                    variant="flat"
+                    flat
+                  />
+                </v-fade-transition>
+              </v-card-title>
 
-          <template v-slot:item.action="{ item }">
-            <v-btn
-              size="small"
-              variant="tonal"
-              style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-              :disabled="item.is_bom_ok"
-              @click="toggleExpand(item)"
-            >
-              詳 情
-              <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
-            </v-btn>
-          </template>
+              <v-card-text>
+                <v-table class="inner" density="compact" fixed-header>
+                  <thead style="color: black;">
+                    <tr>
+                      <th class="text-left">元件</th>
+                      <th class="text-left">物料</th>
+                      <th class="text-left">數量</th>
+                      <th class="text-left">日期</th>
+                      <th class="text-left">領料</th>
+                    </tr>
+                  </thead>
 
-          <template #no-data>
-            <strong><span style="color: red;">目前沒有資料</span></strong>
-          </template>
-        </v-data-table>
-      </v-card>
-    </v-row>
-  </div>
-  </template>
+                  <tbody>
+                    <tr
+                      v-for="(bom_item, index) in boms"
+                      :key="bom_item.seq_num"
+                      :style="{
+                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
+                      }"
+                    >
+                      <td>{{ bom_item.seq_num }}</td>
+                      <td>
+                        <div>
+                          <div>{{ bom_item.material_num }}</div>
+                          <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                      </td>
+                      <td>
+                        <div>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                        </div>
+                      </td>
+                      <td><v-checkbox-btn v-model="bom_item.receive" /></td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </v-card-text>
+            </v-card>
+          </v-dialog>
+        </template>
 
-  <script setup>
-  import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
-  import { useRoute } from 'vue-router'; // Import useRouter
+        <template v-slot:item.order_num="{ item }">
+          <div>
+            <div v-if="!item.isTakeOk">{{ item.order_num }}</div>
+            <div style="color: blue;" v-else>{{ item.order_num }}</div> <!--檢料完成-->
+            <!--<div style="color: #a6a6a6; font-size:12px;">{{ item.process_num }}</div>-->
+          </div>
+        </template>
 
-  import { myMixin } from '../../mixins/common.js';
+        <!--
+        <template v-slot:item.material_num="{ item }">
+          <div>
+            <div>{{ item.material_num }}</div>
+            <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
+          </div>
+        </template>
+        -->
+        <template v-slot:item.req_qty="{ item }">
+          <div>
+            <div>{{ item.req_qty }}</div>
+            <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+          </div>
+        </template>
 
-  import { snackbar, snackbar_info, snackbar_color } from '../../mixins/crud.js';
+        <template v-slot:item.comment="{ item }">
+          <div>
+            <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+            <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+          </div>
+        </template>
 
-  import { materials, boms, fileCount }  from '../../mixins/crud.js';
+        <template v-slot:item.action="{ item }">
+          <v-btn
+            size="small"
+            variant="tonal"
+            style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+            :disabled="item.isTakeOk && !item.isShow"
+            @click="toggleExpand(item)"
+          >
+            詳 情
+            <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+          </v-btn>
+        </template>
 
-  import { apiOperation, setupGetBomsWatcher}  from '../../mixins/crud.js';
+        <template #no-data>
+          <strong><span style="color: red;">目前沒有資料</span></strong>
+        </template>
+      </v-data-table>
+    </v-card>
+  </v-row>
+</div>
+</template>
+
+<script setup>
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+
+import { useRoute } from 'vue-router'; // Import useRouter
+
+import { myMixin } from '../mixins/common.js';
+
+import { useSocketio } from '../mixins/SocketioService.js';
+
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+
+import { materials, boms, socket_server_ip, fileCount }  from '../mixins/crud.js';
+
+import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
 
   // 使用 apiOperation 函式來建立 API 請求
   const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
+  const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
   const countExcelFiles = apiOperation('get', '/countExcelFiles');
   const listMaterials = apiOperation('get', '/listMaterials');
+  const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+
   const getBoms = apiOperation('post', '/getBoms');
   const updateBoms = apiOperation('post', '/updateBoms');
   const updateMaterial = apiOperation('post', '/updateMaterial');
+  const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
   const createProcess = apiOperation('post', '/createProcess');
+  const getMaterial = apiOperation('post', '/getMaterial');
 
   //=== component name ==
   defineComponent({
@@ -201,6 +247,11 @@
   });
 
   //=== data ===
+  const isVisible = ref(true);             // 設定初始狀態為顯示
+  const isFlashLed = ref(false);           // 控制是否閃爍Led
+  let intervalIdForLed = null;
+  const background = ref('#ffff00');
+
   let intervalId = null;              // 10分鐘, 倒數計時器
 
   const route = useRoute(); // Initialize router
@@ -210,126 +261,47 @@
     { title: '物料編號', sortable: false, key: 'material_num'},
     { title: '需求數量(建立日期)', sortable: false, key: 'req_qty' },
     //{ title: '場域位置', sortable: false, key: 'location' },
-    { title: '缺料註記', sortable: false, key: 'shortage_note' },
+    //{ title: '缺料註記', sortable: false, key: 'shortage_note' },
     { title: '說明', align: 'start', sortable: false, key: 'comment' },
-    { title: '', key: 'action' },
-  ];
-  /*
-  const headers_detail = [
-    { title: '項目號碼', align: 'start', key: 'element_num' },
-    { title: '料號', align: 'end', key: 'material_num' },
-    { title: '數量', align: 'end', key: 'qty' },
-    { title: '日期', align: 'end', key: 'date' },
-    { title: '領料', align: 'end', key: 'receive' },
-    { title: '領取', align: 'end', key: 'receive' },
-    { title: '缺料', align: 'end', key: 'lack' },
-  ]
-  */
-  const footerOptions = [
-    { value: 5, title: '5' },
-    //{ value: 10, title: '10' },
-    //{ value: 25, title: '25' },
-    //{ value: -1, title: '全部' }
+    { title: '備料內容', sortable: false, key: 'action' },
+    { title: '組裝區', sortable: false, key: 'agv' },
   ];
 
-  //const material_status = ['未備料', '備料完成', '備料中', '備料中(缺料)']
-
-  const roles = [
-    // order_num: 訂單編號
-    // material_num: 物料編號
-    // req_qty: 需求數量
-    // date: (建立日期)
-    // shortage_note: '元件缺料'
-    // comment: 說明
-    /*
-    { order_num: 'A23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/01/10',location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'A23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/01/10',location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'B23456789012', process_num: '010', material_num: '1234567890123456', material_status: 0, req_qty: 100, date: '2024/11/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'C23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/11/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'D23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/11/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'E23456789012', process_num: '010', material_num: '1234567890123456', material_status: 2, req_qty: 100, date: '2024/09/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'F23456789012', process_num: '010', material_num: '1234567890123456', material_status: 3, req_qty: 100, date: '2024/09/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'G23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/09/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'H23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'I23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    { order_num: 'J23456789012', process_num: '010', material_num: '1234567890123456', material_status: 1, req_qty: 100, date: '2024/10/10', location: 'M5-3', shortage_note: '元件缺料',comment: '1備料清單說明測試字串2備料清單說明測試字串25字', comment2: 'BT50-WFE20-165L'},
-    */
-  ];
-  const currentBoms = ref([]);
-  /*
-  const currentBoms = [
-  // element_num:
-  // material_num:
-  // mtl_comment:
-  // qty:
-  // date:
-  // date_alarm:
-  // receive: false, lack: false },
-
-  { element_num: '0010', material_num: 'A13456789012', mtl_comment: 'KL16S本體', qty: 100, date: '2024/10/30', date_alarm:'' ,receive: false, lack: false },
-  { element_num: '0020', material_num: 'A23456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0030', material_num: 'A33456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0040', material_num: 'A43456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0050', material_num: 'A53456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0060', material_num: 'A63456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0070', material_num: 'A73456789012', mtl_comment: 'HELLO', qty: 10, date: '2024/11/10', date_alarm:'超過一周未領' , receive: false, lack: false },
-  { element_num: '0080', material_num: 'A83456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0090', material_num: 'A93456789012', mtl_comment: 'HELLO', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0100', material_num: 'A03456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-  { element_num: '0110', material_num: 'A03456789012', mtl_comment: 'KL16S三爪', qty: 100, date: '2024/10/30', date_alarm:'' , receive: false, lack: false },
-
-  ]
-  */
-  const EmpID_max_length = 8;       //員工編號最多數字個數
+  //const localIp = 'localhost';
+  //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
+  //const serverIp = '192.168.0.13';
+  //const serverIp = process.env.VUE_SOCKET_SERVER_IP
+  const userId = 'user_chumpower';
+  //console.log("serverIp:", serverIp)
+  // 初始化Socket連接
+  //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
+  const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+  //const localIP = ref('');
+  const from_agv_input_order_num = ref('');
+  const isBlinking = ref(false);          // 控制按鍵閃爍
+  const order_num_on_agv_blink=ref('');
 
   const currentUser = ref({});
   const permDialog = ref(false);
-  const rightDialog = ref(false);
-  const showExplore = ref(false);
-  const showVirtualTable = ref(false);
+  //const rightDialog = ref(false);
+  //const showExplore = ref(false);
+  //const showVirtualTable = ref(false);
 
   const currentStartTime = ref(null);  // 記錄開始時間
 
-  const EmpIDInput = ref(null);
-  const tableComponent = ref(null);
+  const agv1StartTime = ref(null);
+  const agv1EndTime = ref(null);
+  const agv2StartTime = ref(null);
+  const agv2EndTime = ref(null);
 
   const dialog = ref(false);
-  const dialogDelete = ref(false);
-  const totalItems = ref(0);
-  const toggle= ref('');
 
-  const treeViewSelection = ref([]);
-  const currentSetting = ref(new Array(26).fill(0));
-  //const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
-  const password_reset = ref('no');
-  const editedIndex = ref(-1);
-  const editedItem = reactive({
-    order_num: '',
-    material_num: '',
-    req_qty: '',
-    date: '',
-    shortage_note: '',
-    comment: '',
-  });
-
-  const defaultItem = reactive({
-    emp_id: '',
-    emp_name: '',
-    dep_name: '',
-    emp_perm: 4,    // member
-    routingPriv: '',
-    password_reset: 'no',
-  });
+  const selectedItem = ref(null); // 儲存當前點擊的記錄
 
   const pagination = reactive({
     itemsPerPage: 5, // 預設值, rows/per page
     page: 1,
   });
-//
-  //const reactiveLinks = reactive(flatItems.value);
-  //const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
-  //const emit = defineEmits(['setLinks']);
-//
 
   //=== watch ===
   watch(currentUser, (newUser) => {
@@ -339,6 +311,15 @@
   });
 
   setupGetBomsWatcher();
+
+  // 監視 isFlashLed 的變化
+  //watch(isFlashLed, (newVal) => {
+  //  if (newVal) {
+  //    startFlashing();
+  //  } else {
+  //    stopFlashing();
+  //  }
+  ///});
 
   //=== computed ===
   const tableStyle = computed(() => ({
@@ -357,7 +338,7 @@
   const routeName = computed(() => route.name);
 
   //=== mounted ===
-  onMounted(() => {
+  onMounted(async () => {
     console.log("MaterialListForAssem.vue, mounted()...");
 
     let userData = JSON.parse(localStorage.getItem('loginedUser'));
@@ -375,12 +356,176 @@
     fileCount.value = countExcelFiles();
     console.log("fileCount:", fileCount.value);
 
-    const intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
+    intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
+
+    intervalIdForLed = setInterval(() => {
+      isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
+    }, 500);
+    //if (isFlashLed.value)
+    //  startFlashing();
+    // isBlinking 為 true, 若陣列是空的或陣列中所有項目的 isTakeOk 都是 false
+    isBlinking.value = materials.value.length == 0 || materials.value.every(item => !item.isTakeOk || item.isTakeOk==item.isShow);
+
+    /*
+    console.log('取得本機ip...');
+    try {
+      localIP.value = await getLocalIP();
+      console.error('本機ip:', localIP.value);
+    } catch (err) {
+      console.error(err);
+    }
+    */
+    console.log('等待socket連線...');
+    try {
+      await setupSocketConnection();
+
+      socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
+        console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
+
+        const materialPayload0 = {
+          order_num: data,
+        };
+        const response0 = await getMaterial(materialPayload0);
+
+        if(response0) {
+          console.log('工單 '+ data + ' 已檢料完成!');
+          socket.value.emit('station1_order_ok');
+
+          //from_agv_input_order_num.value = data;
+          //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
+          //isBlinking.value = true; // 開始按鍵閃爍
+
+          // 定義 materialPayload1
+          const materialPayload1 = {
+            order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+            record_name: 'show3_ok',
+            record_data: 1    // 設為 1，等待agv
+          };
+          await updateMaterial(materialPayload1);
+        } else {
+          console.log('工單 '+ data + ' 還沒檢料完成!');
+          socket.value.emit('station1_order_ng');
+          order_num_on_agv_blink.value = '';
+        }
+      });
+
+      socket.value.on('station1_agv_begin', async (data) => {
+        console.log('AGV暫停, 收到 station1_agv_begin 訊息, 工單:', data);
+
+        from_agv_input_order_num.value = data;
+        order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
+
+        // 記錄agv在站與站之間運行開始時間
+        agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
+        console.log("AGV Start time:", agv2StartTime.value);
+
+        const materialPayload1 = {
+          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+          record_name: 'show3_ok',
+          record_data: 2      // 設為 2，agv移動至組裝區中
+        };
+        await updateMaterial(materialPayload1);
+
+        let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
+        let formattedStartTime = formatDateTime(agv1StartTime.value);
+        let formattedEndTime = formatDateTime(agv1EndTime.value);
+        console.log("Formatted AGV Start Time:", formattedStartTime);
+        console.log("Formatted AGV End Time:", formattedEndTime);
+        console.log("AGV Period time:", agv1PeriodTime);
+
+        const processPayload = {
+          begin_time: formattedStartTime,
+          end_time: formattedEndTime,
+          periodTime: agv1PeriodTime,
+          user_id: 'AGV1',
+          order_num: from_agv_input_order_num.value,
+          process_type: 1,
+        };
+        await createProcess(processPayload);
+
+        background.value='#10e810'
+      })
+
+      socket.value.on('station2_agv_end', async (data) => {
+        console.log('AGV暫停, 收到 station2_agv_end 訊息, 工單:', data);
+
+        let materialPayload1 = {
+          order_num: data,
+          show1_ok: 2,      //組裝站
+          show2_ok: 3,      //未組裝
+          show3_ok: 3,      //等待組裝中
+          whichStation: 2,  //目標途程:組裝站
+        };
+        await updateMaterialRecord(materialPayload1);
+
+        let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
+        let formattedStartTime = formatDateTime(agv2StartTime.value);
+        let formattedEndTime = formatDateTime(agv2EndTime.vale);
+        console.log("Formatted AGV Start Time:", formattedStartTime);
+        console.log("Formatted AGV End Time:", formattedEndTime);
+        console.log("AGV Period time:", agv2PeriodTime);
+
+        let processPayload = {
+          begin_time: formattedStartTime,
+          end_time: formattedEndTime,
+          periodTime: agv2PeriodTime,
+          user_id: 'AGV2',
+          order_num: from_agv_input_order_num.value,
+          process_type: 2,
+        };
+        await createProcess(processPayload);
+
+        materialPayload1 = {
+          order_num: data,
+          record_name: 'isShow',
+          record_data: true
+        };
+        await updateMaterial(materialPayload1);
+
+        //let myMaterial = materials.value.find(m => m.order_num == data);
+        //myMaterial.isShow = true;
+        //isBlinking.value = false;           // 停止工單運送字串閃爍
+        //order_num_on_agv_blink.value = '';
+
+        let myMaterialIndex = materials.value.findIndex(m => m.order_num == data);
+        if (myMaterialIndex != -1) {
+          materials.value[myMaterialIndex] = {
+            ...materials.value[myMaterialIndex],
+            isShow : true,
+          };
+          isBlinking.value = false;           // 停止工單運送字串閃爍
+          order_num_on_agv_blink.value = '';
+        }
+
+        // 方法1: 重新賦值來觸發 Vue 的響應式系統
+        //materials.value = [...materials.value];
+
+        // 方法2: 手動重新獲取資料
+        await listMaterials();
+
+        //stopFlashing();
+        isFlashLed.value = false;
+      });
+
+      socket.value.on('station1_agv_ready', async () => {
+        console.log('AGV 已到達裝卸站, 收到 station1_agv_ready 訊息...');
+        // 記錄等待ag到站結束時間
+        agv1EndTime.value = new Date();  // 使用 Date 來記錄當時時間
+        console.log("AGV End time:", agv1EndTime.value);
+        //startFlashing();
+        background.value='#ffff00'
+        isFlashLed.value = true;
+      });
+    } catch (error) {
+      console.error('Socket連線失敗:', error);
+    }
   });
 
   //=== unmounted ===
   onUnmounted(() => {   // 清除計時器（當元件卸載時）
     clearInterval(intervalId);
+    //clearInterval(intervalIdForLed);
+    stopFlashing();
   });
 
   //=== created ===
@@ -394,12 +539,39 @@
   });
 
   //=== method ===
-  const initialize = () => {
-    console.log("initialize()...")
+  const initialize = async () => {
+    try {
+      console.log("initialize()...");
 
-    listMaterials();
+      // 使用 async/await 等待 API 請求完成，確保順序正確
+      await listMaterials();
+
+      await listSocketServerIP();
+      console.log("initialize, socket_server_ip:", socket_server_ip.value)
+    } catch (error) {
+      console.error("Error during initialize():", error);
+    }
   };
 
+  // 啟動閃爍效果
+  //const startFlashing = () => {
+  //  console.log("startFlashing()...")
+  //
+  //  isFlashLed.value = true;
+  //  intervalIdForLed = setInterval(() => {
+  //    isVisible.value = !isVisible.value; // 每秒切換顯示狀態
+  //  }, 500);
+  //}
+
+  // 停止閃爍效果
+  const stopFlashing = () => {
+    console.log("stopFlashing()...")
+
+    clearInterval(intervalIdForLed);
+    isVisible.value = true;               // 重設為顯示
+    isFlashLed.value = false;
+  }
+  /*
   const getStatusStyle = (status) =>{
     const colorMap = {
       0: '#ff4000',
@@ -414,119 +586,195 @@
       fontSize: '12px',
     };
   };
+  */
+  const handleEscClose = async () => {
+    console.log("Dialog closed via ESC key, item:", selectedItem.value);
 
-  const toggleExpand = (item) => {
+    // 記錄當前途程狀態
+    let payload = {
+      order_num: selectedItem.value.order_num,
+      record_name: 'show2_ok',
+      record_data: 0                //未備料
+    };
+    await updateMaterial(payload);
+    //updateMaterial(payload).then(data => {
+    //  !data && showSnackbar(data.message, 'red accent-2');
+    //});
+
+    dialog.value = false;
+  };
+
+  const handleOutsideClick = async () => {
+    console.log("Dialog closed by clicking outside, item:", selectedItem.value);
+
+    // 記錄當前途程狀態
+    let payload = {
+      order_num: selectedItem.value.order_num,
+      record_name: 'show2_ok',
+      record_data: 0                //未備料
+    };
+    await updateMaterial(payload);
+    //updateMaterial(payload).then(data => {
+    //  !data && showSnackbar(data.message, 'red accent-2');
+    //});
+
+    dialog.value = false;
+  };
+
+  // 開啟對話框並傳遞點擊的資料
+  //const openDialog = (item) => {
+  //  console.log("openDialog(), item:", item);
+  //
+  //  selectedItem.value = item;  // 儲存當前選中的行資料
+  //  dialog.value = true;        // 開啟對話框
+  //};
+
+  /*
+  const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
+    try {
+      const response = await axios.get('http://localhost:6500/server-ip'); // 請求伺服器 IP
+      serverIP.value = response.data.ip;
+    } catch (error) {
+      console.error('無法獲取伺服器 IP:', error);
+      serverIP.value = '無法獲取伺服器 IP';
+    }
+  };
+  */
+  const toggleExpand = async (item) => {
     console.log("toggleExpand(),", item.order_num);
 
     let payload = {
       order_num: item.order_num,
     };
-    getBoms(payload);
+    await getBoms(payload);
 
-    // 記錄當前開始時間
+    selectedItem.value = item;
+
+    // 1.記錄當前開始備料時間
     currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
     console.log("Start time:", currentStartTime.value);
 
+    // 2.記錄當前途程狀態
     payload = {
       order_num: item.order_num,
-      record_name: 'bom_agv_status',
-      record_data: 1                //備料進行中
+      record_name: 'show2_ok',
+      record_data: 1                //備料中
     };
-
-    updateMaterial(payload).then(data => {
-      !data && showSnackbar(data.message, 'red accent-2');  // update失敗
-    });
+    await updateMaterial(payload);
+    //updateMaterial(payload).then(data => {
+    //  !data && showSnackbar(data.message, 'red accent-2');
+    //});
 
     dialog.value = true;
   };
 
-  const updateItem = () => {    //編輯 bom, material及process後端table資料
+  const updateItem = async () => {              //編輯 bom, material及process後端table資料
     console.log("updateItem(),", boms.value);
 
     let my_material_orderNum = boms.value[0].order_num;
+
     let endTime = new Date();                                               // 記錄當前結束時間
     let periodTime = calculatePeriodTime(currentStartTime.value, endTime);  // 計算時間間隔
-
     // 將 currentStartTime, endTime 轉換為字串格式 yyyy-mm-dd hh:mm:ss
     let formattedStartTime = formatDateTime(currentStartTime.value);
     let formattedEndTime = formatDateTime(endTime);
 
-    // 針對 boms，加上 bom_start_time, bom_end_time 和 bom_period_time等資料
-    boms.value.forEach(bom => {
-      bom.bom_start_time = formatTime(currentStartTime.value);  // 格式化開始時間
-      bom.bom_end_time = formatTime(endTime);                   // 格式化結束時間
-      bom.bom_period_time = periodTime;                         // 時間間隔
-    });
+    // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目，若有則將 `take_out` 設為 false
+    let take_out = !boms.value.some(bom => !bom.receive);
+    console.log("take_out:", take_out);
 
     // 1. 更新 boms 資料
-    updateBoms(boms.value).then(response0 => {
-      if (!response0) {
-        showSnackbar(response0.message, 'red accent-2');
-        dialog.value = false;
-        return;
+    let response0 = await updateBoms(boms.value);
+    if (!response0) {
+      showSnackbar(response0.message, 'red accent-2');
+      dialog.value = false;
+      return;
+    }
+
+    if (take_out) {                     // 該筆訂單檢料完成
+      let materialPayload = {           // 2. 更新 materials 資料，show2_ok = 2
+        order_num: my_material_orderNum,
+        record_name: 'show2_ok',
+        record_data: 2                  // 設為 2，表示備料完成
+      };
+      await updateMaterial(materialPayload);
+      //const response1 = await updateMaterial(materialPayload1);
+      //if (!response1) {
+      //  showSnackbar(response1.message, 'red accent-2');
+      //  dialog.value = false;
+      //  return;
+      //}
+      //materialPayload = {
+      //   order_num: my_material_orderNum,
+      //   record_name: 'isShow',
+      //   record_data: true
+      // };
+      //await updateMaterial(materialPayload);
+
+      //let myMaterial = materials.value.find(m => m.order_num == my_material_orderNum);
+      //myMaterial.isTakeOk =true;
+      materialPayload = {        // 2. 更新 materials 資料，isTakeOk = true
+        order_num: my_material_orderNum,
+        record_name: 'isTakeOk',
+        record_data: true
+      };
+      await updateMaterial(materialPayload);
+
+      //materialPayload = {         // 2. 更新 materials 資料，isTakeOk = true
+      //  order_num: my_material_orderNum,
+      //  record_name: 'isShow',    // disable button
+      //  record_data: true
+      //};
+      //await updateMaterial(materialPayload);
+
+      //let matchResult = materials.value.find(x => x.id == selectedItem.value.id);
+      //console.log("matchResult:", matchResult)
+      //if (matchResult) {
+      //  matchResult.isTakeOk = true;
+      //  isBlinking.value = materials.value.some((item) => !item.isTakeOk);
+      //}
+
+      //const response11 = await updateMaterial(materialPayload11);
+      //if (!response11) {
+      //  showSnackbar(response11.message, 'red accent-2');
+      //  dialog.value = false;
+      //  return;
+      //}
+
+      //let myMaterial = materials.value.find(m => m.order_num == my_material_orderNum);
+      let myMaterialIndex = materials.value.findIndex(m => m.order_num === my_material_orderNum);
+
+      if (myMaterialIndex != -1) {
+        materials.value[myMaterialIndex] = {
+          ...materials.value[myMaterialIndex],
+          isTakeOk: true,
+          show2_ok: 2,
+          //isShow: true
+        };
+        //isBlinking.value = materials.value.some((item) => !item.isTakeOk);
+        isBlinking.value = materials.value.every((item) => !item.isTakeOk);
       }
 
-      // 2. 更新 materials 資料，bom_agv_status = 2
-      const materialPayload1 = {
+      console.log("Formatted Start Time:", formattedStartTime);
+      console.log("Formatted End Time:", formattedEndTime);
+      console.log("Period time:", periodTime);
+      let processPayload = {
+        begin_time: formattedStartTime,
+        end_time: formattedEndTime,
+        periodTime: periodTime,
+        user_id: currentUser.value.empID,
         order_num: my_material_orderNum,
-        record_name: 'bom_agv_status',
-        record_data: 2  // 設為 2，表示備料完成
+        process_type: 1,
       };
-      updateMaterial(materialPayload1).then(response1 => {
-        if (!response1) {
-          showSnackbar(response1.message, 'red accent-2');
-          dialog.value = false;
-          return;
-        }
+      await createProcess(processPayload);
 
-        // 3. 更新 materials 資料，is_bom_ok = true
-        const materialPayload2 = {
-          order_num: my_material_orderNum,  // 假設同一筆 order_num
-          record_name: 'is_bom_ok',
-          record_data: true  // 設為 true，表示 bom 完成
-        };
-        updateMaterial(materialPayload2).then(response2 => {
-          if (!response2) {
-            showSnackbar(data.message, 'red accent-2');
-            dialog.value = false;
-            return;
-          }
-
-          let myMaterial = materials.value.find(m => m.order_num == my_material_orderNum);
-          myMaterial.is_bom_ok = true;    // 更新該項目的 is_bom_ok 為 true
-          myMaterial.bom_agv_status = 2;  // 更新 bom_agv_status
-
-          console.log("Formatted Start Time:", formattedStartTime);
-          console.log("Formatted End Time:", formattedEndTime);
-          console.log("Period time:", periodTime);
-
-          // 4. 新增 後端 process的相應項目
-          const processPayload = {
-            begin_time: formattedStartTime,
-            end_time: formattedEndTime,
-            periodTime: periodTime,
-            user_id: currentUser.value.empID,
-            order_num: my_material_orderNum,
-            process_type: 1,
-            process_status: 2,
-          };
-          createProcess(processPayload).then(response3 => {
-            if (!response3) {
-              showSnackbar(data.message, 'red accent-2');
-              dialog.value = false;
-              return;
-            }
-            listMaterials();
-          });   //end response3
-        });     //end response2
-      });       //end response1
-    });         //end response0
+      await listMaterials();
+    }
 
     dialog.value = false;
   };
 
-  // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
-  const calculatePeriodTime = (start, end) => {
+  const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
     const diffMs = end - start;                     // 差異時間（毫秒）
     const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
 
@@ -538,6 +786,11 @@
   };
 
   const formatDateTime = (date) => {
+    if (!date || !(date instanceof Date)) {
+      console.error("Invalid date passed to formatDateTime:", date);
+      return 'Invalid Date';
+    }
+
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');  // 月份是從0開始的，所以加1
     const dd = String(date.getDate()).padStart(2, '0');
@@ -547,8 +800,7 @@
     return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
   };
 
-  // 格式化時間為 hh:mm:ss
-  const formatTime = (time) => {
+  const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
     const hours = String(time.getHours()).padStart(2, '0');
     const minutes = String(time.getMinutes()).padStart(2, '0');
     const seconds = String(time.getSeconds()).padStart(2, '0');
@@ -556,13 +808,26 @@
     return `${hours}:${minutes}:${seconds}`;
   };
 
-  const addItem = () => {
-    console.log("addItem()...")
-    //item._showDetails = !item._showDetails;
-    dialog.value = false;
+  const callAGV = async () => {
+    console.log("callAGV()...")
+    /*
+    const materialPayload1 = {        // 2. 更新 materials 資料，show2_ok = 2
+      order_num: my_material_orderNum,
+      record_name: 'show3_ok',
+      record_data: 1                  // 設為 2，表示備料完成
+    };
+
+    await updateMaterial(materialPayload1);
+    */
+    isBlinking.value = true;
+    socket.value.emit('station1_call');
+    // 記錄等待agv到站開始時間
+    agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
+    console.log("AGV Start time:", agv1StartTime.value);
   };
 
-  const readAllExcelFun= () => {
+  /*
+  const readAllExcelFun = () => {
     console.log("readAllExcelFun()...");
 
     if (fileCount.value == 0) {
@@ -582,191 +847,73 @@
       //data.status ? listMaterials() : showSnackbar(data.message, 'red accent-2');
     });
   };
+  */
+  const readAllExcelFun = async () => {
+    console.log("readAllExcelFun()...");
 
-  const close = () => {
-    console.log("close()");
-
-    dialog.value = false;
-    showExplore.value = false;
-    editedIndex.value = -1;
-    Object.assign(editedItem, defaultItem);
-  };
-
-  const save = () => {
-    console.log("save(),", toggle.value);
-
-    editedItem.emp_perm = parseInt(getEmpPermKey(toggle.value));
-    updateSelection(treeViewSelection.value);
-
-    // 取得物件的值並轉換為陣列
-    let valuesArray = Object.keys(currentSetting.value).map(key => currentSetting.value[key]);
-    // 轉換為以逗號分隔的字串
-    let valuesString = valuesArray.join(',');
-    editedItem.routingPriv = valuesString
-    console.log("editedItem:", editedItem);
-
-    if (editedIndex.value > -1) {
-      updateItem(editedItem);
-      Object.assign(desserts.value[editedIndex.value], editedItem);
-    } else {
-      createItem(editedItem);
-      desserts.value.push({ ...editedItem });
-    }
-    close();
-  }
-
-  //const reverseEmpPermMapping = Object.fromEntries(
-  //  Object.entries(empPermMapping).map(([key, value]) => [value, key])
-  //);
-
-  //const getEmpPermText = (emp_perm) => {
-  //  return empPermMapping[emp_perm] || '未知';
-  //};
-
-  //const getEmpPermKey = (permText) => {
-  //  return reverseEmpPermMapping[permText] || '未知';
-  //};
-
-  const createItem = (object) => {
-    console.log("createItem(),", object);
-
-    const defaultPassword='a12345';
-    let payload= {
-      emp_id: object.emp_id,
-      emp_name: object.emp_name,
-      password: defaultPassword,
-      dep_name: object.dep_name,
-      emp_perm: object.emp_perm,
-      routingPriv: currentSetting.value.join(','),    // 轉換為以逗號分隔的字串
-    };
-
-    register(payload).then(status => {
-      status && (editedItem = Object.assign({}, defaultItem));
-    });
-  };
-
-  const editItem = (item) => {
-    console.log("editItem(),", item)
-
-
-    dialog.value = true;
-  }
-
-  const deleteItem = (item) => {
-    editedIndex.value = desserts.value.indexOf(item);
-    Object.assign(editedItem, desserts.value[editedIndex.value]);
-    dialogDelete.value = true;
-  }
-
-  const deleteItemConfirm = () => {
-    removeItem(editedItem.emp_id);
-
-    desserts.value.splice(editedIndex.value, 1);
-    closeDelete();
-  }
-
-  const closeDelete=() => {
-    dialogDelete.value = false;
-  }
-
-  const updateSelection = (newSelection) => {
-    console.log("updateSelection,", newSelection)
-
-    treeViewSelection.value = [];
-    updateSetting(newSelection);
-    console.log("currentSetting:", currentSetting.value);
-    nextTick().then(() => {
-      treeViewSelection.value = newSelection;
-    });
-  };
-
-  const updateSetting = (arr) => {
-    currentSetting.value = currentSetting.value.map(() => 0);   // 將 Setting 陣列重置為全 0
-
-    arr.forEach((index) => {    // 根據 kk 中的數字設置 Setting 中的對應位置為 1
-      if (index >= 1 && index <= currentSetting.value.length) {
-        currentSetting.value[index - 1] = 1;
-      }
-    });
-  };
-
-  const removeItem = (id) => {  //依user id來刪除後端table資料
-    console.log("removeItem(),", id);
-
-    let payload= {ID: id};
-    //removeUser(payload).then(status => {
-    //  if (status) {
-    //    Object.assign(editedItem, defaultItem);
-    //  }
-    //});
-    removeUser(payload)
-    .finally(() => {
-      Object.assign(editedItem, defaultItem);
-    });
-  };
-
-  const checkUsers = (focused) => {
-    if (!focused) { // 當失去焦點時
-      console.log("checkUser()...");
-
-      if (editedItem.emp_id.length == 7) {
-        editedItem.emp_id = editedItem.emp_id.padStart(8, '0');
-      }
-
-      foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
-      console.log("foundDessert:",foundDessert.value);
-      if (foundDessert.value) {
-        if (editedItem.emp_id !='') {
-          let temp_info = snackbar_info.value = '錯誤, 工號' + editedItem.emp_id + '重複!';
-          showSnackbar(temp_info, 'red accent-2');
-
-          editedItem.emp_id = '';
-        }
-        EmpIDInput.value.focus();
-      }
-    }
-  };
-
-  const handleKeyDown = (event) => {
-    const inputChar = event.key;
-
-    const caps = event.getModifierState && event.getModifierState('CapsLock');
-    console.log("CapsLock is: ", caps); // true when you press the keyboard CapsLock key
-
-    // 允許左右方向鍵、backspace和delete鍵
-    if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+    if (fileCount.value === 0) {
+      console.warn("No files available for import.");
       return;
     }
 
-    const inputValue = event.target.value || ''; // 确保 inputValue 是字符串
+    try {
+      // 等待 readAllExcelFiles 完成
+      const data = await readAllExcelFiles();
+      console.log("data:", data);
 
-    // 使用正規化運算式檢查是否為數字且長度不超過3
-    if (!/^\d$/.test(inputChar) || inputValue.length >= EmpID_max_length) {
-      event.preventDefault();
+      if (data.status) {
+        fileCount.value = 0;
+        await deleteAssemblesWithNegativeGoodQty();
+        listMaterials();
+      } else {
+        showSnackbar(data.message, 'red accent-2');
+      }
+    } catch (error) {
+      console.error("Error during execution:", error);
+      showSnackbar("An error occurred.", 'red accent-2');
     }
   };
 
-  // 遞歸處理樹狀結構
-  const getSelectedIds = (items, privArray) => {
-    let selectedIds = [];
-    let index = 0;
+  /*
+  // 獲取本機 IP 的函數
+  const getLocalIP = async () => {
+    try {
+      const rtc = new RTCPeerConnection({ iceServers: [] });
+      rtc.createDataChannel(''); // 創建一個數據通道以避免錯誤
+      const offer = await rtc.createOffer();
+      await rtc.setLocalDescription(offer);
 
-    const traverse = (itemList) => {
-      itemList.forEach((item) => {
-        if (privArray[index] === 1) {
-          selectedIds.push(item.id);
-        }
-        index++;
-        if (item.children) {
-          traverse(item.children);
-        }
+      return new Promise((resolve, reject) => {
+        rtc.onicecandidate = (ice) => {
+          if (ice && ice.candidate && ice.candidate.candidate) {
+            const ipMatch = ice.candidate.candidate.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+            if (ipMatch) {
+              for (let i = 0; i < ipMatch.length; i++) {
+                console.log("local ip:",ipMatch[i])
+              }
+              //resolve(ipMatch[1]); // 返回找到的 IP 地址
+              const ip = ipMatch[0];
+              // 檢查 IP 是否為無線網卡的 IP 地址
+              // 假設無線網卡的 IP 是 192.168.*.* 或 10.*.*.*
+              //if (ip.startsWith('192.168.') || ip.startsWith('10.')) {
+              //if (ip.startsWith('192.168.')) {
+                  resolve(ip); // 返回找到的無線 IP 地址
+              //}
+            }
+          }
+        };
+
+        // 超時處理
+        setTimeout(() => {
+          reject('無法獲取 IP 地址');
+        }, 1000);
       });
-    };
-
-    traverse(items);
-    return selectedIds;
-  }
-
+    } catch (err) {
+      console.error('獲取本機 IP 時出現錯誤:', err);
+      error.value = '無法獲取本機 IP';
+    }
+  };
+  */
   const showSnackbar = (message, color) => {
     console.log("showSnackbar,", message, color)
 
@@ -904,8 +1051,8 @@
   }
 
   :deep(.v-card .v-data-table thead th) {
-    background-color: white; /* 確保標題背景與卡片一致 */
-    z-index: 2; /* 提高z-index以確保標題在其他內容之上 */
+    background-color: white;              // 確保標題背景與卡片一致
+    z-index: 2;                               // 提高z-index以確保標題在其他內容之上
   }
 
 .sticky-title {
@@ -925,9 +1072,9 @@
 }
 
 .table-container {
-  position: relative; /* 讓 sticky 定位相對於這個元素 */
-  max-height: 440px; /* 設定合適的高度來產生滾動條 */
-  overflow-y: auto; /* 允許垂直滾動 */
+  position: relative;         // 讓 sticky 定位相對於這個元素
+  max-height: 440px;          // 設定產生滾動條的高度
+  overflow-y: auto;           // 允許垂直滾動
 }
 
 .red-text {
@@ -935,6 +1082,62 @@
 }
 
 .custom-header theader th {
-  background-color: #85aef2; /* 自訂背景顏色 */
+  background-color: #85aef2;    // 自訂背景顏色
 }
-  </style>
+
+.blinking {
+  animation: blink-animation 1s steps(5, start) infinite;
+}
+
+@keyframes blink-animation {
+  to {
+    visibility: hidden;
+  }
+}
+
+
+.light {
+  display: inline-block;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  //margin-bottom: 8px;
+  //opacity: 0.2;
+  //transition: opacity 0.2s;
+  position: relative;
+}
+
+.light span {
+    transition: opacity 0.2s;
+    color: #fff;
+    font-size: 24px;
+    position: absolute;
+    right: 0;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    opacity: 0;
+    visibility: hidden;
+}
+.light.active span {
+  opacity: 1;
+  visibility: visible;
+}
+.active {
+  opacity: 1;
+}
+
+.yellow {
+  background: #ffff00;
+  /*
+  background-color: #ffff00;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  */
+}
+.green {
+  background: green;
+}
+</style>

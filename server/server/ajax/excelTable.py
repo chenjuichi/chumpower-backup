@@ -11,6 +11,8 @@ import math
 import pymysql
 from sqlalchemy import exc
 
+import re
+
 import pandas as pd
 import openpyxl
 from openpyxl import Workbook, load_workbook
@@ -684,13 +686,19 @@ def export_to_excel_for_error():
     for obj in _blocks:
       temp_array = []
 
+      # 在寫入 Excel 時做轉換
+      raw_str = obj['cause_message_str']  # e.g., "混料(M01001),散爪(M01002),掉爪(M01003)"
+      messages = [re.sub(r'\(.*?\)', '', m).strip() for m in raw_str.split(',')]  # 移除括號和裡面內容
+      cleaned_str = ','.join(messages)  # "混料,散爪,掉爪"
+
       temp_array.append(obj['order_num'])
       temp_array.append(obj['comment'])
       temp_array.append(obj['delivery_date'])
       temp_array.append(obj['req_qty'])
       temp_array.append(obj['delivery_qty'])
       temp_array.append(obj['user'])
-      temp_array.append(obj['cause_message_str'])
+      #temp_array.append(obj['cause_message_str'])
+      temp_array.append(cleaned_str)
       temp_array.append(obj['cause_user'])
       temp_array.append(obj['cause_date'])
 
@@ -726,6 +734,146 @@ def export_to_excel_for_error():
       'file_name': file_name,
       # 'outputs': myDir,
     })
+
+
+@excelTable.route("/exportToExcelForAssembleInformation", methods=['POST'])
+def export_to_excel_for_assemble_information():
+  print("exportToExcelForAssembleInformation....")
+
+  request_data = request.get_json()
+  _blocks = request_data['blocks']
+  _name = request_data['name']
+  print("_blocks:", _blocks)
+
+  date = datetime.datetime.now()
+  today = date.strftime('%Y-%m-%d-%H%M')
+  file_name = '組裝區在製品生產資訊查詢_'+today + '.xlsx'
+  current_file = 'C:\\vue\\chumpower\\excel_export\\'+ file_name
+
+  code_to_name = {
+    1 : '備料',
+    19: '等待AGV(備料區)',
+    2: 'AGV運行(備料區->組裝區)',
+    22: '雷射',  #第2個動作b106
+    21: '組裝',  #第1個動作b110
+    23: '檢驗',   #第3個動作b109
+    29: '等待AGV(組裝區)',
+    3: 'AGV運行(組裝區->成品區)',
+    31: '成品入庫',
+  }
+
+  file_check = os.path.exists(current_file)  # true:excel file exist
+
+  return_value = True  # true: export into excel成功
+
+  if file_check:
+    try:
+      os.remove(current_file)  # 刪除舊檔案
+    except PermissionError:
+      print(f"無法刪除 {current_file}，請確認是否已關閉該檔案")
+      return_value = False
+      return jsonify({"success": False, "message": "請關閉 Excel 檔案後重試"})
+
+  wb = Workbook()                                 # 建立空白的 Excel 活頁簿物件
+  ws = wb.worksheets[0]                           # 取得第一個工作表
+  ws.title = '組裝區在製品生產資訊查詢-' + _name    # 修改工作表 1 的名稱為 oxxo
+  ws.sheet_properties.tabColor = '7da797'         # 修改工作表 1 頁籤顏色為紅色
+
+  # 表頭
+  header = ['訂單編號', '說明', '交期', '訂單數量', '現況數量', '工序', '開始時間', '結束時間']
+  ws.append(header)
+
+  s = Session()
+
+  for obj in _blocks:
+    # 先寫入 Material 主資料列
+    base_row = [
+      obj.get('order_num', ''),
+      obj.get('comment', ''),
+      obj.get('delivery_date', ''),
+      obj.get('req_qty', ''),
+      obj.get('delivery_qty', ''),
+      '', '', ''  # 空的 process 欄位
+    ]
+    ws.append(base_row)
+
+    # 尋找對應的 process（根據 order_num -> 查 material -> 查其 _process）
+    material = s.query(Material).filter(Material.order_num == obj['order_num']).first()
+    work_qty = material.total_delivery_qty
+
+    if material and material._process:
+      for process in material._process:
+
+        # 轉換為 datetime 物件
+        start_time = datetime.datetime.strptime(process.begin_time, "%Y-%m-%d %H:%M:%S")
+        end_time = datetime.datetime.strptime(process.end_time, "%Y-%m-%d %H:%M:%S") if process.process_type != 31 else ''
+
+        # 計算時間差
+        time_diff = end_time - start_time
+
+        # 轉換為分鐘數（小數點去掉）
+        period_time = int(time_diff.total_seconds() // 60)
+
+        work_time = period_time / work_qty
+        work_time = round(period_time / work_qty, 1)  # 取小數點後 1 位
+
+        # 轉換為字串格式
+        time_diff_str = str(time_diff)
+        period_time_str = str(period_time)
+        work_time_str = str(work_time)  if (process.process_type == 21 or process.process_type == 22 or process.process_type == 23) else ''
+        single_std_time_str = ''
+        if process.process_type == 21:
+          single_std_time_str = str(material.sd_time_B110)
+        if process.process_type == 22:
+          single_std_time_str = str(material.sd_time_B106)
+        if process.process_type == 23:
+          single_std_time_str = str(material.sd_time_B109)
+
+        if process.process_type == 31:
+          single_std_time_str = str(material.sd_time_B110)
+
+        #print("period_time:",period_time_str)
+
+        status = code_to_name.get(process.process_type, '空白')
+        #print("name:", process.user_id)
+        name = process.user_id.lstrip("0")
+        if process.process_type == 1:
+          user = s.query(User).filter_by(emp_id=process.user_id).first()
+          status = status + '(' + name + user.emp_name + ')'
+        #print("status:", status)
+
+        ws.append([
+          '', '', '', '', '',  # 空白欄位對齊 Material 欄
+          status,
+          process.begin_time,
+          process.end_time
+        ])
+
+    # end if
+
+  s.close()
+
+  # 美化表頭
+  for col in ws.columns:
+    column = col[0].column_letter  # Get the column name
+    #temp_cell = column + '1'
+    temp_cell = f"{column}1"
+    ws[temp_cell].font = Font(name='微軟正黑體', color='ff0000', bold=True)  # 設定儲存格的文字樣式
+    ws[temp_cell].alignment = Alignment(horizontal='center')
+    ws.column_dimensions[column].bestFit = True
+
+  # 儲存檔案
+  temp_file = current_file.replace(".xlsx", "_temp.xlsx")
+  wb.save(temp_file)
+  os.replace(temp_file, current_file)  # 用新檔案取代舊檔案
+
+  print("file_name:", file_name)
+
+  return jsonify({
+    'status': return_value,
+    'message': current_file,
+    'file_name': file_name,
+  })
 
 
 # 上傳.xlsx工單檔案的 API

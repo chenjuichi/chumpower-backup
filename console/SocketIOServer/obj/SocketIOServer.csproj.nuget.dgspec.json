@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\vue\\chumpower\\console\\SocketIOServer\\SocketIOServer.csproj": {}
+    "C:\\vue\\chumpower\\console\\socketioserver\\SocketIOServer.csproj": {}
   },
   "projects": {
-    "C:\\vue\\chumpower\\console\\SocketIOServer\\SocketIOServer.csproj": {
+    "C:\\vue\\chumpower\\console\\socketioserver\\SocketIOServer.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\vue\\chumpower\\console\\SocketIOServer\\SocketIOServer.csproj",
+        "projectUniqueName": "C:\\vue\\chumpower\\console\\socketioserver\\SocketIOServer.csproj",
         "projectName": "SocketIOServer",
-        "projectPath": "C:\\vue\\chumpower\\console\\SocketIOServer\\SocketIOServer.csproj",
+        "projectPath": "C:\\vue\\chumpower\\console\\socketioserver\\SocketIOServer.csproj",
         "packagesPath": "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\",
-        "outputPath": "C:\\vue\\chumpower\\console\\SocketIOServer\\obj\\",
+        "outputPath": "C:\\vue\\chumpower\\console\\socketioserver\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\CHEN JUI CHI\\AppData\\Roaming\\NuGet\\NuGet.Config"

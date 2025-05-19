@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -68,7 +68,16 @@ class Program
         }
         catch (Exception ex)
         {
+					try
+        	{
+						Console.WriteLine("Error in HandleClientAsync:");
             Console.WriteLine("Error: " + ex.Message);
+						Console.WriteLine("StackTrace: " + ex.StackTrace);
+					}
+					catch
+					{
+							Console.WriteLine("⚠ Exception caught, but unable to display error details.");
+					}
         }
         finally
         {
@@ -82,9 +91,14 @@ class Program
     {
         while (true)
         {
-            while (messageQueue.TryDequeue(out string message))
+            //while (messageQueue.TryDequeue(out string message))
+            while (messageQueue.TryDequeue(out string? message))
             {
-                await ProcessMessageAsync(message);
+                //await ProcessMessageAsync(message);
+                if (message != null)
+                {
+                    await ProcessMessageAsync(message);
+                }
             }
             await Task.Delay(500); // 避免 CPU 過度忙碌
         }
@@ -92,7 +106,7 @@ class Program
 
     static async Task ProcessMessageAsync(string message)
     {
-				//在switch-case 結構中，使用 {} 包起來讓裡面的變數在作用域中獨立使用, 以避免在處理區域變數名稱衝突
+				//在switch-case 結構中，使用 {} 包起來讓裡面的變數在作用域中獨立使用, 處理區域變數名稱衝突
         switch (message.ToLower())
         {
             case "station1_call":
@@ -164,13 +178,16 @@ class Program
 
     static async Task SendMessageSequenceAsync(string message, int delay)
     {
-        Console.WriteLine($"Processing: {message}");
-        await Task.Delay(delay);
+			Console.WriteLine($"Processing: {message}");
+			await Task.Delay(delay);
 
+			try
+			{
         if (currentClientStream != null && currentClientStream.CanWrite)
         {
             byte[] data = Encoding.UTF8.GetBytes(message);
-            await currentClientStream.WriteAsync(data, 0, data.Length);
+            //await currentClientStream.WriteAsync(data, 0, data.Length);
+            await currentClientStream!.WriteAsync(data, 0, data.Length);
             Console.WriteLine($"Sent to Node.js: {message}");
         }
         else
@@ -178,6 +195,20 @@ class Program
             Console.WriteLine("⚠ 無法發送：currentClientStream 無效");
         }
         //Console.WriteLine($"Sent to Node.js: {message}");
+			}
+    	catch (Exception ex)
+    	{
+        try
+        {
+            Console.WriteLine("Error in SendMessageSequenceAsync:");
+            Console.WriteLine("Message: " + ex.Message);
+            Console.WriteLine("StackTrace: " + ex.StackTrace);
+        }
+        catch
+        {
+            Console.WriteLine("⚠ Exception caught, but unable to display error details.");
+        }
+			}
     }
 
     public class StationLoadingData

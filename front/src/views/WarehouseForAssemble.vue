@@ -10,6 +10,10 @@
     </template>
   </v-snackbar>
 
+  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+    <LedLights :activeColor="activeColor" />
+  </DraggablePanel>
+
   <!-- data table -->
   <v-data-table
     :headers="headers"
@@ -49,9 +53,9 @@
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
       <v-card>
-        <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
+        <v-card-title class="d-flex align-center pe-2" style="font-weight:700; height:86px;">
           <v-row>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="2">
               成品區入庫資訊
             </v-col>
 
@@ -62,7 +66,7 @@
                 :active="history"
                 color="#c39898"
                 variant="outlined"
-                style="position: relative; left: 185px; top: 0px; font-weight: 700;"
+                style="position: relative; top: 0px; font-weight: 700;"
               >
                 <v-icon left color="#664343">mdi-history</v-icon>
                 歷史紀錄
@@ -75,7 +79,7 @@
                 :disabled="c_isBlinking"
                 color="primary"
                 variant="outlined"
-                style="position: relative; left: 100px; top: 0px; font-weight: 700;"
+                style="position: relative; right: 75px; top: 0px; font-weight: 700;"
                 @click="callAGV"
               >
                 <v-icon left color="blue">mdi-view-grid-plus-outline</v-icon>
@@ -92,10 +96,24 @@
                 variant="outlined"
                 hide-details
                 single-line
-                class="top_find_field"
+                style="position: relative; top: 10px; right:120px;"
+
               />
             </v-col>
-            <v-col cols="12" md="3" />
+
+             <!-- 客製化barcode輸入 -->
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details="auto"
+                prepend-icon="mdi-barcode"
+                style="min-width:200px; width:200px; position: relative; top: 35px;"
+                class="align-center"
+                density="compact"
+              />
+            </v-col>
           </v-row>
         </v-card-title>
       </v-card>
@@ -221,6 +239,9 @@
 <script setup>
 import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
+import LedLights from './LedLights.vue';
+import DraggablePanel from './DraggablePanel.vue';
+
 import draggable from 'vuedraggable'
 import { useRoute } from 'vue-router';
 
@@ -239,7 +260,7 @@ const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssembles
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 //const listWarehouseForAssemble = apiOperation('get', '/listWarehouseForAssemble');
 const listUsers = apiOperation('get', '/listUsers');
-//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const getBoms = apiOperation('post', '/getBoms');
 const getAGV = apiOperation('post', '/getAGV');
@@ -266,6 +287,16 @@ const props = defineProps({ showFooter: Boolean });
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
+
+const panelX = ref(810);
+const panelY = ref(11);
+const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
+const panel_flag = ref(false)     // 允許拖曳的開關
+
+const screenSizeInInches = ref(null);
+
+const bar_code = ref('');
+const barcodeInput = ref(null);
 
 const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV
 
@@ -393,6 +424,12 @@ watch(history, (newItems) => {
   { deep: true }
 );
 
+// 當輸入滿 12 碼，就自動處理條碼
+watch(bar_code, (newVal) => {
+  if (newVal.length === 12) {
+    handleBarCode();
+  }
+})
 
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -425,307 +462,362 @@ return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; /
 
 //=== mounted ===
 onMounted(async () => {
-console.log("MaterialListForAssem.vue, mounted()...");
+  console.log("MaterialListForAssem.vue, mounted()...");
 
-let userData = JSON.parse(localStorage.getItem('loginedUser'));
-console.log("current routeName:", routeName.value);
-console.log("current userData:", userData);
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
 
-userData.setting_items_per_page = pagination.itemsPerPage;
-userData.setting_lastRoutingName = routeName.value;
-localStorage.setItem('loginedUser', JSON.stringify(userData));
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  //const dpiEstimate = 96 * dpi;
+  const dpiEstimate = 96;
 
-let user = localStorage.getItem("loginedUser");
-currentUser.value = user ? JSON.parse(user) : null;
-console.log("currentUser:", currentUser.value);
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
 
-intervalId = setInterval(getWarehouseForAssembleByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
 
-// 設定紅黃綠燈閃爍週期
-intervalIdForLed = setInterval(() => {
-  isVisible.value = !isVisible.value;  // 每0.5秒切換顯示狀態
-}, 500);
+  screenSizeInInches.value = diagonalInches;
 
-isBlinking.value = selectedItems.value.length == 0 ? true:false;
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
 
-// 從 localStorage 中恢復 selectedItems
-let savedItems = localStorage.getItem('selectedItems');
-if (savedItems) {
-  selectedItems.value = JSON.parse(savedItems);
-}
-
-// 從 localStorage 中恢復 history
-savedItems = localStorage.getItem('history');
-if (savedItems) {
-  history.value = JSON.parse(savedItems);
-}
-
-//console.log('等待socket連線...');
-//try {
-//  await setupSocketConnection();
-  /*
-  if (!savedItems) {
-    console.log('送出 agv_reset 指令');
-    socket.value.emit('agv_reset');
+  if (screenSizeInInches.value != null) {
+    panelX.value = screenSizeInInches.value > 20 ? 1290 : 810;
+    panelY.value = screenSizeInInches.value > 20 ? 11 : 11;
   }
-  */
+  //+++
 
-  /*
-  socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
-    console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
+  let userData = JSON.parse(localStorage.getItem('loginedUser'));
+  console.log("current routeName:", routeName.value);
+  console.log("current userData:", userData);
 
-    const materialPayload0 = {
-      order_num: data,
-    };
-    const response0 = await getMaterial(materialPayload0);
+  userData.setting_items_per_page = pagination.itemsPerPage;
+  userData.setting_lastRoutingName = routeName.value;
+  localStorage.setItem('loginedUser', JSON.stringify(userData));
 
-    if(response0) {
-      console.log('工單 '+ data + ' 已檢料完成!');
-      socket.value.emit('station1_order_ok');
+  let user = localStorage.getItem("loginedUser");
+  currentUser.value = user ? JSON.parse(user) : null;
+  console.log("currentUser:", currentUser.value);
 
-      //from_agv_input_order_num.value = data;
-      //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
-      //isBlinking.value = true; // 開始按鍵閃爍
+  intervalId = setInterval(getWarehouseForAssembleByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
 
-      // 定義 materialPayload1
-      const materialPayload1 = {
-        order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-        record_name: 'show3_ok',
-        record_data: 1    // 設為 1，等待agv
-      };
-      await updateMaterial(materialPayload1);
-    } else {
-      console.log('工單 '+ data + ' 還沒檢料完成!');
-      socket.value.emit('station1_order_ng');
-      order_num_on_agv_blink.value = '';
+  // 設定紅黃綠燈閃爍週期
+  intervalIdForLed = setInterval(() => {
+    isVisible.value = !isVisible.value;  // 每0.5秒切換顯示狀態
+  }, 500);
+
+  isBlinking.value = selectedItems.value.length == 0 ? true:false;
+
+  // 從 localStorage 中恢復 selectedItems
+  let savedItems = localStorage.getItem('selectedItems');
+  if (savedItems) {
+    selectedItems.value = JSON.parse(savedItems);
+  }
+
+  // 從 localStorage 中恢復 history
+  savedItems = localStorage.getItem('history');
+  if (savedItems) {
+    history.value = JSON.parse(savedItems);
+  }
+
+  //處理socket連線
+  console.log('等待socket連線...');
+  try {
+    await setupSocketConnection();
+
+    socket.value.on('station3_loading_ready', async(data) => {
+      const num = parseInt(data.message, 10);
+
+      activeColor.value='yello';  // 物料進站
+
+      if ([1, 2, 3].includes(num)) {
+        const temp_msg = `物料已經進入第${num}號裝卸站!`;
+        console.warn(temp_msg);
+        //activeColor.value='yello';  // 物料進站
+        //showSnackbar(temp_msg, 'yellow lighten-5');
+      } else {
+        console.error('接收到不合法的裝卸站號碼:', data.message);
+      }
+    });
+
+    socket.value.on('station3_agv_begin', async () => {
+      activeColor.value='SeaGreen';     // 物料出站
+    })
+
+    socket.value.on('station1_agv_end', async (data) => {
+      activeColor.value='DarkOrange';   // 物料送達組裝區
+    })
+
+    socket.value.on('station3_agv_ready', async () => {
+      activeColor.value='blue';         // 機器人進入成品區
+    })
+
+    /*
+    if (!savedItems) {
+      console.log('送出 agv_reset 指令');
+      socket.value.emit('agv_reset');
     }
-  });
-  */
-  /*
-  socket.value.on('station1_agv_start', async () => {
-    console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
+    */
 
-    let payload = {};
-    // 依據每個 item 的 id 進行資料更新
-    selectedItems.value.forEach(async (item) => {
-      console.log('selectedItems, item:', item);
-      payload = {
-        id: item,
-        record_name: 'show3_ok',
-        record_data: 16,          // agv start
+    /*
+    socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
+      console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
+
+      const materialPayload0 = {
+        order_num: data,
       };
-      //await updateMaterial(materialPayload1);
-      try {
-        await updateMaterial(payload);
-        console.log(`資料更新成功，id: ${item}`);
-      } catch (error) {
-        console.error(`資料更新失敗，id: ${item}`, error);
+      const response0 = await getMaterial(materialPayload0);
+
+      if(response0) {
+        console.log('工單 '+ data + ' 已檢料完成!');
+        socket.value.emit('station1_order_ok');
+
+        //from_agv_input_order_num.value = data;
+        //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
+        //isBlinking.value = true; // 開始按鍵閃爍
+
+        // 定義 materialPayload1
+        const materialPayload1 = {
+          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
+          record_name: 'show3_ok',
+          record_data: 1    // 設為 1，等待agv
+        };
+        await updateMaterial(materialPayload1);
+      } else {
+        console.log('工單 '+ data + ' 還沒檢料完成!');
+        socket.value.emit('station1_order_ng');
+        order_num_on_agv_blink.value = '';
       }
     });
-  });
+    */
+    /*
+    socket.value.on('station1_agv_start', async () => {
+      console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
 
-  socket.value.on('station1_agv_begin', async () => {
-    console.log('AGV暫停, 收到 station1_agv_begin 訊息');
-
-    let payload = {};
-    // 記錄agv在站與站之間運行開始時間
-    agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-    console.log("AGV Start time:", agv2StartTime.value);
-
-    selectedItems.value.forEach(async (item) => {
-      console.log('selectedItems, item:', item);
-
-      payload = {
-        id: item,
-        record_name: 'show3_ok',
-        record_data: 2      // 設為 2，agv移動至組裝區中
-      };
-      try {
-        await updateMaterial(payload);
-        console.log(`資料更新成功，id: ${item}`);
-      } catch (error) {
-        console.error(`資料更新失敗，id: ${item}`, error);
-      }
+      let payload = {};
+      // 依據每個 item 的 id 進行資料更新
+      selectedItems.value.forEach(async (item) => {
+        console.log('selectedItems, item:', item);
+        payload = {
+          id: item,
+          record_name: 'show3_ok',
+          record_data: 16,          // agv start
+        };
+        //await updateMaterial(materialPayload1);
+        try {
+          await updateMaterial(payload);
+          console.log(`資料更新成功，id: ${item}`);
+        } catch (error) {
+          console.error(`資料更新失敗，id: ${item}`, error);
+        }
+      });
     });
 
-    // 記錄AGV狀態資料
-    payload = {
-      id: 1,
-      status: 2,      // 行走中
-      station:  2,    // 行走至組裝區
-    };
-    await updateAGV(payload);
+    socket.value.on('station1_agv_begin', async () => {
+      console.log('AGV暫停, 收到 station1_agv_begin 訊息');
 
-    background.value='#10e810'
-  })
+      let payload = {};
+      // 記錄agv在站與站之間運行開始時間
+      agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
+      console.log("AGV Start time:", agv2StartTime.value);
 
-  socket.value.on('station2_agv_end', async () => {
-    console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
-
-    // 記錄agv在站與站之間運行結束時間
-    agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-    console.log("AGV Start time:", agv2EndTime.value);
-
-    let payload = {};
-
-    selectedItems.value.forEach(async (item) => {
-      console.log('selectedItems, item:', item);
-      payload = {
-        id: item,
-        show1_ok: 2,      //組裝站
-        show2_ok: 3,      //未組裝
-        show3_ok: 3,      //等待組裝中
-        whichStation: 2,  //目標途程:組裝站
-      };
-      await updateMaterialRecord(payload);
-    });
-    console.log('agv_end 處理步驟1...');
-
-    let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
-    let formattedStartTime = formatDateTime(agv2StartTime.value);
-    let formattedEndTime = formatDateTime(agv2EndTime.value);
-    console.log("AGV 運行 Start Time:", formattedStartTime);
-    console.log("AGV 運行 End Time:", formattedEndTime);
-    console.log("AGV 運行 Period time:", agv2PeriodTime);
-
-    //let payload1 = {};
-    //let payload2 = {};
-    //let payload_new = {};
-
-    console.log('agv_end 處理步驟2...');
-    selectedItems.value.forEach(async (item) => {
-      console.log('selectedItems, item:', item);
-
-      let myMaterial = materials.value.find(m => m.id == item);
-
-      payload = {
-        begin_time: formattedStartTime,
-        end_time: formattedEndTime,
-        periodTime: agv2PeriodTime,
-        user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
-        order_num: myMaterial.order_num,
-        id: myMaterial.id,                        //2025-02-24 add
-        process_type: 2,                          //在組裝區
-      };
-      await createProcess(payload);
-      console.log('步驟2-1...');
-
-      //紀錄該筆的agv送料數量
-      payload = {
-        id: item,
-        record_name: 'delivery_qty',
-        record_data: myMaterial.delivery_qty
-      };
-      await updateMaterial(payload);
-      console.log('步驟2-2...');
-
-      //紀錄該筆的agv送料狀態
-      payload = {
-        id: item,
-        record_name: 'isShow',
-        record_data: true
-      };
-      await updateMaterial(payload);
-      console.log('步驟2-3...');
-
-      if (Number(myMaterial.allOk_qty) != Number(myMaterial.req_qty)) { // 1張工單多批次運送, 訂單數量與入庫數量不同
-        console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
-
-        let tempDelivery = myMaterial.req_qty - myMaterial.allOk_qty;
+      selectedItems.value.forEach(async (item) => {
+        console.log('selectedItems, item:', item);
 
         payload = {
-          copy_id: myMaterial.id,
-          //total_delivery_qty: tempDelivery,
-          assemble_qty: tempDelivery,
-          show2_ok: 2,
-          shortage_note: '',
+          id: item,
+          record_name: 'show3_ok',
+          record_data: 2      // 設為 2，agv移動至組裝區中
+        };
+        try {
+          await updateMaterial(payload);
+          console.log(`資料更新成功，id: ${item}`);
+        } catch (error) {
+          console.error(`資料更新失敗，id: ${item}`, error);
         }
-        await copyMaterial(payload);
-        console.log('步驟2-4...');
-      }
-    });
+      });
 
-    // 記錄AGV狀態資料
-    payload = {
-      id: 1,
-      status: 1,      // 準備中
-      station:  2,    // 已在組裝區
-    };
-    await updateAGV(payload);
-    console.log('agv_end 處理步驟3...');
-
-    // 插入延遲 3 秒
-    await delay(3000);
-
-    isFlashLed.value = false;     //黃綠燈熄滅
-
-    selectedItems.value = [];
-    if (localStorage.getItem('selectedItems')) {
-      localStorage.removeItem('selectedItems');
-    }
-
-    history.value = false;
-    if (localStorage.getItem('history')) {
-      localStorage.removeItem('history');
-    }
-
-    //待待
-    window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-  });
-
-  socket.value.on('station2_agv_ready', async () => {
-    console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
-
-  });
-
-  socket.value.on('station1_agv_ready', async () => {
-    console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
-    // 記錄等待agv到站結束時間
-    agv1EndTime.value = new Date();
-    console.log("AGV End time:", agv1EndTime.value);
-
-    let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-    let formattedStartTime = formatDateTime(agv1StartTime.value);
-    let formattedEndTime = formatDateTime(agv1EndTime.value);
-    console.log("AGV 等待 Start Time:", formattedStartTime);
-    console.log("AGV 等待 End Time:", formattedEndTime);
-    console.log("AGV 等待 Period time:", agv1PeriodTime);
-
-    let payload = {};
-    // 記錄備料區途程資料, 等待agv時間
-    selectedItems.value.forEach(async (item) => {
-      let myMaterial = materials.value.find(m => m.id == item);
-
+      // 記錄AGV狀態資料
       payload = {
-        begin_time: formattedStartTime,
-        end_time: formattedEndTime,
-        periodTime: agv1PeriodTime,
-        user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
-        order_num: myMaterial.order_num,
-        id: myMaterial.id,                        //2025-02-24 add
-        process_type: 1,                          //在備料區
+        id: 1,
+        status: 2,      // 行走中
+        station:  2,    // 行走至組裝區
       };
-      await createProcess(payload);
-    });
-    // 記錄AGV狀態資料
-    payload = {
-      id: 1,
-      status: 0,
-      station:  1,
-    };
-    await updateAGV(payload);
+      await updateAGV(payload);
 
-    //startFlashing();
-    background.value='#ffff00'
-    isFlashLed.value = true;
-  });
-  */
-  //socket.value.on('agv_ack', async () => {
-  //  console.log('收到 agv_ack 回應');
-  //});
-//} catch (error) {
-//  console.error('Socket連線失敗:', error);
-//}
+      background.value='#10e810'
+    })
+
+    socket.value.on('station2_agv_end', async () => {
+      console.log('收到 station2_agv_end 訊息, AGV已到達組裝區!');
+
+      // 記錄agv在站與站之間運行結束時間
+      agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
+      console.log("AGV Start time:", agv2EndTime.value);
+
+      let payload = {};
+
+      selectedItems.value.forEach(async (item) => {
+        console.log('selectedItems, item:', item);
+        payload = {
+          id: item,
+          show1_ok: 2,      //組裝站
+          show2_ok: 3,      //未組裝
+          show3_ok: 3,      //等待組裝中
+          whichStation: 2,  //目標途程:組裝站
+        };
+        await updateMaterialRecord(payload);
+      });
+      console.log('agv_end 處理步驟1...');
+
+      let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
+      let formattedStartTime = formatDateTime(agv2StartTime.value);
+      let formattedEndTime = formatDateTime(agv2EndTime.value);
+      console.log("AGV 運行 Start Time:", formattedStartTime);
+      console.log("AGV 運行 End Time:", formattedEndTime);
+      console.log("AGV 運行 Period time:", agv2PeriodTime);
+
+      //let payload1 = {};
+      //let payload2 = {};
+      //let payload_new = {};
+
+      console.log('agv_end 處理步驟2...');
+      selectedItems.value.forEach(async (item) => {
+        console.log('selectedItems, item:', item);
+
+        let myMaterial = materials.value.find(m => m.id == item);
+
+        payload = {
+          begin_time: formattedStartTime,
+          end_time: formattedEndTime,
+          periodTime: agv2PeriodTime,
+          user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
+          order_num: myMaterial.order_num,
+          id: myMaterial.id,                        //2025-02-24 add
+          process_type: 2,                          //在組裝區
+        };
+        await createProcess(payload);
+        console.log('步驟2-1...');
+
+        //紀錄該筆的agv送料數量
+        payload = {
+          id: item,
+          record_name: 'delivery_qty',
+          record_data: myMaterial.delivery_qty
+        };
+        await updateMaterial(payload);
+        console.log('步驟2-2...');
+
+        //紀錄該筆的agv送料狀態
+        payload = {
+          id: item,
+          record_name: 'isShow',
+          record_data: true
+        };
+        await updateMaterial(payload);
+        console.log('步驟2-3...');
+
+        if (Number(myMaterial.allOk_qty) != Number(myMaterial.req_qty)) { // 1張工單多批次運送, 訂單數量與入庫數量不同
+          console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
+
+          let tempDelivery = myMaterial.req_qty - myMaterial.allOk_qty;
+
+          payload = {
+            copy_id: myMaterial.id,
+            //total_delivery_qty: tempDelivery,
+            assemble_qty: tempDelivery,
+            show2_ok: 2,
+            shortage_note: '',
+          }
+          await copyMaterial(payload);
+          console.log('步驟2-4...');
+        }
+      });
+
+      // 記錄AGV狀態資料
+      payload = {
+        id: 1,
+        status: 1,      // 準備中
+        station:  2,    // 已在組裝區
+      };
+      await updateAGV(payload);
+      console.log('agv_end 處理步驟3...');
+
+      // 插入延遲 3 秒
+      await delay(3000);
+
+      isFlashLed.value = false;     //黃綠燈熄滅
+
+      selectedItems.value = [];
+      if (localStorage.getItem('selectedItems')) {
+        localStorage.removeItem('selectedItems');
+      }
+
+      history.value = false;
+      if (localStorage.getItem('history')) {
+        localStorage.removeItem('history');
+      }
+
+      //待待
+      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+    });
+
+    socket.value.on('station2_agv_ready', async () => {
+      console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
+
+    });
+
+    socket.value.on('station1_agv_ready', async () => {
+      console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
+      // 記錄等待agv到站結束時間
+      agv1EndTime.value = new Date();
+      console.log("AGV End time:", agv1EndTime.value);
+
+      let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
+      let formattedStartTime = formatDateTime(agv1StartTime.value);
+      let formattedEndTime = formatDateTime(agv1EndTime.value);
+      console.log("AGV 等待 Start Time:", formattedStartTime);
+      console.log("AGV 等待 End Time:", formattedEndTime);
+      console.log("AGV 等待 Period time:", agv1PeriodTime);
+
+      let payload = {};
+      // 記錄備料區途程資料, 等待agv時間
+      selectedItems.value.forEach(async (item) => {
+        let myMaterial = materials.value.find(m => m.id == item);
+
+        payload = {
+          begin_time: formattedStartTime,
+          end_time: formattedEndTime,
+          periodTime: agv1PeriodTime,
+          user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
+          order_num: myMaterial.order_num,
+          id: myMaterial.id,                        //2025-02-24 add
+          process_type: 1,                          //在備料區
+        };
+        await createProcess(payload);
+      });
+      // 記錄AGV狀態資料
+      payload = {
+        id: 1,
+        status: 0,
+        station:  1,
+      };
+      await updateAGV(payload);
+
+      //startFlashing();
+      background.value='#ffff00'
+      isFlashLed.value = true;
+    });
+    */
+    //socket.value.on('agv_ack', async () => {
+    //  console.log('收到 agv_ack 回應');
+    //});
+  } catch (error) {
+    console.error('Socket連線失敗:', error);
+  }
 });
 
 //=== unmounted ===
@@ -762,6 +854,27 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = materials_and_assembles_by_user.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.id);
+
+    // focus到對應項目的欄位
+    focusItemField(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+}
 
 const toggleHistory = async () => {
   history.value = !history.value;
@@ -1448,6 +1561,18 @@ try {
 }
 };
 */
+// 改變拖曳功能
+const toggleDrag = () => {
+  panel_flag.value = !panel_flag.value
+}
+
+// 控制面板樣式，包括邊框顏色和層級 (z-index)
+const panelStyle = computed(() => ({
+  cursor: panel_flag.value ? 'move' : 'default',
+  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
+  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
+}))
+
 const showSnackbar = (message, color) => {
 snackbar_info.value = message;
 snackbar_color.value = color;

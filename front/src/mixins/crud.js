@@ -29,6 +29,8 @@ export const informations = ref([]);
 
 // for listInformationsForAssembleError
 export const informations_for_assemble_error = ref([]);
+export const schedules_for_assemble_error = ref([]);
+
 export const alarm_objects_list = ref([]);
 
 // for listAssembleInformations
@@ -208,13 +210,13 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
               path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
-              path == '/copyFile') {
+              path == '/copyFile' || path == '/updateAssembleAlarmMessage') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }
 
           if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
-              path == '/exportToExcelForError') {
+              path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation') {
             //console.log("res.data:", res.data);
             return res.data;
           }
@@ -249,6 +251,10 @@ export const apiOperation = (operation, path, payload) => {
             });
           }
           */
+
+          if (path == "/getSchedulesForAssembleError") {
+            schedules_for_assemble_error.value = [...res.data.schedules_for_assemble_error];
+          }
 
           if (path == "/getInformationsForAssembleErrorByHistory") {
             alarm_objects_list.value = [...res.data.alarm_objects_list];

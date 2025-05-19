@@ -10,6 +10,10 @@
     </template>
   </v-snackbar>
 
+  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+    <LedLights :activeColor="activeColor" />
+  </DraggablePanel>
+
   <!--items-per-page-text="每頁的資料筆數"-->
   <v-data-table
     :headers="headers"
@@ -28,7 +32,7 @@
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
       <v-card>
-        <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
+        <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height:86px; height:86px;">
           組裝區領料生產報工
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
@@ -37,7 +41,7 @@
             v-if="materials_and_assembles.length > 0"
             color="primary"
             variant="outlined"
-            style="position: relative; left: -50px; top: 0px;"
+            style="position: relative; right: 500px; top: 0px;"
             @click="refreshComponent"
           >
             <v-icon left color="blue">mdi-refresh</v-icon>
@@ -264,11 +268,13 @@
 <script setup>
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
 
-import { useRoute } from 'vue-router';          // Import useRouter
+import LedLights from './LedLights.vue';
+import DraggablePanel from './DraggablePanel.vue';
+
+import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
-
-//import { useSocketio } from '../mixins/SocketioService.js';
+import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
@@ -279,7 +285,7 @@ import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
-//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
@@ -335,9 +341,10 @@ const headers = [
   { title: '', sortable: false, key: 'gif' },
   { title: '', sortable: false, key: 'action' },
 ];
-
-//const userId = 'user_chumpower';
-//const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+// 初始化Socket連接
+const userId = 'user_chumpower';
+const clientAppName = 'PickReportForAssembleBegin';
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
 // 排序欄位及方向（需為陣列）
 const sortBy = ref(['order_num'])
@@ -371,6 +378,13 @@ const pagination = reactive({
   itemsPerPage: 5,              // 預設值, rows/per page
   page: 1,
 });
+
+const panelX = ref(1250);
+const panelY = ref(21);
+const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
+const panel_flag = ref(false)     // 允許拖曳的開關
+
+const screenSizeInInches = ref(null);
 
 //=== watch ===
 //watch(currentUser, (newUser) => {
@@ -422,6 +436,31 @@ const adjustTablePosition = computed(() => ({
 onMounted(async () => {
   console.log("PickReportForAssembleBegin.vue, mounted()...");
 
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  const dpiEstimate = 96;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+
+  if (screenSizeInInches.value != null) {
+    panelX.value = screenSizeInInches.value > 20 ? 1250 : 625;
+    panelY.value = screenSizeInInches.value > 20 ? 21 : 21;
+  }
+  //+++
+
   // 阻止直接後退
   //history.pushState(null, null, document.URL)
   window.history.pushState(null, null, document.URL)
@@ -448,11 +487,38 @@ onMounted(async () => {
   // 在組件掛載時添加事件監聽器
   window.addEventListener('mousemove', updateMousePosition);
 
-  //2025-02-24 mark socket連線
-  // 處理socket連線
-  //console.log('等待socket連線...');
-  //try {
-  //  await setupSocketConnection();
+  //處理socket連線
+  console.log('等待socket連線...');
+  try {
+    await setupSocketConnection();
+
+    socket.value.on('station2_loading_ready', async(data) => {
+      const num = parseInt(data.message, 10);
+
+      activeColor.value='yello';  // 物料進站
+
+      if ([1, 2, 3].includes(num)) {
+        const temp_msg = `物料已經進入第${num}號裝卸站!`;
+        console.warn(temp_msg);
+        //activeColor.value='yello';  // 物料進站
+        //showSnackbar(temp_msg, 'yellow lighten-5');
+      } else {
+        console.error('接收到不合法的裝卸站號碼:', data.message);
+      }
+    });
+
+    socket.value.on('station2_agv_begin', async () => {
+      activeColor.value='SeaGreen';   // 物料出站
+    })
+
+    socket.value.on('station3_agv_end', async (data) => {
+      activeColor.value='DarkOrange';   //物料送達成品區
+    })
+
+    socket.value.on('station1_agv_ready', async () => {
+      activeColor.value='blue';   // 機器人進入組裝區
+    })
+
     /*
     socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
       console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
@@ -563,9 +629,9 @@ onMounted(async () => {
 
     });
     */
-  //} catch (error) {
-  //  console.error('Socket連線失敗:', error);
-  //}
+  } catch (error) {
+    console.error('Socket連線失敗:', error);
+  }
 });
 
 //=== unmounted ===
@@ -574,6 +640,26 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 
   //clearInterval(intervalId);
   window.removeEventListener('mousemove', updateMousePosition);
+
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  const dpiEstimate = 96;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+  //+++
 });
 
 //=== created ===

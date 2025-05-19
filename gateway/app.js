@@ -20,8 +20,17 @@ app.use(express.json());
 app.use(express.static('public'));    //for vue3 application, npm run serve
 //app.use(express.static('dist'));      //for vue3 application, npm run build
 
+//console.log("Step 1...");
+
+const path = require('path');
+const logDir = path.resolve(__dirname); // 如果 service.log 是放在當前目錄
+const logFilePath = path.join(logDir, 'service.log');
+console.log('\n📝 service.log 目前位於：', logFilePath);
 const fs = require('fs');
+
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
+
+//console.log("Step 2...");
 
 const net = require('net')
 const waitingClients = new Set();
@@ -33,6 +42,8 @@ const rooms = {};
 let csharpReady = false;    // 用來標記是否成功連線 C# Server
 let on_line = false;        // false: off line 模擬模式, true: on line 上線模式
 let lastErrorMessage = '';
+
+//console.log("Step 3...");
 
 // 檢測本機 IP 地址
 /*
@@ -88,12 +99,12 @@ const CSHARP_PORT = Number(process.env.CSHARP_PORT) || 6400;
 const CSHARP_SERVER_IP = process.env.CSHARP_SERVER_IP;
 
 const SERVER_IP = process.env.SERVER_IP;
-console.log("SERVER_IP:", SERVER_IP);
+console.log(`\nSERVER_IP: ${SERVER_IP}`);
 let RUN_MODE = false;
 RUN_MODE = ['true', '1', 'yes'].includes(
   (process.env.RUN_MODE || '').toLowerCase()
 );
-console.log("RUN_MODE:", RUN_MODE)
+console.log(`\nRUN_MODE: ${RUN_MODE}`)
 //const online_mode= process.env.online_mode;
 on_line = RUN_MODE;
 let localIP = SERVER_IP;
@@ -115,6 +126,8 @@ readline.emitKeypressEvents(process.stdin);
 if (process.stdin.isTTY) {
   process.stdin.setRawMode(true); // 設定為原始模式 (raw mode)，以便偵測單鍵輸入事件
 }
+
+//console.log("Step 4...");
 
 /*
 // 監聽鍵盤按鍵事件
@@ -153,6 +166,8 @@ process.on('SIGINT', shutdown);
 // 監聽 `process.exit`
 process.on('exit', shutdown);
 
+//console.log("Step 5...");
+
 // 包裝 rl.question 成為 Promise
 function askQuestion(query) {
   return new Promise((resolve) => {
@@ -187,10 +202,26 @@ function checkLogFileSize() {
   }
 }
 
+// 確保 log 檔案存在，或建立空檔案（初始化）
+function ensureLogFileExists() {
+  if (!fs.existsSync(logFilePath)) {
+    fs.writeFileSync(logFilePath, ''); // 建立空檔案
+  }
+}
+
+
+// ==============================================================================
+
+
+// 呼叫這個函式一次即可
+ensureLogFileExists();
+
 //let connectedPeers = [];
 let connectedPeers = new Set();   //使用Set以確保socket.id唯一性
 
 let resetRequested = false;       // 重置狀態
+
+//console.log("Step 6...");
 
 // Socket.IO 事件處理
 io.on('connection', (socket) => {
@@ -240,7 +271,6 @@ io.on('connection', (socket) => {
       client.write('station3_loading');
     //}
   });
-
 
   // station1_call 事件處理
   socket.on('station1_call', async (data) => {
@@ -546,11 +576,14 @@ function bindClientHandlers() {
       case 'station1_agv_ready':
       case 'station1_agv_start':
       case 'station1_agv_begin':
+      case 'station1_loading_ready':
       case 'station2_agv_end':
       case 'station2_agv_ready':
       case 'station2_agv_start':
       case 'station2_agv_begin':
+      case 'station2_loading_ready':
       case 'station3_agv_end':
+      case 'station3_loading_ready':
         io.emit(res);
         break;
       default:
@@ -601,11 +634,11 @@ function bindClientHandlers() {
 
 function connectToCSharp(retryDelay = 5000) {
   client.connect(CSHARP_PORT, CSHARP_SERVER_IP, () => {
-    console.log(`已連接到 C# 伺服器 (IP: ${CSHARP_SERVER_IP}, PORT: ${CSHARP_PORT})`);
+    console.log(`\n已連接到 C# 伺服器 (IP: ${CSHARP_SERVER_IP}, PORT: ${CSHARP_PORT})`);
     csharpReady = true;     // 伺服器狀態回復
     lastErrorMessage = '';  // 重設錯誤訊息過濾器
 
-    // 通知等待的 client：C# 伺服器已連線
+    // 通知等待的 client：C# 伺服ㄗ器已連線
     waitingClients.forEach(sock => {
       sock.emit('kuka_server_ready', {
         message: 'kuka伺服器已重新連線！'
@@ -621,6 +654,9 @@ function connectToCSharp(retryDelay = 5000) {
 
 bindClientHandlers();
 connectToCSharp();
+
+//console.log("Step 7...");
+
 /*
 client.connect(CSHARP_PORT, CSHARP_SERVER_IP, () => {
   console.log(`已經與C#伺服器連線(IP為 ${CSHARP_SERVER_IP} , port為 ${CSHARP_PORT})`);

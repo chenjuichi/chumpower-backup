@@ -87,7 +87,7 @@ f.close()
 
 # --------------------------
 
-scheduler = BackgroundScheduler()       # 初始化调度器
+#scheduler = BackgroundScheduler()       # 初始化调度器
 
 @app.route("/")
 def helloWorld():
@@ -97,8 +97,9 @@ def helloWorld():
 @app.route('/hello', methods=['GET'])
 def hello():
   print("fetch hello....")
-  output = {"name": "",
-            "local_ip": local_ip,
+  output = {
+    "name": "",
+    "local_ip": local_ip,
   }
   return jsonify(output)
 

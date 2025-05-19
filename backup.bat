@@ -23,17 +23,19 @@ copy "D:\vue3\chumpower\*.json"     "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\*.bat"      "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.env"       "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.gitignore" "C:\chumpower-backup\front\"
-::copy "D:\vue3\chumpower\public\*.*" "C:\chumpower-backup\front\public\"
+copy "D:\vue3\chumpower\public\*.json" "C:\chumpower-backup\front\public\"
 
 copy "D:\vue3\chumpower\src\views\*.vue"            "C:\chumpower-backup\front\src\views"
-copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
+
 copy "D:\vue3\chumpower\src\styles\*.*"             "C:\chumpower-backup\front\src\styles"
 copy "D:\vue3\chumpower\src\store\*.*"              "C:\chumpower-backup\front\src\store"
 copy "D:\vue3\chumpower\src\router\*.*"             "C:\chumpower-backup\front\src\router"
-copy "D:\vue3\chumpower\src\router\old_source\*.js" "C:\chumpower-backup\front\src\router\old_source"
 copy "D:\vue3\chumpower\src\mixins\*.*"             "C:\chumpower-backup\front\src\mixins"
 copy "D:\vue3\chumpower\src\components\*.*"         "C:\chumpower-backup\front\src\components"
 copy "D:\vue3\chumpower\src\assets\*.*"             "C:\chumpower-backup\front\src\assets"
+
+copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
+copy "D:\vue3\chumpower\src\router\old_source\*.js" "C:\chumpower-backup\front\src\router\old_source"
 
 :: 檢查並建立其他必要目錄
 if not exist "C:\chumpower-backup\server\server" (

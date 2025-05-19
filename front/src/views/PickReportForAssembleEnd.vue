@@ -10,6 +10,10 @@
       </template>
     </v-snackbar>
 
+    <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+      <LedLights :activeColor="activeColor" />
+    </DraggablePanel>
+
     <!--items-per-page-text="每頁的資料筆數"-->
     <!-- data table -->
     <v-data-table
@@ -30,7 +34,6 @@
       :sort-desc.sync="sortDesc"
 
       class="elevation-10 custom-table"
-
 
     >
       <!-- 客製化 '選擇框' 欄位表頭 -->
@@ -55,10 +58,9 @@
           <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
             組裝區完成生產報工
             <v-divider class="mx-4" inset vertical></v-divider>
-            <v-spacer />
 
             <!--客製化 員工選單-->
-            <div style="position: relative; right: 103px; width: 160px;">
+            <div style="position: relative; width: 160px; margin-right:5px;">
               <!-- v-text-field 用於顯示選中員工 -->
               <v-text-field
                 v-model="selectedEmployee"
@@ -134,12 +136,15 @@
               :disabled="c_isBlinking"
               color="primary"
               variant="outlined"
-              style="position: relative; left:-100px; top:0px; height:48px; font-weight: 700;"
+              style="position: relative; top:0px; height:48px; font-weight: 700;"
               @click="callAGV"
             >
               <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
               <span>組裝送出</span>
             </v-btn>
+
+            <!-- 測試用訊息-->
+            <!--
             <span
               :style="{
               'fontSize': '14px',
@@ -149,9 +154,11 @@
             }">
               {{order_num_on_agv_blink}}
             </span>
+            -->
 
             <div style="display: flex; flex-direction: column; align-items: center;">
-              <!-- 客製化黃綠燈 -->
+              <!-- 測試用黃綠燈-->
+              <!--
               <div
                 :style="{
                   display: 'inline-block',
@@ -167,8 +174,10 @@
                   background: background,                   // 背景顏色
                   border: '1px solid black'                 // 黑色邊框
                 }"
-              />
+              ></div>
 
+              <div style="position: relative; top:0px; left: -90px;"></div>
+            -->
               <!-- 客製化barcode輸入 -->
               <v-text-field
                 v-model="bar_code"
@@ -176,12 +185,11 @@
                 @keyup.enter="handleBarCode"
                 hide-details="auto"
                 prepend-icon="mdi-barcode"
-                style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+                style="min-width:200px; width:200px; position: relative; top: 27px; left:280px;"
                 class="align-center"
                 density="compact"
               />
             </div>
-
           </v-card-title>
         </v-card>
       </template>
@@ -402,12 +410,15 @@
 <script setup>
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
 
-import { useRoute } from 'vue-router'; // Import useRouter
+import LedLights from './LedLights.vue';
+import DraggablePanel from './DraggablePanel.vue';
+
+import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
+//import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 import { materials_and_assembles_by_user }  from '../mixins/crud.js';
 import { currentAGV }  from '../mixins/crud.js';
 import { desserts }  from '../mixins/crud.js';
@@ -530,6 +541,17 @@ const pagination = reactive({
   page: 1,
 });
 
+const snackbar = ref(false);
+const snackbar_info = ref('');
+const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
+
+const panelX = ref(830);
+const panelY = ref(11);
+const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
+const panel_flag = ref(false)     // 允許拖曳的開關
+
+const screenSizeInInches = ref(null);
+
 //=== watch ===
 setupListUsersWatcher();
 
@@ -576,6 +598,27 @@ const c_isBlinking = computed(() => selectedItems.value.length === 0);
 onMounted(async () => {
   console.log("PickReportForAssembleEnd.vue, mounted()...");
 
+  //+++
+  const dpi = window.devicePixelRatio || 1;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  //const dpiEstimate = 96 * dpi;
+  const dpiEstimate = 96 * dpi;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+  //+++
+
   // 阻止直接後退
   window.history.pushState(null, null, document.URL);
   //history.pushState(null, null, document.URL);
@@ -613,6 +656,7 @@ onMounted(async () => {
     selectedItems.value = JSON.parse(savedItems);
   }
 
+  //處理socket連線
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
@@ -654,6 +698,22 @@ onMounted(async () => {
       }
     });
     */
+    socket.value.on('station2_loading_ready', async(data) => {
+    const num = parseInt(data.message, 10);
+
+    activeColor.value='yello';  // 物料進站
+
+    if ([1, 2, 3].includes(num)) {
+      const temp_msg = `物料已經進入第${num}號裝卸站!`;
+      console.warn(temp_msg);
+      //activeColor.value='yello';  // 物料進站
+      //showSnackbar(temp_msg, 'yellow lighten-5');
+    } else {
+      console.error('接收到不合法的裝卸站號碼:', data.message);
+    }
+  });
+
+
     socket.value.on('station2_agv_start', async () => {
       console.log('AGV 運行任務開始，press Start按鍵, 收到 station2_agv_start 訊息');
 
@@ -719,7 +779,8 @@ onMounted(async () => {
       };
       await updateAGV(payload);
 
-      background.value='#10e810'    //變換黃綠燈顏色
+      background.value='#10e810'      //變換黃綠燈顏色
+      activeColor.value='SeaGreen';   // 物料出站
     })
 
     socket.value.on('station3_agv_end', async () => {
@@ -836,6 +897,8 @@ onMounted(async () => {
       await updateAGV(payload);
       console.log('agv_end 處理步驟3...');
 
+      activeColor.value='DarkOrange';   //物料送達
+
       // 插入延遲 3 秒
       await delay(3000);
 
@@ -848,9 +911,9 @@ onMounted(async () => {
       window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
     });
 
-    socket.value.on('station3_agv_ready', async () => {
-      console.log('AGV 已在成品區裝卸站, 收到 station3_agv_ready 訊息...');
-    });
+    //socket.value.on('station3_agv_ready', async () => {
+    //  console.log('AGV 已在成品區裝卸站, 收到 station3_agv_ready 訊息...');
+    //});
 
     socket.value.on('station2_agv_ready', async () => {
       console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
@@ -901,6 +964,7 @@ onMounted(async () => {
       //startFlashing();
       background.value='#ffff00'
       isFlashLed.value = true;
+      activeColor.value='blue';   // 機器人進站
     });
 
     socket.value.on('kuka_server_not_ready', (data) => {
@@ -1198,6 +1262,8 @@ const callAGV = async () => {
   socket.value.emit('station2_call');
   console.log("送出 station2_call訊息...")
   order_num_on_agv_blink.value='叫車進站中...'
+
+  activeColor.value='red';    // 等待運輸
 
   agv1StartTime.value = new Date();  // 使用 Date 來記錄等待agv開始時間
   console.log("AGV Start time:", agv1StartTime.value);
@@ -1568,8 +1634,6 @@ const formatDateTime = (date) => {
 };
 
 const showSnackbar = (message, color) => {
-  console.log("showSnackbar,", message, color)
-
   snackbar_info.value = message;
   snackbar_color.value = color;
   snackbar.value = true;
@@ -1605,6 +1669,19 @@ const toggleSort = (key) => {
     sortDesc.value = [false]
   }
 }
+
+// 改變拖曳功能
+const toggleDrag = () => {
+  panel_flag.value = !panel_flag.value
+}
+
+// 控制面板樣式，包括邊框顏色和層級 (z-index)
+const panelStyle = computed(() => ({
+  cursor: panel_flag.value ? 'move' : 'default',
+  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
+  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
+}))
+
 </script>
 
 <style lang="scss" scoped>
@@ -1701,7 +1778,7 @@ const toggleSort = (key) => {
   position: relative;
   width: fit-content;     // 可調整寬度以適應按鈕
 
-  right: 100px;
+  //right: 100px;
   top: 0px;
 }
 

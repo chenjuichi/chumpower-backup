@@ -11,7 +11,7 @@ from sqlalchemy import exc
 from sqlalchemy import func
 from sqlalchemy import distinct
 
-from database.tables import User, Permission, Setting, Bom, Material, Assemble, Product, Agv, Session
+from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -621,3 +621,68 @@ def update_agv():
   return jsonify({
     'status': True
   })
+
+
+@updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
+def update_assemble_alarm_message():
+  print("updateAssembleAlarmMessage....")
+
+  data = request.get_json()
+
+  assemble_id = data.get("assemble_id")
+  print("assemble_id:",assemble_id)
+  cause_message_list = data.get("cause_message")  # 預期是一個 list，例如 ["異常1", "異常2"]
+  print("cause_message_list:",cause_message_list)
+  cause_user = data.get("cause_user")
+  print("cause_user:",cause_user)
+
+
+  if not assemble_id or not isinstance(cause_message_list, list):
+    return jsonify({"status": False, "message": "Missing or invalid data"}), 400
+
+  s = Session()
+
+  try:
+    # 取得 Assemble 資料
+    assemble_record = s.query(Assemble).get(assemble_id)
+    if not assemble_record:
+      return jsonify({"status": False, "message": "Assemble record not found"}), 404
+
+    # 取得所有異常資料
+    _alarm_objects = s.query(AbnormalCause).all()
+    _alarm_objects_dict = {item.message.strip(): item.id for item in _alarm_objects}
+
+    # 比對字串，取得對應的 ID
+    cause_id_list = []
+    '''
+    for msg in cause_message_list:
+      msg_stripped = msg.strip()
+      if msg_stripped in _alarm_objects_dict:
+        cause_id_list.append(str(_alarm_objects_dict[msg_stripped]))
+    '''
+    for msg in cause_message_list:
+        # 取出括號前的異常名稱（例：'散爪(M01002)' → '散爪'）
+        msg_stripped = msg.split('(')[0].strip()
+        if msg_stripped in _alarm_objects_dict:
+            cause_id_list.append(str(_alarm_objects_dict[msg_stripped]))
+
+
+    # 將 ID 列表轉為逗號分隔字串
+    new_alarm_id = ", ".join(cause_id_list)
+    print("new_alarm_id:", new_alarm_id)
+
+    # 儲存進資料庫
+    assemble_record.alarm_message = new_alarm_id
+    assemble_record.writer_id = cause_user
+    assemble_record.write_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    s.commit()
+
+    return jsonify({"status": True, "message": "Alarm message updated successfully"})
+
+  except Exception as e:
+    s.rollback()
+    return jsonify({"status": False, "message": str(e)}), 500
+
+  finally:
+    s.close()
+

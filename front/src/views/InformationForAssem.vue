@@ -10,11 +10,141 @@
     </template>
   </v-snackbar>
 
+  <v-row>
+    <v-col cols="6" class="d-flex justify-center align-center pb-0">
+      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">組裝區在製品生產資訊</span>
+    </v-col>
+    <v-col cols="2" class="d-flex justify-end align-center pb-0">
+      <v-btn
+        @click="toggleHistory"
+        :active="history"
+        color="#c39898"
+        variant="outlined"
+
+      >
+        <v-icon left color="#664343">mdi-history</v-icon>
+        歷史紀錄
+      </v-btn>
+    </v-col>
+    <v-col cols="4" class="d-flex justify-start align-center pb-0">
+      <v-text-field
+        v-model="search"
+        label="搜尋"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        hide-details
+        single-line
+
+        density="compact"
+      />
+    </v-col>
+  </v-row>
+
+  <v-row
+    class="mt-0 mb-0 row-hidden"
+    style="min-height: 48px; height: 48px; flex-wrap: nowrap; position:relative; top:25px; left:5px;"
+  >
+    <!--日期範圍-->
+    <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
+      <Transition name="slide">
+        <div v-if="showFields" style="min-width:290px; width:290px;">
+          <v-dialog v-model="pick_date_dialog" width="auto">
+            <template #activator="{ props }">
+              <v-text-field
+                v-bind="props"
+                label="日期範圍"
+                v-model="formattedDateRange"
+                :value="formattedDateRange"
+                readonly
+                variant="underlined"
+                density="compact"
+                style="margin-top:20px;"
+                placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+                prepend-icon="mdi-calendar-check"
+                clearable
+                @click="pick_date_dialog = true"
+                @click:clear="clearDates"
+              />
+            </template>
+
+            <v-card>
+              <v-card-text>
+                <v-locale-provider locale="zhHant">
+                  <v-date-picker
+                    v-model="tempRange"
+                    multiple
+                    hide-actions
+                    hide-header
+                    title="選擇日期範圍"
+
+                    :allowed-dates="() => true"
+                  />
+                </v-locale-provider>
+              </v-card-text>
+              <v-card-actions class="justify-end">
+                <v-btn variant="text" color="grey" @click="onCancel">取消</v-btn>
+                <v-btn variant="flat" color="primary" @click="onConfirm">確定</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
+        </div>
+      </Transition>
+    </v-col>
+
+    <!--工單範圍-->
+    <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0">
+      <Transition name="slide">
+        <div style="min-width:290px; width:290px;">
+          <v-text-field
+            v-if="showFields"
+            label="工單範圍"
+            variant="outlined"
+            v-model="creditCardNumber"
+            maxlength="25"
+            inputmode="numeric"
+            density="compact"
+            prepend-icon="mdi-archive-check-outline"
+            placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
+            @input="formatCreditCard"
+            style="margin-top:20px; min-width:290px; width:290px;"
+          />
+        </div>
+      </Transition>
+    </v-col>
+
+    <!--Excel按鍵-->
+    <v-col cols="4" class="d-flex justify-start align-center pt-0 pb-0">
+      <div class="flip_btn">
+        <v-btn
+          color="white"
+          style="min-width: 90px; max-height: 34px; border-radius: 6px; border-width:1.5px; border-color:#64B5F6;"
+          class="side default-side primary thin mt-1 mx-auto"
+          :disable="isInformationEmpty"
+          @mouseenter="showFields = true"
+        >
+          <v-icon left color="green" style="font-weight:700;">mdi-microsoft-excel</v-icon>
+          <span style="color:black; font-weight:600;">Excel</span>
+        </v-btn>
+        <div class="side hover-side">
+          <v-btn color="primary" style="position:relative; right:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="showFields = false">
+            <v-icon left size="24px">mdi-close-circle-outline</v-icon>
+            取消
+          </v-btn>
+          <v-btn color="primary" style="position:relative; left:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="exportToExcelFun">
+            <v-icon left size="24px">mdi-check-circle-outline</v-icon>
+            確定
+          </v-btn>
+        </div>
+      </div>
+    </v-col>
+  </v-row>
+
   <v-data-table
     :headers="headers"
-    :items="informations"
+    :items="filteredInformations"
     :row-props="getRowProps"
     :search="search"
+    :custom-filter="customFilter"
     item-value="order_num"
     class="outer custom-header"
     :style="tableStyle"
@@ -24,13 +154,11 @@
     v-model:page="pagination.page"
   >
     <template v-slot:top>
-      <v-card style="min-height: 100px; overflow: visible;">
-        <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; padding:16px;">
-          <span style="position:relative; top:-10px;">組裝區在製品生產資訊</span>
-          <v-spacer />
+      <v-card style="min-height:100px; overflow:visible; position:relative; top: -20px;">
+        <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; ">
           <v-row style="margin-left:3vw;">
-            <v-col cols="12" md="6">
-              <div style="display: flex; justify-content: center; gap: 25px; font-size: 20px; color: blue">
+            <v-col cols="9">
+              <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span style="font-size: 16px;">{{ todayDate }}</span>
                 </div>
@@ -46,7 +174,6 @@
                     :size="70"
                     :width="8"
                     color="primary"
-
                   >
                     {{ prepare_count }}
                   </v-progress-circular>
@@ -79,34 +206,10 @@
                 </div>
               </div>
             </v-col>
-
-            <v-col cols="12" md="2">
-              <v-btn
-                @click="toggleHistory"
-                :active="history"
-                color="#c39898"
-                variant="outlined"
-                style="position:relative; right:-4vw;"
-              >
-                <v-icon left color="#664343">mdi-history</v-icon>
-                歷史紀錄
-              </v-btn>
-            </v-col>
-            <v-col cols="12" md="4" >
-              <v-text-field
-                v-model="search"
-                label="Search"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                single-line
-                style="position:relative; left:2vw; top:2px; "
-                density="compact"
-              />
-            </v-col>
+            <v-col cols="3" />
           </v-row>
           <div class="pa-4 text-center">
-            <v-dialog v-model="dialog" max-width="1280px">
+            <v-dialog v-model="process_dialog" max-width="1280px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配紀錄
@@ -247,7 +350,11 @@
 <script setup>
 import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount ,nextTick } from 'vue';
 
-import { useRoute } from 'vue-router'; // Import useRouter
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrBefore);             //啟用 plugin
+
+import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
 
@@ -273,6 +380,8 @@ const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
 
+const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+
 //=== component name ==
 defineComponent({ name: 'InformationForAssem' });
 
@@ -286,6 +395,17 @@ const props = defineProps({ showFooter: Boolean });
 let intervalId = null;                    // 10秒, 倒數計時器
 let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
 const route = useRoute();                 // Initialize router
+
+const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
+const pick_date_dialog = ref(false);      // 控制 v-pick-date Dialog 顯示
+const selectedRange = ref([])             // 最終選定日期範圍
+const tempRange = ref([])                 // 選單中暫存日期範圍
+
+const fromDateStart = ref("");
+const fromDateValStart = ref([]);
+
+const creditCardNumber = ref("");
+const orderNumRange = ref(["", ""]);      // 用來儲存第一組與第二組的數字
 
 const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
@@ -317,18 +437,18 @@ const headers = [
 const from_agv_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv=ref('');
+
 const search = ref('');
+
 const history = ref(false);
 const currentUser = ref({});
-const permDialog = ref(false);
 
-//const rightDialog = ref(false);
 //const showExplore = ref(false);
 //const showVirtualTable = ref(false);
 
 const currentStartTime = ref(null);  // 記錄開始時間
 
-const dialog = ref(false);
+const process_dialog = ref(false);
 
 const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
@@ -339,13 +459,48 @@ const wakeLock = ref(null);           // 用於存儲 Wake Lock 物件
 const isWakeLockActive = ref(false);  // 是否啟用螢幕鎖定
 
 //=== watch ===
-watch(currentUser, (newUser) => {
-  if (newUser.perm < 1) {
-    permDialog.value = true;
-  }
-});
-
 setupGetBomsWatcher();
+
+watch(tempRange, (newVal) => {
+  console.log('目前選取型別與狀態：',
+    newVal.map(d => ({
+      value: d,
+      type: typeof d,
+      isDate: d instanceof Date
+    }))
+  );
+  console.log('✅ 是否為 Date：', newVal.map(d => d instanceof Date));
+})
+
+watch(pick_date_dialog, (isOpen) => {
+  if (isOpen) {
+    if (selectedRange.value.length >= 2) {
+      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
+      tempRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
+    } else {
+      tempRange.value = [...selectedRange.value]
+    }
+  }
+})
+
+watch(
+  () => informations.value || [],
+  (newVal) => {
+    console.log("Updated informations...", newVal);
+  },
+  { deep: true }
+);
+
+watch(fromDateValStart, (val) => {
+  console.log("watch(), fromDateValStart:", fromDateValStart.value)
+
+  if (!val || val.length === 0) {
+    fromDateStart.value = [];
+  } else {
+    fromDateStart.value = val.map((date) => formatDate3(date));
+  }
+  console.log("watch: fromDateStart.value:", fromDateStart.value);
+});
 
 //=== computed ===
 const tableStyle = computed(() => ({
@@ -374,6 +529,30 @@ const progress_value1 = computed(() => order_count.value);
 const progress_value2 = computed(() => order_count.value !=0 ? (prepare_count.value / order_count.value)* 100 : 0 );
 const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.value / order_count.value)* 100 : 0 );
 const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
+
+// 顯示格式：yyyy-mm-dd ~ yyyy-mm-dd
+const formattedDateRange = computed(() => {
+  const list = selectedRange.value
+  if (list.length === 0) return ''
+  const sorted = [...list].sort((a, b) => new Date(a) - new Date(b))
+  const start = dayjs(sorted[0]).format('YYYY-MM-DD')
+  const end = dayjs(sorted[sorted.length - 1]).format('YYYY-MM-DD')
+  return start === end ? start : `${start} ~ ${end}`
+})
+
+const isInformationEmpty = computed(() => {
+  return informations.value.length === 0;
+});
+
+// 計算屬性 - 過濾符合條件的資訊
+const filteredInformations = computed(() => {
+  return informations.value
+  .filter(item => {
+    const isWithinDateRange = checkDateInRange(item.delivery_date);
+    const isWithinOrderRange = checkOrderInRange(item.order_num);
+    return isWithinDateRange && isWithinOrderRange;
+  });
+});
 
 //=== mounted ===
 onMounted(async () => {
@@ -502,7 +681,6 @@ onBeforeMount(() => {
   initialize();
 });
 
-
 onBeforeUnmount(() => {
   // 卸載時釋放鎖定
   releaseWakeLock();
@@ -522,12 +700,107 @@ const initialize = async () => {
   }
 };
 
+// 檢查 item.delivery_date 是否落在 fromDateValStart 範圍內
+const checkDateInRange = (date) => {
+  if (!fromDateValStart.value.length) return true; // 沒選日期 -> 全部顯示
+
+  const formattedDates = fromDateValStart.value.map(d => formatDate3(d));
+  const minDate = formattedDates[0];
+  const maxDate = formattedDates[formattedDates.length - 1];
+
+  return date >= minDate && date <= maxDate;
+};
+
+// 檢查 item.order_num 是否落在 orderNumRange 內
+const checkOrderInRange = (orderNum) => {
+  if (!orderNumRange.value[0] && !orderNumRange.value[1]) return true; // 沒輸入範圍 -> 全部顯示
+
+  const minOrder = orderNumRange.value[0];
+  const maxOrder = orderNumRange.value[1] || minOrder; // 若只輸入一組，則上下限相同
+  return orderNum >= minOrder && orderNum <= maxOrder;
+};
+
+
+const exportToExcelFun = async () => {
+  console.log('InformationForAssem.vue, exportToExcelFun()...');
+
+  //const obj = {
+  //  order_num: '訂單編號',
+  //  comment: '說明',
+  //  delivery_date: '交期',
+  //  req_qty: '訂單數量',
+  //  delivery_qty: '現況數量',
+  //};
+
+  // 先取得 data table 內的 filteredInformations
+  let filteredData = filteredInformations.value;
+  console.log("1. filteredData: ", filteredData);
+
+  // 再手動應用 customFilter()
+  if (search.value) {
+    filteredData = filteredData.filter(item => customFilter(search.value, item));
+  }
+  console.log("2. filteredData: ", filteredData);
+
+  // 確保欄位名稱與 obj 一致
+  let updatedData = filteredData.map(item => ({
+    order_num: item.order_num ?? '',
+    comment: item.comment ?? '',
+    delivery_date: item.delivery_date ?? '',
+    req_qty: item.req_qty ?? '',
+    delivery_qty: item.delivery_qty ?? '',
+
+  }));
+  console.log("3. updatedData: ", updatedData);
+
+  //let object_Desserts = [obj, ...updatedData];
+  //console.log("4. object_Desserts: ", object_Desserts);
+
+  let payload = {
+    blocks: updatedData,
+    //blocks: object_Desserts,
+    //count: object_Desserts.length,
+    name: currentUser.value.name,
+  };
+
+  try {
+    const export_file_data = await exportToExcelForAssembleInformation(payload);
+    console.log("export_file_dat:", export_file_data);
+
+    if (export_file_data.status) {
+      selectedFile.value = export_file_data.file_name;
+      downloadFilePath.value = export_file_data.message;
+      console.log("✅ 更新後的 selectedFile:", selectedFile.value); // 確保它不是 null
+
+      //let temp_message = `庫存記錄(${export_file_data.message})轉檔完成!`;
+      let temp_message = '轉檔完成!';
+      showSnackbar(temp_message, '#008184');
+    } else {
+      showSnackbar(excel_file_data.message, 'red accent-2');
+    }
+  } catch (error) {
+    console.error("Error during execution:", error);
+    showSnackbar("存檔錯誤!", 'red accent-2');
+  }
+  showFields.value = false;
+};
+
 const listInformationsFun = async () => {
   await listInformations();
 };
 
 const listWorkingOrderStatusFun = async () => {
   await listWorkingOrderStatus();
+};
+
+const customFilter = (value, search, item) => {
+  //const customFilter = (search, item) => {
+    if (!search) return true;
+  search = search.toLowerCase();
+
+  return Object.values(item).some(val =>
+    String(val).toLowerCase().includes(search)
+  );
 };
 
 const toggleHistory = async () => {
@@ -630,7 +903,7 @@ const toggleExpand = async (item) => {
   await getProcessesByOrderNum(payload);
   console.log("processes:", processes.value);
 
-  dialog.value = true;
+  process_dialog.value = true;
 };
 
 const updateItem = async () => {              //編輯 bom, material及process後端table資料
@@ -711,7 +984,7 @@ const updateItem = async () => {              //編輯 bom, material及process�
     listMaterials();
   }
   */
-  dialog.value = false;
+  process_dialog.value = false;
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
@@ -821,6 +1094,69 @@ const getLocalIP = async () => {
   }
 };
 */
+const formatDate3 = (date) => {
+
+  if (!date) return null;
+  const localDate = new Date(date);
+  localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset()); // 修正時區
+  //return localDate.toISOString().split("T")[0]; // yyyy-mm-dd
+  const isoDate = localDate.toISOString().split("T")[0]; // yyyy-mm-dd
+
+  const [year, month, day] = isoDate.split("-");
+  //console.log("formatDate3: ", `${year}-${month}-${day}`)
+  return `${year}-${month}-${day}`;
+};
+
+
+const formatCreditCard = () => {
+  // 移除所有 "-"，確保格式統一
+  let realNumber = creditCardNumber.value.replace(/-/g, "");
+
+  // 只保留最多 24 位數 (兩組 12 位數)
+  realNumber = realNumber.slice(0, 24);
+
+  // 每 12 位數加上 "-"
+  let dashedNumber = realNumber.match(/.{1,12}/g);
+  creditCardNumber.value = dashedNumber ? dashedNumber.join("-") : realNumber;
+
+  // 儲存第一組與第二組數字
+  orderNumRange.value = dashedNumber || ["", ""];
+};
+
+
+const clearDates = () => {
+  selectedRange.value = []
+  tempRange.value = []
+}
+
+// 點「確定」按鈕
+const onConfirm = () => {
+  const rawDates = tempRange.value.map(d => dayjs(d))
+  if (rawDates.length === 1) {
+    selectedRange.value = [rawDates[0].toDate()]
+  } else if (rawDates.length >= 2) {
+    const sorted = rawDates.sort((a, b) => a.unix() - b.unix())
+    selectedRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
+  }
+  pick_date_dialog.value = false
+}
+
+// 點「取消」按鈕
+const onCancel = () => {
+  console.log('❌ 取消選擇');
+
+  if (selectedRange.value.length >= 1) {
+    const [start, end] = selectedRange.value.length === 1
+      ? [selectedRange.value[0], selectedRange.value[0]]
+      : [selectedRange.value[0], selectedRange.value[1]]
+
+    tempRange.value = generateDateRange(start, end)
+  } else {
+    tempRange.value = []
+  }
+  pick_date_dialog.value = false
+}
+
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -1044,4 +1380,50 @@ const showSnackbar = (message, color) => {
     left: 220px;
   }
 }
+
+//===
+
+.slide-enter-from
+{
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+}
+
+//===過場特效
+
+.flip_btn {
+  position: relative;
+  top: -5px;
+  left: 30px;
+  height: 20px;
+  width: 130px;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease-in-out;
+  transform: translateZ(-20px);
+}
+
+.flip_btn:hover {
+  transform: rotateX(-90deg) translateY(20px);
+}
+
+.side {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 130px;
+  //width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.default-side {
+  transform: translateZ(20px);
+}
+
+.hover-side {
+  transform: rotateX(90deg) translateZ(20px);
+}
+
 </style>

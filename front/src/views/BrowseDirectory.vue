@@ -324,7 +324,7 @@ const createNewPdf = async () => {
       const temp_l = name.length >= 3 ? name.slice(0, name.length - 2) : '';
       const temp_f = name.slice(-2);
 
-      // 加日期章
+      // 加蓋登入人員日期章
 			const stampPayload = {
         last_name: temp_l,
         first_name: temp_f,
@@ -333,22 +333,19 @@ const createNewPdf = async () => {
 				pdfType: pdfType.value,
 				approve: 0,
       };
-
       const stampRes = await stampFile(stampPayload);
-			console.log("stampFile return file name:", stampRes)
-      //await stampFileFun();
 			finalPath = stampRes.filepath;
       finalName = stampRes.filename;
 
+			// 加蓋預設主管日期章
       const stampPayload2 = {
         last_name: '林',
         first_name: '淑雲',
-        filepath: finalPath,           // ← 用第一次蓋章後的檔案
+        filepath: finalPath,           // 同樣使用第一次蓋章後的檔案
         png_path: "C:\\vue\\chumpower\\日期章\\stamp0.png",
         pdfType: pdfType.value,
         approve: 1,
       };
-
       const stampRes2 = await stampFile(stampPayload2);
       finalPath = stampRes2.filepath;
       finalName = stampRes2.filename;

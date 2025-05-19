@@ -390,7 +390,7 @@ def copy_material():
   print("request_data:", request_data)
 
   _copy_id = request_data['copy_id']
-  _total_delivery_qty = request_data.get['total_delivery_qty']
+  _total_delivery_qty = request_data.get('total_delivery_qty')
   _allOk_qty = request_data.get('allOk_qty')
 
   #_delivery_qty = request_data['delivery_qty']

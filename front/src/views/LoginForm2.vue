@@ -295,9 +295,30 @@ const showBackWarning = ref(true);
 
 const isOnline = ref(navigator.onLine);
 
+const screenSizeInInches = ref(null);
+
 //=== mounted ===
 onMounted(() => {
   console.log("LoginForm, onMounted()...")
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  const dpiEstimate = 96;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+  //+++
 
   // 禁用 BackButton 功能
   //disableBackButton();
@@ -305,7 +326,6 @@ onMounted(() => {
   window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
   //history.pushState(null, null, document.URL)
   window.addEventListener('popstate', handlePopState)
-
 
   document.addEventListener('keydown', allowBackspaceInInputs);
 

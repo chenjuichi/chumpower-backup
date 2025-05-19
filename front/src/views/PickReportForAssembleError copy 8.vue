@@ -30,9 +30,7 @@
             <v-col cols="12" md="3" class="pb-2">
               組裝區異常填報
             </v-col>
-
             <v-col cols="12" md="2" class="pb-1" />
-
             <!-- 歷史紀錄按鍵 -->
             <v-col cols="12" md="2" class="pb-6">
               <v-btn
@@ -45,7 +43,6 @@
                 <span style="color:black; font-weight:600;">歷史紀錄</span>
               </v-btn>
             </v-col>
-
             <!--搜尋欄位-->
             <v-col cols="12" md="2" class="pb-6">
               <v-text-field
@@ -55,62 +52,64 @@
                 variant="outlined"
                 hide-details
                 single-line
-                density="compact"
                 class="top_find_field"
+                density="compact"
               />
             </v-col>
 
-            <v-col cols="12" md="3" class="pb-1" />
+            <v-col cols="12" md="3" class="pb-1">
+            <!--
+              <v-btn
+                color="primary"
+                variant="outlined"
+                class="primary thin mt-n1 mr-15 mx-auto excel_wrapper"
+                :disable="isAssembleErrorEmpty"
+                @click="exportToExcelFun"
+              >
+                <v-icon left color="green">mdi-microsoft-excel</v-icon>
+                <span style="color:black; font-weight:600;">Excel</span>
+              </v-btn>
+            -->
+
+            <!--
+            <div class="flip_btn">
+              <v-btn color="primary" class="side default-side mt-n1 mr-15 mx-auto">
+                <v-icon left>mdi-content-save-edit-outline</v-icon>
+                在庫資料更新
+              </v-btn>
+              <v-btn color="primary" class="side hover-side mt-n1 mr-15 mx-auto" @click="updateStockInDataByInv">
+                <v-icon left size="24px">mdi-check-circle-outline</v-icon>
+                確定?
+              </v-btn>
+            </div>
+            -->
+            </v-col>
           </v-row>
 
           <v-row class="mt-0 mb-0 row-hidden" style="min-height: 48px; height: 48px; flex-wrap: nowrap;">
             <!--日期範圍-->
             <v-col cols="4" class="d-flex justify-end align-center pt-0">
               <Transition name="slide">
-                <div v-if="showFields">
-                  <v-dialog v-model="pick_date_dialog" width="auto">
-                    <template #activator="{ props }">
-                      <v-text-field
-                        v-bind="props"
-                        label="日期範圍"
-                        v-model="formattedDateRange"
-                        :value="formattedDateRange"
-                        readonly
-                        variant="underlined"
-                        density="compact"
-                        style="margin-top:20px;"
-                        placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
-                        prepend-icon="mdi-calendar-check"
-                        clearable
-                        @click="pick_date_dialog = true"
-                        @click:clear="clearDates"
-                      />
-                    </template>
+                <v-locale-provider locale="zhHant" v-if="showFields">
+                  <v-date-input
+                    label="日期範圍"
+                    variant="underlined"
+                    v-model="fromDateValStart"
+                    cancel-text="取消"
+                    ok-text="確定"
+                    :value="formattedRange"
+                    placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+                    multiple="range"
+                    density="compact"
+                    class="small-date-input"
+                    @update:modelValue="onDateConfirm"
+                    @cancel="cancelBtn"
+                    hide-actions
+                  />
 
-                    <v-card>
-                      <v-card-text>
-                        <v-locale-provider locale="zhHant">
-                          <v-date-picker
-                            v-model="tempRange"
-                            multiple
-                            hide-actions
-                            hide-header
-                            title="選擇日期範圍"
-
-                            :allowed-dates="() => true"
-                          />
-                        </v-locale-provider>
-                      </v-card-text>
-                      <v-card-actions class="justify-end">
-                        <v-btn variant="text" color="grey" @click="onCancel">取消</v-btn>
-                        <v-btn variant="flat" color="primary" @click="onConfirm">確定</v-btn>
-                      </v-card-actions>
-                    </v-card>
-                  </v-dialog>
-                </div>
+                </v-locale-provider>
               </Transition>
             </v-col>
-
             <!--工單範圍-->
             <v-col cols="4" class="d-flex justify-start align-center pt-0">
               <Transition name="slide">
@@ -125,11 +124,9 @@
                 prepend-icon="mdi-archive-check-outline"
                 placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
                 @input="formatCreditCard"
-                style="margin-top:20px;"
               />
               </Transition>
             </v-col>
-
             <!--Excel按鍵-->
             <v-col cols="4" class="d-flex justify-center align-center pb-12">
               <div class="flip_btn">
@@ -328,11 +325,7 @@
 <script setup>
 import { ref, reactive, defineComponent, computed, watch, onUpdated , onMounted, onUnmounted, onBeforeMount, nextTick, onBeforeUnmount } from 'vue';
 
-import dayjs from 'dayjs';
-import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-dayjs.extend(isSameOrBefore);   //啟用 plugin
-
-import { useRoute } from 'vue-router';
+import { useRoute } from 'vue-router'; // Import useRouter
 
 //import { useLocale } from 'vuetify';
 
@@ -401,17 +394,17 @@ const search = ref('');
 
 const currentUser = ref({});
 const componentKey = ref(0)             // key值用於強制重新渲染
-
-const pick_date_dialog = ref(false);    // 控制 v-pick_date Dialog 顯示
-const selectedRange = ref([])           // 最終選定日期範圍
-const tempRange = ref([])               // 選單中暫存日期範圍
+const permDialog = ref(false);
 
 const fromDateValP = ref(null);
 
 const fromDateStart = ref("");
+//const fromDateValStart = ref(null);
 const fromDateValStart = ref([]);
+//const compareDateStart = ref("");       //查詢開始日期
 
-const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
+//const fromDateValStart = ref(new Date().toISOString().split("T")[0]); // YYYY-MM-DD
+const showFields = ref(false);            // 用來控制是否顯示額外的欄位
 
 const fromDateMenuEnd = ref(false);
 const fromDateValEnd = ref(null);
@@ -440,6 +433,12 @@ const downloadFilePath = ref('');
 const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
 
 //=== watch ===
+watch(currentUser, (newUser) => {
+  if (newUser.perm < 1) {
+    permDialog.value = true;
+  }
+});
+
 watch(
   () => informations_for_assemble_error.value || [],
   (newVal) => {
@@ -449,6 +448,8 @@ watch(
 );
 
 watch(fromDateValStart, (val) => {
+  //fromDateStart.value = formatDate3(val);
+  //console.log("watch: fromDateStart.value:",fromDateStart.value)
   console.log("watch(), fromDateValStart:", fromDateValStart.value)
 
   if (!val || val.length === 0) {
@@ -466,37 +467,18 @@ watch(selectedFile, (newVal) => {
   }
 });
 
-watch(tempRange, (newVal) => {
-  console.log('目前選取型別與狀態：',
-    newVal.map(d => ({
-      value: d,
-      type: typeof d,
-      isDate: d instanceof Date
-    }))
-  );
-  console.log('✅ 是否為 Date：', newVal.map(d => d instanceof Date));
-})
-
-watch(pick_date_dialog, (isOpen) => {
-  if (isOpen) {
-    if (selectedRange.value.length >= 2) {
-      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
-      tempRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
-    } else {
-      tempRange.value = [...selectedRange.value]
-    }
-  }
-})
-
 //=== computed ===
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0'
 }));
 
 const routeName = computed(() => route.name);
-
+/*
+const abnormal_causes_msg = computed(() =>
+  abnormal_causes.value.map(cause => `${cause.message}(${cause.number})`)
+);
+*/
 const abnormal_causes_msg = computed(() => {
-
   if (!searchText.value)
     return abnormal_causes.value.map(cause => `${cause.message}(${cause.number})`);
 
@@ -511,17 +493,41 @@ const abnormal_causes_msg = computed(() => {
 const isAssembleErrorEmpty = computed(() => {
   return informations_for_assemble_error.value.length === 0;
 });
+/*
+const formattedDate = computed({
+  get: () => {
+    if (!fromDateValStart.value) return "";
 
-// 顯示格式：yyyy-mm-dd ~ yyyy-mm-dd
-const formattedDateRange = computed(() => {
+    const date = new Date(fromDateValStart.value);
+    return date.toLocaleDateString("zhHant", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).replace(/\//g, "-");
+  },
+  set: (val) => {
+    if (!val) {
+      fromDateValStart.value = null;
+      return;
+    }
 
-  const list = selectedRange.value
-  if (list.length === 0) return ''
-  const sorted = [...list].sort((a, b) => new Date(a) - new Date(b))
-  const start = dayjs(sorted[0]).format('YYYY-MM-DD')
-  const end = dayjs(sorted[sorted.length - 1]).format('YYYY-MM-DD')
-  return start === end ? start : `${start} ~ ${end}`
-})
+    fromDateValStart.value = new Date(val); // 轉回 Date 物件
+  }
+});
+*/
+const formattedRange = computed(() => {
+  if (!fromDateValStart.value || fromDateValStart.value.length === 0) return "";
+
+  // 轉換格式
+  const formattedDates = fromDateValStart.value.map((date) => formatDate3(date));
+
+  if (formattedDates.length === 1) {
+    return formattedDates[0]; // 只有選擇一個日期時
+  } else if (formattedDates.length >= 2) {
+    return `${formattedDates[0]} ~ ${formattedDates[formattedDates.length - 1]}`; // 開始 + 空白 + 結束
+  }
+  return "";
+});
 
 // 計算屬性 - 過濾符合條件的資訊
 const filteredInformations = computed(() => {
@@ -538,6 +544,20 @@ const filteredInformations = computed(() => {
     return isWithinDateRange && isWithinOrderRange;
   });
 });
+
+/*
+const fromDateValStartComputed = computed({
+  get: () => fromDateValStart.value,  // 確保是 YYYY-MM-DD
+  set: (val) => {
+    if (!val) return;
+    if (typeof val === "string") {
+      fromDateValStart.value = val;  // 直接使用 YYYY-MM-DD
+    } else {
+      fromDateValStart.value = val.toISOString().split("T")[0];  // 轉換日期
+    }
+  }
+});
+*/
 
 //=== mounted ===
 onMounted(async () => {
@@ -672,49 +692,22 @@ const handlePopState = () => {
   }
 }
 
-const clearDates = () => {
-  selectedRange.value = []
-  tempRange.value = []
+const cancelBtn = () => {
+  console.log('使用者按了取消') // or 清空欄位
 }
 
-const generateDateRange = (start, end) => {
-  const range = []
-  let current = dayjs(start)
-  const last = dayjs(end)
-
-  while (current.isSameOrBefore(last)) {
-    range.push(current.toDate())
-    current = current.add(1, 'day')
+const onDateConfirm = (newVal) => {
+  if (!newVal) {
+    console.log('使用者按了取消') // or 清空欄位
+    // 可以在這裡自定義取消時的處理，例如：fromDateValStart.value = null
+    return
   }
-  return range
-}
 
-// 點「確定」按鈕
-const onConfirm = () => {
-  const rawDates = tempRange.value.map(d => dayjs(d))
-  if (rawDates.length === 1) {
-    selectedRange.value = [rawDates[0].toDate()]
-  } else if (rawDates.length >= 2) {
-    const sorted = rawDates.sort((a, b) => a.unix() - b.unix())
-    selectedRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
+  // 如果是陣列且符合範圍格式
+  if (Array.isArray(newVal) && newVal.length === 2) {
+    console.log('使用者按了確定，選擇範圍：', newVal)
+    // 執行你想做的事
   }
-  pick_date_dialog.value = false
-}
-
-// 點「取消」按鈕
-const onCancel = () => {
-  console.log('❌ 取消選擇');
-
-  if (selectedRange.value.length >= 1) {
-    const [start, end] = selectedRange.value.length === 1
-      ? [selectedRange.value[0], selectedRange.value[0]]
-      : [selectedRange.value[0], selectedRange.value[1]]
-
-    tempRange.value = generateDateRange(start, end)
-  } else {
-    tempRange.value = []
-  }
-  pick_date_dialog.value = false
 }
 
 const toggleHistory = () => {
@@ -781,7 +774,7 @@ const getSchedulesForAssembleErrorFun = async () => {
 //};
 
 const exportToExcelFun = async () => {
-  console.log('PickReportForAssembleError.vue, exportToExcelFun()...');
+  console.log('PickReportForAssembleError, exportToExcelFun()...');
 
   const obj = {
     order_num: '訂單編號',
@@ -795,7 +788,7 @@ const exportToExcelFun = async () => {
     cause_date: '填寫日期',
   };
 
-  // 先取得 data table 內的 filteredInformations
+  // 先取得 filteredInformations.value
   let filteredData = filteredInformations.value;
   console.log("1. filteredData: ", filteredData);
 
@@ -983,8 +976,10 @@ const formatDate = () => {
     day: "2-digit",
   }).replace(/\//g, "-"); // 轉換成 YYYY-MM-DD 格式
 
+  //fromDateStart.value = fromDateValStart.value.toISOString().split("T")[0];
+  //if (typeof date === "string") return date; // 確保格式為 YYYY-MM-DD
   console.log("日期:", fromDateStart.value);  // 轉換為 YYYY-MM-DD
-
+  //let kk =date.toISOString().split("T")[0];
   let kk=date.toLocaleDateString("zhHant", {
     year: "numeric",
     month: "2-digit",
@@ -1005,6 +1000,18 @@ const formatDate2 = (date) => {
 };
 */
 const formatDate3 = (date) => {
+  /*
+  if (!date) return null;
+  // 確保 date 是 Date 物件，再轉換成 yyyy-mm-dd 格式
+
+  const localDate = new Date(date);
+  localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset()); // 修正時區
+  const isoDate = localDate.toISOString().split("T")[0]; // yyyy-mm-dd
+
+  const [year, month, day] = isoDate.split("-");
+  console.log("formatDate3", `${day}-${month}-${year}`)
+  return `${year}-${month}-${day}`;
+  */
 
   if (!date) return null;
   const localDate = new Date(date);
@@ -1053,8 +1060,8 @@ const checkOrderInRange = (orderNum) => {
 };
 
 
-const customFilter = (value, search, item) => {
-//const customFilter = (search, item) => {
+//const customFilter = (value, search, item) => {
+const customFilter = (search, item) => {
     if (!search) return true;
   search = search.toLowerCase();
 
@@ -1610,10 +1617,6 @@ const showSnackbar = (message, color) => {
   height: 24px;
 }
 */
-:deep(.v-date-picker-header) {
-  display: none !important;
-}
-
 :deep(.v-picker__actions .v-btn) {
     background-color: blue !important;
     color: #fff;

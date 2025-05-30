@@ -3,7 +3,8 @@ import os
 os.environ['SQLALCHEMY_WARN_20'] = '0'    # 設置環境變數來顯示所有與SQLAlchemy 2.0相關的警告
 os.environ['SQLALCHEMY_SILENCE_UBER_WARNING'] = '0'   # 設置環境變數來靜音指定的警告
 
-from datetime import datetime
+#from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, func, ForeignKey, create_engine
 from sqlalchemy import text
@@ -33,6 +34,8 @@ class User(BASE):
   #_process =  relationship('Process', backref="user")                 # 一對多(一), 備料
   #_assembler =  relationship('Assembler', backref="user")               # 一對多(一), 裝配
   #_finished_goods =  relationship('Finished_Goods', backref="user")     # 一對多(一), 成品
+  #updated_at = Column(DateTime, onupdate=datetime.utcnow())   # 2025-05-29 add
+  updated_at = Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC))  # 2025-05-29 add
   create_at = Column(DateTime, server_default=func.now())
 
   # 定義變數輸出的內容

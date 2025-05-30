@@ -28,7 +28,7 @@ import J2 from '../views/dataForAssemble.vue';
 import J3 from '../views/dataForProcessAlarm.vue';
 import J4 from '../views/dataForMachineAlarm.vue';
 
-import MyTable from '../views/MyTable.vue';
+//import MyTable from '../views/MyTable.vue';
 //import LoginRegister from '@/views/LoginRegister.vue';
 import LoginRegister from '../views/LoginForm2.vue';
 import Employer from '../views/Employer.vue';

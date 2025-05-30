@@ -1,0 +1,35 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SocketIOServer", "gateway\SocketIOServer.csproj", "{15A0BF45-04D6-932D-3CDB-9C80459CB9FB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "console", "console", "{09D8FB36-4898-7C8E-B3F7-02AC6C3AAC25}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SocketIOServer", "console\SocketIOServer\SocketIOServer.csproj", "{571C47D8-1857-8A1C-8007-1FCFE9ECABEF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{15A0BF45-04D6-932D-3CDB-9C80459CB9FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15A0BF45-04D6-932D-3CDB-9C80459CB9FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15A0BF45-04D6-932D-3CDB-9C80459CB9FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15A0BF45-04D6-932D-3CDB-9C80459CB9FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{571C47D8-1857-8A1C-8007-1FCFE9ECABEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{571C47D8-1857-8A1C-8007-1FCFE9ECABEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{571C47D8-1857-8A1C-8007-1FCFE9ECABEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{571C47D8-1857-8A1C-8007-1FCFE9ECABEF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{571C47D8-1857-8A1C-8007-1FCFE9ECABEF} = {09D8FB36-4898-7C8E-B3F7-02AC6C3AAC25}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FEF1C27C-8D4E-4904-949D-4BE761B84169}
+	EndGlobalSection
+EndGlobal

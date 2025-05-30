@@ -95,9 +95,15 @@ export const apiOperation = (operation, path, payload) => {
     if (payload != undefined)
       console.log(`${operation.toUpperCase()} ${path} with payload`, payload);
     else
-      console.log(`${operation.toUpperCase()} ${path}`);
+      console.log(`${operation.toUpperCase()} ${path}`, payload || '');
 
     list_table_is_ok.value = false;
+
+    //const config = {
+    //  method: operation,
+    //  url: path,
+    //  timeout: 10000, // 10 秒 timeout
+    //};
 
     // GET   ：參數通常作為查詢字並串附加到 URL 之後。例如，axios.get('/api/path', { params: { key: 'value' } }) ,
     // 會生成一個請求 URL，如 /api/path?key=value。但 payload 若是{}, axios.get('/api/path', options)生成的請求 URL,

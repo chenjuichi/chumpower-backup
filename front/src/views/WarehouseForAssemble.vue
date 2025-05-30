@@ -91,7 +91,7 @@
             <v-col cols="12" md="2">
               <v-text-field
                 v-model="search"
-                label="Search"
+                label="搜尋"
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
                 hide-details
@@ -529,18 +529,18 @@ onMounted(async () => {
     await setupSocketConnection();
 
     socket.value.on('station3_loading_ready', async(data) => {
-      const num = parseInt(data.message, 10);
+      //const num = parseInt(data.message, 10);
 
-      activeColor.value='yello';  // 物料進站
+      activeColor.value='yellow';  // 物料進站
 
-      if ([1, 2, 3].includes(num)) {
-        const temp_msg = `物料已經進入第${num}號裝卸站!`;
-        console.warn(temp_msg);
-        //activeColor.value='yello';  // 物料進站
-        //showSnackbar(temp_msg, 'yellow lighten-5');
-      } else {
-        console.error('接收到不合法的裝卸站號碼:', data.message);
-      }
+      //if ([1, 2, 3].includes(num)) {
+      //  const temp_msg = `物料已經進入第${num}號裝卸站!`;
+      //  console.warn(temp_msg);
+      //  //activeColor.value='yello';  // 物料進站
+      //  //showSnackbar(temp_msg, 'yellow lighten-5');
+      //} else {
+      //  console.error('接收到不合法的裝卸站號碼:', data.message);
+      //}
     });
 
     socket.value.on('station3_agv_begin', async () => {

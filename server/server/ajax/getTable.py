@@ -645,6 +645,8 @@ def get_informations_for_assemble_error_by_history():
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 
+    index = 0
+
     for material_record in _objects:    # for loop a
       #包含歷史檔：_history_flag=true
       #不包含歷史檔:_history_flag=false and record['isAssembleAlarmRpt']=false
@@ -733,7 +735,10 @@ def get_informations_for_assemble_error_by_history():
         #temp_temp_show2_ok_str = re.sub(r'\b00\b', 'na', temp_temp_show2_ok_str)
         temp_temp_show2_ok_str = re.sub(r'\b00\b', '', temp_temp_show2_ok_str)
 
+        index += 1
+
         _object = {
+          'index': index,
           'id': material_record.id,                                # 訂單編號的 table id
           'assemble_id': assemble_record.id,
           'order_num': material_record.order_num,                  # 訂單編號

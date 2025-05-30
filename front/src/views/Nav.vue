@@ -41,6 +41,7 @@
                 :to="localNavLinks[2].isEnabled ? localNavLinks[2].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[2].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
+                style="display:none;"
               >
                 {{ localNavLinks[2].text }}
               </router-link>
@@ -85,6 +86,7 @@
                 :to="localNavLinks[6].isEnabled ? localNavLinks[6].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[6].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
+                style="display:none;"
               >
                 {{ localNavLinks[6].text }}
               </router-link>
@@ -195,6 +197,7 @@
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(4)"
             @mouseleave="onLeave(4)"
+            style="display: none;"
           >
             <button class="dropbtnk" :disabled="localNavLinks[16].isEnabled">
               <div :class="{'button-content': localNavLinks[16].isSegment }">
@@ -317,7 +320,7 @@
               <div class="dropdown-item my-dropdown-item" @click="logout">登出</div>
               <div class="dropdown-item my-dropdown-item" @click="passwordDialog">修改密碼</div>
               <div class="dropdown-item my-dropdown-item" @click="browserDialog">表單貼條碼</div>
-              <div class="dropdown-item my-dropdown-item" @click="functionC">功能C</div>
+              <!--<div class="dropdown-item my-dropdown-item" @click="functionC">功能C</div>-->
             </div>
           </li>
           <!--item8-->

@@ -218,7 +218,8 @@ onBeforeUnmount(() => {
 .led-yellow {
   width: 24px;
   height: 24px;
-	color: #808002;
+	//color: #808002;
+	color: #FDD835;
   background-color: currentColor;
   box-shadow: 0 0 10px currentColor;
   //box-shadow: rgba(0, 0, 0, 0.2) 0 -1px 7px 1px, inset currentColor 0 -1px 9px,

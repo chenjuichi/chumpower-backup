@@ -1014,18 +1014,20 @@ onMounted(async () => {
     //socket.value.emit('station1_loading');
 
     socket.value.on('station1_loading_ready', async(data) => {
-      const num = parseInt(data.message, 10);
+      console.log("receive station1_loading_ready socket...");
 
-      activeColor.value='yello';  // 物料進站
+      //const num = parseInt(data.message, 10);
 
-      if ([1, 2, 3].includes(num)) {
-        const temp_msg = `物料已經進入第${num}號裝卸站!`;
-        console.warn(temp_msg);
-        //activeColor.value='yello';  // 物料進站
-        //showSnackbar(temp_msg, 'yellow lighten-5');
-      } else {
-        console.error('接收到不合法的裝卸站號碼:', data.message);
-      }
+      activeColor.value='yellow';  // 物料進站
+
+      //if ([1, 2, 3].includes(num)) {
+      //  const temp_msg = `物料已經進入第${num}號裝卸站!`;
+      //  console.warn(temp_msg);
+      //  //activeColor.value='yello';  // 物料進站
+      //  //showSnackbar(temp_msg, 'yellow lighten-5');
+      //} else {
+      //  console.error('接收到不合法的裝卸站號碼:', data.message);
+      //}
     });
 
     socket.value.on('station1_agv_start', async () => {

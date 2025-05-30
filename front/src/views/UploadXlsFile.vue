@@ -15,7 +15,7 @@
     max-width="400"
     @update:model-value="onDialogClose"
   >
-    <v-card class="align-center pa-5">
+    <v-card class="align-center pa-5 red-elevation" elevation="16">
       <v-card-title class="text-h6">選擇上傳類型</v-card-title>
       <v-card-text class="d-flex flex-column align-center">
         <v-radio-group v-model="uploadType" column>
@@ -26,8 +26,8 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="primary" @click="cancelAndGo">取消</v-btn>
-        <v-btn color="primary" @click="confirmUploadType">確定</v-btn>
+        <v-btn variant="outlined" color="primary" @click="cancelAndGo">取消</v-btn>
+        <v-btn variant="outlined" color="primary" @click="confirmUploadType">確定</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -315,6 +315,10 @@ const showSnackbar = (message, color) => {
 
 .no-footer {
   margin-bottom: 0;           // 沒有頁腳時的底部邊距
+}
+
+:deep(.red-elevation) {
+  box-shadow: 0px 10px 30px -5px rgba(255, 0, 0, 0.6) !important;
 }
 </style>
 

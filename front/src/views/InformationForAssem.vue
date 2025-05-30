@@ -365,7 +365,9 @@ import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 import { informations, boms, fileCount }  from '../mixins/crud.js';
 import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
 
-import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+import { setupGetBomsWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
+import { apiOperationB } from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
@@ -381,6 +383,8 @@ const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
 
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+
+const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
 //=== component name ==
 defineComponent({ name: 'InformationForAssem' });
@@ -458,6 +462,11 @@ const pagination = reactive({
 const wakeLock = ref(null);           // 用於存儲 Wake Lock 物件
 const isWakeLockActive = ref(false);  // 是否啟用螢幕鎖定
 
+const selectedFile = ref(null); 						                // 儲存已選擇檔案的名稱
+const topPath = ref('C:\\vue\\chumpower\\excel_export'); 	  // 初始路徑
+const downloadFilePath = ref('');
+const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
+
 //=== watch ===
 setupGetBomsWatcher();
 
@@ -500,6 +509,13 @@ watch(fromDateValStart, (val) => {
     fromDateStart.value = val.map((date) => formatDate3(date));
   }
   console.log("watch: fromDateStart.value:", fromDateStart.value);
+});
+
+watch(selectedFile, (newVal) => {
+  if (newVal) {
+    console.log("📥 selectedFile 更新，現在下載檔案:", newVal);
+    downloadFileFun();
+  }
 });
 
 //=== computed ===
@@ -783,6 +799,43 @@ const exportToExcelFun = async () => {
     showSnackbar("存檔錯誤!", 'red accent-2');
   }
   showFields.value = false;
+};
+
+const downloadFileFun = async () => {
+	console.log("downloadFileFun()...", downloadFilePath.value)
+
+	const payload = {
+    filepath: downloadFilePath.value,
+	};
+
+	try {
+		const response = await downloadFile(payload);
+
+		console.log("response:", response);                   // 檢查是否為 Blob
+		console.log("Response headers:", response.headers);   // 檢查headers
+
+		selectedFileName.value = null;
+
+		if (response.data instanceof Blob) {
+			const fileName = response.headers['X-File-Name'] || response.headers['x-file-name'] || `${selectedFile.value}`;
+      console.log('下載的檔案名稱:', fileName);
+
+			// 建立下載鏈接並觸發下載
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      //link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+			return true; 													// 成功下載
+    }
+  } catch (error) {
+    showSnackbar('下載檔案錯誤！', 'red accent-2');
+    console.error('下載檔案錯誤:', error);
+  }
 };
 
 const listInformationsFun = async () => {

@@ -31,7 +31,7 @@
               組裝區異常填報
             </v-col>
 
-            <v-col cols="12" md="2" class="pb-1" />
+            <!--<v-col cols="12" md="2" class="pb-1" />-->
 
             <!-- 歷史紀錄按鍵 -->
             <v-col cols="12" md="2" class="pb-6">
@@ -60,7 +60,21 @@
               />
             </v-col>
 
-            <v-col cols="12" md="3" class="pb-1" />
+            <v-col cols="12" md="3" class="pb-1">
+              <!-- 客製化barcode輸入 -->
+              <v-text-field
+                v-model="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details="auto"
+                prepend-icon="mdi-barcode"
+                style="min-width:200px; width:200px;"
+                class="align-center"
+                density="compact"
+              />
+            </v-col>
+
+            <v-col cols="12" md="2" class="pb-1" />
           </v-row>
 
           <v-row class="mt-0 mb-0 row-hidden" style="min-height: 48px; height: 48px; flex-wrap: nowrap;">
@@ -311,6 +325,7 @@
 
 
         @update:menu="(isOpen) => onMenuUpdate(isOpen, item)"
+        :ref="el => setComboboxRef(el, item.order_num)"
       >
         <template v-slot:selection="{ item }">
           <v-chip>{{ item.raw }}</v-chip>
@@ -376,6 +391,11 @@ let intervalId = null;              // 10秒鐘, 倒數計時器
 let observer = null;
 
 const showBackWarning = ref(true);
+
+const bar_code = ref('');
+const barcodeInput = ref(null);
+
+const comboboxRefs = ref({});
 
 const route = useRoute(); // Initialize router
 
@@ -485,6 +505,13 @@ watch(pick_date_dialog, (isOpen) => {
     } else {
       tempRange.value = [...selectedRange.value]
     }
+  }
+})
+
+// 當輸入滿 12 碼，就自動處理條碼
+watch(bar_code, (newVal) => {
+  if (newVal.length === 12) {
+    handleBarCode();
   }
 })
 
@@ -661,6 +688,60 @@ const handlePopState = () => {
   }
 }
 */
+
+const setComboboxRef = (el, orderNum) => {
+  if (el) {
+    comboboxRefs.value[orderNum] = el;
+  }
+};
+
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = filteredInformations.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.id);
+
+    // focus到對應項目的欄位
+    focusItemField(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+}
+
+const focusItemField = async (item) => {
+  console.log("focusItemField()...");
+
+  await nextTick() // 確保 DOM 已更新
+
+  const comboRef = comboboxRefs.value[item.order_num];
+  if (comboRef) {
+    // 取得 combobox 中的 input 元素並聚焦
+    const input = comboRef.$el.querySelector('input');
+    if (input) {
+      input.focus();
+      // 可選：模擬 Enter 鍵以觸發變更事件
+      const enterEvent = new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(enterEvent);
+    }
+  } else {
+    console.warn(`找不到欄位: receiveQtyID-${item.index}`)
+  }
+}
+
 const handlePopState = () => {
   // ✅ 正確方式：保留 Vue Router 的 state
   //history.pushState(history.state, '', document.URL)
@@ -773,13 +854,6 @@ const getSchedulesForAssembleErrorFun = async () => {
   })
 };
 
-
-//const exportAndDownFile = () => {
-//  exportToExcelFun();
-//
-//  //downloadFileFun();
-//};
-
 const exportToExcelFun = async () => {
   console.log('PickReportForAssembleError.vue, exportToExcelFun()...');
 
@@ -876,7 +950,6 @@ const exportToExcelFun = async () => {
 
 const downloadFileFun = async () => {
 	console.log("downloadFileFun()...", downloadFilePath.value)
-  //console.log("file_name:", topPath.value, selectedFile.value, downloadFilePath.value)
 
 	const payload = {
     filepath: downloadFilePath.value,

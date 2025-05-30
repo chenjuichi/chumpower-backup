@@ -23,6 +23,7 @@ import subprocess
 from log_util import setup_logger
 logger = setup_logger('main')  # 將 app 取名為 main
 
+
 # --------------------------
 
 
@@ -32,7 +33,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-04-15' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2025-05-27' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -140,7 +141,9 @@ if __name__ == '__main__':
   #scheduler.start()                            # 啟動scheduler
   #print("Scheduled version...")
   #方法1
-  app.run(host=host_ip, port=7010, debug=True)  # 啟動app
+  #app.run(host=host_ip, port=7010, debug=True)  # 啟動app
+  app.run(host='0.0.0.0', port=7010, debug=True)  # 啟動app
+
   #方法2
   '''
   from werkzeug.serving import make_server

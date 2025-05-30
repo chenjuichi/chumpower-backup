@@ -5,7 +5,7 @@ pause
 
 :: 確保目標目錄存在
 if not exist "C:\chumpower-backup\front"                        mkdir "C:\chumpower-backup\front"
-::if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
+if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
 if not exist "C:\chumpower-backup\front\src"                    mkdir "C:\chumpower-backup\front\src"
 if not exist "C:\chumpower-backup\front\src\views"              mkdir "C:\chumpower-backup\front\src\views"
 if not exist "C:\chumpower-backup\front\src\views\old_source"   mkdir "C:\chumpower-backup\front\src\views\old_source"
@@ -23,10 +23,10 @@ copy "D:\vue3\chumpower\*.json"     "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\*.bat"      "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.env"       "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\.gitignore" "C:\chumpower-backup\front\"
+
 copy "D:\vue3\chumpower\public\*.json" "C:\chumpower-backup\front\public\"
 
 copy "D:\vue3\chumpower\src\views\*.vue"            "C:\chumpower-backup\front\src\views"
-
 copy "D:\vue3\chumpower\src\styles\*.*"             "C:\chumpower-backup\front\src\styles"
 copy "D:\vue3\chumpower\src\store\*.*"              "C:\chumpower-backup\front\src\store"
 copy "D:\vue3\chumpower\src\router\*.*"             "C:\chumpower-backup\front\src\router"

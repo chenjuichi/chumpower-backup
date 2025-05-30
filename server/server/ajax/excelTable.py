@@ -395,7 +395,11 @@ def read_all_excel_files():
           for assemble_index, assemble_row in assemble_entries.iterrows():
             # 處理 NaN 值，將 NaN 替換為 None（SQLAlchemy 可以接受 None）
             #reason = assemble_row['差異原因'] if not pd.isna(assemble_row['差異原因']) else None
-            emp_num = assemble_row['員工號碼'] if not pd.isna(assemble_row['員工號碼']) else None
+            #
+            #emp_num = assemble_row['員工號碼'] if not pd.isna(assemble_row['員工號碼']) else None
+            #
+            emp_num = assemble_row.get('員工號碼')
+            emp_num = emp_num if not pd.isna(emp_num) else None
             #confirm_comment = assemble_row['確認內文'] if not pd.isna(assemble_row['確認內文']) else None
 
             #GMEIN = assemble_row['確認良品率 (GMEIN)']

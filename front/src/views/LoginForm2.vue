@@ -210,7 +210,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, onBeforeMount, onMounted, onUnmounted, onBeforeUnmount, computed } from 'vue';
+import { ref, reactive, defineComponent, watch, onBeforeMount, onMounted, onUnmounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Vue3Marquee } from 'vue3-marquee';
@@ -390,6 +390,15 @@ onBeforeUnmount(() => {
 
 //=== watch ===
 setupListUsersWatcher();
+
+// 監視 loginEmpID
+watch(() => loginUser.loginEmpID,
+  (newVal) => {
+    if (newVal === '') {
+      loginUser.loginName = ''
+    }
+  }
+)
 
 //=== computed ===
 
@@ -679,8 +688,9 @@ const userLogin = () => {
 
 const signInUser = (user) => {
   console.log("signInUser(),", user);
-
-  let router_name = (user.setting_lastRoutingName == '') ? 'Main': user.setting_lastRoutingName;
+  //待確認0519
+  //let router_name = (user.setting_lastRoutingName == '') ? 'Main': user.setting_lastRoutingName;
+  let router_name = 'Main';
   console.log("router_name:", router_name);
   let default_routingPriv = initialSelection.join(',');
   let routingPriv_string = (user.setting_routingPriv == '') ? default_routingPriv : user.setting_routingPriv;

@@ -88,6 +88,43 @@ def login():
       'user': _user_object,
     })
 
+
+@getTable.route('/login2', methods=['POST'])
+def login2():
+    print("login2....")
+
+    request_data = request.get_json()
+    userID = (request_data['empID'] or '')
+    password = (request_data['password'] or '')
+    print("step1...", userID,password)
+
+    s = Session()
+    user = s.query(User).filter_by(emp_id=userID).first()
+    if user and user.isRemoved:
+      print("step2...")
+      if not check_password_hash(user.password, password):
+        s.close()
+        print("密碼錯誤...")
+        return jsonify({
+          'status': False,          # false: 資料錯誤
+        })
+    else:
+      s.close()
+      print("員工編號錯誤...")
+      return jsonify({
+        'status': False,            # false: 資料錯誤
+      })
+
+    s.close()
+
+    return jsonify({
+      'status': True,
+    })
+
+
+
+
+
 '''
 # get material by order_num
 @getTable.route("/getMaterial", methods=['POST'])

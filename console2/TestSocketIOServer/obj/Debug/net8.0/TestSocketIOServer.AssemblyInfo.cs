@@ -10,12 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("SocketIOServer")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("TestSocketIOServer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
 [assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
-[assembly: System.Reflection.AssemblyProductAttribute("SocketIOServer")]
-[assembly: System.Reflection.AssemblyTitleAttribute("SocketIOServer")]
+[assembly: System.Reflection.AssemblyProductAttribute("TestSocketIOServer")]
+[assembly: System.Reflection.AssemblyTitleAttribute("TestSocketIOServer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 
 // 由 MSBuild WriteCodeFragment 類別產生。

@@ -181,6 +181,7 @@
               <!-- 客製化barcode輸入 -->
               <v-text-field
                 v-model="bar_code"
+                :value="bar_code"
                 ref="barcodeInput"
                 @keyup.enter="handleBarCode"
                 hide-details="auto"
@@ -654,6 +655,11 @@ onMounted(async () => {
   let savedItems = localStorage.getItem('selectedItems');
   if (savedItems) {
     selectedItems.value = JSON.parse(savedItems);
+  }
+
+  // 自動 focus
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
   }
 
   //處理socket連線
@@ -1294,6 +1300,10 @@ const updateItem2 = async (item) => {
   }
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
+  }
 };
 
 const updateItem = async (item) => {

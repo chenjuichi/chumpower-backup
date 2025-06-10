@@ -77,7 +77,7 @@ copy "C:\vue\chumpower\pdf_file\物料清單\*.*" "C:\chumpower-backup\server\pd
 :: 確保目標目錄存在
 if not exist "C:\chumpower-backup\gateway"                        mkdir "C:\chumpower-backup\gateway"
 copy "D:\vue\meet\app.js" "C:\chumpower-backup\gateway"
-copy "D:\vue\meet\package.json" "C:\chumpower-backup\gateway"
+copy "D:\vue\meet\*.json" "C:\chumpower-backup\gateway"
 copy "D:\vue\meet\.env" "C:\chumpower-backup\gateway"
 copy "D:\vue\meet\update-env.js" "C:\chumpower-backup\gateway"
 copy "D:\vue\meet\service.log" "C:\chumpower-backup\gateway"
@@ -86,6 +86,10 @@ copy "D:\vue\meet\ip-log.txt" "C:\chumpower-backup\gateway"
 :: 確保目標目錄存在
 if not exist "C:\chumpower-backup\console"                        mkdir "C:\chumpower-backup\console"
 xcopy "C:\vue\chumpower\console\SocketIOServer" "C:\chumpower-backup\console\SocketIOServer" /E /I /Y
+
+if not exist "C:\chumpower-backup\console2"                        mkdir "C:\chumpower-backup\console2"
+xcopy "C:\vue\chumpower\console2\TestSocketIOServer" "C:\chumpower-backup\console2\TestSocketIOServer" /E /I /Y
+
 
 echo 複製完成
 pause

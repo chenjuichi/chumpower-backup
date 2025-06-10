@@ -18,6 +18,11 @@ from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
 from ajax.hardware import hardware
 
+from ajax.scheduleDoTable import do_read_user_table, delete_pdf_files, delete_exec_files
+
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
 import subprocess
 
 from log_util import setup_logger
@@ -88,7 +93,7 @@ f.close()
 
 # --------------------------
 
-#scheduler = BackgroundScheduler()       # 初始化调度器
+scheduler = BackgroundScheduler()       # 初始化调度器
 
 @app.route("/")
 def helloWorld():
@@ -106,39 +111,53 @@ def hello():
 
 # --------------------------
 
-'''
 def my_job1():
-    print("hello, Scheduled job1 is running...")
+    print("Scheduled job1 正在執行...")
     with app.app_context():
-        do_read_all_excel_files()
+        do_read_user_table()
 
 def my_job2():
-    print("hello, Scheduled job2 is running...")
+    print("Scheduled job2 正在執行...")
     with app.app_context():
-        do_read_all_excel_files()
+        do_read_user_table()
+
+def my_job3():
+    print("Scheduled job3 正在執行...")
+    with app.app_context():
+        delete_pdf_files()
+        delete_exec_files()
 
 schedule_1=[]
 schedule_2=[]
-# 注册第一個作業每天執行時間
+schedule_3=[]
+# 注册第一個排程任務
 schedule_1_str= env_vars["schedule_1_24HHMM"]
 if schedule_1_str:
     schedule_1 = schedule_1_str.split(",")
     if len(schedule_1) >= 2:
-        print("schedule_1預計於" +  schedule_1[0] + ' :' + schedule_1[1] + " 啟動")
+        print("schedule_1預計於" +  schedule_1[0] + ':' + schedule_1[1].strip() + " 啟動")
         scheduler.add_job(my_job1, 'cron', hour=int(schedule_1[0]), minute=int(schedule_1[1]))
-# 注册第二個作業每天執行時間
+# 注册第二個排程任務
 schedule_2_str= env_vars["schedule_2_24HHMM"]
 if schedule_2_str:
     schedule_2 = schedule_2_str.split(",")
     if len(schedule_2) >= 2:
-        print("schedule_2預計於" + schedule_2[0] + ' :' + schedule_2[1] + " 啟動")
+        print("schedule_2預計於" + schedule_2[0] + ':' + schedule_2[1].strip() + " 啟動")
         scheduler.add_job(my_job2, 'cron', hour=int(schedule_2[0]), minute=int(schedule_2[1]))
-'''
+# 註冊第三個排程任務
+schedule_3_str = env_vars["schedule_3_24HHMM"]
+schedule_3 = []
+if schedule_3_str:
+    schedule_3 = schedule_3_str.split(",")
+    if len(schedule_3) >= 2:
+        print("schedule_3預計於 " + schedule_3[0] + ':' + schedule_3[1].strip() + " 啟動")
+        scheduler.add_job(my_job3, 'cron', hour=int(schedule_3[0]), minute=int(schedule_3[1]))
+
 
 # --------------------------
 
 if __name__ == '__main__':
-  #scheduler.start()                            # 啟動scheduler
+  scheduler.start()                            # 啟動scheduler
   #print("Scheduled version...")
   #方法1
   #app.run(host=host_ip, port=7010, debug=True)  # 啟動app

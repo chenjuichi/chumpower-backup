@@ -178,6 +178,7 @@ class Material(BASE):
     rt_total_time_B110 = Column(String(30))
 
     move_by_automatic_or_manual = Column(Boolean, default=True)     # true:agv自動搬運, false:人工送料
+    move_by_process_type = Column(Integer, default = 2)             # 2:備料給組裝區, 4:備料給加工區
 
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),

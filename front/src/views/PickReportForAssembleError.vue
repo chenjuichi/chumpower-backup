@@ -64,6 +64,7 @@
               <!-- 客製化barcode輸入 -->
               <v-text-field
                 v-model="bar_code"
+                :value="bar_code"
                 ref="barcodeInput"
                 @keyup.enter="handleBarCode"
                 hide-details="auto"
@@ -624,6 +625,11 @@ onMounted(async () => {
   });
   */
 });
+
+// 自動 focus
+if (barcodeInput.value) {
+  barcodeInput.value.focus();
+}
 
 //=== onUpdated ===
 onUpdated(() => {
@@ -1701,6 +1707,14 @@ const showSnackbar = (message, color) => {
 :deep(.v-data-table .v-table__wrapper) {
   overflow-x: hidden;
   width: 100%;
+}
+
+:deep(i.mdi-barcode) {
+  color: #000000;
+  font-weight: 600;
+  font-size: 36px;
+  position: relative;
+  left: 15px;
 }
 
 //:deep(.v-combobox .v-input__control) {

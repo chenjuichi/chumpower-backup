@@ -1,15 +1,8 @@
 import os
+import stat
 import datetime
-import pathlib
-import csv
 
-import pymysql
-from sqlalchemy import exc
-
-import openpyxl
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Alignment, PatternFill
-from database.tables import User, InTag, Grid, Spindle, SpindleRunIn, RunInData, Session
+from database.tables import User, Session
 from flask import Blueprint, jsonify, request, current_app
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -20,177 +13,168 @@ scheduleDoTable = Blueprint('scheduleDoTable', __name__)
 
 # ------------------------------------------------------------------
 
-def do_read_all_excel_files():
-  print("do_read_all_excel_files()....")
+def try_delete_pdf(file_path):
+  try:
+      # 解除唯讀屬性（必要時）
+      os.chmod(file_path, stat.S_IWRITE)
+      os.remove(file_path)
+      print(f"已刪除: {file_path}")
+      return True
+  except Exception as e:
+      print(f"無法刪除 {file_path}: {e}")
+      return False
 
-  #---
-  _base_dir = current_app.config['baseDir']         # 2024-04-26 add
-  print("read excel files, dir: ", _base_dir)       # 2024-04-26 add
-  env_vars = dotenv_values(_base_dir)
-  #---
 
-  # 讀取指定目錄下的所有指定檔案名稱
-  files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
-
-  _customer_row = current_app.config['customer_row']
-  _spindle_cat_row = current_app.config['spindle_cat_row']
-  _id_row = current_app.config['id_row']
-  _id_column = current_app.config['id_column']
-  _emp_id_row = current_app.config['emp_id_row']
-  _date_row = current_app.config['date_row']
-  _date_column = current_app.config['date_column']
-  _runin_row = current_app.config['runin_row']
+def do_read_user_table():
+  print("do_read_user_table()....")
 
   s = Session()
 
-  for _file_name in files:
-    print(_file_name)
-    existing_excel = s.query(SpindleRunIn).filter_by(spindleRunIn_excel_file = _file_name).first()
-    _path = _base_dir + '\\' + _file_name
-    workbook = openpyxl.load_workbook(filename = _path, read_only = True)
+  try:
+      users_online = s.query(User).filter(User.isOnline == True).all()
+      for user in users_online:
+          user.isOnline = False
+      s.commit()
+      print(f"共 {len(users_online)} 位使用者已下線 (isOnline 設為 False)。")
+  except Exception as e:
+      print("更新失敗：", e)
+      s.rollback()
+  finally:
+      s.close()
 
-    if existing_excel or ('Sheet1' not in workbook.sheetnames):
-      continue
-    #continue for loop
-    print('Sheet1 exists')
-    sheet = workbook.active   #取得第1個工作表
-    _spindleRunIn_customer = sheet.cell(row = _customer_row, column = 1).value    #客戶資料
-    _cat = str(sheet.cell(row = _spindle_cat_row, column = 1).value).strip()                   #主軸資料(spindle_cat)
-    _spindleRunIn_work_id = sheet.cell(row = _id_row, column = _id_column).value  #工單
-    _empID = str(sheet.cell(row = _emp_id_row, column = 1).value).strip().zfill(4)                 #員工資料
-    #_spindleRunIn_date = str(sheet.cell(row = _date_row, column = _date_column).value.date()) #測試日期
-    _spindleRunIn_date = sheet.cell(row=_date_row, column=_date_column).value
-    if isinstance(_spindleRunIn_date, datetime.datetime):
-        _spindleRunIn_date = _spindleRunIn_date.strftime('%Y-%m-%d')
-    else:
-        _spindleRunIn_date = str(_spindleRunIn_date).strip()
+  print("end do_read_user_table()....")
 
-    print('read Sheet1 upper part ok...', _cat, _empID)
-    _spindle = s.query(Spindle).filter_by(spindle_cat = _cat).first()
-    _user = s.query(User).filter_by(emp_id = _empID).first()
 
-    if (not _spindle or not _user):
-      continue
-    #continue for loop
-    print('write data into SpindleRunIn table...')
-    new_spindle_runin = SpindleRunIn(
-      spindleRunIn_excel_file = _file_name,
-      spindleRunIn_customer = _spindleRunIn_customer,
-      spindleRunIn_work_id = _spindleRunIn_work_id,
-      spindleRunIn_spindle_id = _spindle.id,
-      spindleRunIn_employer = _user.id,
-      spindleRunIn_date = _spindleRunIn_date,
-    )
-    s.add(new_spindle_runin)
+def delete_pdf_files():
+  print("delete_pdf_files()....")
 
-    s.flush()
-    spindle_runin_id = new_spindle_runin.id
-    print("spindle_runin_id: ", spindle_runin_id)
-    #continue for loop
-    print("read data from excel file...")
-    _results = []
-    for i in range(_runin_row, sheet.max_row+1):
-      if sheet.cell(row = i, column = 1).value is None:
-        break
+  print("刪除.pdf檔案作業開始...")
 
-      _obj = {
-        'spindleRunIn_period': sheet.cell(row = i, column = 1).value,         #時間
-        'spindleRunIn_speed_level': sheet.cell(row = i, column = 2).value,    #段速
-        'spindleRunIn_speed': sheet.cell(row = i, column = 3).value,          #轉速
-        'spindleRunIn_stator_temp': sheet.cell(row = i, column = 4).value,    #定子溫度
-        'spindleRunIn_inner_frontBearing_temp': sheet.cell(row = i, column = 5).value,   #內部前軸承溫度
-        'spindleRunIn_inner_backBearing_temp': sheet.cell(row = i, column = 6).value,   #內部後軸承溫度
-        'spindleRunIn_outer_frontBearing_temp': sheet.cell(row = i, column = 7).value,  #外部前軸承溫度
-        'spindleRunIn_outer_backBearing_temp': sheet.cell(row = i, column = 8).value,   #外部後軸承溫度
-        'spindleRunIn_room_temp': sheet.cell(row = i, column = 9).value,          #室溫
-        'spindleRunIn_coolWater_temp': sheet.cell(row = i, column = 10).value,    #冷卻機水溫
-        'spindleRunIn_Rphase_current': sheet.cell(row = i, column = 11).value,    #R相電流
-        'spindleRunIn_Sphase_current': sheet.cell(row = i, column = 12).value,    #S相電流
-        'spindleRunIn_Tphase_current': sheet.cell(row = i, column = 13).value,    #T相電流
-        'spindleRunIn_cool_pipeline_flow': sheet.cell(row = i, column = 14).value,              #冷卻機管路流量
-        'spindleRunIn_cool_pipeline_pressure': sheet.cell(row = i, column = 15).value,          #冷卻機管路壓力
-        'spindleRunIn_frontBearing_vibration_speed1': sheet.cell(row = i, column = 16).value,   #前軸承震動速度-1
-        'spindleRunIn_frontBearing_vibration_acc1': sheet.cell(row = i, column = 17).value,     #前軸承震動加速度-1
-        'spindleRunIn_frontBearing_vibration_disp1': sheet.cell(row = i, column = 18).value,    #前軸承震動位移-1
-        'spindleRunIn_frontBearing_vibration_speed2': sheet.cell(row = i, column = 19).value,   #前軸承震動速度-2
-        'spindleRunIn_frontBearing_vibration_acc2': sheet.cell(row = i, column = 20).value,     #前軸承震動加速度-2
-        'spindleRunIn_frontBearing_vibration_disp2': sheet.cell(row = i, column = 21).value,    #前軸承震動位移-2
-        'spindleRunIn_backBearing_vibration_speed1': sheet.cell(row = i, column = 22).value,    #後軸承震動速度-1
-        'spindleRunIn_backBearing_vibration_acc1': sheet.cell(row = i, column = 23).value,      #後軸承震動加速度-1
-        'spindleRunIn_backBearing_vibration_disp1': sheet.cell(row = i, column = 24).value,     #後軸承震動位移-1
-        'spindleRunIn_backBearing_vibration_speed2': sheet.cell(row = i, column = 25).value,    #後軸承震動速度-2
-        'spindleRunIn_backBearing_vibration_acc2': sheet.cell(row = i, column = 26).value,      #後軸承震動加速度-2
-        'spindleRunIn_backBearing_vibration_disp2': sheet.cell(row = i, column = 27).value,     #後軸承震動位移-2
-      }
-      _results.append(_obj)
-    #continue for loop
-    print('write data into RunInData table...')
-    runin_data_total_size = len(_results)
-    _objects = []
-    for x in range(runin_data_total_size):
-      u = RunInData(
-      spindleRunIn_id = spindle_runin_id,
-      spindleRunIn_period = _results[x]['spindleRunIn_period'],
-      spindleRunIn_speed_level = _results[x]['spindleRunIn_speed_level'],
-      spindleRunIn_speed = _results[x]['spindleRunIn_speed'],
-      spindleRunIn_stator_temp = _results[x]['spindleRunIn_stator_temp'],
-      spindleRunIn_inner_frontBearing_temp = _results[x]['spindleRunIn_inner_frontBearing_temp'],
-      spindleRunIn_inner_backBearing_temp = _results[x]['spindleRunIn_inner_backBearing_temp'],
-      spindleRunIn_outer_frontBearing_temp = _results[x]['spindleRunIn_outer_frontBearing_temp'],
-      spindleRunIn_outer_backBearing_temp = _results[x]['spindleRunIn_outer_backBearing_temp'],
-      spindleRunIn_room_temp = _results[x]['spindleRunIn_room_temp'],
-      spindleRunIn_coolWater_temp = _results[x]['spindleRunIn_coolWater_temp'],
-      spindleRunIn_Rphase_current = _results[x]['spindleRunIn_Rphase_current'],
-      spindleRunIn_Sphase_current = _results[x]['spindleRunIn_Sphase_current'],
-      spindleRunIn_Tphase_current = _results[x]['spindleRunIn_Tphase_current'],
-      spindleRunIn_cool_pipeline_flow = _results[x]['spindleRunIn_cool_pipeline_flow'],
-      spindleRunIn_cool_pipeline_pressure = _results[x]['spindleRunIn_cool_pipeline_pressure'],
-      spindleRunIn_frontBearing_vibration_speed1 = _results[x]['spindleRunIn_frontBearing_vibration_speed1'],
-      spindleRunIn_frontBearing_vibration_acc1 = _results[x]['spindleRunIn_frontBearing_vibration_acc1'],
-      spindleRunIn_frontBearing_vibration_disp1 = _results[x]['spindleRunIn_frontBearing_vibration_disp1'],
-      spindleRunIn_frontBearing_vibration_speed2 = _results[x]['spindleRunIn_frontBearing_vibration_speed2'],
-      spindleRunIn_frontBearing_vibration_acc2 = _results[x]['spindleRunIn_frontBearing_vibration_acc2'],
-      spindleRunIn_frontBearing_vibration_disp2 = _results[x]['spindleRunIn_frontBearing_vibration_disp2'],
-      spindleRunIn_backBearing_vibration_speed1 = _results[x]['spindleRunIn_backBearing_vibration_speed1'],
-      spindleRunIn_backBearing_vibration_acc1 = _results[x]['spindleRunIn_backBearing_vibration_acc1'],
-      spindleRunIn_backBearing_vibration_disp1 = _results[x]['spindleRunIn_backBearing_vibration_disp1'],
-      spindleRunIn_backBearing_vibration_speed2 = _results[x]['spindleRunIn_backBearing_vibration_speed2'],
-      spindleRunIn_backBearing_vibration_acc2 = _results[x]['spindleRunIn_backBearing_vibration_acc2'],
-      spindleRunIn_backBearing_vibration_disp2 = _results[x]['spindleRunIn_backBearing_vibration_disp2'],
-      )
-      _objects.append(u)
+  log_dir = os.path.join("C:\\vue\\chumpower\\logs")
+  os.makedirs(log_dir, exist_ok=True)  # 如果 logs 資料夾不存在則建立
+  log_file_path = os.path.join(log_dir, "delete_pdf_log.txt")
 
-    s.bulk_save_objects(_objects)
+  # 使用 current_app 取得設定
+  #pdf_dirs = [
+  #    "C:\\vue\\chumpower\\pdf_file\\領退料單",
+  #    "C:\\vue\\chumpower\\pdf_file\\物料清單"
+  #]
 
-    try:
-        s.commit()
-    except pymysql.err.IntegrityError as e:
-        s.rollback()
-    except exc.IntegrityError as e:
-        s.rollback()
-    except Exception as e:
-        s.rollback()
-    #continue for loop
-    print("spindle_runin and runin_data combine...")
-    spindle_runin_record = s.query(SpindleRunIn).filter_by(id = spindle_runin_id).first()
-    runin_data_records = s.query(RunInData).filter_by(spindleRunIn_id = spindle_runin_id).all()
+  pdf_dirs = [
+      os.path.join(current_app.config['pdfBaseDir'].replace("物料清單", "領退料單")),
+      current_app.config['pdfBaseDir']
+  ]
 
-    for array in runin_data_records:
-      spindle_runin_record._runin_data.append(array)
+  deleted_files = 0
+  now = datetime.datetime.now()
+  cutoff_time = now - datetime.timedelta(hours=36)  # ✅ 36 小時前的時間點
 
-    try:
-        s.commit()
-    except pymysql.err.IntegrityError as e:
-        s.rollback()
-    except exc.IntegrityError as e:
-        s.rollback()
-    except Exception as e:
-        s.rollback()
-    #end for loop
+  with open(log_file_path, "a", encoding="utf-8") as log_file:
+    log_file.write(f"\n=== 執行時間: {now.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
 
-  s.close()
-  #end do_read_all_excel_files()
+    for pdf_dir in pdf_dirs:
+        if not os.path.exists(pdf_dir):
+            msg = f"目錄不存在：{pdf_dir}"
+            print(msg)
+            log_file.write(msg + "\n")
+            continue
 
-  current_app.config['file_ok'] = True
-  print("end do_read_all_excel_files()....")
+        for filename in os.listdir(pdf_dir):
+            if filename.lower().endswith('.pdf'):
+                file_path = os.path.join(pdf_dir, filename)
+                try:
+                  file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+
+                  if file_mtime < cutoff_time:
+                    os.chmod(file_path, stat.S_IWRITE)   # 解除唯讀屬性（必要時）
+                    os.remove(file_path)
+                    deleted_files += 1
+                    msg = f"✅ 已刪除: {file_path}（時間：{file_mtime}）"
+                    #print(f"已刪除: {file_path}")
+                  else:
+                    msg = f"⏩ 略過: {file_path}（時間：{file_mtime} < 36 小時）"
+                    #print(f"略過: {file_path}（修改時間：{file_mtime} < 36 小時）")
+
+                  print(msg)
+                  log_file.write(msg + "\n")
+
+                except Exception as e:
+                    err_msg = f"❌ 無法刪除 {file_path}: {e}"
+                    print(err_msg)
+                    log_file.write(err_msg + "\n")
+                    #print(f"無法刪除 {file_path}: {e}")
+  summary_msg = f"\nPDF檔案刪除完畢，共刪除 {deleted_files} 個檔案。\n"
+  print(summary_msg)
+  log_file.write(summary_msg)
+  #print(f"PDF檔案刪除完畢，共刪除 {deleted_files} 個檔案。")
+
+
+def delete_exec_files():
+  print("delete_exec_files()....")
+
+  print("刪除.xlsx檔案作業開始...")
+
+  today = datetime.datetime.now()
+
+  log_dir = "C:\\vue\\chumpower\\logs"
+  os.makedirs(log_dir, exist_ok=True)
+  log_path = os.path.join(log_dir, "delete_excel_log.txt")
+
+  def write_log(message):
+      with open(log_path, "a", encoding="utf-8") as f:
+          timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+          f.write(f"[{timestamp}] {message}\n")
+
+  #write_log("🔄 開始執行 delete_exec_files()")
+
+  # ✅ 檢查是否為星期日（Sunday 對應 weekday() == 6）
+  if today.weekday() != 6:
+      msg = "今天不是星期日，跳過刪除 Excel 檔案。"
+      print(msg)
+      write_log(msg)
+      #print("今天不是星期日，跳過刪除 Excel 檔案。")
+      return
+
+  target_folder = "C:\\vue\\chumpower\\excel_out"
+  deleted_count = 0
+
+  if not os.path.exists(target_folder):
+      msg = f"目錄不存在: {target_folder}"
+      print(msg)
+      write_log(msg)
+      #print(f"目錄不存在: {target_folder}")
+      return
+
+  # ✅ 基準時間為 7 天前
+  cutoff_time = today - datetime.timedelta(days=7)
+
+  for filename in os.listdir(target_folder):
+      if filename.lower().endswith(".xlsx"):
+          file_path = os.path.join(target_folder, filename)
+          try:
+              file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+
+              if file_mtime < cutoff_time:
+                os.chmod(file_path, stat.S_IWRITE)   # 解除唯讀屬性（必要時）
+                os.remove(file_path)
+                msg = f"✅ 已刪除: {file_path}"
+                print(msg)
+                write_log(msg)
+                #print(f"已刪除: {file_path}")
+                deleted_count += 1
+              else:
+                msg = f"⏩ 略過: {file_path}（最後修改時間：{file_mtime} < 7 天）"
+                print(msg)
+                write_log(msg)
+                #print(f"略過: {file_path}（最後修改時間：{file_mtime} < 7 天）")
+          except Exception as e:
+              msg = f"❌ 無法刪除 {file_path}: {e}"
+              print(msg)
+              write_log(msg)
+              #print(f"無法刪除 {file_path}: {e}")
+
+  msg = f"✅ Excel 檔案刪除完畢，共刪除 {deleted_count} 個檔案。"
+  print(msg)
+  write_log(msg)
+  #print(f"Excel 檔案刪除完畢，共刪除 {deleted_count} 個檔案。")
 

@@ -18,16 +18,7 @@
     class="custom-dialog-position"
   >
     <v-card elevation="16" class="custom-card">
-      <!--
-        src="https://cdn.pixabay.com/photo/2016/03/26/13/09/organic-1280537_1280.jpg"
-      -->
-      <v-img
-        class="align-end text-white custom-img"
-        height="200"
-        :src="imageSrc"
-
-        cover
-      >
+      <v-img class="align-end text-white custom-img" height="200" :src="imageSrc" cover>
         <v-card-title>{{ company_name }}</v-card-title>
       </v-img>
 
@@ -38,33 +29,70 @@
 
       <v-card-text class="custom-card-text">
         <v-container class="custom-container">
-          <v-text-field
-            label="新密碼"
-            color="primary"
-            prepend-icon="mdi-lock"
-            :append-icon="eyeShow1 ? 'mdi-eye-off' : 'mdi-eye'"
-            :type="eyeShow1 ? 'password' : 'text'"
-            @click:append="eyeShow1 = !eyeShow1"
-            v-model="newPassword"
-            :rules="[requiredRule, passwordRule]"
-            class="custom-text-field"
-            style="width: 100% !important; max-width: 223px !important;"
-          />
+          <!--舊密碼-->
+          <div style="display:flex; align-items:center; padding-bottom:10px; position:relative;
+            top:-10px;">
+            <!-- 左邊的文字 -->
+            <span style="width:60px; font-weight:bold;  align-self:center;">舊密碼</span>
+            <v-text-field
+              class="custom-field"
+              density="compact"
+              color="primary"
+              max-width="225"
+              prepend-icon="mdi-lock"
+              :append-icon="eyeShow1 ? 'mdi-eye-off' : 'mdi-eye'"
+              :type="eyeShow1 ? 'password' : 'text'"
+              @click:append="eyeShow1 = !eyeShow1"
+              @keydown.enter="userLogin"
+              @update:focused ="checkUsers"
 
-          <v-text-field
-            label="確認密碼"
-            color="primary"
-            prepend-icon="mdi-account-check"
-            :type="eyeShow1 ? 'password' : 'text'"
-            v-model="confirmPpassword"
-            :rules="[requiredRule, confirmPasswordRule]"
-            class="custom-text-field"
-            style="width: 100% !important; max-width: 183px !important; padding-top: 8px;"
-          />
+              v-model="oldPassword"
+              ref="oldPasswordRef"
+              :rules="[requiredRule, oldPasswordCheckRule]"
+            ></v-text-field>
+          </div>
+          <!--新密碼-->
+          <div style="display:flex; align-items:center; padding-bottom:10px; position:relative;
+            top:-20px;">
+            <!-- 左邊的文字 -->
+            <span style="width: 60px; font-weight: bold;">新密碼</span>
+            <v-text-field
+              class="custom-field"
+              density="compact"
+              color="primary"
+              max-width="185"
+              prepend-icon="mdi-lock"
+
+              :type="eyeShow1 ? 'password' : 'text'"
+              @click:append="eyeShow1 = !eyeShow1"
+
+              v-model="newPassword"
+              ref="newPasswordRef"
+
+              :rules="[requiredRule, passwordRule, newNotSameAsOldRule]"
+            ></v-text-field>
+          </div>
+          <!--確認密碼-->
+          <div style="display:flex; align-items:center; padding-bottom:10px; position:relative;
+            top:-30px;">
+            <!-- 左邊的文字 -->
+            <span style="width: 70px; font-weight: bold;">確認密碼</span>
+            <v-text-field
+              class="custom-field"
+              density="compact"
+              color="primary"
+              max-width="185"
+              prepend-icon="mdi-account-check"
+              :type="eyeShow1 ? 'password' : 'text'"
+
+              v-model="confirmPpassword"
+              :rules="[requiredRule, confirmPasswordRule]"
+            ></v-text-field>
+          </div>
         </v-container>
       </v-card-text>
       <v-card-actions class="custom-card-actions">
-        <v-spacer></v-spacer>
+        <!-- <v-spacer></v-spacer> -->
         <v-btn color="blue darken-1" text @click="closeDialog">取消</v-btn>
         <v-btn color="blue darken-1" text @click="userUpdatePassword" :disabled="checkDataForSaveButton">確定</v-btn>
       </v-card-actions>
@@ -74,12 +102,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, defineComponent, onMounted } from 'vue';
+import { ref, computed, watch, defineComponent, onMounted, nextTick } from 'vue';
 //import axios from 'axios';
 import { myMixin } from '../mixins/common.js';
 
-import { apiOperation, showSnackbar, snackbar, snackbar_info, snackbar_color }  from '../mixins/crud.js';
+import { showSnackbar, snackbar, snackbar_info, snackbar_color }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
 // 使用 apiOperation 函式來建立 API 請求
+const login2 = apiOperation('post', '/login2');
 const updatePassword = apiOperation('post', '/register');
 
 //=== component name ==
@@ -113,6 +143,11 @@ const imageSrc = ref(require('../assets/organic-1280537_1280.jpg')); //企業視
 
 //const dialog = ref(false);
 const localDialog = ref(props.dialog);
+
+const oldPasswordRef = ref(null);
+const oldPasswordError = ref(true);
+const oldPassword = ref('');
+const newPasswordRef = ref(null);
 const newPassword = ref('');
 const confirmPpassword = ref('');
 const currentUser = ref(null);
@@ -122,14 +157,40 @@ const requiredRule = value => !!value || '欄位必須輸入資料...';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
 const confirmPasswordRule = value => value === newPassword.value || '密碼不相同!';
 
+const oldPasswordCheckRule = value => {
+  if (oldPasswordError.value) return '舊密碼錯誤!';
+  return true;
+};
+
+const newNotSameAsOldRule = value => {
+  if (value === oldPassword.value) {
+    return '新舊密碼不可以相同!';
+  }
+  return true;
+};
+
 //=== watch ===
 watch(() => props.dialog, (newVal) => {
   localDialog.value = newVal;
 });
 
+watch(oldPassword, () => {
+  oldPasswordError.value = false;
+});
+
 //=== computed ===
 const checkDataForSaveButton = computed(() => {
-  return !(newPassword.value && confirmPpassword.value);
+  return !(newPassword.value && confirmPpassword.value && oldPasswordError.value == false);
+});
+
+//=== mounted ===
+onMounted(async () => {
+  console.log("changePassword.vue, mounted()...");
+
+  let user = localStorage.getItem("loginedUser");
+  currentUser.value = user ? JSON.parse(user) : null;
+  console.log("currentUser:", currentUser.value);
+
 });
 
 //=== method ===
@@ -143,6 +204,39 @@ const updateDialog = (value) => {
 const closeDialog = () => {
   localDialog.value = false;
   emit('update:dialog', false);
+};
+
+const userLogin = async () => {
+  console.log("userLogin()...");
+
+  const payload = {
+    empID: currentUser.value.empID,
+    password: oldPassword.value,
+  };
+
+  const status = await login2(payload);
+  console.log("login2, status:", status)
+
+  if (!status) {
+    oldPasswordError.value = true;
+
+    // 手動觸發驗證錯誤
+    await nextTick();                   // 等 DOM 更新後再驗證
+    oldPasswordRef.value?.validate();   // 觸發欄位的驗證規則（即在 :rules 裡的那些規則函式）
+    //if (oldPasswordRef.value) {
+    //  oldPasswordRef.value.validate();
+    //}
+  } else {
+    oldPasswordError.value = false;
+    newPasswordRef.value?.focus();
+  }
+};
+
+const checkUsers = (focused) => {
+  if (!focused) { // 當失去焦點時
+    oldPasswordRef.value?.validate();
+    userLogin();
+  }
 };
 
 const userUpdatePassword = () => {
@@ -184,6 +278,18 @@ const validatePasswordFields = () => {
   width: 270px !important;
 }
 
+// padding-top = padding-bottom = (height - line-height) / 2
+:deep(.v-input.custom-field .v-input__control) {
+  height: 32px; // 調整高度
+}
+
+:deep(.v-input.custom-field .v-field__input) {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 20px;
+}
+//
+
 .custom-container {
   overflow-y: hidden !important;  // 禁用垂直scroll bar
 }
@@ -206,7 +312,10 @@ const validatePasswordFields = () => {
 }
 
 .custom-card-actions {
-  margin-top: -50px;      // 向上移動按钮位置距離
+  //margin-top: -50px;      // 向上移動按钮位置距離
+
+  position:relative;
+  top:-85px;
 }
 
 .custom-text-field {

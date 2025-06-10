@@ -41,7 +41,7 @@
         v-model="file"
         :label="uploadType === 'excel' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (可複選, 按住Shift鍵)'"
         :accept="uploadType === 'excel' ? '.xlsx,.xls' : '.pdf'"
-        :multiple="uploadType != 'excel'"
+        :multiple="uploadType === 'pdf'"
         show-size
         prepend-icon="mdi-file-arrow-left-right"
 

@@ -11,18 +11,6 @@
   </v-snackbar>
 
   <!-- 燈號控制面板 -->
-<!--2025-5-3 mark
-  <div class="panel_position">
-    <v-btn-toggle v-model="activeColor" mandatory>
-      <v-btn value="green">青燈</v-btn>
-      <v-btn value="yellow">黃燈</v-btn>
-      <v-btn value="red">紅燈</v-btn>
-      <v-btn value="blue">藍燈</v-btn>
-      <v-btn value="SeaGreen">綠燈</v-btn>
-      <v-btn value="DarkOrange">橘燈</v-btn>
-    </v-btn-toggle>
-  </div>
--->
   <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
@@ -451,16 +439,17 @@
                 top: '0px',
                 left: '-90px',
 
-                opacity: isFlashLed && isVisible ? 1 : 0, // 根據 isFlashLed 和 isVisible 控制顯示
-                transition: 'opacity 0.5s ease',          // 過渡效果
-                background: background,                   // 背景顏色
-                border: '1px solid black'                 // 黑色邊框
+                opacity: isFlashLed && isVisible ? 1 : 0,
+                transition: 'opacity 0.5s ease',
+                background: background,
+                border: '1px solid black'
               }"
-            />
+            ></div>
 
             <!-- 客製化barcode輸入 -->
             <v-text-field
               v-model="bar_code"
+              :value="bar_code"
               ref="barcodeInput"
               @keyup.enter="handleBarCode"
               hide-details="auto"
@@ -469,7 +458,7 @@
               class="align-center"
               density="compact"
 
-            />
+            ></v-text-field>
           </div>
 
           <!-- Bom 顯示對話視窗-->
@@ -718,14 +707,15 @@ const panel_flag = ref(false)     // 允許拖曳的開關
 
 const screenSizeInInches = ref(null);
 
-
-const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV
+const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV:2, 人推車:1
 
 const editDialogBtnDisable = ref(true);
 
 const isVisible = ref(true);                  // 設定初始狀態為顯示
 const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
+
 let intervalIdForLed = null;
+
 const background = ref('#ffff00');
 const isCallAGV = ref(false);                 // 確認是否已經按了callAGV按鍵, true:已經按鍵了, 不能重複按鍵
 const showMenu = ref(false);                  // 控制員工選單顯示
@@ -743,7 +733,10 @@ const maxDate = ref('2054-12-31');
 const fromDateVal = ref('');
 
 const bar_code = ref('');
-const barcodeInput = ref(null);
+const barcodeInput = ref(null);         // 外部條碼欄位
+
+const deliveryQtyInput = ref(null)      // 對應 table 中備料數量欄位（稍後動態取得）
+//const currentItemId = ref(null)
 
 const placeholderTextForEmployee = ref('請選擇員工');
 const placeholderTextForOrderNum = ref('請選擇工單');
@@ -826,6 +819,7 @@ const agv2StartTime = ref(null);      //運行agv計時開始
 const agv2EndTime = ref(null);
 
 const dialog = ref(false);
+const isConfirmed = ref(false);
 
 const editedRecord = ref(null); // 儲存當前點擊的記錄
 
@@ -857,6 +851,36 @@ watch(bar_code, (newVal) => {
     handleBarCode();
   }
 })
+
+watch(dialog, async (newVal, oldVal) => {
+//watch(dialog, (newVal, oldVal) => {
+    if (oldVal === true && newVal === false) {
+    bar_code.value = '';
+  }
+
+  //// 等待 DOM 完全渲染後才執行 focus
+  //nextTick(() => {
+  //  // 自動 focus
+  //  if (barcodeInput.value) {
+  //    barcodeInput.value.focus();
+  //  }
+  //})
+  if (!newVal) {
+    await nextTick();
+    if (isConfirmed.value && editedRecord.value.id != null) {
+      const el = document.getElementById(`receiveQtyID-${editedRecord.value.id}`)
+      el?.focus()
+    } else {
+      // 聚焦條碼欄位
+      //barcodeInput.value?.focus()
+      if (barcodeInput.value) {
+        barcodeInput.value.focus();
+      }
+    }
+    isConfirmed.value = false // 重置狀態
+  }
+
+});
 
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1039,8 +1063,8 @@ onMounted(async () => {
         console.log('selectedItems, item:', item);
         payload = {
           id: item,
-          record_name: 'show3_ok',
-          record_data: 16,  // agv start
+          record_name: 'show3_ok',      //看板要顯示的欄位名稱
+          record_data: 16,              //看板要顯示的欄位內容, 16:AGV start
         };
         await updateMaterial(payload);
         //try {
@@ -1065,8 +1089,8 @@ onMounted(async () => {
 
         payload = {
           id: item,
-          record_name: 'show3_ok',
-          record_data: 2      // 設為 2，agv移動至組裝區中
+          record_name: 'show3_ok',    //看板要顯示的欄位名稱
+          record_data: 2              //看板要顯示的欄位內容, 2:agv移動至組裝區中
         };
         try {
           await updateMaterial(payload);
@@ -1087,7 +1111,8 @@ onMounted(async () => {
       background.value='#10e810'
       activeColor.value='SeaGreen';   // 物料出站
     })
-    //以下帶確認
+
+    //以下待確認
 
     socket.value.on('station2_agv_end', async (data) => {
       console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
@@ -1228,9 +1253,9 @@ onMounted(async () => {
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: agv1PeriodTime,
-          user_id: 'AGV1-1',                        //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
+          user_id: 'AGV1-1',                          //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
           order_num: myMaterial.order_num,
-          process_type: 19,                          //在備料區
+          process_type: 19,                           //在備料區
           id: item,
         };
         await createProcess(payload);
@@ -1385,10 +1410,11 @@ const handleBarCode = () => {
   } else {
     showSnackbar('找不到對應條碼資料！', 'red accent-2');
     console.warn('找不到對應條碼資料!')
+    bar_code.value = '' // 清空輸入框（或依需求保留）
   }
 
   // 清空輸入框（或依需求保留）
-  bar_code.value = ''
+  //bar_code.value = ''
 };
 
 // 根據輸入搜尋員工編號
@@ -1642,7 +1668,7 @@ const toggleExpand = async (item) => {
     record_data: 1                //備料中
   };
   await updateMaterial(payload);
-  //2025-02-07 mark the following function
+
   payload = {
     id: item.id,
     //order_num: item.order_num,
@@ -1688,10 +1714,17 @@ const updateItem2 = async (item) => {
   item.delivery_qty = deliveryQty
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
+  }
 };
 
 const updateItem = async () => {    //編輯 bom, material及process後端table資料
   console.log("updateItem(),", boms.value);
+
+  isConfirmed.value = true;
+  //currentItemId.value = item.id   // 記錄要聚焦的 ID
 
   let my_material_orderNum = boms.value[0].order_num;
 
@@ -1838,9 +1871,9 @@ const callAGV = async () => {
 
   let payload = {};
 
-  if (!isCallAGV.value) {
+  if (!isCallAGV.value) {       // 沒有重複按鍵
     //console.log("step2...");
-    if (selectedItems.value.length == 0) {
+    if (selectedItems.value.length == 0) {  //已點選選單
       //console.log("step2-1...");
       showSnackbar("請選擇送料的工單!", 'red accent-2');
       return;
@@ -1870,7 +1903,7 @@ const callAGV = async () => {
   }
   //console.log("step6...");
 
-  // 記錄AGV狀態資料, AGV忙碌中
+  // 更新AGV狀態資料, AGV忙碌中
   payload = {
     id: 1,
     status: 1,
@@ -1888,6 +1921,7 @@ const callAGV = async () => {
   //socket.value.emit('station1_call', payload);  //2025-02-24 add payload
   socket.value.emit('station1_call');  //2025-02-24 add payload
   console.log("送出 station1_call訊息...")
+
   order_num_on_agv_blink.value='叫車進站中...'
 
   activeColor.value='red';    // 等待運輸
@@ -1901,8 +1935,8 @@ const callAGV = async () => {
 
     payload = {
       id: item,
-      record_name: 'show3_ok',
-      record_data: 1      // 設為 1，等待agv
+      record_name: 'show3_ok',                  //看板要顯示的欄位名稱
+      record_data: 1                            //看板要顯示的欄位內容, 1:等待agv
     };
     await updateMaterial(payload);
   });
@@ -1926,6 +1960,12 @@ const readAllExcelFun = async () => {
       fileCount.value = 0;
       await deleteAssemblesWithNegativeGoodQty();
       listMaterials();
+
+      // 自動 focus, 2025-06-03
+      if (barcodeInput.value) {
+        barcodeInput.value.focus();
+      }
+
     } else {
       showSnackbar(excel_file_data.message, 'red accent-2');
     }

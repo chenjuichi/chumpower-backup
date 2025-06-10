@@ -216,7 +216,7 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
               path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
-              path == '/copyFile' || path == '/updateAssembleAlarmMessage') {
+              path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }

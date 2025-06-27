@@ -18,15 +18,14 @@ from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
 from ajax.hardware import hardware
 
-from ajax.scheduleDoTable import do_read_user_table, delete_pdf_files, delete_exec_files
+from ajax.scheduleDoTable import do_read_user_table, delete_log_files, delete_pdf_files, delete_exec_files
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-
-import subprocess
+#import subprocess
 
 from log_util import setup_logger
-logger = setup_logger('main')  # 將 app 取名為 main
+logger = setup_logger('main')       # 將 app 取名為 main
 
 
 # --------------------------
@@ -38,7 +37,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-05-27' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2025-06-26' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -124,6 +123,7 @@ def my_job2():
 def my_job3():
     print("Scheduled job3 正在執行...")
     with app.app_context():
+        delete_log_files()
         delete_pdf_files()
         delete_exec_files()
 

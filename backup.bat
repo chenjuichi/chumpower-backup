@@ -3,7 +3,7 @@ chcp 65001 >nul
 echo 複製檔案開始
 pause
 
-:: 確保目標目錄存在
+:: client端, 確保目標目錄存在
 if not exist "C:\chumpower-backup\front"                        mkdir "C:\chumpower-backup\front"
 if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
 if not exist "C:\chumpower-backup\front\src"                    mkdir "C:\chumpower-backup\front\src"
@@ -17,7 +17,7 @@ if not exist "C:\chumpower-backup\front\src\mixins"             mkdir "C:\chumpo
 if not exist "C:\chumpower-backup\front\src\components"         mkdir "C:\chumpower-backup\front\src\components"
 if not exist "C:\chumpower-backup\front\src\assets"             mkdir "C:\chumpower-backup\front\src\assets"
 
-:: 開始複製檔案
+:: client端, 開始複製檔案
 copy "D:\vue3\chumpower\*.js"       "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\*.json"     "C:\chumpower-backup\front\"
 copy "D:\vue3\chumpower\*.bat"      "C:\chumpower-backup\front\"
@@ -37,12 +37,14 @@ copy "D:\vue3\chumpower\src\assets\*.*"             "C:\chumpower-backup\front\s
 copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
 copy "D:\vue3\chumpower\src\router\old_source\*.js" "C:\chumpower-backup\front\src\router\old_source"
 
-:: 檢查並建立其他必要目錄
+:: server端, 檢查並建立其他必要目錄
 if not exist "C:\chumpower-backup\server\server" (
     echo 建立目錄: C:\chumpower-backup\server\server
     mkdir "C:\chumpower-backup\server\server"
 )
+copy "C:\vue\chumpower\途程說明-0609-m.xlsx" "C:\chumpower-backup\server"
 copy "C:\vue\chumpower\server\*.py" "C:\chumpower-backup\server\server"
+copy "C:\vue\chumpower\server\*.bat" "C:\chumpower-backup\server\server"
 
 if not exist "C:\chumpower-backup\server\server\database" (
     echo 建立目錄: C:\chumpower-backup\server\server\database
@@ -68,6 +70,12 @@ if not exist "C:\chumpower-backup\server\pdf_file\物料清單" (
 )
 copy "C:\vue\chumpower\pdf_file\物料清單\*.*" "C:\chumpower-backup\server\pdf_file\物料清單"
 
+if not exist "C:\chumpower-backup\server\日期章" (
+    echo 建立目錄: C:\chumpower-backup\server\日期章
+    mkdir "C:\chumpower-backup\server\日期章"
+)
+copy "C:\vue\chumpower\日期章\*.png" "C:\chumpower-backup\server\日期章"
+
 ::if not exist "C:\chumpower-backup\server\server\travel" (
 ::    echo 建立目錄: C:\chumpower-backup\server\server\travel
 ::    mkdir "C:\chumpower-backup\server\server\travel"
@@ -89,7 +97,6 @@ xcopy "C:\vue\chumpower\console\SocketIOServer" "C:\chumpower-backup\console\Soc
 
 if not exist "C:\chumpower-backup\console2"                        mkdir "C:\chumpower-backup\console2"
 xcopy "C:\vue\chumpower\console2\TestSocketIOServer" "C:\chumpower-backup\console2\TestSocketIOServer" /E /I /Y
-
 
 echo 複製完成
 pause

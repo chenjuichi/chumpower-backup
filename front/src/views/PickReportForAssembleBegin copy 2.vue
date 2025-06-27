@@ -10,6 +10,11 @@
     </template>
   </v-snackbar>
 
+  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+    <LedLights :activeColor="activeColor" />
+  </DraggablePanel>
+
+  <!--items-per-page-text="每頁的資料筆數"-->
   <v-data-table
     :headers="headers"
     :items="materials_and_assembles"
@@ -22,11 +27,12 @@
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
+
   >
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
       <v-card>
-        <v-card-title class="d-flex align-center pe-2" style="font-weight:700;">
+        <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height:86px; height:86px;">
           組裝區領料生產報工
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
@@ -35,17 +41,32 @@
             v-if="materials_and_assembles.length > 0"
             color="primary"
             variant="outlined"
-            style="position: relative; left: -50px; top: 0px;"
+            style="position: relative; right: 500px; top: 0px;"
             @click="refreshComponent"
           >
             <v-icon left color="blue">mdi-refresh</v-icon>
             更新訂單
           </v-btn>
+
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <!-- 客製化barcode輸入 -->
+            <v-text-field
+              v-model="bar_code"
+              :value="bar_code"
+              ref="barcodeInput"
+              @keyup.enter="handleBarCode"
+              hide-details="auto"
+              prepend-icon="mdi-barcode"
+              style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+              class="align-center"
+              density="compact"
+            />
+          </div>
         </v-card-title>
       </v-card>
     </template>
 
-    <!-- 使用動態插槽來客製化 '訂單編號' (order_num) 欄位的表頭 -->
+    <!-- 客製化 '訂單編號' (order_num) 欄位的表頭 -->
     <template v-slot:header.order_num="{ column }">
       <v-hover v-slot="{ isHovering, props }">
         <div
@@ -68,11 +89,35 @@
       </v-hover>
     </template>
 
-    <!-- 使用動態插槽來客製化 '需求數量' (req_qty) 欄位的表頭 -->
+    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
     <template v-slot:header.req_qty="{ column }">
-      <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-        <div>{{ column.title }}</div>
-        <div style="color: #0000FF; font-size:12px; margin-top: 10px; font-weight:600;">(已領取總數量)</div> <!-- 在 '訂單編號' 下方插入 '途程' -->
+      <div style="text-align: center;">
+        <div>需求</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '備料數量' (delivery_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
+    <template v-slot:header.delivery_qty="{ column }">
+      <div style="text-align: center;">
+        <div>備料</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '應領數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+    <template v-slot:header.must_receive_qty="{ column }">
+      <div style="text-align: center;">
+        <div>應領取</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '領取數量' (receive_qty) 欄位的表頭 2025-06-13 add, 改順序-->
+    <template v-slot:header.receive_qty="{ column }">
+      <div style="text-align: center;">
+        <div>領取</div>
+        <div>數量</div>
       </div>
     </template>
 
@@ -102,6 +147,7 @@
         isHovering:
         根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
       -->
+
       <v-hover v-slot="{ isHovering, props }">
         <div
           v-bind="props"
@@ -147,12 +193,13 @@
           v-model="item.receive_qty"
           dense
           hide-details
-          style="max-width: 60px; text-align: center; z-index: 1;"
-          :id="`receiveQtyID-${item.order_num}`"
+
+          :id="`receiveQtyID-${item.assemble_id}`"
           @update:modelValue="checkReceiveQty(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
-          @keyup.enter="updateItem(item)"
-          :disabled="item.input_disable"
+          @keyup.enter="updateItem2(item)"
+
+          :disabled="isButtonDisabled(item)"
         />
         <span
           v-show="item.tooltipVisible"
@@ -172,86 +219,52 @@
 
     <!-- 自訂 gif 按鍵欄位 -->
     <template v-slot:item.gif="{ item, index }">
-      <!--
-        v-bind="props":
-        使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
-        當滑鼠移入或移出該 div 時，就能觸發 isHovering 的變化。
-        isHovering:
-        根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
-      -->
-      <v-hover v-slot="{ isHovering, props }">
+      <v-hover v-slot:default="{ isHovering, props }">
         <div
           v-bind="props"
           style="position: relative; display: inline-block;"
-          @mouseenter="handleGifClick(item, index); hoveredItemIndex = index"
-          @mouseleave="hoveredItemIndex = null"
+          @mouseenter="handleGifClick(item, index); hoveredItemIndex = index; isTableVisible = true;"
+          @mouseleave="hoveredItemIndex = null; isTableVisible = false;"
         >
           <img
             v-if="!isButtonDisabled(item)"
-            :src="hoveredItemIndex === index ? animationImageSrc : staticImageSrc"
+            :src="isHovering ? animationImageSrc : staticImageSrc"
             alt="GIF"
-            style="width: 30px; height: 30px;"
+            style="width: 25px; height: 25px;"
           />
-          <!-- 使用 Vuetify 的 v-simple-table 顯示資料，使用 position: absolute 確保不影響原表格 -->
+          <!-- 動態顯示表格 -->
           <div
-            v-if="isHovering && boms.length > 0 && !isButtonDisabled(item)"
-            style="
-              position: absolute;
-              top: -5px;
-              right: 35px;
-              background-color: white;
-              padding: 5px;
-              border-radius: 5px;
-              box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
-              font-size: 12px;
-              color: #333;
-              white-space: nowrap;
-              width: 160px;
-              z-index: 999;
-              margin: 0 3px;
-            "
+            v-if="isTableVisible && boms.length > 0 && !isButtonDisabled(item)"
+            :style="adjustTablePosition"
           >
-            <v-simple-table>
+            <v-table style="width: 190px; overflow: hidden;" class="show_table">
               <thead>
                 <tr>
-                  <th style="text-align: left; padding-left: 3px; padding-right: 3px;">編號</th>
-                  <th style="text-align: right; padding-left: 3px; padding-right: 3px;">數量</th>
+                  <th style="text-align: left;">編號</th>
+                  <th style="text-align: right;">數量</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="(bom, bomIndex) in boms"
-                  :key="bomIndex"
-                  :style="{backgroundColor: bomIndex % 2 === 0 ? '#ffffff' : '#edf2f4'}"
+                  v-for="(bom_item, index) in boms"
+                  :key="index"
+                  v-if="boms[index].receive !== undefined && boms[index].receive"
+                  :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
+                  class="custom-row"
                 >
-                  <td style="text-align: left; padding-left: 3px; padding-right: 3px;">{{ bom.material_num }}</td>
-                  <td style="text-align: right; padding-left: 3px; padding-right: 3px;">{{ bom.qty }}</td>
+                  <td style="text-align: left;">{{ boms[index].material_num }}</td>
+                  <td style="text-align: right;">{{ boms[index].qty }}</td>
                 </tr>
               </tbody>
-            </v-simple-table>
+              <tfoot>
+                <tr>
+                  <td colspan="2">
+                    共 {{ boms.length }} 項
+                  </td>
+                </tr>
+              </tfoot>
+            </v-table>
           </div>
-          <!-- 懸停文字 -->
-          <!--
-          <span
-            v-if="isHovering && !isButtonDisabled(item)"
-            style="
-              position: absolute;
-              top: -5px;
-              right: 35px;
-              background-color: white;
-              padding: 5px;
-              border-radius: 5px;
-              box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
-              font-size: 12px;
-              color: #333;
-              white-space: nowrap;
-            "
-          >
-          <template v-for="(bom, bomIndex) in boms" :key="bomIndex">
-            編號:{{ bom.material_num }} - 數量: {{ bom.qty }} <br />
-          </template>
-          </span>
-          -->
         </div>
       </v-hover>
     </template>
@@ -264,9 +277,10 @@
         style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
         :disabled="isButtonDisabled(item)"
         @click="updateItem(item)"
+        color="indigo-darken-4"
       >
         開 始
-        <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+        <v-icon color="indigo-darken-4" end>mdi-open-in-new</v-icon>
       </v-btn>
     </template>
 
@@ -278,51 +292,58 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
 
-import { useRoute } from 'vue-router';          // Import useRouter
+import LedLights from './LedLights.vue';
+import DraggablePanel from './DraggablePanel.vue';
+
+import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
-
 import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { materials_and_assembles, boms, socket_server_ip }  from '../mixins/crud.js';
-
+import { begin_count, end_count }  from '../mixins/crud.js';
 import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
-
+const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-const createProcess = apiOperation('post', '/createProcess');
+//const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
-//const getMaterial = apiOperation('post', '/getMaterial');
 
 //=== component name ==
-defineComponent({
-  name: 'PickReportForAssembleBegin'
-});
+defineComponent({ name: 'PickReportForAssembleBegin' });
 
-// === mix ==
+//=== mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
 const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
-const hoveredItemIndex = ref(null); // 追蹤目前懸停在哪一筆資料上的 index
 const hoveredItemIndexForReqQty = ref(null);
 const inputIDs = ref([]);
+
+const showBackWarning = ref(true);
+
+const bar_code = ref('');
+const barcodeInput = ref(null);
+
+const hoveredItemIndex = ref(null); // 追蹤目前懸停在哪一筆資料上的 index
+const isTableVisible = ref(false);  // 用來控制表格是否顯示
+// 滑鼠位置(x, y)
+const mouseX = ref(0);
+const mouseY = ref(0);
 
 const route = useRoute();   // Initialize router
 
@@ -332,19 +353,25 @@ const footerOptions = [
   { value: -1, title: '全部' }
 ];
 
+//            0         1        2          3        4            5           6            7           8            9
+const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num'},
   { title: '物料編號', sortable: false, key: 'material_num'},
-  { title: '需求數量', sortable: false, key: 'req_qty' },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
+  { title: '備料數量', sortable: false, key: 'delivery_qty', width:80 },
+  { title: '應領數量', sortable: false, key: 'must_receive_qty' },  // 2025-06-13 add, 改順序
   { title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
   { title: '', sortable: false, key: 'gif' },
   { title: '', sortable: false, key: 'action' },
 ];
-
+// 初始化Socket連接
 const userId = 'user_chumpower';
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId);
+const clientAppName = 'PickReportForAssembleBegin';
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
 // 排序欄位及方向（需為陣列）
 const sortBy = ref(['order_num'])
@@ -365,6 +392,8 @@ const outputStatus = ref({
 const currentUser = ref({});
 const componentKey = ref(0) // key 值用於強制重新渲染
 
+const currentBoms = ref([]);
+
 //const currentStartTime = ref(null);  // 記錄開始時間
 
 //const agv1StartTime = ref(null);
@@ -372,11 +401,17 @@ const componentKey = ref(0) // key 值用於強制重新渲染
 //const agv2StartTime = ref(null);
 //const agv2EndTime = ref(null);
 
-
 const pagination = reactive({
-  itemsPerPage: 5, // 預設值, rows/per page
+  itemsPerPage: 5,              // 預設值, rows/per page
   page: 1,
 });
+
+const panelX = ref(1250);
+const panelY = ref(21);
+const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
+const panel_flag = ref(false)     // 允許拖曳的開關
+
+const screenSizeInInches = ref(null);
 
 //=== watch ===
 //watch(currentUser, (newUser) => {
@@ -386,6 +421,13 @@ const pagination = reactive({
 //});
 setupGetBomsWatcher();
 
+// 當輸入滿 12 碼，就自動處理條碼
+watch(bar_code, (newVal) => {
+  if (newVal.length === 12) {
+    handleBarCode();
+  }
+})
+
 //=== computed ===
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -393,9 +435,63 @@ const containerStyle = computed(() => ({
 
 const routeName = computed(() => route.name);
 
+// 計算懸浮表格的位置，根據資料筆數動態調整高度
+const adjustTablePosition = computed(() => ({
+  position: 'fixed',
+  //top: `${mouseY.value + 10}px`,
+  //left: `${mouseX.value - 150}px`,
+
+  top: '80px',      // 固定上邊距離
+  right: '190px',  // 固定左邊距離
+
+  backgroundColor: 'white',
+  padding: '5px',
+  borderRadius: '5px',
+  boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.1)',
+  fontSize: '10px',
+  color: '#333',
+  whiteSpace: 'nowrap',
+  width: '190px',
+  zIndex: 999,
+  margin: '0 3px',
+  height: `${boms.length * 15}px`, // 根據資料筆數動態調整高度
+  overflowY: 'hidden', // 禁止垂直滾動條
+  overflowX: 'hidden', // 禁止水平滾動條
+}));
+
 //=== mounted ===
 onMounted(async () => {
-  console.log("PickReportForAssemble.vue, mounted()...");
+  console.log("PickReportForAssembleBegin.vue, mounted()...");
+
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  const dpiEstimate = 96;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+
+  if (screenSizeInInches.value != null) {
+    panelX.value = screenSizeInInches.value > 20 ? 1250 : 625;
+    panelY.value = screenSizeInInches.value > 20 ? 21 : 21;
+  }
+  //+++
+
+  // 阻止直接後退
+  //history.pushState(null, null, document.URL)
+  window.history.pushState(null, null, document.URL)
+  window.addEventListener('popstate', handlePopState)
 
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
@@ -411,13 +507,50 @@ onMounted(async () => {
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
-    const myIdField = document.getElementById(`receiveQtyID-${item.order_num}`);
+    const myIdField = document.getElementById(`receiveQtyID-${item.assemble_id}`);
     myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
   });
 
+  // 在組件掛載時添加事件監聽器
+  window.addEventListener('mousemove', updateMousePosition);
+
+  // 自動 focus
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
+  }
+
+  //處理socket連線
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
+    // 燈號
+    socket.value.on('station2_loading_ready', async(data) => {
+      const num = parseInt(data.message, 10);
+
+      activeColor.value='yellow';  // 物料進站
+
+      if ([1, 2, 3].includes(num)) {
+        const temp_msg = `物料已經進入第${num}號裝卸站!`;
+        console.warn(temp_msg);
+        //activeColor.value='yello';  // 物料進站
+        //showSnackbar(temp_msg, 'yellow lighten-5');
+      } else {
+        console.error('接收到不合法的裝卸站號碼:', data.message);
+      }
+    });
+    // 燈號
+    socket.value.on('station2_agv_begin', async () => {
+      activeColor.value='SeaGreen';   // 物料出站
+    })
+    // 燈號
+    socket.value.on('station3_agv_end', async (data) => {
+      activeColor.value='DarkOrange';   //物料送達成品區
+    })
+    // 燈號
+    socket.value.on('station1_agv_ready', async () => {
+      activeColor.value='blue';   // 機器人進入組裝區
+    })
+
     /*
     socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
       console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
@@ -449,6 +582,7 @@ onMounted(async () => {
       }
     });
     */
+
     /*
     socket.value.on('station1_agv_begin', async () => {
       console.log('AGV暫停, 收到 station1_agv_begin 訊息');
@@ -482,8 +616,11 @@ onMounted(async () => {
       await createProcess(processPayload);
     })
     */
+
+    //2025-02-24 mark the following socket function
+    /*
     socket.value.on('station2_agv_end', async (data) => {
-      console.log('AGV暫停, 收到 station2_agv_end 訊息, 工單:', data);
+      console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
 
       const materialPayload1 = {
         order_num: data,
@@ -511,9 +648,12 @@ onMounted(async () => {
         user_id: 'AGV2',
         order_num: data,
         process_type: 2,        //組裝區
+        id: myAssemble.id       ////2025-02-24 add
       };
       await createProcess(processPayload);
     });
+    */
+
     /*
     socket.value.on('station1_agv_ready', async () => {
       console.log('AGV 已到達裝卸站, 收到 station1_agv_ready 訊息...');
@@ -530,7 +670,30 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
+  window.removeEventListener('popstate', handlePopState)
+
   //clearInterval(intervalId);
+  window.removeEventListener('mousemove', updateMousePosition);
+
+  //+++
+  const dpi = window.devicePixelRatio;
+  const widthInPx = screen.width;
+  const heightInPx = screen.height;
+
+  // 實驗推估：假設密度為 96 DPI（一般桌機）
+  const dpiEstimate = 96;
+
+  const widthInInches = widthInPx / dpiEstimate;
+  const heightInInches = heightInPx / dpiEstimate;
+
+  const diagonalInches = Math.sqrt(
+    widthInInches ** 2 + heightInInches ** 2
+  ).toFixed(1);
+
+  screenSizeInInches.value = diagonalInches;
+
+  console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
+  //+++
 });
 
 //=== created ===
@@ -556,32 +719,111 @@ const initialize = async () => {
     item.pickBegin = [];
   });
 
-  await listSocketServerIP();
-    console.log("initialize, socket_server_ip:", socket_server_ip.value)
+  //await listSocketServerIP();
+  //  console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
+const handleBarCode = () => {
+  if (bar_code.value.length !== 12) {
+    console.warn('條碼長度不正確')
+    return
+  }
+
+  console.log('處理條碼：', bar_code.value)
+  let myBarcode = materials_and_assembles.value.find(m => m.order_num == bar_code.value);
+
+  // 在這裡做條碼比對、查詢、上傳等邏輯
+  if (myBarcode) {
+    console.log('找到條碼對應項目:', myBarcode.index);
+
+    // focus到對應項目的欄位
+    focusItemField(myBarcode);
+  } else {
+    showSnackbar('找不到對應條碼資料！', 'red accent-2');
+    console.warn('找不到對應條碼資料!')
+  }
+}
+
+const focusItemField = async (item) => {
+  console.log("focusItemField()...");
+
+  await nextTick() // 確保 DOM 已更新
+  // 找到外層 v-text-field DOM
+  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  if (wrapper) {
+    // 聚焦到 v-text-field 本身
+    console.log("wrapper ok...")
+    wrapper.focus();
+
+    // 往內找真正的 <input> 元素
+    const input = wrapper.querySelector('input');
+    if (input) {
+      input.focus();
+
+      // 模擬按下 Enter 鍵事件
+      const enterEvent = new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(enterEvent);
+    }
+  } else {
+    console.warn(`找不到欄位: receiveQtyID-${item.index}`)
+  }
+}
+
+/*
+const handlePopState = () => {
+  // 重新添加歷史紀錄以阻止實際後退
+  history.pushState(null, null, document.URL)
+
+  // 只在第一次顯示警告
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
+    showBackWarning.value = false
+  }
+}
+*/
+const handlePopState = () => {
+  // ✅ 正確方式：保留 Vue Router 的 state
+  //history.pushState(history.state, '', document.URL);
+  window.history.pushState(history.state, '', document.URL);
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
+
 const isButtonDisabled = (item) => {
+  console.log("item.whichStation:",item.whichStation, item.whichStation != 2);
+  console.log("item.input_disable:",item.input_disable);
+  console.log("!item.process_step_enable:",!item.process_step_enable);
+  console.log("OR return value:",(item.whichStation != 2 || item.input_disable) || !item.process_step_enable);
   return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable;
   //return (item.whichStation != 2 || item.input_disable) || item.process_step_enable==0;
 };
 
 const checkReceiveQty = (item) => {
-  console.log("checkReceiveQty,", item);
+  console.log("checkReceiveQty(),", item);
 
   const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
   const temp = Number(item.req_qty)
   if (total > temp) {
     //console.log("total, temp, step1...");
-    receive_qty_alarm.value = '領取數量超過作業數量!';
+    receive_qty_alarm.value = '領取數量超過現況數量!';
     item.tooltipVisible = true;     // 顯示 Tooltip
     setTimeout(() => {
       item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
       item.receive_qty = '';        // 清空輸入欄位
     }, 2000);
-    console.error('領取數量超過需求數量');
+    console.error('領取數量超過現況數量!');
   } else {
     item.tooltipVisible = false;
   }
@@ -613,18 +855,6 @@ const handleKeyDown = (event) => {
   }
 };
 
-const handleEscClose = async () => {
-  console.log("Dialog closed via ESC key");
-
-  dialog.value = false;
-};
-
-const handleOutsideClick = async () => {
-  console.log("Dialog closed by clicking outside");
-
-  dialog.value = false;
-};
-
 const getStatusStyle = (status) =>{
   const colorMap = {
     0: '#ff0018',
@@ -644,21 +874,29 @@ const getStatusStyle = (status) =>{
   };
 };
 
-const handleGifClick = async (item, index) => {
-  console.log(`GIF 點擊事件觸發，資料索引: ${index}, 資料內容:`, item);
-
-  let payload = {
-    order_num: item.order_num,
-  };
-  await getBoms(payload);
-  console.log("bom[]:", boms.value)
-};
-
-const updateItem = async (item) => {
-  console.log("updateItem(),", item);
+const updateItem2 = async (item) => {
+  console.log("updateItem2(),", item);
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
+    item.receive_qty = Number(item.delivery_qty) || 0;
+  } else {
+    item.receive_qty = Number(item.receive_qty) || 0;
+  }
+
+  item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+
+  if (barcodeInput.value) {
+    barcodeInput.value.focus();
+  }
+};
+
+const updateItem = async (item) => {
+  console.log("PickReportForAssembleBegin, updateItem(),", item);
+
+  // 檢查是否輸入了空白或 0
+  if (!item.receive_qty || Number(item.receive_qty) === 0) {
+    console.log("item.receive_qty:", item.receive_qty)
     receive_qty_alarm.value = '領取數量不可為空白或0!'
     item.tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
@@ -671,21 +909,28 @@ const updateItem = async (item) => {
 
   let payload = {};
 
+  let startTime = new Date();                                                         // 記錄當前結束時間
+  let formattedStartTime = formatDateTime(startTime); //完工生產報工開始時間
+  console.log("formattedStartTime:", formattedStartTime)
+  console.log("item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0:", item.pickBegin.length, Number(item.total_receive_qty_num));
+  console.log("startTime step 1...")
+  //2025-02-24 mark if condition
   // 確認是第1次領料
-  if (item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0) {
-    // 1.記錄當前組裝開始時間
+  //if (item.pickBegin.length ==1 && Number(item.total_receive_qty_num)!=0) {
+    console.log("startTime step 2...")
+    // 記錄當前領料生產開始時間
     payload = {
       assemble_id: item.assemble_id,
       record_name: 'currentStartTime',
       record_data: formatDateTime(new Date()),
     };
     await updateAssemble(payload);
-  }
-
-  // 2.記錄當前領取數量
+  //}
+  //
+  // 2.記錄當前途程領取數量
   payload = {
     assemble_id: item.assemble_id,
-    record_name: 'ask_qty',
+    record_name: 'ask_qty',                 //領取數量
     record_data: Number(item.receive_qty),
   };
   await updateAssemble(payload);
@@ -697,10 +942,11 @@ const updateItem = async (item) => {
   let total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
   payload = {
     assemble_id: item.assemble_id,
-    record_name: 'total_ask_qty',
+    record_name: 'total_ask_qty',   //開始, /領取數量總數
     record_data: total,
   };
   await updateAssemble(payload);
+
   item.total_receive_qty ='(' + total.toString().trim() + ')';
   item.total_receive_qty_num = total;
 
@@ -724,6 +970,9 @@ const updateItem = async (item) => {
   };
   await updateMaterial(payload);
 
+  item.assemble_process = str2[outputStatus.value.step1]
+  item.assemble_process_num = outputStatus.value.step1
+
   // 7.按開始鍵後, 記錄當前途程狀態訊息show3_ok
   payload = {
     order_num: item.order_num,
@@ -733,7 +982,8 @@ const updateItem = async (item) => {
   await updateMaterial(payload);
 
   let temp = Number(item.req_qty)
-  // 確認 已領取總數量=需求數量
+  // 確認 已領取數量總數=需求數量(訂單數量)
+  console.log("total == temp ?",total, temp)
   if (total == temp) {
     // 記錄當前紀錄, 不能再輸入
     payload = {
@@ -743,23 +993,29 @@ const updateItem = async (item) => {
     };
     await updateAssemble(payload);
     item.input_disable = true;
+    //
+    await listWaitForAssemble();
   }
 };
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
-
+  //參考後端python, str2[]的指標
   if (inputStr.includes('109')) {             //組裝
     outputStatus.value = { step1: 4, step2: 5, };
   } else if (inputStr.includes('106')) {      //雷射
-    outputStatus.value = { step1: 6, step2: 7 };
-  } else if (inputStr.includes('110')) {      //檢驗
+    // 2025-06-12, 改順序
+    //outputStatus.value = { step1: 6, step2: 7 };
     outputStatus.value = { step1: 8, step2: 9 };
+  } else if (inputStr.includes('110')) {      //檢驗
+    // 2025-06-12, 改順序
+    //outputStatus.value = { step1: 8, step2: 9 };
+    outputStatus.value = { step1: 6, step2: 7 };
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
 };
-
+/*
 // 計算兩個時間字串的差值，返回格式化的時間差
 const calculatePeriodTimeStr = (startTime, endTime) => {
   const startDate = new Date(startTime);
@@ -794,7 +1050,7 @@ const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的
 
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
-
+*/
 const formatDateTime = (date) => {
   if (!date || !(date instanceof Date)) {
     console.error("Invalid date passed to formatDateTime:", date);
@@ -809,7 +1065,7 @@ const formatDateTime = (date) => {
   const ss = String(date.getSeconds()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
-
+/*
 const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
   const hours = String(time.getHours()).padStart(2, '0');
   const minutes = String(time.getMinutes()).padStart(2, '0');
@@ -817,7 +1073,7 @@ const formatTime = (time) => {                            // 格式化時間為 
 
   return `${hours}:${minutes}:${seconds}`;
 };
-
+*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -834,12 +1090,13 @@ const checkTextEditField = (focused, item) => {
     //  item.receive_qty =0;        // 強迫輸入值為0
 
     // 檢查 item.pickBegin 是否為空陣列
+    /*
     if (item.pickBegin.length == 0) {
       item.receive_qty = 0; // 若為空陣列，設置 item.receive_qty 為 0
     } else {
-      // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
-      item.receive_qty = item.pickBegin[item.pickBegin.length - 1];
+      item.receive_qty = item.pickBegin[item.pickBegin.length - 1]; // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
     }
+    */
   }
 };
 
@@ -865,6 +1122,52 @@ const refreshComponent = () => {
   // 改變 key 值，Vue 會重新渲染整個元件
   componentKey.value += 1;
 };
+
+// 滑鼠移入圖片，顯示表格
+const handleGifClick = async (item, index) => {
+  console.log(`GIF 點擊事件觸發，資料索引: ${index}, 資料內容:`, item);
+
+  if (hoveredItemIndex.value === index && isTableVisible.value) {
+    return;  // 如果表格已經顯示且資料已經加載，不再重複請求
+  }
+
+  hoveredItemIndex.value = index;
+  isTableVisible.value = true;    // 設置表格可見
+
+  //boms.value = [];
+  let payload = {
+    order_num: item.order_num,
+    //id: item.id,
+  };
+  await getBoms(payload);
+  console.log('Current hovered item index:', hoveredItemIndex.value);
+  //reactiveBoms = reactive({ data: [...boms.value] });
+  //reactiveBoms = ref([...boms.value]);
+  console.log("bom[]:", boms.value)
+  //console.log("reactiveBoms:", reactiveBoms)
+  //currentBoms.value = [...boms.value];
+  //console.log("currentBoms[]:", currentBoms.value)
+  //console.log("currentBoms.rec:", currentBoms.value[0].receive)
+  //console.log("Raw currentBoms:", toRaw(currentBoms.value));
+  //await nextTick();
+};
+
+// 滑鼠移入表格時，保持表格顯示
+//const onMouseEnterTable = () => {
+//  isTableVisible.value = true;
+//}
+
+// 滑鼠移出圖片或表格時，隱藏表格
+//const onMouseLeaveTable = () => {
+//  isTableVisible.value = false;   // 隱藏表格
+//  //hoveredItemIndex.value = null;  // 重置 hoveredItemIndex
+//}
+
+// 滑鼠位置偵測
+const updateMousePosition = (event) => {
+  mouseX.value = event.clientX;
+  mouseY.value = event.clientY;
+}
 </script>
 
 <style lang="scss" scoped>
@@ -885,7 +1188,7 @@ const refreshComponent = () => {
 }
 
 .no-footer {
-  margin-bottom: 0;                   // 沒有頁腳時的底部邊距
+  margin-bottom: 0;           // 沒有頁腳時的底部邊距
 }
 
 :deep(.v-data-table .v-table__wrapper > table > thead > tr > th.v-data-table__th) {
@@ -902,11 +1205,13 @@ const refreshComponent = () => {
 
 :deep(input[type="text"]) {
   min-height: 20px;
+  height: 20px;
   opacity: 1;
   padding: 0px;
   text-align: center;
   color: red;
   min-width:60px;
+  width:60px;
 }
 
 .custom-table {
@@ -914,12 +1219,45 @@ const refreshComponent = () => {
   //border: 1px solid #000;     // 表格的外框
   border-radius: 0 0 20px 20px;
 }
-/*
-.custom-table th,
-.custom-table td {
-  border: 1px solid #000;   // 單元格的邊框
-  padding: 8px;             // 單元格的內邊距
-  text-align: left;         // 文本對齊
+
+//:deep(.v-table) {
+//  border-collapse: collapse; // 讓表格邊框不會分開
+//}
+
+//:deep(.v-table th, .v-table td) {
+//  border: 1px solid #ddd;   // 邊框顏色
+//}
+
+:deep(.show_table thead th) {
+  padding: 3px !important;
+  height: 15px !important;
+  font-size: 12px !important;
+  color:blue;
+  font-family: '微軟正黑體', sans-serif; margin-top:10px;
 }
-*/
+
+:deep(.show_table tfoot td) {
+  padding: 3px !important;
+  height: 15px !important;
+  font-size: 12px !important;
+  font-weight: 700;
+  color:blue;
+  text-align: center;
+  font-family: '微軟正黑體', sans-serif; margin-top:10px;
+}
+
+:deep(.show_table tbody td) {
+  padding: 3px !important;
+  height: 15px !important;
+  font-size: 12px !important;
+}
+
+:deep(i.mdi-barcode) {
+  color: #000000;
+  font-weight: 600;
+  font-size: 36px;
+  position: relative;
+  left: 15px;
+}
+
 </style>

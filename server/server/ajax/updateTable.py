@@ -10,6 +10,8 @@ import pymysql
 from sqlalchemy import exc
 from sqlalchemy import func
 from sqlalchemy import distinct
+from sqlalchemy import inspect
+from sqlalchemy import and_
 
 from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Product, Agv, Session
 
@@ -151,37 +153,32 @@ def update_user():
 def update_boms():
     print("updateBoms....")
     request_data = request.get_json()
-    #print("request_data", request_data)
+    print("request_data =", request_data)
 
-    return_value = True  # true: 資料正確, 註冊成功
+    return_value = True
     s = Session()
 
     try:
-      # 遍歷傳入的每一筆資料
-      for key, bom_data in request_data.items():
-        bom_id = bom_data.get('id')
+        for key, bom_data in request_data.items():
+            print(f"key={key}, type(bom_data)={type(bom_data)}, bom_data={bom_data}")
 
-        # 查找對應的記錄
-        bom_record = s.query(Bom).filter_by(id=bom_id).first()
+            if isinstance(bom_data, dict):
+                bom_id = bom_data.get('id')
+                receive_val = bom_data.get('receive')
 
-        if bom_record:
-            # 更新記錄的各個欄位
-            '''
-            bom_record.date = bom_data.get('date')
-            bom_record.date_alarm = bom_data.get('date_alarm')
-            bom_record.seq_num = bom_data.get('seq_num')
-            bom_record.lack = bom_data.get('lack')
-            bom_record.material_num = bom_data.get('material_num')
-            bom_record.mtl_comment = bom_data.get('mtl_comment')
-            bom_record.qty = bom_data.get('qty')
-            '''
-            bom_record.receive = bom_data.get('receive')
-            #bom_record.isPickOK = True    #領料完成
+                # 查找並更新對應資料
+                bom_record = s.query(Bom).filter_by(id=bom_id).first()
+                if bom_record:
+                    print(f"Before update: id={bom_id}, receive={bom_record.receive}")
+                    bom_record.receive = receive_val
+                    print(f"After update: id={bom_id}, receive={bom_record.receive}")
+            else:
+                print(f"Warning: bom_data 不是 dict，跳過 key={key}")
 
-      s.commit()
+        s.commit()
 
     except Exception as e:
-        s.rollback()  # 如果發生錯誤，回滾變更
+        s.rollback()
         print(f"Error: {e}")
         return_value = False
 
@@ -190,6 +187,7 @@ def update_boms():
     return jsonify({
         'status': return_value
     })
+
 
 '''
 @updateTable.route("/updateBomsInMaterial", methods=['POST'])
@@ -299,11 +297,11 @@ def update_assemble_process_step():
 
   data = request.json
 
-  if not data or 'id' not in data or 'asm_id' not in data:
-    return jsonify({"error": "Missing parameters '_id' or 'asm_id'"}), 400
+  if not data or 'id' not in data or 'assemble_id' not in data:
+    return jsonify({"error": "Missing parameters 'id' or 'assemble_id'"}), 400
 
   material_id = data['id']
-  assemble_id = data['asm_id']
+  assemble_id = data['assemble_id']
   return_value = False
 
   s = Session()
@@ -419,6 +417,154 @@ def update_modify_material_and_Boms():
     print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
   except Exception as e:
     print(f"移動檔案時發生錯誤: {e}")
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+@updateTable.route("/updateAssmbleDataByMaterialID", methods=['POST'])
+def update_assemble_data_by_material_id():
+  print("updateAssmbleDataByMaterialID....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _delivery_qty = request_data.get('delivery_qty')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  _record_name2 = request_data.get('record_name2')
+  _record_data2 = request_data.get('record_data2')
+  _record_name3 = request_data.get('record_name3')
+  _record_data3 = request_data.get('record_data3')
+  _record_name4 = request_data.get('record_name4')
+  _record_data4 = request_data.get('record_data4')
+
+  #return_value = True  # true: 資料正確,
+  s = Session()
+
+  try:
+      # 查詢所有符合條件的紀錄
+      assemble_records = s.query(Assemble).filter(
+          Assemble.material_id == _material_id,
+          Assemble.must_receive_qty == _delivery_qty
+      ).all()
+
+      # 動態設定欄位
+      for asm in assemble_records:
+        if _record_name1 and _record_data1 is not None:
+          setattr(asm, _record_name1, _record_data1)
+        if _record_name2 and _record_data2 is not None:
+          setattr(asm, _record_name2, _record_data2)
+        if _record_name3 and _record_data3 is not None:
+          setattr(asm, _record_name3, _record_data3)
+        if _record_name4 and _record_data4 is not None:
+          setattr(asm, _record_name4, _record_data4)
+
+      # 提交更新
+      s.commit()
+      print(f"更新成功，共 {len(assemble_records)} 筆資料")
+      return_value = True
+      #return
+  except Exception as e:
+      s.rollback()
+      print("更新失敗:", str(e))
+      return_value = False
+      #return
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+@updateTable.route("/updateAssembleMustReceiveQtyByAssembleID", methods=['POST'])
+def update_assemble_must_receive_qty_by_assemble_id():
+    print("updateAssembleMustReceiveQtyByAssembleID....")
+
+    request_data = request.get_json()
+    _id = request_data.get('assemble_id')
+    #_must_receive_qty = request_data['must_receive_qty']
+    #_completed_qty = request_data['completed_qty']
+
+    return_value = True  # true: 資料正確,
+    s = Session()
+
+    # 1. 先找出該筆資料
+    target = s.query(Assemble).filter(Assemble.id == _id).first()
+
+    if not target:
+      print(f"找不到 id={ _id } 的資料")
+      return_value = False
+      return
+
+    material_id = target.material_id
+    must_receive_qty = target.must_receive_qty
+
+    # 2. 查找符合條件的其他資料
+    matching_records = s.query(Assemble).filter(
+      Assemble.material_id == material_id,
+      Assemble.must_receive_qty == must_receive_qty,
+      Assemble.process_step_code != 0
+    ).all()
+
+    print(f"符合條件的筆數: { len(matching_records) }")
+
+    # 3. 更新符合條件的 must_receive_qty
+    for record in matching_records:
+      print(f"更新 id={ record.id } 的 must_receive_qty: { record.must_receive_qty } -> { target.completed_qty }")
+      record.must_receive_qty = target.completed_qty
+
+    s.commit()
+    print("更新完成")
+
+    return jsonify({
+      'status': return_value
+    })
+
+
+@updateTable.route("/updateAssembleMustReceiveQtyByMaterialID", methods=['POST'])
+def update_assembleMustReceiveQty_by_MaterialID():
+  print("updateAssembleMustReceiveQtyByMaterialID....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+  print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+
+  return_value = True  # true: 資料正確,
+  s = Session()
+
+  # 確認 record_name 是 Assemble 的合法欄位
+  valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
+  if _record_name not in valid_columns:
+    return_value = False
+    raise ValueError(f"'{ _record_name }' 不是 Assemble 表中的合法欄位")
+
+  # 查詢所有 material_id 相符的 Assemble 記錄
+  assemble_records = s.query(Assemble).filter_by(material_id = _material_id).all()
+  '''
+  assemble_records = (s.query(Assemble).filter(and_(
+            Assemble.material_id == _material_id,
+            Assemble.must_receive_qty == 0
+        )
+    )
+    .all()
+  )
+  '''
+  if not assemble_records:
+    return_value = False
+    raise ValueError(f"No Assemble records found for material_id { _material_id }")
+
+  updated_ids = []
+  for record in assemble_records:
+    setattr(record, _record_name, _record_data)  # 動態設欄位
+    updated_ids.append(record.id)
+
+  s.commit()
+
+  s.close()
 
   return jsonify({
     'status': return_value

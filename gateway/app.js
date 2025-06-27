@@ -97,8 +97,8 @@ const shutdown = () => {
   console.log('Server shutting down...');
 
   // 通知所有 WebSocket 客戶端
-  io.emit('server_shutdown', '伺服器即將關閉');   //廣播socket.io的所有client
-  client.write('server_shutdown');              //發送至kuka伺服器的訊息
+  io.emit('server_shutdown', '伺服器即將關閉');  //廣播至前端瀏覽器
+  client.write('server_shutdown');              //廣播至後端kuka伺服器
 
   // 給點時間讓訊息發送後再關閉
   setTimeout(() => {
@@ -185,7 +185,7 @@ io.on('connection', (socket) => {
     console.log("收到 station1_call 訊息...");
 
     if (on_line) {
-      client.write('station1_call');    //發送至kuka伺服器的訊息(B)
+      client.write('station1_call');    //廣播至後端kuka伺服器的訊息(B)
       console.log("AGV 準備從裝卸站啟動...");
     } else {
       // 處理選擇的項目
@@ -256,7 +256,7 @@ io.on('connection', (socket) => {
     console.log('收到 station2_call 訊息');
 
     if (on_line) {
-      client.write('station2_call');    //發送至kuka伺服器的訊息(B)
+      client.write('station2_call');    //廣播至後端kuka伺服器的訊息(B)
       console.log("AGV 準備從裝卸站啟動...");
     } else {
       // 處理選擇的項目
@@ -320,7 +320,7 @@ io.on('connection', (socket) => {
     console.log('收到 agv_reset 訊息，重置所有動作...');
     resetRequested = true;          // 設置重置請求為 true
     //socket.emit('agv_ack');       // 向客戶端確認收到重置請求
-    client.write('agv_reset');      //發送至kuka伺服器的訊息(B)
+    client.write('agv_reset');      // 廣播至後端kuka伺服器的訊息(B)
   });
 
   // 使用 socket.onAny 監聽所有事件
@@ -335,22 +335,22 @@ io.on('connection', (socket) => {
     console.log(`收到來自網頁端 ${eventName} 訊息`);
     const subArr = webRTC_message.indexOf(eventName);
     //console.log(subArr);
-    if(subArr==-1) {
+    if(subArr==-1 && on_line==true) {
       console.log(`發送 ${eventName} 訊息給kuka伺服器!`);
-      client.write(eventName);                        //發送至kuka伺服器的訊息(B)
+      client.write(eventName);                        //廣播至後端kuka伺服器的訊息(B)
     }
   });
 });
 
 // 處理與kuka端溝通 , Socket 事件處理
 function bindClientHandlers() {
-  client.on('data', (data) => {
+  client.on('data', (data) => {     //廣播至後端kuka伺服器
     const message = data.toString().trim();
     console.log('\x1b[33m%s\x1b[0m', `來自kuka端伺服器的訊息: ${message}`);
 
     const match = message.match(/^(station\d+_loading_ready)$/);
     if (match) {
-      const eventName = message; // e.g., station1_loading_ready
+      const eventName = message;      // 例如 station1_loading_ready 訊息
       //const jsonPart = match[2];
 
       try {
@@ -360,7 +360,7 @@ function bindClientHandlers() {
 
         // 廣播事件與資料給前端瀏覽器
         //io.emit(eventName, parsedData);
-        io.emit(eventName);
+        io.emit(eventName); //廣播至前端瀏覽器
       } catch (err) {
         console.error('解析 ${eventName} JSON 失敗:', err.message);
       }
@@ -382,10 +382,10 @@ function bindClientHandlers() {
       case 'station3_agv_end':
       case 'station3_loading_ready':
         console.log("send", res, "to socket io...");
-        io.emit(res);
+        io.emit(res); //廣播至前端瀏覽器
         break;
       default:
-        io.emit(res);
+        io.emit(res); //廣播至前端瀏覽器
         break;
     }
   });
@@ -408,7 +408,7 @@ function bindClientHandlers() {
     }
 
     csharpReady = false;
-    io.emit('kuka_server_not_ready', {
+    io.emit('kuka_server_not_ready', {  //廣播至前端瀏覽器
       message: 'kuka端伺服器尚未準備好，請稍後再試。'
     });
 
@@ -453,5 +453,7 @@ bindClientHandlers();
 connectToCSharp();
 
 http.listen(PORT, () => {
-  console.log(`\n應用軟體已在 port ${PORT} 執行!` );
+  console.log(`\n` );
+  console.log(`\x1b[34mBuild 2025-06-26\x1b[0m`);
+  console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

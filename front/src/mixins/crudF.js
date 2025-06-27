@@ -27,7 +27,7 @@ export const apiOperationF = (operation, path) => {
       if (payload instanceof FormData) {
         options.headers['Content-Type'] = 'multipart/form-data';
       }
-      console.log("path:", path)
+      //console.log("path:", path)
       request = axios.post(path, payload, options);
     }
 

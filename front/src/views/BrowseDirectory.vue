@@ -413,7 +413,7 @@ const handleItemClick = (item) => {
 	if (item.is_dir) {
 		if (item.name === '物料清單') {
 			pdfType.value = 1;
-		} else if (item.name === '領退料單') {
+		} else if (item.name === '領退料單/收貨單') {
 			pdfType.value = 2;
 		} else {
 			pdfType.value = 0;

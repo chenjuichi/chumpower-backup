@@ -48,6 +48,67 @@
             更新訂單
           </v-btn>
 
+          <!-- 組裝區來料異常備註 -->
+          <div class="pa-4 text-center">
+            <v-dialog v-model="abnormalDialog" max-width="500">
+              <!--取消最大高度限制，讓卡片內容可以顯示完整-->
+              <!--消自動捲軸，完全依內容高度決定是否超出-->
+              <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
+                <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
+                  組裝區來料異常備註
+                </v-card-title>
+
+                <v-card-text>
+                  <!-- 若 Incoming1_Abnormal 為 true，顯示第1與第2行 -->
+                  <template v-if="abnormalDialog_display">
+                    <v-row style="margin-bottom: 4px;" dense justify="center">
+                      <v-col cols="4" class="pa-0">訂單編號</v-col>
+                      <v-col cols="4" class="pa-0">來料數量</v-col>
+                      <v-col cols="4" class="pa-0">實際數量</v-col>
+                    </v-row>
+                    <v-row dense>
+                      <v-col cols="4" class="pa-0">{{ abnormalDialog_order_num }}</v-col>
+                      <v-col cols="4" class="pa-0">{{ abnormalDialog_delivery_qty }}</v-col>
+                      <v-col cols="4" class="pa-0">
+                        <v-text-field
+                          v-model="abnormalDialog_new_must_receive_qty"
+                          variant="underlined"
+                          style="max-width: 60px;"
+                        />
+                      </v-col>
+                    </v-row>
+                  </template>
+                  <!-- 顯示第3行 -->
+                  <template v-else>
+                    <v-row style="margin-bottom: 4px;" dense justify="center">
+                      {{ abnormalDialog_message }}
+                    </v-row>
+                    </template>
+                </v-card-text>
+
+                <v-card-actions class="justify-center">
+                  <v-btn
+                    color="success"
+                    prepend-icon="mdi-content-save"
+
+                    text="確定"
+                    class="text-none"
+                    @click="createAbnormalFun"
+                    variant="flat"
+                  />
+                  <v-btn
+                    color="error"
+                    prepend-icon="mdi-close"
+                    text="取消"
+                    class="text-none"
+                    @click="abnormalDialog = false"
+                    variant="flat"
+                  />
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+          </div>
+
           <div style="display: flex; flex-direction: column; align-items: center;">
             <!-- 客製化barcode輸入 -->
             <v-text-field
@@ -89,17 +150,43 @@
       </v-hover>
     </template>
 
-    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 -->
+    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
     <template v-slot:header.req_qty="{ column }">
-      <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-        <div>{{ column.title }}</div>
-        <div style="color: #0000FF; font-size:12px; margin-top: 10px; font-weight:600;">(已領取總數量)</div> <!-- 在 '訂單編號' 下方插入 '途程' -->
+      <div style="text-align: center;">
+        <div>需求</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '備料數量' (delivery_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
+    <template v-slot:header.delivery_qty="{ column }">
+      <div style="text-align: center;">
+        <div>備料</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '應領數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+    <template v-slot:header.must_receive_qty="{ column }">
+      <div style="text-align: center;">
+        <div>應領取</div>
+        <div>數量</div>
+      </div>
+    </template>
+
+    <!-- 客製化 '領取數量' (receive_qty) 欄位的表頭 2025-06-13 add, 改順序-->
+    <template v-slot:header.receive_qty="{ column }">
+      <div style="text-align: center;">
+        <div>領取</div>
+        <div>數量</div>
       </div>
     </template>
 
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
+
       <div>
+
         <div>{{ item.order_num }}</div>
         <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
       </div>
@@ -114,7 +201,7 @@
     </template>
 
     <!-- 自訂 '需求數量' 欄位的資料欄位 -->
-    <template v-slot:item.req_qty="{ item }">
+    <!--<template v-slot:item.req_qty="{ item }">-->
       <!--
         v-bind="props":
         使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
@@ -123,6 +210,7 @@
         isHovering:
         根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
       -->
+  <!--
       <v-hover v-slot="{ isHovering, props }">
         <div
           v-bind="props"
@@ -159,6 +247,28 @@
           </span>
         </div>
       </v-hover>
+    </template>
+  -->
+    <!-- 自訂 '應領取數量'欄位的資料藍位 -->
+    <template v-slot:item.must_receive_qty="{ item }">
+      <div style="display: flex; align-items: center;">
+        <template v-if="item.process_step_code == 3">
+          <v-icon
+            style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
+            @click="addAbnormalInMaterial(item)"
+            size="16"
+            class="mr-2"
+            :color="item.Incoming1_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
+
+          >
+            mdi-bell-plus
+          </v-icon>
+        </template>
+        <span style="margin-left: 15px;">
+          {{ item.must_receive_qty }}
+        </span>
+      </div>
     </template>
 
     <!-- 自訂 '領取數量' 輸入欄位 -->
@@ -221,20 +331,24 @@
               </thead>
               <tbody>
                 <tr
-                  v-for="(bom_item, index) in boms"
+
+                  v-for="(bom_item, index) in filteredBoms"
+
                   :key="index"
-                  v-if="boms[index].receive !== undefined && boms[index].receive"
+
                   :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
                   class="custom-row"
                 >
-                  <td style="text-align: left;">{{ boms[index].material_num }}</td>
-                  <td style="text-align: right;">{{ boms[index].qty }}</td>
+
+                  <td style="text-align: left;">{{ bom_item.material_num }}</td>
+                  <td style="text-align: right;">{{ bom_item.qty }}</td>
+
                 </tr>
               </tbody>
               <tfoot>
                 <tr>
                   <td colspan="2">
-                    共 {{ boms.length }} 項
+                    共 {{ filteredBoms.length }} 項
                   </td>
                 </tr>
               </tfoot>
@@ -288,11 +402,14 @@ const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssemble
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
+const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
+const copyAssemble = apiOperation('post', '/copyAssemble');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
+const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleBegin' });
@@ -329,16 +446,18 @@ const footerOptions = [
 ];
 
 //            0         1        2          3        4            5           6            7           8            9
-const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+//const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num'},
   { title: '物料編號', sortable: false, key: 'material_num'},
-  { title: '需求數量', sortable: false, key: 'req_qty' },
-  { title: '備料數量', sortable: false, key: 'delivery_qty' },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
+  { title: '備料數量', sortable: false, key: 'delivery_qty', width:80 },
+  { title: '應領取數量', sortable: false, key: 'must_receive_qty', width:100 },  // 2025-06-13 add, 改順序
   { title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '交期', align: 'start', sortable: false, key: 'delivery_date' },
+  { title: '交期', align: 'start', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'gif' },
   { title: '', sortable: false, key: 'action' },
 ];
@@ -387,6 +506,17 @@ const panel_flag = ref(false)     // 允許拖曳的開關
 
 const screenSizeInInches = ref(null);
 
+const abnormalDialogBtnDisable = ref(true);
+const abnormalDialog = ref(false);
+const abnormalDialog_order_num = ref('');
+const abnormalDialog_delivery_qty = ref('');
+const abnormalDialog_must_receive_qty = ref('');
+const abnormalDialog_new_must_receive_qty = ref('');
+const abnormalDialog_message = ref('');
+const abnormalDialog_display = ref(true);
+
+const abnormalDialog_item = ref(null);
+
 //=== watch ===
 //watch(currentUser, (newUser) => {
 //  if (newUser.perm < 1) {
@@ -432,6 +562,10 @@ const adjustTablePosition = computed(() => ({
   overflowY: 'hidden', // 禁止垂直滾動條
   overflowX: 'hidden', // 禁止水平滾動條
 }));
+
+const filteredBoms = computed(() =>
+  boms.value.filter(item => item?.receive)
+);
 
 //=== mounted ===
 onMounted(async () => {
@@ -497,11 +631,11 @@ onMounted(async () => {
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
-
+    // 燈號
     socket.value.on('station2_loading_ready', async(data) => {
       const num = parseInt(data.message, 10);
 
-      activeColor.value='yello';  // 物料進站
+      activeColor.value='yellow';  // 物料進站
 
       if ([1, 2, 3].includes(num)) {
         const temp_msg = `物料已經進入第${num}號裝卸站!`;
@@ -512,15 +646,15 @@ onMounted(async () => {
         console.error('接收到不合法的裝卸站號碼:', data.message);
       }
     });
-
+    // 燈號
     socket.value.on('station2_agv_begin', async () => {
       activeColor.value='SeaGreen';   // 物料出站
     })
-
+    // 燈號
     socket.value.on('station3_agv_end', async (data) => {
       activeColor.value='DarkOrange';   //物料送達成品區
     })
-
+    // 燈號
     socket.value.on('station1_agv_ready', async () => {
       activeColor.value='blue';   // 機器人進入組裝區
     })
@@ -556,6 +690,7 @@ onMounted(async () => {
       }
     });
     */
+
     /*
     socket.value.on('station1_agv_begin', async () => {
       console.log('AGV暫停, 收到 station1_agv_begin 訊息');
@@ -589,6 +724,7 @@ onMounted(async () => {
       await createProcess(processPayload);
     })
     */
+
     //2025-02-24 mark the following socket function
     /*
     socket.value.on('station2_agv_end', async (data) => {
@@ -683,16 +819,16 @@ const initialize = async () => {
   try {
     console.log("initialize()...");
 
-  // 使用 async/await 等待 API 請求完成，確保順序正確
-  await listMaterialsAndAssembles();
+    // 使用 async/await 等待 API 請求完成，確保順序正確
+    await listMaterialsAndAssembles();
 
-  // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
-  materials_and_assembles.value.forEach(item => {
-    item.pickBegin = [];
-  });
+    // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
+    materials_and_assembles.value.forEach(item => {
+      item.pickBegin = [];
+    });
 
-  //await listSocketServerIP();
-  //  console.log("initialize, socket_server_ip:", socket_server_ip.value)
+    //await listSocketServerIP();
+    //  console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -846,14 +982,76 @@ const getStatusStyle = (status) =>{
   };
 };
 
+const addAbnormalInMaterial = (item) => {
+  console.log("addAbnormalInMaterial(),", item);
+
+  abnormalDialog_item.value = materials_and_assembles.value.find(m => m.assemble_id == item.assemble_id);
+
+  abnormalDialogBtnDisable.value = true;
+  abnormalDialog_order_num.value = item.order_num;
+  abnormalDialog_delivery_qty.value = item.delivery_qty;
+  abnormalDialog_new_must_receive_qty.value = item.must_receive_qty;
+  abnormalDialog_must_receive_qty.value = item.must_receive_qty;
+  abnormalDialog_display.value = item.Incoming1_Abnormal;
+
+  abnormalDialog.value = true;
+}
+
+const createAbnormalFun = async () => {
+  console.log("createAbnormalFun()...");
+
+  if (abnormalDialog_new_must_receive_qty.value != abnormalDialog_must_receive_qty.value) {
+    let temp_str = '(' + abnormalDialog_delivery_qty.value + abnormalDialog_new_must_receive_qty.value + ')'
+    abnormalDialog_message.value = '備料區來料數量不對! '+ temp_str;
+    console.log("temp_str:", temp_str);
+    let payload = {}
+
+    try {
+      //payload = {
+      //  assemble_id: item.assemble_id,
+      //  cause_message: ['備料區來料數量不對'],
+      //  cause_user: currentUser.value.empID,
+      //};
+      //await updateAssembleAlarmMessage(payload);
+
+      payload = {
+        assemble_id: abnormalDialog_item.value.assemble_id,
+        record_name: 'Incoming1_Abnormal',
+        record_data: abnormalDialog_message.value,
+      };
+      await updateAssemble(payload);
+      abnormalDialog_item.value.Incoming1_Abnormal=false;
+
+      // targetIndex為目前table data record 的 index
+      const targetIndex = materials_and_assembles.value.findIndex(
+        (kk) => kk.id === item.id
+      );
+
+      if (targetIndex !== -1) {
+        // 用 Vue 的方式確保觸發響應式更新
+        materials_and_assembles.value[targetIndex] = {
+          ...materials_and_assembles.value[targetIndex],
+          Incoming1_Abnormal: false,
+        };
+      }
+
+      console.log('更新成功...');
+    } catch (error) {
+      console.error('更新失敗:', error.response?.data?.message || error.message);
+    }
+  }
+  abnormalDialog.value = false;
+}
+
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
-    item.receive_qty = Number(item.delivery_qty) || 0;
-  } else {
-    item.receive_qty = Number(item.receive_qty) || 0;
+    //item.receive_qty = Number(item.delivery_qty) || 0;
+    item.receive_qty = item.must_receive_qty || 0;
+  //} else {
+  //  item.receive_qty = Number(item.receive_qty) || 0;
   }
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
@@ -889,23 +1087,39 @@ const updateItem = async (item) => {
   //2025-02-24 mark if condition
   // 確認是第1次領料
   //if (item.pickBegin.length ==1 && Number(item.total_receive_qty_num)!=0) {
-    console.log("startTime step 2...")
-    // 記錄當前領料生產開始時間
-    payload = {
-      assemble_id: item.assemble_id,
-      record_name: 'currentStartTime',
-      record_data: formatDateTime(new Date()),
-    };
-    await updateAssemble(payload);
+  console.log("startTime step 2...")
+  // 記錄當前領料生產開始時間
+  payload = {
+    assemble_id: item.assemble_id,
+    record_name: 'currentStartTime',
+    record_data: formatDateTime(new Date()),
+  };
+  await updateAssemble(payload);
   //}
   //
   // 2.記錄當前途程領取數量
   payload = {
     assemble_id: item.assemble_id,
-    record_name: 'ask_qty',
+    record_name: 'ask_qty',                 //領取數量
     record_data: Number(item.receive_qty),
   };
   await updateAssemble(payload);
+
+  // 2-a.紀錄該筆的應領取數量, 2025-06-17 add, 改順序
+  payload = {
+    material_id: item.id,
+    record_name: 'must_receive_end_qty',
+    record_data: Number(item.receive_qty),
+  };
+  await updateAssembleMustReceiveQtyByMaterialID(payload);
+
+  //// 2-b.紀錄該筆的應領取數量, 2025-06-18 add, 改順序
+  //payload = {
+  //  material_id: item.id,
+  //  record_name: 'must_receive_qty',
+  //  record_data: Number(item.must_receive_end_qty) - Number(item.receive_qty),
+  //};
+  //await updateAssembleMustReceiveQtyByMaterialID(payload);
 
   // 3.暫存每次領取數量
   item.pickBegin.push(item.receive_qty);
@@ -914,10 +1128,11 @@ const updateItem = async (item) => {
   let total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
   payload = {
     assemble_id: item.assemble_id,
-    record_name: 'total_ask_qty',
+    record_name: 'total_ask_qty',   //開始, /領取數量總數
     record_data: total,
   };
   await updateAssemble(payload);
+
   item.total_receive_qty ='(' + total.toString().trim() + ')';
   item.total_receive_qty_num = total;
 
@@ -929,17 +1144,25 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  // 取得show2_ok訊息類型
+  // 取得組裝區目前途程的show2_ok訊息類型(開始)
   checkInputStr(item.assemble_work);
   console.log("outputStatus:", outputStatus.value, typeof(outputStatus.value.step1), typeof(outputStatus.value.step1))
 
-  // 6.按開始鍵後, 記錄當前途程狀態訊息show2_ok
+  // 6.按開始鍵後, 記錄當前途程開始狀態顯示訊息
   payload = {
     order_num: item.order_num,
     record_name: 'show2_ok',
     record_data: outputStatus.value.step1
   };
   await updateMaterial(payload);
+
+  payload = {
+    assemble_id: item.assemble_id,
+    record_name: 'show2_ok',
+    record_data: true,
+  };
+  await updateAssemble(payload);
+
   item.assemble_process = str2[outputStatus.value.step1]
   item.assemble_process_num = outputStatus.value.step1
 
@@ -951,10 +1174,17 @@ const updateItem = async (item) => {
   };
   await updateMaterial(payload);
 
+  payload = {
+    assemble_id: item.assemble_id,
+    record_name: 'show3_ok',
+    record_data: true,
+  };
+  await updateAssemble(payload);
+
   let temp = Number(item.req_qty)
-  // 確認 已領取總數量=需求數量(訂單數量)
+  // 確認 已領取數量總數=需求數量(訂單數量)
   console.log("total == temp ?",total, temp)
-  if (total == temp) {
+  //if (total == temp) {    // 2025-06-16 mark, 改順序
     // 記錄當前紀錄, 不能再輸入
     payload = {
       assemble_id: item.assemble_id,
@@ -964,28 +1194,43 @@ const updateItem = async (item) => {
     await updateAssemble(payload);
     item.input_disable = true;
     //
-    await listWaitForAssemble();
-  }
-};
+    //await listWaitForAssemble();    // 2025-06-16 mark, 改順序
+  //}   // 2025-06-16 mark, 改順序
 
-//const listWaitForAssembleFun = async () => {
-//  await listWaitForAssemble();
-//}
+  if (item.must_receive_qty != item.receive_qty) {
+    console.log("item.must_receive_qty != item.receive_qty", item.must_receive_qty, item.receive_qty)
+
+    let temp_qty = item.must_receive_qty - item.receive_qty;
+    console.log("")
+    payload = {
+      copy_id: item.assemble_id,
+      must_receive_qty: temp_qty,
+    }
+    await copyAssemble(payload);
+  }
+
+  //待待
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+};
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
-
+  //參考後端python, str2[]的指標
   if (inputStr.includes('109')) {             //組裝
     outputStatus.value = { step1: 4, step2: 5, };
   } else if (inputStr.includes('106')) {      //雷射
-    outputStatus.value = { step1: 6, step2: 7 };
-  } else if (inputStr.includes('110')) {      //檢驗
+    // 2025-06-12, 改順序
+    //outputStatus.value = { step1: 6, step2: 7 };
     outputStatus.value = { step1: 8, step2: 9 };
+  } else if (inputStr.includes('110')) {      //檢驗
+    // 2025-06-12, 改順序
+    //outputStatus.value = { step1: 8, step2: 9 };
+    outputStatus.value = { step1: 6, step2: 7 };
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
 };
-
+/*
 // 計算兩個時間字串的差值，返回格式化的時間差
 const calculatePeriodTimeStr = (startTime, endTime) => {
   const startDate = new Date(startTime);
@@ -1020,7 +1265,7 @@ const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的
 
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
-
+*/
 const formatDateTime = (date) => {
   if (!date || !(date instanceof Date)) {
     console.error("Invalid date passed to formatDateTime:", date);
@@ -1035,7 +1280,7 @@ const formatDateTime = (date) => {
   const ss = String(date.getSeconds()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
-
+/*
 const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
   const hours = String(time.getHours()).padStart(2, '0');
   const minutes = String(time.getMinutes()).padStart(2, '0');
@@ -1043,7 +1288,7 @@ const formatTime = (time) => {                            // 格式化時間為 
 
   return `${hours}:${minutes}:${seconds}`;
 };
-
+*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 

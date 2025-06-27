@@ -105,6 +105,7 @@
 
         </div>
         <p class="mark_texts">員工註冊 <a href="#" @click.prevent="togglePanel">註冊</a></p>
+        <h8 style="position:relative; top:100px; font-weight:300; font-size: 12px;"> {{ 'Build 2025-06-26' }} </h8>
 
         <!--<div v-if="openMenu" class="floating-menu-wrapper">-->
       <!--
@@ -204,6 +205,7 @@
           </v-btn>
         </div>
         <p class="lg_mark_texts">員工登入 <a href="#" @click.prevent="togglePanel">登入</a></p>
+
       </div>
     </transition>
   </div>
@@ -564,7 +566,7 @@ const handlePasswordTab = (event) => {
 
 const handleCapsLock = (event) => {
   caps.value = event.getModifierState && event.getModifierState('CapsLock');
-  console.log("CapsLock is: ", caps.value);
+  //console.log("CapsLock is: ", caps.value);
 };
 
 const handleKeyDown = (event) => {

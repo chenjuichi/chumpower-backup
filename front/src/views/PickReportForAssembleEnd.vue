@@ -218,13 +218,43 @@
         </v-hover>
       </template>
 
-      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 -->
+      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
       <template v-slot:header.req_qty="{ column }">
-        <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-          <div>{{ column.title }}</div>
-          <div style="color: #0000FF; font-size:12px; margin-top: 10px; font-weight:600;">
-            (已完成總數量)
-          </div>
+        <div style="text-align: center;">
+          <div>需求</div>
+          <div>數量</div>
+        </div>
+      </template>
+
+      <!-- 客製化 '領取數量' (total_ask_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.total_ask_qty="{ column }">
+        <div style="text-align: center;">
+          <div>領取</div>
+          <div>數量</div>
+        </div>
+      </template>
+
+      <!-- 客製化 '應完成數量' (must_receive_end_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.must_receive_end_qty="{ column }">
+        <div style="text-align: center;">
+          <div>應完成</div>
+          <div>數量</div>
+        </div>
+      </template>
+
+      <!-- 客製化 '完成數量' (receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.receive_qty="{ column }">
+        <div style="text-align: center;">
+          <div>完成</div>
+          <div>數量</div>
+        </div>
+      </template>
+
+      <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.abnormal_qty="{ column }">
+        <div style="text-align: center;">
+          <div>異常</div>
+          <div>數量</div>
         </div>
       </template>
 
@@ -263,7 +293,7 @@
       </template>
 
       <!-- 自訂 '需求數量' 欄位的資料欄位 -->
-      <template v-slot:item.req_qty="{ item }">
+      <!--<template v-slot:item.req_qty="{ item }">-->
         <!--
           v-bind="props":
           使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
@@ -272,6 +302,7 @@
           isHovering:
           根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
         -->
+      <!--
         <v-hover v-slot="{ isHovering, props }">
           <div
             v-bind="props"
@@ -309,6 +340,11 @@
           </div>
         </v-hover>
       </template>
+    -->
+
+      <template v-slot:item.must_receive_end_qty="{ item }">
+        {{ item.must_receive_end_qty }}
+      </template>
 
       <!-- 自訂 '完成數量' 輸入欄位 -->
       <template v-slot:item.receive_qty="{ item }">
@@ -322,13 +358,36 @@
             @update:modelValue="checkReceiveQty(item)"
             @update:focused="(focused) => checkTextEditField(focused, item)"
             @keyup.enter="updateItem2(item)"
-            :disabled="item.input_disable"
+            :disabled="item.input_end_disable"
           />
           <span
             v-show="item.tooltipVisible"
             style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
           >
             {{ receive_qty_alarm }}
+          </span>
+        </div>
+      </template>
+
+      <!-- 自訂 '異常數量' 輸入欄位 -->
+      <template v-slot:item.abnormal_qty = "{ item }">
+        <div style="position: relative; display: inline-block;">
+          <v-text-field
+            v-model="item.abnormal_qty"
+            dense
+            hide-details
+            style="max-width: 60px; text-align: center; z-index: 1;"
+            :id="`abnormalQtyID-${item.assemble_id}`"
+            @update:modelValue="checkAbnormalQty(item)"
+            @update:focused="(focused) => checkTextEditField(focused, item)"
+
+            :disabled="item.input_abnormal_disable"
+          />
+          <span
+            v-show="item.abnormal_tooltipVisible"
+            style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
+          >
+            {{ abnormal_qty_alarm }}
           </span>
         </div>
       </template>
@@ -348,7 +407,7 @@
             :style="{
               opacity: enableDialogBtn ? 1 : 0,
               visibility: enableDialogBtn ? 'visible' : 'hidden'}"
-            -->
+      -->
       <template v-slot:item.action="{ item }">
         <div class="action-cell">
           <v-btn
@@ -376,7 +435,7 @@
             size="small"
             variant="tonal"
 
-            @click="updateAlarm(item)"
+            @click="updateAbnormal(item)"
             :style="{
               fontSize: '13px',
               fontWeight: '700',
@@ -431,6 +490,9 @@ const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 const listUsers = apiOperation('get', '/listUsers');
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
+const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
+const copyNewAssemble = apiOperation('post', '/copyNewAssemble');
+const updateAssembleMustReceiveQtyByAssembleID = apiOperation('post', '/updateAssembleMustReceiveQtyByAssembleID');
 const getMaterialsAndAssemblesByUser = apiOperation('post', '/getMaterialsAndAssemblesByUser');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
@@ -492,10 +554,12 @@ const headers = [
   { title: '  ', sortable: false, key: 'index', width: 0, class: 'hidden-column' },
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '物料編號', sortable: false, key: 'material_num' },
-  { title: '需求數量', sortable: false, key: 'req_qty', width:120 },
-  { title: '備料數量', sortable: false, key: 'delivery_qty', width:100 },
-  { title: '領料數量', sortable: false, key: 'total_ask_qty', width:100 },
-  { title: '完成數量', sortable: false, key: 'receive_qty', width:100 },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
+  //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
+  { title: '領取數量', sortable: false, key: 'total_ask_qty', width:80 },
+  { title: '應完成數量', sortable: false, key: 'must_receive_end_qty', width:100 },       // 2025-06-13 add, 改順序
+  { title: '完成數量', sortable: false, key: 'receive_qty', width:80 },
+  { title: '異常數量', sortable: false, key: 'abnormal_qty', width:80 },             // 2025-06-13 add, 改順序
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'action' },
@@ -511,6 +575,7 @@ const sortBy = ref(['order_num'])
 const sortDesc = ref([false])
 
 const receive_qty_alarm = ref('');
+const abnormal_qty_alarm = ref('');
 
 //const from_agv_input_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
@@ -738,6 +803,14 @@ onMounted(async () => {
           record_data: 16,           // agv start
         };
         await updateMaterial(payload);
+
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'show3_ok',
+          record_data: 16,
+        };
+        await updateAssemble(payload);
+
         //try {
         //  await updateMaterial(payload);
         //  console.log(`資料更新成功，id: ${item}`);
@@ -769,6 +842,14 @@ onMounted(async () => {
           record_data: 10      // 設為 10，agv移動至成品區中
         };
         await updateMaterial(payload);
+
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'show3_ok',
+          record_data: 10,
+        };
+        await updateAssemble(payload);
+
         //try {
         //  await updateMaterial(payload);
         //  console.log(`資料更新成功，id: ${item}`);
@@ -805,14 +886,63 @@ onMounted(async () => {
         );
         console.log("targetItem:", targetItem)
 
+        let current_assemble_id=targetItem.assemble_id
+        let current_material_id=targetItem.id
+        console.log("current_material_id, current_assemble_id:", current_material_id, current_assemble_id)
+
         payload = {
-          id: targetItem.id,
+          //id: targetItem.id,
+          id: current_material_id,
           show1_ok: 3,        //成品站
           show2_ok: 10,      //等待入庫
           show3_ok: 3,       //等待組裝中
           whichStation: 3,  //目標途程:組裝站
         };
         await updateMaterialRecord(payload);
+
+        // 2025-06-24, add
+        payload = {
+          material_id: current_material_id,
+          record_name: 'isAssembleStationShow',
+          record_data: false,
+        };
+        await updateAssembleMustReceiveQtyByMaterialID(payload);
+
+        // 2025-06-24, add
+        payload = {
+          //id: item.id,
+          id: current_material_id,
+          record_name: 'must_allOk_qty',
+          record_data: targetItem.receive_qty
+        };
+        await updateMaterial(payload);
+
+        /*
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'show1_ok',
+          record_data: 3,
+        };
+        await updateAssemble(payload);
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'show2_ok',
+          record_data: 10,
+        };
+        await updateAssemble(payload);
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'show3_ok',
+          record_data: 3,
+        };
+        await updateAssemble(payload);
+        payload = {
+          assemble_id: targetItem.id,
+          record_name: 'whichStation',
+          record_data: 3,
+        };
+        await updateAssemble(payload);
+        */
       });
       console.log('agv_end 處理步驟1...');
 
@@ -1106,25 +1236,44 @@ const handlePopState = () => {
 }
 
 const isButtonDisabled = (item) => {
-  return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable;
+  return (item.whichStation != 2 || item.input_end_disable) || !item.process_step_enable;
 };
 
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
 
-  const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
-  const temp = Number(item.req_qty)
+  const total = Number(item.receive_qty)+Number(item.abnormal_qty)
+  const temp = Number(item.must_receive_end_qty)
   if (total > temp) {
     //console.log("total, temp, step1...");
-    receive_qty_alarm.value = '完成數量超過領料數量!';
+    receive_qty_alarm.value = '完成數量錯誤!';
     item.tooltipVisible = true;     // 顯示 Tooltip
     setTimeout(() => {
       item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
       item.receive_qty = '';        // 清空輸入欄位
     }, 2000);
-    console.error('完成數量超過領料數量!');
+    console.error('完成數量錯誤!');
   } else {
     item.tooltipVisible = false;
+  }
+};
+
+const checkAbnormalQty = (item) => {
+  console.log("checkAbnormalQty(),", item);
+
+  const total = Number(item.receive_qty) + Number(item.abnormal_qty);
+  const temp = Number(item.must_receive_end_qty)
+  if (total > temp) {
+    //console.log("total, temp, step1...");
+    abnormal_qty_alarm.value = '異常數量錯誤!';
+    item.abnormal_tooltipVisible = true;     // 顯示 Tooltip
+    setTimeout(() => {
+      item.abnormal_tooltipVisible = false;  // 2秒後隱藏 Tooltip
+      item.abnormal_qty = '';        // 清空輸入欄位
+    }, 2000);
+    console.error('異常數量錯誤!');
+  } else {
+    item.abnormal_tooltipVisible = false;
   }
 };
 
@@ -1283,6 +1432,14 @@ const callAGV = async () => {
       record_data: 1      // 設為 1，等待agv
     };
     await updateMaterial(payload);
+
+    payload = {
+      assemble_id: item,
+      record_name: 'show3_ok',
+      record_data: 1,
+    };
+    await updateAssemble(payload);
+
   });
 };
 
@@ -1294,9 +1451,9 @@ const updateItem2 = async (item) => {
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
-    item.receive_qty = Number(item.delivery_qty) || 0;
-  } else {
-    item.receive_qty = Number(item.receive_qty) || 0;
+    item.receive_qty = item.must_receive_end_qty || 0;
+  //} else {
+  //  item.receive_qty = Number(item.receive_qty) || 0;
   }
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
@@ -1309,18 +1466,19 @@ const updateItem2 = async (item) => {
 const updateItem = async (item) => {
   console.log("PickReportForAssembleEnd, updateItem(),", item);
 
-  // 檢查是否輸入了空白或 0
+  // 檢查完成數量欄位是否為空白或輸入了0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
     receive_qty_alarm.value = '完成數量不可為空白或0!'
     item.tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
       item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
-      item.receive_qty = '';        // 清空輸入欄位
+      item.receive_qty = '';        // 清空完成數量欄位
     }, 2000);
     console.error('領取數量不可為空白或0!');
     return;
   }
 
+  // targetIndex為目前table data record 的 index
   const targetIndex = materials_and_assembles_by_user.value.findIndex(
     (kk) => kk.assemble_id === item.assemble_id
   );
@@ -1329,10 +1487,15 @@ const updateItem = async (item) => {
   // //組裝區途程完成(按結束定鍵) && AGV還沒送出
   //enableDialogBtn.value = item.isTakeOk && !item.isShow;
 
+  let current_assemble_id=materials_and_assembles_by_user.value[targetIndex].assemble_id
+  let current_material_id=materials_and_assembles_by_user.value[targetIndex].id
+
+  // 1.更新記錄, 完成數量
   let current_completed_qty= Number(item.receive_qty);    //完成數量
-  // 記錄當前完成數量
+  console.log("current:", current_completed_qty, current_assemble_id)
   let payload = {
-    assemble_id: item.assemble_id,
+    //assemble_id: item.assemble_id,
+    assemble_id: current_assemble_id,
     record_name: 'completed_qty',
     record_data: current_completed_qty,
   };
@@ -1347,7 +1510,8 @@ const updateItem = async (item) => {
 
   // 記錄當前完成總數量
   payload = {
-    assemble_id: item.assemble_id,
+    //assemble_id: item.assemble_id,
+    assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     record_name: 'total_completed_qty',
     record_data: total,
   };
@@ -1360,38 +1524,75 @@ const updateItem = async (item) => {
   if (item.process_step_code == 1 )
     temp_qty=3
   payload = {
-    assemble_id: item.assemble_id,
+    //assemble_id: item.assemble_id,
+    assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     record_name: 'total_ask_qty_end',
     record_data: temp_qty,
   };
   await updateAssemble(payload);
-  console.log("temp_qty:", temp_qty)
+  //console.log("temp_qty:", temp_qty)
 
+  // 2.取得組裝區目前途程的show2_ok/show3_ok訊息類型(結束)
   checkInputStr(item.assemble_work);
-  console.log("outputStatus:", outputStatus.value)
-  console.log("current_completed_qty, total:", current_completed_qty, total)
+  //console.log("outputStatus:", outputStatus.value)
+  //console.log("current_completed_qty, total:", current_completed_qty, total)
 
-  console.log("step1...")
-  console.log("current_completed_qty == total ?", current_completed_qty,total)
-  if (current_completed_qty == total) {
-    console.log("step2...")
+  //console.log("step1...")
+  //console.log("current_completed_qty == total ?", current_completed_qty,total)
+  //if (current_completed_qty == total) {   // 2025-06-18 mark, 改順序
+  //console.log("step2...")
 
-    // 記錄當前途程結束狀態
-    payload = {
-      //order_num: item.order_num,
-      id: item.id,
-      record_name: 'show2_ok',
-      record_data: outputStatus.value.step2
-    };
-    await updateMaterial(payload);
+  // 3.更新組裝區目前途程的show2_ok狀態顯示訊息類型(結束)
+  payload = {
+    //order_num: item.order_num,
+    //id: item.id,
+    //id: materials_and_assembles_by_user.value[targetIndex].id,
+    id: current_material_id,
+    record_name: 'show2_ok',
+    record_data: outputStatus.value.step2
+  };
+  await updateMaterial(payload);
 
-    payload = {
-      //order_num: item.order_num,
-      id: item.id,
-      record_name: 'show3_ok',
-      record_data: outputStatus.value.step2
-    };
-    await updateMaterial(payload);
+  payload = {
+    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+    assemble_id: current_assemble_id,
+    record_name: 'show2_ok',
+    record_data: outputStatus.value.step2,
+  };
+  await updateAssemble(payload);
+
+  // 4.更新組裝區目前途程的show3_ok狀態顯示訊息類型(結束)
+  payload = {
+    //order_num: item.order_num,
+    //id: item.id,
+    //id: materials_and_assembles_by_user.value[targetIndex].id,
+    id: current_material_id,
+    record_name: 'show3_ok',
+    record_data: outputStatus.value.step2
+  };
+  await updateMaterial(payload);
+
+  payload = {
+    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+    assemble_id: current_assemble_id,
+    record_name: 'show3_ok',
+    record_data: outputStatus.value.step2,
+  };
+  await updateAssemble(payload);
+
+  // 5. 更新組裝區目前途程紀錄, 不能再輸入
+  payload = {
+    //assemble_id: item.assemble_id,
+    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+    assemble_id: current_assemble_id,
+    record_name: 'input_end_disable',
+    record_data: true,
+  };
+  await updateAssemble(payload);
+
+  // 顯示目前途程欄位狀態, disable完成數量欄位
+  //item.input_end_disable = true;
+
     //2025-02-08 mark the following function
     //payload = {
     //  id: item.id,
@@ -1399,38 +1600,41 @@ const updateItem = async (item) => {
     //  record_data: true
     //};
     //await updateMaterial(payload);
-  }
+  //}   // 2025-06-18 mark, 改順序
 
   //const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
-  let temp = Number(item.req_qty)
-  console.log("step3...")
-  console.log("total == temp ?", total, temp)
-  if (total == temp) {
-    console.log("step4...")
-    // 記錄當前紀錄, 不能再輸入
-    payload = {
-      assemble_id: item.assemble_id,
-      record_name: 'input_end_disable',
-      record_data: true,
-    };
-    await updateAssemble(payload);
+  //let temp = Number(item.req_qty)
+  //console.log("step3...")
+  //console.log("total == temp ?", total, temp)
+  //if (total == temp) {    //, 2025-06-18 add, 改順序
+  //  console.log("step4...")
+  //  // 記錄當前紀錄, 不能再輸入
+  //  payload = {
+  //    assemble_id: item.assemble_id,
+  //    record_name: 'input_end_disable',
+  //    record_data: true,
+  //  };
+  //  await updateAssemble(payload);
 
     await listWaitForAssemble();
 
     //if (targetItem) {
-    //  targetItem.input_disable = true;
+    //  targetItem.input_end_disable = true;
     //}
     if (targetIndex !== -1) {
       // 用 Vue 的方式確保觸發響應式更新
       materials_and_assembles_by_user.value[targetIndex] = {
         ...materials_and_assembles_by_user.value[targetIndex],
-        input_disable: true,
+        input_end_disable: true,
       };
     }
-    //item.input_disable = true;
+    //item.input_end_disable = true;
     //待查
     payload = {
-      assemble_id: item.assemble_id,
+      //assemble_id: item.assemble_id,
+      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+      assemble_id: current_assemble_id,
+
       record_name: 'isAssembleStationShow',
       record_data: true,
     };
@@ -1454,7 +1658,10 @@ const updateItem = async (item) => {
     let formattedEndTime = formatDateTime(endTime); //完工生產報工結束時間
     periodTime.value = calculatePeriodTimeStr(formattedStartTime, formattedEndTime);  // 計算時間間隔
     payload = {
-      assemble_id: item.assemble_id,
+      //assemble_id: item.assemble_id,
+      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+      assemble_id: current_assemble_id,
+
       record_name: 'currentEndTime',
       record_data: formattedEndTime,
     };
@@ -1462,11 +1669,14 @@ const updateItem = async (item) => {
 
     let temp_no = 0;
     if (item.assemble_work.includes('109')) {             //組裝 開始/結束
-      temp_no = 23
-    } else if (item.assemble_work.includes('106')) {      //雷射 開始/結束
-      temp_no = 22
-    } else if (item.assemble_work.includes('110')) {      //檢驗 開始/結束
+      //temp_no = 23
       temp_no = 21
+    } else if (item.assemble_work.includes('106')) {      //雷射 開始/結束
+      //temp_no = 22
+      temp_no = 23
+    } else if (item.assemble_work.includes('110')) {      //檢驗 開始/結束
+      //temp_no = 21
+      temp_no = 22
     }
 
     let processPayload = {
@@ -1476,13 +1686,15 @@ const updateItem = async (item) => {
       user_id: currentUser.value.empID,
       order_num: item.order_num,
       process_type: temp_no,
-      id: item.id,
+      //id: item.id,
+      id: materials_and_assembles_by_user.value[targetIndex].id,
     };
     await createProcess(processPayload);
 
     // 記錄當前紀錄, 目前途程結束
     payload = {
-      assemble_id: item.assemble_id,
+      //assemble_id: item.assemble_id,
+      assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
       record_name: 'process_step_code',
       record_data: 0,
     };
@@ -1490,12 +1702,16 @@ const updateItem = async (item) => {
 
     // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
     payload = {
-      id: item.id,
-      asm_id: item.assemble_id
+      //id: item.id,
+      //asm_id: item.assemble_id,
+      id: materials_and_assembles_by_user.value[targetIndex].id,
+      assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     };
+    //await updateAssembleProcessStep(payload);
     let response = await updateAssembleProcessStep(payload);
     if (response) {
       console.log("take ok...")
+
       //if (targetItem) {
       //  targetItem.isTakeOk = true;
       //}
@@ -1508,22 +1724,34 @@ const updateItem = async (item) => {
       }
       //item.isTakeOk = true
     }
-  }
+
+  //}     , 2025-06-18 mark, 改順序
   console.log("step5...");
 
+  // 紀錄組裝去下一製程的應領取數量, 2025-06-17 add, 改順序
   payload = {
-    user_id: currentUser.value.empID,
+    assemble_id: item.id,
+    must_receive_qty: 'must_receive_end_qty',
+    completed_qty: current_completed_qty,
   };
-  await getMaterialsAndAssemblesByUser(payload);
+  await updateAssembleMustReceiveQtyByAssembleID(payload);
+
+  //payload = {
+  //  user_id: currentUser.value.empID,
+  //};
+  //await getMaterialsAndAssemblesByUser(payload);
+
+  //待待
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 //const listWaitForAssembleFun = async () => {
 //  await listWaitForAssemble();
 //}
 
-const updateAlarm = async (item) => {
-  console.log("updateAlarm(),", item);
-
+const updateAbnormal = async (item) => {
+  console.log("updateAbnormal(),", item);
+  /*
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
     receive_qty_alarm.value = '領取數量不可為空白或0!'
@@ -1535,11 +1763,26 @@ const updateAlarm = async (item) => {
     console.error('領取數量不可為空白或0!');
     return;
   }
+  */
+  // 檢查異常欄位是否輸入了空白或 0
+  if (!item.abnormal_qty || Number(item.abnormal_qty) === 0) {
+    abnormal_qty_alarm.value = '異常數量不可為空白或0!'
+    item.abnormal_tooltipVisible = true;     // 顯示 Tooltip 提示
+    setTimeout(() => {
+      item.abnormal_tooltipVisible = false;  // 2秒後隱藏 Tooltip
+      item.abnormal_qty = '';        // 清空輸入欄位
+    }, 2000);
+    console.error('領取數量不可為空白或0!');
+    return;
+  }
 
   const targetIndex = materials_and_assembles_by_user.value.findIndex(
     (kk) => kk.assemble_id === item.assemble_id
   );
   console.log("targetIndex:", targetIndex)
+
+  let current_assemble_id=materials_and_assembles_by_user.value[targetIndex].assemble_id
+  let current_material_id=materials_and_assembles_by_user.value[targetIndex].id
 
   //按鍵之前的值
   let temp_alarm_enable = item.alarm_enable;
@@ -1550,7 +1793,8 @@ const updateAlarm = async (item) => {
 
   // 記錄組裝區當前紀錄, 按鍵之後的值
   let payload = {
-    assemble_id: item.assemble_id,
+    //assemble_id: item.assemble_id,
+    assemble_id: current_assemble_id,
     record_name: 'alarm_enable',
     record_data: temp_alarm_enable,
   };
@@ -1571,11 +1815,60 @@ const updateAlarm = async (item) => {
   //temp_isAssembleAlarm = temp_isAssembleAlarm | temp_alarm_enable;
   //console.log("b.temp_isAssembleAlarm, temp_alarm_enable:", temp_isAssembleAlarm, temp_alarm_enable)
   payload = {
-    id: item.id,
+    //id: item.id,
+    id: current_material_id,
     record_name: 'isAssembleAlarm',
     record_data: temp_alarm_enable
   };
   await updateMaterial(payload);
+
+  //處理異常....
+
+  // 1.更新記錄, 異常數量
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'abnormal_qty',
+    record_data: item.abnormal_qty,
+  };
+  await updateAssemble(payload);
+  /*
+  // 1-1. 更新記錄, 應完成數量
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'must_receive_end_qty',
+    record_data: item.must_receive_end_qty - item.abnormal_qty,
+  };
+  await updateAssemble(payload);
+  */
+  // 2. 更新組裝區目前途程異常欄位, 不能再輸入
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'input_abnormal_disable',
+    record_data: true,
+  };
+  await updateAssemble(payload);
+
+  await listWaitForAssemble();
+
+  if (targetIndex !== -1) {
+    // 用 Vue 的方式確保觸發響應式更新
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      input_abnormal_disable: true,
+    };
+  }
+
+  // 3. 新增異常組裝製程的應領取數量
+  payload = {
+    copy_id: current_assemble_id,
+    must_receive_qty: item.abnormal_qty,
+  }
+  await copyNewAssemble(payload);
+
+  payload = {
+    user_id: currentUser.value.empID,
+  };
+  await getMaterialsAndAssemblesByUser(payload);
 };
 
 const checkInputStr = (inputStr) => {
@@ -1584,9 +1877,9 @@ const checkInputStr = (inputStr) => {
   if (inputStr.includes('109')) {             //組裝 開始/結束
     outputStatus.value = { step1: 4, step2: 5, };
   } else if (inputStr.includes('106')) {      //雷射 開始/結束
-    outputStatus.value = { step1: 6, step2: 7 };
-  } else if (inputStr.includes('110')) {      //檢驗 開始/結束
     outputStatus.value = { step1: 8, step2: 9 };
+  } else if (inputStr.includes('110')) {      //檢驗 開始/結束
+    outputStatus.value = { step1: 6, step2: 7 };
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }

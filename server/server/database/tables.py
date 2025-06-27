@@ -167,6 +167,12 @@ class Material(BASE):
     shortage_note = Column(String(20), server_default='')           # 缺料註釋說明
     isAllOk = Column(Boolean, default=False)                        # true:成品已入庫
     allOk_qty = Column(Integer, default=0)                          # (成品）確認完成數量
+
+    Incoming0_Abnormal = Column(String(30), default='')              #備料區檢料異常, 正常:''
+    Incoming2_Abnormal = Column(String(30), default='')              #成品區來料異常, 正常:''
+
+    must_allOk_qty = Column(Integer, default=0)                     # (成品）應入庫數量, 2025-06-24 add
+
     total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
     isLackMaterial = Column(Integer, default=99)                    # 0:備料缺料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
@@ -186,7 +192,14 @@ class Material(BASE):
     _abnormal_cause = relationship("AbnormalCause", secondary=association_material_abnormal, back_populates="_material")
     _product =  relationship('Product', backref="material")         # 一對多(一),
     _process =  relationship('Process', backref="material")         # 一對多(一),
+    material_stockin_date = Column(String(12))                      # 入庫日期
     create_at = Column(DateTime, server_default=func.now())
+
+    # 新增欄位：追蹤來源
+    is_copied_from_id = Column(Integer, ForeignKey('material.id'), nullable=True)
+    # 建立 self-reference 關聯關係, optional relationship for back-reference
+    # backref="copied_to", 可從原始資料中查到所有從它複製出去的資料清單。
+    copied_from = relationship("Material", remote_side=[id], backref="copied_to")
 
     # 定義變數輸出的內容
     def __repr__(self):
@@ -293,10 +306,18 @@ class Assemble(BASE):
     seq_num = Column(String(20), nullable=False)                  #序號
     work_num = Column(String(20))                                 #工作中心
     process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
+
+    Incoming1_Abnormal = Column(String(30), default='')           #組裝區來料異常, 正常:''
+    must_receive_qty = Column(Integer, default=0)                 #應領取數量, 2025-06-16 add, 改順序
+
     ask_qty = Column(Integer, default=0)                          #領取數量
-    total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
+    total_ask_qty = Column(Integer, default=0)                    #領取(完成)數量總數
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
-    user_id = Column(String(8))                                   #工序作業員工編號(領料)
+
+    must_receive_end_qty = Column(Integer, default=0)             #應完成數量, 2025-06-17 add, 改順序
+    abnormal_qty = Column(Integer, default=0)                     #異常數量, 2025-06-17 add, 改順序
+
+    user_id = Column(String(8))                                   #工序作業員工工號(領料)
     writer_id = Column(String(8))                                 #工序異常資料填寫員工編號
     write_date = Column(String(18))                               #工序異常資料填寫日期 2025-05-12 add
     good_qty = Column(Integer, default=0)                         #確認良品數量
@@ -307,23 +328,38 @@ class Assemble(BASE):
 
     #receive_qty = Column(Integer)                #領取數量
     #already_received_qty = Column(Integer)       #已經領取數量
+    #Incomin2_Abnormal = Column(String(20), default='')           #成品區來料異常, 正常:''
     completed_qty = Column(Integer, default=0)                    #完成數量
     total_completed_qty = Column(Integer, default=0)              #已完成總數量
 
-    reason = Column(String(50), default='')                                   #差異原因
+    reason = Column(String(50), default='')                       #差異原因
     #emp_num = Column(String(8))                                  #員工編號 8碼
-    confirm_comment = Column(String(70), default='')                          #確認內文
+    confirm_comment = Column(String(70), default='')              #確認內文
     is_assemble_ok = Column(Boolean, default=False)               # true: 目前途程為組裝, false: 不是
 
     currentStartTime = Column(String(30))                         #領料生產報工開始時間
     currentEndTime = Column(String(30))                           #完工生產報工結束時間
-    input_disable = Column(Boolean, default=False)                #領取數量達上限(作業數量), 禁止再輸入
-    input_end_disable = Column(Boolean, default=False)            #完成數量達上限(作業數量), 禁止再輸入
+    input_disable = Column(Boolean, default=False)                #領取數量達上限, 禁止再輸入
+    input_end_disable = Column(Boolean, default=False)            #完成數量達上限, 禁止再輸入
+
+    input_abnormal_disable = Column(Boolean, default=False)       #異常數量達上限, 禁止再輸入, 2025-06-17 add, 改順序
+
     isAssembleStationShow = Column(Boolean, default=False)        # true:完成生產報工(最後途程的結束鍵按下), 且是最後1個製成, 且已經call AGV, disable,
     alarm_enable = Column(Boolean, default=True)                  # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
     alarm_message = Column(String(100), default='')
-    update_time = Column(String(30))                               #alarm 更新時間
+
+    whichStation = Column(Integer, default=1)                     # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
+    show1_ok = Column(String(20), server_default='1')
+    show2_ok = Column(String(20), server_default='0')
+    show3_ok = Column(String(20), server_default='0')
+
+    update_time = Column(String(30))                              #alarm 更新時間
     create_at = Column(DateTime, server_default=func.now())
+    # 新增欄位：追蹤來源
+    is_copied_from_id = Column(Integer, ForeignKey('assemble.id'), nullable=True)
+    # 建立 self-reference 關聯關係, optional relationship for back-reference
+    # backref="copied_to", 可從原始資料中查到所有從它複製出去的資料清單。
+    copied_from = relationship("Assemble", remote_side=[id], backref="copied_to")
 
     # 定義變數輸出的內容
     def __repr__(self):

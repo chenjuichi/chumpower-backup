@@ -270,7 +270,6 @@ def read_all_excel_files():
   })
 '''
 
-
 @excelTable.route("/readAllExcelFiles", methods=['GET'])
 def read_all_excel_files():
   print("readAllExcelFiles....")
@@ -284,7 +283,14 @@ def read_all_excel_files():
   file_count_total = 0  #檔案總數目
   file_count_ok = 0     #檔案內總筆數
 
-  code_to_assembleStep = {'109': 3, '106': 2, '110': 1}
+  # 2025-06-12, 改順序
+  code_to_assembleStep = {    #組裝區工作順序, 3:最優先
+    '109': 3,
+    #'106': 2,
+    #'110': 1,
+    '106': 1,
+    '110': 2,
+  }
 
   _base_dir = current_app.config['baseDir']
   _target_dir = _base_dir.replace("_in", "_out")
@@ -414,6 +420,10 @@ def read_all_excel_files():
             code = workNum[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
             step_code = code_to_assembleStep.get(code, 0)   #
 
+            abnormal_field=False
+            if (workNum == 'B109'):   #組裝途程, 異常欄位disable
+              abnormal_field=True
+
             assemble = Assemble(
               material_id=material.id,                    # Use the ID of the inserted material
               material_num=assemble_row['物料'],
@@ -421,7 +431,7 @@ def read_all_excel_files():
               seq_num=assemble_row['作業'],
               work_num = workNum,
               process_step_code = step_code,
-
+              input_abnormal_disable = abnormal_field,
               #user_id = emp_num,
               user_id = '',
             )
@@ -758,9 +768,9 @@ def export_to_excel_for_assemble_information():
     1 : '備料',
     19: '等待AGV(備料區)',
     2: 'AGV運行(備料區->組裝區)',
-    22: '雷射',  #第2個動作b106
-    21: '組裝',  #第1個動作b110
-    23: '檢驗',   #第3個動作b109
+    23: '雷射',  #第2個動作b106,  第3個動作b106
+    21: '組裝',  #第1個動作b110,  第1個動作b109
+    22: '檢驗',   #第3個動作b109, 第2個動作b110
     29: '等待AGV(組裝區)',
     3: 'AGV運行(組裝區->成品區)',
     31: '成品入庫',

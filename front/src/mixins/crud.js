@@ -9,6 +9,13 @@ export const fileCount = ref(0);         //定義 fileCount 狀態變數
 // for copyMaterial
 export const material_copy_id = ref(0);
 
+// for copyAssemble
+export const assemble_copy_ids = ref([]);
+
+// for copyNewAssemble
+export const assemble_new_copy_ids = ref([]);
+
+
 // for listMaterials
 export const materials = ref([]);
 
@@ -215,6 +222,9 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
+              path == '/updateAssembleMustReceiveQtyByMaterialID' ||
+              path == '/updateAssembleMustReceiveQtyByAssembleID' ||
+              path == '/updateAssmbleDataByMaterialID' ||
               path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
               path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2') {
             //console.log("res.data:", res.data);
@@ -264,7 +274,7 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == "/getInformationsForAssembleErrorByHistory") {
             alarm_objects_list.value = [...res.data.alarm_objects_list];
-            console.log("alarm_objects_list.value:",alarm_objects_list.value);
+            //console.log("alarm_objects_list.value:",alarm_objects_list.value);
 
 
             // 更新資訊，保留原來的 cause_message
@@ -348,8 +358,7 @@ export const apiOperation = (operation, path, payload) => {
           }
           */
           if (path == '/readFile') {
-            console.log("/readFile(), res.data:", res.data.content)
-
+            //console.log("/readFile(), res.data:", res.data.content)
             return res.data.content;
           }
 
@@ -365,9 +374,19 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/copyMaterial') {
-            console.log("copyMaterial(), material_copy_id:",res.data.material_data.id)
+            //console.log("copyMaterial(), material_copy_id:", res.data.material_data.id)
             material_copy_id.value = res.data.material_data.id;
           }
+
+          if (path == '/copyAssemble') {
+            //console.log("copyAssemble(), assemble_copy_ids:", res.data.assemble_data)
+            assemble_copy_ids.value = res.data.assemble_data;
+          }
+
+          if (path == '/copyNewAssemble') {
+            assemble_new_copy_ids.value = res.data.assemble_data;
+          }
+
 
           if (path == '/getMaterialsAndAssemblesByUser') {
             //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
@@ -446,7 +465,7 @@ export const setupGetAGVWatcher = () => {
 };
 */
 export const showSnackbar = (message, color) => {
-  console.log("showSnackbar,", message, color);
+  //console.log("showSnackbar,", message, color);
 
   snackbar_info.value = message;
   snackbar_color.value = color;

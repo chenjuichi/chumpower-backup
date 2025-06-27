@@ -3,7 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
-from database.tables import User, Process, Agv, Material, Bom, Permission, Product, Process, Setting, Session
+from database.tables import User, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 
@@ -381,6 +381,147 @@ def create_process():
   })
 
 
+# copy assemble data table
+@createTable.route("/copyAssemble", methods=['POST'])
+def copy_assemble():
+  print("copyAssemble....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _must_qty = request_data.get('must_receive_qty')
+  #_show2_ok = request_data['show2_ok']
+
+  print("_copy_id, _must_qty", _copy_id, _must_qty)
+
+  return_value = True
+  s = Session()
+
+  # 根據 copy_id 尋找現有的 Material 資料
+  #exist = s.query(Assemble).filter_by(id = _copy_id).first()
+
+  # 1. 取得原始 assemble 記錄
+  source_assemble = s.query(Assemble).get(_copy_id)
+
+  # 2. 找出符合複製條件的所有 assemble 記錄
+  matching_assembles = s.query(Assemble).filter(
+      Assemble.material_id == source_assemble.material_id,
+      Assemble.process_step_code <= source_assemble.process_step_code
+  ).all()
+
+  # 3. 複製這些記錄（排除 id）並新增到 DB
+  new_ids = []
+  for record in matching_assembles:
+    new_record = Assemble(
+      material_id=record.material_id,
+      material_num=record.material_num,
+      material_comment=record.material_comment,
+      seq_num=record.seq_num,
+      work_num=record.work_num,
+      process_step_code=record.process_step_code,
+      must_receive_qty = _must_qty,     #應領取數量
+      ask_qty=0,
+    )
+    s.add(new_record)
+    s.flush()  # 先 flush 以取得新 ID
+    new_ids.append(new_record.id)
+  # end for loop
+
+  try:
+    s.commit()
+    print("Process data create successfully.")
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return_message = '錯誤! 資料新增複製沒有成功...'
+    return_value = False
+
+  s.close()
+
+  return jsonify({
+    'assemble_data': new_ids,
+  })
+
+
+# copy assemble data table
+@createTable.route("/copyNewAssemble", methods=['POST'])
+def copy_new_assemble():
+  print("copyNewAssemble....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _must_qty = request_data.get('must_receive_qty')
+
+  print("_copy_id, _must_qty", _copy_id, _must_qty)
+
+  return_value = True
+  s = Session()
+
+  # 根據 copy_id 尋找現有的 Material 資料
+  #exist = s.query(Assemble).filter_by(id = _copy_id).first()
+
+  # 1. 取得原始 assemble 記錄
+  source_assemble = s.query(Assemble).get(_copy_id)
+
+  # 2. 找出符合複製條件的所有 assemble 記錄
+  matching_assembles = s.query(Assemble).filter(
+      Assemble.material_id == source_assemble.material_id,
+      Assemble.must_receive_qty == source_assemble.must_receive_qty,
+      #Assemble.process_step_code <= source_assemble.process_step_code
+  ).all()
+
+  # 3. 複製這些記錄（排除 id）並新增到 DB
+  new_ids = []
+  for record in matching_assembles:
+    abnormal_field=False
+    if record.work_num == 'B109':
+      process_step_code =3
+      abnormal_field=True
+    if record.work_num == 'B110':
+      process_step_code =2
+    if record.work_num == 'B106':
+      process_step_code =1
+
+
+    new_record = Assemble(
+      material_id=record.material_id,
+      material_num=record.material_num,
+      material_comment=record.material_comment,
+      seq_num=record.seq_num,
+      work_num=record.work_num,
+      process_step_code=process_step_code,
+      must_receive_qty = _must_qty,     #應領取數量
+      input_disable =False,
+      input_end_disable =False,
+      input_abnormal_disable = abnormal_field,
+      completed_qty = 0,                    #完成數量
+      total_completed_qty = 0,
+      ask_qty=0,
+    )
+    s.add(new_record)
+    s.flush()  # 先 flush 以取得新 ID
+    new_ids.append(new_record.id)
+  # end for loop
+
+  try:
+    s.commit()
+    print("Process data create successfully.")
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return_message = '錯誤! 資料新增複製沒有成功...'
+    return_value = False
+
+  s.close()
+
+  return jsonify({
+    'assemble_data': new_ids,
+  })
+
+
 # copy material data table
 @createTable.route("/copyMaterial", methods=['POST'])
 def copy_material():
@@ -390,32 +531,21 @@ def copy_material():
   print("request_data:", request_data)
 
   _copy_id = request_data['copy_id']
+  _delivery_qty = request_data.get('delivery_qty')
   _total_delivery_qty = request_data.get('total_delivery_qty')
   _allOk_qty = request_data.get('allOk_qty')
-
-  #_delivery_qty = request_data['delivery_qty']
   _show2_ok = request_data['show2_ok']
   _shortage_note = request_data['shortage_note']
 
-  #temp_value =0
-  #if _total_delivery_qty is not None and _allOk_qty is None:
-  #  temp_value = _total_delivery_qty
-  #if _allOk_qty is not None and _total_delivery_qty is None:
-  #  temp_value = _allOk_qty
-
   return_value = True
-  #return_message = ''
   s = Session()
 
   # 根據 copy_id 尋找現有的 Material 資料
   existing_material = s.query(Material).filter_by(id=_copy_id).first()
 
-  #if not existing_material:
-  #  return_value = False
-  #  return_message = '未找到對應的 Material 資料'
-
   # 建立一個新的 Material 資料，並從現有的資料中複製數據
   new_material = Material(
+    abnormal_cause_id=existing_material.abnormal_cause_id,
     order_num=existing_material.order_num,
     material_num=existing_material.material_num,
     material_comment=existing_material.material_comment,
@@ -425,16 +555,19 @@ def copy_material():
     isTakeOk = True,  # 已經檢料
     show2_ok = _show2_ok,
 
-    #total_delivery_qty = _total_delivery_qty,
     total_delivery_qty = _total_delivery_qty if _total_delivery_qty is not None and _allOk_qty is None else existing_material.total_delivery_qty,
     assemble_qty = _allOk_qty if _allOk_qty is not None and _total_delivery_qty is None else 0,
 
     shortage_note = _shortage_note,
+
+    is_copied_from_id=existing_material.id,  # ✅ 設定來源
   )
 
   # 將新的 Material 資料添加到會話中
   s.add(new_material)
   s.flush()  # 暫存以獲取新的 Material ID (new_id)
+
+  print(f"Duplicated assemble: new_id={new_material.id} from original_id={existing_material.id}")
 
   # 複製相關的 Bom 資料並將其關聯到新的 Material 資料
   for bom in existing_material._bom:
@@ -454,6 +587,44 @@ def copy_material():
     )
     s.add(new_bom)
 
+    # 複製 Assemble
+
+  for asm in existing_material._assemble:
+    new_asm = Assemble(
+        material_id=new_material.id,
+        material_num=asm.material_num,
+        material_comment=asm.material_comment,
+        seq_num=asm.seq_num,
+        work_num=asm.work_num,
+        process_step_code=asm.process_step_code,
+        must_receive_qty = _total_delivery_qty,
+        #ask_qty=asm.ask_qty,
+        #total_ask_qty=asm.total_ask_qty,
+        #total_ask_qty_end=asm.total_ask_qty_end,
+        user_id='',
+        #writer_id=asm.writer_id,
+        #write_date=asm.write_date,
+        #good_qty=asm.good_qty,
+        #total_good_qty=asm.total_good_qty,
+        #non_good_qty=asm.non_good_qty,
+        #meinh_qty=asm.meinh_qty,
+        #completed_qty=asm.completed_qty,
+        #total_completed_qty=asm.total_completed_qty,
+        #reason=asm.reason,
+        #confirm_comment=asm.confirm_comment,
+        #is_assemble_ok=asm.is_assemble_ok,
+        #currentStartTime=asm.currentStartTime
+    )
+    s.add(new_asm)
+
+    # 修改原資料的 must_receive_qty 減去 _delivery_qty
+    if asm.must_receive_qty is not None:
+      asm.must_receive_qty = _delivery_qty
+
+  ## 複製異常原因的關聯 (Many-to-Many)
+  #for cause in existing_material._abnormal_cause:
+  #  new_material._abnormal_cause.append(cause)
+
   _object = {
     'id': new_material.id,
   }
@@ -464,7 +635,7 @@ def copy_material():
   except Exception as e:
     s.rollback()
     print("Error:", str(e))
-    return_message = '錯誤! 資料新增沒有成功...'
+    return_message = '錯誤! 資料新增複製沒有成功...'
     return_value = False
 
   s.close()

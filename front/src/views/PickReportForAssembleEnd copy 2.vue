@@ -218,21 +218,34 @@
         </v-hover>
       </template>
 
-      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 -->
-    <!--  2025-06-13 mark, 改順序
+      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
       <template v-slot:header.req_qty="{ column }">
-        <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-          <div>{{ column.title }}</div>
-          <div style="color: #0000FF; font-size:12px; margin-top: 10px; font-weight:600;">
-            (已完成總數量)
-          </div>
+        <div style="text-align: center;">
+          <div>需求</div>
+          <div>數量</div>
         </div>
       </template>
-    -->
+
+      <!-- 客製化 '領取數量' (total_ask_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.total_ask_qty="{ column }">
+        <div style="text-align: center;">
+          <div>領取</div>
+          <div>數量</div>
+        </div>
+      </template>
+
       <!-- 客製化 '應完成數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
       <template v-slot:header.must_receive_qty="{ column }">
         <div style="text-align: center;">
           <div>應完成</div>
+          <div>數量</div>
+        </div>
+      </template>
+
+      <!-- 客製化 '完成數量' (receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <template v-slot:header.receive_qty="{ column }">
+        <div style="text-align: center;">
+          <div>完成</div>
           <div>數量</div>
         </div>
       </template>
@@ -509,12 +522,12 @@ const headers = [
   { title: '  ', sortable: false, key: 'index', width: 0, class: 'hidden-column' },
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '物料編號', sortable: false, key: 'material_num' },
-  { title: '需求數量', sortable: false, key: 'req_qty', width:120 },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
-  { title: '領取數量', sortable: false, key: 'total_ask_qty', },            // 2025-06-13 modify, 改順序
-  { title: '應完成數量', sortable: false, key: 'must_receive_qty', },       // 2025-06-13 add, 改順序
-  { title: '完成數量', sortable: false, key: 'receive_qty', },              // 2025-06-13 modify, 改順序
-  { title: '異常數量', sortable: false, key: 'Abnormal_qty', },             // 2025-06-13 add, 改順序
+  { title: '領取數量', sortable: false, key: 'total_ask_qty', width:80 },
+  { title: '應完成數量', sortable: false, key: 'must_receive_qty', width:100 },       // 2025-06-13 add, 改順序
+  { title: '完成數量', sortable: false, key: 'receive_qty', width:80 },
+  { title: '異常數量', sortable: false, key: 'Abnormal_qty', width:80 },             // 2025-06-13 add, 改順序
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'action' },

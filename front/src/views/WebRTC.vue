@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-  import { ref, defineComponent, onMounted, onBeforeUnmount, defineProps, onBeforeMount, nextTick } from 'vue'
+  import { ref, defineComponent, onMounted, onBeforeUnmount, onBeforeMount, nextTick } from 'vue'
 	import { useRouter } from 'vue-router';
 	import SimplePeer from 'simple-peer';
 

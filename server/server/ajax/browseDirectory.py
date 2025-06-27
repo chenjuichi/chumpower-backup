@@ -962,9 +962,9 @@ def stamp_file():
     #insert_position = data.get('position', {'x': 185, 'y': 30})
 
     if not pdf_path or not os.path.exists(pdf_path):
-        return jsonify({'error': 'Invalid PDF file'}), 400
+      return jsonify({'error': 'Invalid PDF file'}), 400
     if not png_path or not os.path.exists(png_path):
-        return jsonify({'error': 'Invalid PNG file'}), 400
+      return jsonify({'error': 'Invalid PNG file'}), 400
 
     today = date.today()
     roc_date_str = f"{today.year - 1911:03d}.{today.month:02d}.{today.day:02d}"
@@ -978,9 +978,9 @@ def stamp_file():
         # 產生帶姓名日期章的 PNG
         processed_png_path = os.path.join(temp_directory, "processed_" + os.path.basename(png_path))
         text_data = {
-            "first_name": last_name,
-            "stamp_date": roc_date_str,
-            "last_name": first_name
+          "first_name": last_name,
+          "stamp_date": roc_date_str,
+          "last_name": first_name
         }
         process_and_resize_image(png_path, processed_png_path, 0.3, text_data)
 
@@ -997,7 +997,7 @@ def stamp_file():
           else:
             insert_position = {'x': 480, 'y': 770}  # 領退料單的位置
         else:
-            insert_position = {'x': 185, 'y': 30}   # 預設值
+          insert_position = {'x': 185, 'y': 30}   # 預設值
 
         insert_position['width'] = 44
         insert_position['height'] = 44
@@ -1008,7 +1008,7 @@ def stamp_file():
         if approve == 1:
           stamped_filename = f"STAMPED_{original_filename}"
         else:
-           stamped_filename = original_filename
+          stamped_filename = original_filename
 
         stamped_path = os.path.join(temp_directory, stamped_filename)  # 先暫時存在 temp 資料夾
         final_path = os.path.join(base_directory, stamped_filename)  # 最後要移去正式資料夾
@@ -1018,20 +1018,20 @@ def stamp_file():
 
         # 插入章到每一頁
         for page in doc:
-            rect = fitz.Rect(
-                insert_position['x'],
-                insert_position['y'],
-                insert_position['x'] + insert_position['width'],
-                insert_position['y'] + insert_position['height']
-            )
-            page.insert_image(rect, filename=processed_png_path)
+          rect = fitz.Rect(
+            insert_position['x'],
+            insert_position['y'],
+            insert_position['x'] + insert_position['width'],
+            insert_position['y'] + insert_position['height']
+          )
+          page.insert_image(rect, filename=processed_png_path)
 
         # 儲存第一階段：有插章，但還沒加遮罩
         doc.save(stamped_path)
         doc.close()
 
         if os.path.exists(processed_png_path):
-            os.remove(processed_png_path)
+          os.remove(processed_png_path)
 
         # 加白色遮罩
         doc2 = fitz.open(stamped_path)
@@ -1040,12 +1040,12 @@ def stamp_file():
         doc3 = fitz.open()  # 空的 PDF
 
         for page in doc2:
-            width = page.rect.width
-            height = page.rect.height
-            mask_rect = fitz.Rect(0, height - 20, width, height)
+          width = page.rect.width
+          height = page.rect.height
+          mask_rect = fitz.Rect(0, height - 20, width, height)
 
-            page.draw_rect(mask_rect, color=(1, 1, 1), fill=(1, 1, 1))  # 白色遮罩
-            doc3.insert_pdf(doc2, from_page=page.number, to_page=page.number)
+          page.draw_rect(mask_rect, color=(1, 1, 1), fill=(1, 1, 1))  # 白色遮罩
+          doc3.insert_pdf(doc2, from_page=page.number, to_page=page.number)
 
         doc2.close()
 
@@ -1055,20 +1055,20 @@ def stamp_file():
 
         # 刪除 temp 裡面的暫存 stamped_path
         if os.path.exists(stamped_path):
-            os.remove(stamped_path)
+          os.remove(stamped_path)
 
         print("final_filename(filename):", stamped_filename)
         print("final_path(filepath):", final_path)
 
         return jsonify({
-            'message': 'Stamped and masked PDF created',
-            'filename': stamped_filename,
-            'filepath': final_path
+          'message': 'Stamped and masked PDF created',
+          'filename': stamped_filename,
+          'filepath': final_path
         })
 
     except Exception as e:
-        print(f"Error stamping file: {e}")
-        return jsonify({'error': str(e)}), 500
+      print(f"Error stamping file: {e}")
+      return jsonify({'error': str(e)}), 500
 
 
 #複製檔案 API

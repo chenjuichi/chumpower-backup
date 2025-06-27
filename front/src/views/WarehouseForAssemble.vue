@@ -116,18 +116,118 @@
               />
             </v-col>
           </v-row>
+
+          <!-- 成品區來料異常備註 -->
+          <div class="pa-4 text-center">
+            <v-dialog v-model="abnormalDialog" max-width="500">
+              <!--取消最大高度限制，讓卡片內容可以顯示完整-->
+              <!--消自動捲軸，完全依內容高度決定是否超出-->
+              <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
+                <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
+                  成品區來料異常備註
+                </v-card-title>
+
+                <v-card-text>
+                  <!-- 若 Incoming1_Abnormal 為 true，顯示第1與第2行 -->
+                  <template v-if="abnormalDialog_display">
+                    <v-row style="margin-bottom: 4px;" dense justify="center">
+                      <v-col cols="4" class="pa-0">訂單編號</v-col>
+                      <v-col cols="4" class="pa-0">來料數量</v-col>
+                      <v-col cols="4" class="pa-0">實際數量</v-col>
+                    </v-row>
+                    <v-row dense>
+                      <v-col cols="4" class="pa-0">{{ abnormalDialog_order_num }}</v-col>
+                      <v-col cols="4" class="pa-0">{{ abnormalDialog_delivery_qty }}</v-col>
+                      <v-col cols="4" class="pa-0">
+                        <v-text-field
+                          v-model="abnormalDialog_new_must_receive_qty"
+                          variant="underlined"
+                          style="max-width: 60px;"
+                        />
+                      </v-col>
+                    </v-row>
+                  </template>
+                  <!-- 顯示第3行 -->
+                  <template v-else>
+                    <v-row style="margin-bottom: 4px;" dense justify="center">
+                      {{ abnormalDialog_message }}
+                    </v-row>
+                  </template>
+                </v-card-text>
+
+                <v-card-actions class="justify-center">
+                  <v-btn
+                    color="success"
+                    prepend-icon="mdi-content-save"
+
+                    text="確定"
+                    class="text-none"
+                    @click="createAbnormalFun"
+                    variant="flat"
+                  />
+                  <v-btn
+                    color="error"
+                    prepend-icon="mdi-close"
+                    text="取消"
+                    class="text-none"
+                    @click="abnormalDialog = false"
+                    variant="flat"
+                  />
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+          </div>
         </v-card-title>
       </v-card>
     </template>
 
     <!-- 客製化 '需求數量' (req_qty) 欄位表頭 -->
+  <!--
     <template v-slot:header.req_qty="{ column }">
       <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
         <div>{{ column.title }}</div>
         <div style="font-size:12px; margin-top: 5px;">(交貨日期)</div>
       </div>
     </template>
+  -->
+    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
+<!--
+    <template v-slot:header.req_qty="{ column }">
+      <div style="text-align: center;">
+        <div>需求</div>
+        <div>數量</div>
+      </div>
+    </template>
+  -->
+    <!-- 客製化 '到庫數量' (delivery_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+  <!--
+    <template v-slot:header.delivery_qty="{ column }">
+      <div style="text-align: center;">
+        <div>到庫</div>
+        <div>數量</div>
+      </div>
+    </template>
+  -->
 
+    <!-- 客製化 '應入庫數量' (must_allOk_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+  <!--
+    <template v-slot:header.must_allOk_qty="{ column }">
+      <div style="text-align: center;">
+        <div>應入庫</div>
+        <div>數量</div>
+      </div>
+    </template>
+  -->
+
+    <!-- 客製化 '入庫數量' (allOk_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+  <!--
+    <template v-slot:header.allOk_qty="{ column }">
+      <div style="text-align: center;">
+        <div>入庫</div>
+        <div>數量</div>
+      </div>
+    </template>
+  -->
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
@@ -155,13 +255,14 @@
     -->
 
     <!-- 自訂 '需求數量' (req_qty) 欄位 -->
+  <!-- 2025-06-13 mark, 改順序
     <template v-slot:item.req_qty="{ item }">
       <div>
         <div>{{ item.req_qty }}</div>
         <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
       </div>
     </template>
-
+  -->
     <!-- 自訂 '說明' 欄位 -->
     <template v-slot:item.comment="{ item }">
       <div>
@@ -185,8 +286,28 @@
     </template>
     -->
     <!-- 自訂 '到庫數量' 輸入欄位 -->
+  <!-- 2025-06-13 mark, 改順序
     <template v-slot:item.delivery_qty="{ item }">
       <div>{{ item.delivery_qty }}</div>
+    </template>
+  -->
+    <!-- 自訂 應入庫數量 欄位資料欄位 -->
+    <template v-slot:item.must_allOk_qty="{ item }">
+      <div style="display: flex; align-items: center;">
+        <v-icon
+          style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
+          @click="addAbnormalInMaterial(item)"
+          size="16"
+          class="mr-2"
+          :color="item.Incoming2_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
+        >
+          mdi-bell-plus
+        </v-icon>
+        <span style="margin-left: 15px;">
+          {{ item.must_allOk_qty }}
+        </span>
+      </div>
     </template>
 
     <!-- 自訂 '入庫數量' 輸入欄位 -->
@@ -224,9 +345,11 @@
           {{ delivery_qty_alarm }}
         </span>
       </div>
+    <!--
       <div v-show="item.isTakeOk" style=" position: relative; left: -20px; top: -5px; font-weight: 400; font-size: 10px;">
         入庫日期
       </div>
+    -->
     </template>
 
     <!-- 自訂 data table 在沒有資料時, 畫面的顯示資訊 -->
@@ -338,11 +461,13 @@ const footerOptions = [
 
 const headers = [
   { title: '  ', sortable: false, key: 'id', width: 0, class: 'hidden-column' },
-  { title: '訂單編號', sortable: true, key: 'order_num' },
-  { title: '訂單數量', sortable: false, key: 'req_qty' },
-  { title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '到庫數量', sortable: false, key: 'delivery_qty' },
-  { title: '入庫數量', sortable: false, key: 'allOk_qty' },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
+  { title: '訂單數量', sortable: false, key: 'req_qty', width:110 },               // 2025-06-13 modify, 改順序
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:300 },  // 2025-06-13 modify, 改順序
+  { title: '交期', align: 'start', sortable: false, key: 'date', width:110 },     // 2025-06-13 add, 改順序
+  { title: '到庫數量', sortable: false, key: 'delivery_qty', width:110 },          // 2025-06-13 modify, 改順序
+  { title: '應入庫數量', sortable: false, key: 'must_allOk_qty', width:110 },      // 2025-06-13 add, 改順序
+  { title: '入庫數量', sortable: false, key: 'allOk_qty', width:110 },             // 2025-06-13 modify, 改順序
 ];
 
 const search = ref('');
@@ -403,6 +528,17 @@ const pagination = reactive({
 // 定義 facet 列表
 //const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
 //const userFacets = ref(['Facet 1', 'Facet 4']);
+
+const abnormalDialogBtnDisable = ref(true);
+const abnormalDialog = ref(false);
+const abnormalDialog_order_num = ref('');
+const abnormalDialog_delivery_qty = ref('');
+const abnormalDialog_must_receive_qty = ref('');
+const abnormalDialog_new_must_receive_qty = ref('');
+const abnormalDialog_message = ref('');
+const abnormalDialog_display = ref(true);
+
+const abnormalDialog_item = ref(null);
 
 //=== watch ===
 setupGetBomsWatcher();
@@ -1205,6 +1341,65 @@ const checkTextEditField = (focused, item) => {
   }
 };
 
+const addAbnormalInMaterial = (item) => {
+  console.log("addAbnormalInMaterial(),", item);
+
+  abnormalDialog_item.value = warehouses.value.find(m => m.id == item.id);
+
+  abnormalDialogBtnDisable.value = true;
+  abnormalDialog_order_num.value = item.order_num;
+  abnormalDialog_delivery_qty.value = item.delivery_qty;
+  abnormalDialog_new_must_receive_qty.value = item.must_allOk_qty;
+  abnormalDialog_must_receive_qty.value = item.must_allOk_qty;
+  abnormalDialog_display.value = item.Incoming2_Abnormal;
+
+  abnormalDialog.value = true;
+}
+
+const createAbnormalFun = async () => {
+  console.log("createAbnormalFun()...");
+
+  if (abnormalDialog_new_must_receive_qty.value != abnormalDialog_must_receive_qty.value) {
+    let temp_str = '(' + abnormalDialog_delivery_qty.value + abnormalDialog_new_must_receive_qty.value + ')'
+    abnormalDialog_message.value = '組裝區來料數量不對! '+ temp_str;
+    let payload = {}
+    try {
+      //payload = {
+      //  assemble_id: item.assemble_id,
+      //  cause_message: ['備料區來料數量不對'],
+      //  cause_user: currentUser.value.empID,
+      //};
+      //await updateAssembleAlarmMessage(payload);
+      console.log("abnormalDialog_item.order_num:", abnormalDialog_item.value.order_num)
+      payload = {
+        order_num: abnormalDialog_item.value.order_num,
+        record_name: 'Incoming2_Abnormal',
+        record_data: abnormalDialog_message.value,
+      };
+      await updateMaterial(payload);
+      abnormalDialog_item.value.Incoming2_Abnormal=false;
+
+      // targetIndex為目前table data record 的 index
+      const targetIndex = warehouses.value.findIndex(
+        (kk) => kk.id === item.id
+      );
+
+      if (targetIndex !== -1) {
+        // 用 Vue 的方式確保觸發響應式更新
+        warehouses.value[targetIndex] = {
+          ...warehouses.value[targetIndex],
+          Incoming2_Abnormal: false,
+        };
+      }
+
+      console.log('更新成功...');
+    } catch (error) {
+      console.error('更新失敗:', error.response?.data?.message || error.message);
+    }
+  }
+  abnormalDialog.value = false;
+}
+
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
@@ -1242,6 +1437,23 @@ const updateItem2 = async (item) => {
   await updateMaterial(payload);
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
+  // begin block, 2025-06-24 add
+  payload = {
+    id: item.id,
+    record_name: 'isLackMaterial',
+    record_data: 99,
+  };
+  await updateMaterial(payload);
+  item.isLackMaterial = 99;
+
+  payload = {
+    id: item.id,
+    record_name: 'isTakeOk',
+    record_data: true
+  };
+  await updateMaterial(payload);
+  item.isTakeOk = true;
+  // end block
 
   if (barcodeInput.value) {
     barcodeInput.value.focus();

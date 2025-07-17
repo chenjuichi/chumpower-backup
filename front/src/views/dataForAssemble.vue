@@ -15,7 +15,7 @@
         <!--items-per-page-text="每頁的資料筆數"-->
         <v-data-table
           :headers="headers"
-          :items="desserts"
+          :items="desserts2"
           class="elevation-1 table_border_radius"
           density="compact"
           v-model:items-per-page="pagination.itemsPerPage"
@@ -197,13 +197,17 @@
 
   import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-  import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
-  import { departments, desserts }  from '../mixins/crud.js';
+  //import { setupListUsersWatcher }  from '../mixins/crud.js';
+  import { apiOperation }  from '../mixins/crud.js';
+  import { departments }  from '../mixins/crud.js';
+  //import { desserts }  from '../mixins/crud.js';
+  import { desserts2 }  from '../mixins/crud.js';
   import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
 
   // 使用 apiOperation 函式來建立 API 請求
   const listDepartments = apiOperation('get', '/listDepartments');
-  const listUsers = apiOperation('get', '/listUsers');
+  //const listUsers = apiOperation('get', '/listUsers');
+  const listUsers2 = apiOperation('get', '/listUsers2');
   const removeUser = apiOperation('post', '/removeUser');
   const updateUser = apiOperation('post', '/updateUser');
   const register = apiOperation('post', '/register');
@@ -328,7 +332,7 @@
   //const snackbar_color = ref('red accent-2');
 
   //=== watch ===
-  setupListUsersWatcher();
+  //setupListUsersWatcher();
 
   // 監聽輸入值變化，自動補0
   //watch(() => editedItem.emp_id, (newVal) => {
@@ -418,11 +422,12 @@
   });
 
   //=== method ===
-  const initialize = () => {
+  const initialize = async () => {
     console.log("initialize()...")
 
-    listUsers();
-    listDepartments();
+    //listUsers();
+    await listUsers2();
+    await listDepartments();
   };
 
   // 輸入框失去焦點時補全0
@@ -458,10 +463,10 @@
 
     if (editedIndex.value > -1) {
       updateItem(editedItem);
-      Object.assign(desserts.value[editedIndex.value], editedItem);
+      Object.assign(desserts2.value[editedIndex.value], editedItem);
     } else {
       createItem(editedItem);
-      desserts.value.push({ ...editedItem });
+      desserts2.value.push({ ...editedItem });
     }
     close();
   }
@@ -516,7 +521,7 @@
   const editItem = (item) => {
     console.log("editItem()...")
 
-    editedIndex.value = desserts.value.indexOf(item);
+    editedIndex.value = desserts2.value.indexOf(item);
     Object.assign(editedItem, item);
     console.log("editedItem.routingPriv:", editedItem.routingPriv)
 
@@ -532,15 +537,15 @@
   }
 
   const deleteItem = (item) => {
-    editedIndex.value = desserts.value.indexOf(item);
-    Object.assign(editedItem, desserts.value[editedIndex.value]);
+    editedIndex.value = desserts2.value.indexOf(item);
+    Object.assign(editedItem, desserts2.value[editedIndex.value]);
     dialogDelete.value = true;
   }
 
   const deleteItemConfirm = () => {
     removeItem(editedItem.emp_id);
 
-    desserts.value.splice(editedIndex.value, 1);
+    desserts2.value.splice(editedIndex.value, 1);
     closeDelete();
   }
 
@@ -610,7 +615,8 @@
         editedItem.emp_id = editedItem.emp_id.padStart(8, '0');
       }
 
-      foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
+      //foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
+      foundDessert.value = desserts2.value.find(dessert => dessert.emp_id === registerUser.empID);
       console.log("foundDessert:",foundDessert.value);
       if (foundDessert.value) {
         if (editedItem.emp_id !='') {

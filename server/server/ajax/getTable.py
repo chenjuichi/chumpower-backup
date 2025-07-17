@@ -93,34 +93,85 @@ def reLogin():
 
   request_data = request.get_json()
   userID = request_data.get('empID', '')
+  print("login, userID:", userID)
   password = request_data.get('password', '')
+
+  current_ip = request.remote_addr
+  print("current_ip:",current_ip)
+  #local_ip = request.json.get('local_ip', '0.0.0.0')
+  #print("前端傳來的 local IP:", local_ip)
+
+  local_ip = request.json.get('local_ip')
+  user_agent = request.json.get('user_agent')
+  device_id = request.json.get('device_id')
+
+  print("登入來源 IP:", local_ip)
+  print("瀏覽器裝置資訊:", user_agent)
+  print("裝置識別碼:", device_id)
+
+
 
   s = Session()
   try:
     user = s.query(User).filter_by(emp_id=userID).first()
 
     if not user or not user.isRemoved:
+      print("找不到工號!")
       return jsonify({
           'status': False,
           'message': f'錯誤! 找不到工號 {userID}',
-          'user': {}
+          #'user': {}
       })
-
-    # 強迫登出（如果已上線）
-    if user.isOnline:
-      user.isOnline = False
-      s.commit()
 
     # 驗證密碼
     if not check_password_hash(user.password, password):
       return jsonify({
           'status': False,
           'message': '密碼錯誤!',
-          'user': {}
+          #'user': {}
       })
+
+    #status = True
+    forceLogoutRequired = False
+
+    # ✅ 若已經登入且 IP 不同，禁止登入（或選擇強制登出）
+    #if user.isOnline and user.last_login_ip != current_ip:
+    if user.isOnline and user.last_login_ip != local_ip:
+    #if user.isOnline:
+      #status = False
+      forceLogoutRequired = True
+      #print(f"⚠️ 此帳號已在線上且 IP 不同: {user.last_login_ip} ≠ {local_ip}")
+      print(f"⚠️ 此帳號已在線上")
+      #user_data = {
+      #  'empID': user.emp_id,
+      #  'name': user.emp_name,
+      #}
+
+      #return jsonify({
+      #    'status': False,
+      #    'message': f'此帳號已從其他位置登入（{user.last_login_ip}），請先登出。',
+      #    'user': user_data,
+      #    'forceLogoutRequired': True  # 前端可用來決定是否提示強制登出
+      #})
+
+    # 強迫登出（如果已上線）
+    #if user.isOnline:
+    #  user.isOnline = False
+    #  s.commit()
+
+    ## 驗證密碼
+    #if not check_password_hash(user.password, password):
+    #  return jsonify({
+    #      'status': False,
+    #      'message': '密碼錯誤!',
+    #      'user': {}
+    #  })
 
     # 登入：設定 isOnline = True
     user.isOnline = True
+    user.last_login_ip = local_ip
+    user.last_login_time = datetime.now()
+    #user.forceLogoutRequired = forceLogoutRequired
     s.commit()
 
     # 取得權限與設定資料
@@ -139,10 +190,12 @@ def reLogin():
         'setting_message': setting.message,
         'setting_routingPriv': setting.routingPriv,
         'setting_lastRoutingName': setting.lastRoutingName,
+
     }
 
     return jsonify({
       'status': True,
+      'forceLogoutRequired': forceLogoutRequired,
       'message': '',
       'user': user_data
     })
@@ -1394,6 +1447,8 @@ def get_materials_and_assembles_by_user():
           'whichStation' : material_record.whichStation,
           'isTakeOk': material_record.isAssembleStation3TakeOk,                         # true:組裝站製程3完成(最後製程)
           'isLackMaterial': material_record.isLackMaterial,
+          'shortage_note': material_record.shortage_note,
+
           'isShow': assemble_record.isAssembleStationShow,
           'currentStartTime': assemble_record.currentStartTime,
           'tooltipVisible': False,

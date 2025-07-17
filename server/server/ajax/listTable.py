@@ -152,6 +152,45 @@ def list_users():
         'users': _user_results    #員工資料
     })
 
+
+
+# list all users
+@listTable.route("/listUsers2", methods=['GET'])
+def list_users2():
+    print("listUsers2....")
+
+    s = Session()
+    _user_results = []
+    return_value = True
+    _objects = s.query(User).all()
+    users = [u.__dict__ for u in _objects]
+    for user in users:
+      if (user['isRemoved']):
+        perm_item = s.query(Permission).filter_by(id = user['perm_id']).first()
+        setting_item = s.query(Setting).filter_by(id = user['setting_id']).first()
+
+        _user_object = {
+          'emp_id': user['emp_id'],
+          'emp_name': user['emp_name'],
+          'dep_name': user['dep_name'],
+          'emp_perm': perm_item.auth_code,    #4, 3, 2, 1
+          'emp_lastRoutingName': setting_item.lastRoutingName,
+          'routingPriv': setting_item.routingPriv,
+        }
+        _user_results.append(_user_object)
+    s.close()
+
+    temp_len = len(_user_results)
+    print("listUsers, 員工總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    return jsonify({
+        'status': return_value,
+        'users': _user_results    #員工資料
+    })
+
+
 '''
 # list all bom
 @listTable.route("/listBoms", methods=['GET'])
@@ -267,6 +306,7 @@ def list_materials():
           'show3_ok' : record['show3_ok'],
 
           'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
+          'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
         }
 
         _results.append(_object)
@@ -278,8 +318,12 @@ def list_materials():
     if (temp_len == 0):
         return_value = False
 
-    # 根據 isTakeOk 屬性的值進行排序
-    _results = sorted(_results, key=lambda x: not x['isTakeOk'])
+    ## 根據 isTakeOk 屬性的值進行排序
+    #_results = sorted(_results, key=lambda x: not x['isTakeOk'])
+    ## 根據 'order_num' 排序
+    #_results = sorted(_results, key=lambda x: x['order_num'])
+    # 根據 order_num 升序，再根據 isTakeOk 降序 (True > False)
+    _results.sort(key=lambda x: (x['order_num'], not x['isTakeOk']))
 
     return jsonify({
         'status': return_value,
@@ -519,6 +563,10 @@ def list_wait_for_assemble():
         if step_enable==False or begin_assemble_record.input_disable:  # 2025-06-16 add, 改順序
           continue
 
+        # 缺料併單
+        if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
+          continue
+
         #if begin_assemble_record.process_step_code!=0 and not begin_assemble_record.input_disable:
           #print("begin_assemble_record id:",begin_assemble_record.id)
         begin_count += 1
@@ -741,6 +789,10 @@ def list_materials_and_assembles():
         if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
           continue
 
+        # 缺料併單
+        if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
+          continue
+
         #print("material_record.whichStation:",material_record.whichStation)                  # 如果是最大值，則啟用
         #print("max_step_code_per_order:",max_step_code_per_order)
         #print("step_code , max_step_code:", step_code , max_step_code, step_enable)
@@ -784,6 +836,9 @@ def list_materials_and_assembles():
           #'process_step_code': step_code,
           'process_step_enable': step_enable,
           'process_step_code': assemble_record.process_step_code,
+
+          'isLackMaterial' : material_record.isLackMaterial,
+
           #'Incomin1_gAbnormal': assemble_record.Incomin1_gAbnormal,
           #'Incomin2_gAbnormal': assemble_record.Incomin2_gAbnormal,
           'Incoming1_Abnormal': assemble_record.Incoming1_Abnormal == '',

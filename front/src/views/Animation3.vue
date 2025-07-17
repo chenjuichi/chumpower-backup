@@ -54,7 +54,9 @@
   import logo from '../assets/logo.svg';
 
   const home_url = logo;     // 定義 home_url 變數，指向 SVG 圖像
-  const imageSrc = ref(require('../assets/boss-chumpower.jpg')); //企業視覺圖像
+  //const imageSrc = ref(require('../assets/boss-chumpower.jpg')); //企業視覺圖像
+  //const imageSrc = ref(require('../assets/20250630-chumpower.png')); //企業視覺圖像
+  const imageSrc = ref(require('../assets/20250708-chumpower-logo.png')); //企業視覺圖像
   const showHeader = ref(true);
 
   const router = useRouter();

@@ -184,11 +184,21 @@
 
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
-
+    <!--
       <div>
-
         <div>{{ item.order_num }}</div>
         <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
+      </div>
+    -->
+      <div>
+        <div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">
+          {{ item.order_num }}&nbsp;&nbsp;
+          <span style="color:red; font-weight:700; font-size:12px;">缺料</span>
+        </div>
+        <div style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;" v-else>
+          {{ item.order_num }}
+        </div>
+        <div style="color: #a6a6a6; font-size:12px; margin-right: 40px;">{{ item.assemble_work }}</div>
       </div>
     </template>
 
@@ -278,12 +288,11 @@
           v-model="item.receive_qty"
           dense
           hide-details
-
           :id="`receiveQtyID-${item.assemble_id}`"
+          @keydown="handleKeyDown"
           @update:modelValue="checkReceiveQty(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
           @keyup.enter="updateItem2(item)"
-
           :disabled="isButtonDisabled(item)"
         />
         <span
@@ -312,14 +321,14 @@
           @mouseleave="hoveredItemIndex = null; isTableVisible = false;"
         >
           <img
-            v-if="!isButtonDisabled(item)"
+            v-if="!isGifDisabled(item)"
             :src="isHovering ? animationImageSrc : staticImageSrc"
             alt="GIF"
             style="width: 25px; height: 25px;"
           />
           <!-- 動態顯示表格 -->
           <div
-            v-if="isTableVisible && boms.length > 0 && !isButtonDisabled(item)"
+            v-if="isTableVisible && boms.length > 0 && !isGifDisabled(item)"
             :style="adjustTablePosition"
           >
             <v-table style="width: 190px; overflow: hidden;" class="show_table">
@@ -331,18 +340,13 @@
               </thead>
               <tbody>
                 <tr
-
                   v-for="(bom_item, index) in filteredBoms"
-
                   :key="index"
-
                   :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
                   class="custom-row"
                 >
-
                   <td style="text-align: left;">{{ bom_item.material_num }}</td>
                   <td style="text-align: right;">{{ bom_item.qty }}</td>
-
                 </tr>
               </tbody>
               <tfoot>
@@ -382,6 +386,8 @@
 
 <script setup>
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+
+import eventBus from '../mixins/enentBus.js';
 
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
@@ -450,7 +456,7 @@ const footerOptions = [
 const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
-  { title: '訂單編號', sortable: true, key: 'order_num'},
+  { title: '訂單編號', sortable: true, key: 'order_num', width:160 },
   { title: '物料編號', sortable: false, key: 'material_num'},
   { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
   { title: '備料數量', sortable: false, key: 'delivery_qty', width:80 },
@@ -515,7 +521,7 @@ const abnormalDialog_new_must_receive_qty = ref('');
 const abnormalDialog_message = ref('');
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_item = ref(null);
+const abnormalDialog_record = ref(null);
 
 //=== watch ===
 //watch(currentUser, (newUser) => {
@@ -570,6 +576,9 @@ const filteredBoms = computed(() =>
 //=== mounted ===
 onMounted(async () => {
   console.log("PickReportForAssembleBegin.vue, mounted()...");
+
+  // 通知合併工單顯示, 進行handleMaterialUpdate
+  eventBus.on('merge_work_orders', handleMaterialUpdate);
 
   //+++
   const dpi = window.devicePixelRatio;
@@ -771,6 +780,9 @@ onMounted(async () => {
 
     });
     */
+
+
+
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -782,6 +794,8 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 
   //clearInterval(intervalId);
   window.removeEventListener('mousemove', updateMousePosition);
+
+  eventBus.off('merge_work_orders', handleMaterialUpdate)
 
   //+++
   const dpi = window.devicePixelRatio;
@@ -815,6 +829,22 @@ onBeforeMount(() => {
 });
 
 //=== method ===
+const handleSetLinks = (links) => {
+  console.log("Received links:", links);
+  updateNavLinks(links);
+};
+
+
+const handleMaterialUpdate = async ()  => {
+  console.log("handleMaterialUpdate 被觸發！")
+
+  //try {
+    await listMaterialsAndAssembles();
+  //} catch (error) {
+  //  console.error('合併工單顯示時失敗：', error)
+  //}
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...");
@@ -914,15 +944,23 @@ const isButtonDisabled = (item) => {
   console.log("item.input_disable:",item.input_disable);
   console.log("!item.process_step_enable:",!item.process_step_enable);
   console.log("OR return value:",(item.whichStation != 2 || item.input_disable) || !item.process_step_enable);
-  return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable;
+  return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable || item.isLackMaterial ==0;
   //return (item.whichStation != 2 || item.input_disable) || item.process_step_enable==0;
 };
+
+const isGifDisabled = (item) => {
+  return item.whichStation != 2 || item.input_disable || !item.process_step_enable;
+};
+
 
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
 
-  const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
-  const temp = Number(item.req_qty)
+  //const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
+  // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
+  const total = Number(item.receive_qty) || 0;  //領取數量
+  //const temp = Number(item.req_qty)
+  const temp = Number(item.must_receive_qty)    //應領取數量
   if (total > temp) {
     //console.log("total, temp, step1...");
     receive_qty_alarm.value = '領取數量超過現況數量!';
@@ -948,11 +986,17 @@ const handleKeyDown = (event) => {
     return;
   }
 
+  // 使用正規化運算式檢查是否為數字且長度不超過3
+  if (!/^\d$/.test(inputChar)) {
+    event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
+  }
+
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-  // 使用正規化運算式檢查是否為數字且長度不超過3
-  if (!/^\d$/.test(inputChar) || inputValue.length >= 3) {
-    event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
+  // 檢查輸入的長度是否超過5，及輸入數字小於10000, 阻止多餘的輸入, 2025-07-02 modify
+  if (inputValue.length > 5 && inputValue < 10000) {
+    event.preventDefault();
+    return;
   }
 
   // 偵測是否按下 Enter 鍵
@@ -985,7 +1029,7 @@ const getStatusStyle = (status) =>{
 const addAbnormalInMaterial = (item) => {
   console.log("addAbnormalInMaterial(),", item);
 
-  abnormalDialog_item.value = materials_and_assembles.value.find(m => m.assemble_id == item.assemble_id);
+  abnormalDialog_record.value = materials_and_assembles.value.find(m => m.assemble_id == item.assemble_id);
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
@@ -1015,12 +1059,12 @@ const createAbnormalFun = async () => {
       //await updateAssembleAlarmMessage(payload);
 
       payload = {
-        assemble_id: abnormalDialog_item.value.assemble_id,
+        assemble_id: abnormalDialog_record.value.assemble_id,
         record_name: 'Incoming1_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateAssemble(payload);
-      abnormalDialog_item.value.Incoming1_Abnormal=false;
+      abnormalDialog_record.value.Incoming1_Abnormal=false;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials_and_assembles.value.findIndex(
@@ -1351,8 +1395,8 @@ const handleGifClick = async (item, index) => {
 
   //boms.value = [];
   let payload = {
-    order_num: item.order_num,
-    //id: item.id,
+    //order_num: item.order_num,
+    id: item.id,
   };
   await getBoms(payload);
   console.log('Current hovered item index:', hoveredItemIndex.value);

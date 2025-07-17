@@ -28,7 +28,9 @@ const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-const imageSrc = ref(require('../assets/main_background_img.png'))
+//const imageSrc = ref(require('../assets/main_background_img.png'))
+//const imageSrc = ref(require('../assets/20250630-chumpower-main.png'))
+const imageSrc = ref(require('../assets/20250708-chumpower-main.png'))
 
 const showBackWarning = ref(true);
 

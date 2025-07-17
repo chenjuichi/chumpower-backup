@@ -50,6 +50,7 @@ const getLocalIP = async () => {
 
 export const useSocketio = (localIp, userId, clientAppName) => {
   console.log("hello, socket.....")
+
   const socket = ref(null);
 
   const setupSocketConnection = async () => {

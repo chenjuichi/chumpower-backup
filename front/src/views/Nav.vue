@@ -472,7 +472,7 @@ onMounted(() => {
   hoveredItems[5]=false;
   hoveredItems[6]=false;
   //
-  eventBus.on('triggerLogout', logout);
+  //eventBus.on('triggerLogout', logout);
   //
   eventBus.on('updateCountdown', updateCountdown);
 
@@ -489,7 +489,7 @@ onBeforeUnmount(() => {
     popStateHandler.value = null;
   }
   //
-  eventBus.off('triggerLogout', logout);
+  //eventBus.off('triggerLogout', logout);
   //
   eventBus.off('updateCountdown', updateCountdown);
 });

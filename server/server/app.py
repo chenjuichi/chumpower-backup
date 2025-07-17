@@ -37,7 +37,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-06-26' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2025-07-08' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -58,6 +58,7 @@ app.register_blueprint(browseDirectory)
 app.register_blueprint(hardware)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
+#CORS(app, resources={r'/*': {'origins': '*'}}, supports_credentials=True)
 
 # --------------------------
 #當 with 區塊結束時，文件會自動關閉
@@ -114,17 +115,19 @@ def my_job1():
     print("Scheduled job1 正在執行...")
     with app.app_context():
         do_read_user_table()
+        delete_pdf_files()
 
 def my_job2():
     print("Scheduled job2 正在執行...")
     with app.app_context():
         do_read_user_table()
+        delete_pdf_files()
 
 def my_job3():
     print("Scheduled job3 正在執行...")
     with app.app_context():
         delete_log_files()
-        delete_pdf_files()
+        #delete_pdf_files()
         delete_exec_files()
 
 schedule_1=[]

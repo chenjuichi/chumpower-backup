@@ -522,6 +522,111 @@ def copy_new_assemble():
   })
 
 
+# copy material data table when 檢料完成但缺料的情形
+@createTable.route("/copyMaterialAndBom", methods=['POST'])
+def copy_material_and_bom():
+  print("copyMaterialAndBom....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _delivery_qty = 0
+  _total_delivery_qty = request_data.get('total_delivery_qty')
+  _allOk_qty = request_data.get('allOk_qty')
+  _show2_ok = request_data['show2_ok']
+  _shortage_note = request_data['shortage_note']
+
+  s = Session()
+
+  try:
+    # 根據 copy_id 尋找現有的 Material 資料
+    existing_material = s.query(Material).filter_by(id=_copy_id).first()
+    if not existing_material:
+      raise ValueError(f"找不到 ID 為 {_copy_id} 的資料")
+
+    # 建立一個新的 Material 資料，並從現有的資料中複製數據
+    new_material = Material(
+      abnormal_cause_id=existing_material.abnormal_cause_id,
+      order_num=existing_material.order_num,
+      material_num=existing_material.material_num,
+      material_comment=existing_material.material_comment,
+      material_qty=existing_material.material_qty,                        #訂單數量
+      material_date = existing_material.material_date,                    #建置日期
+      material_delivery_date = existing_material.material_delivery_date,  #交期
+      show2_ok = _show2_ok,
+
+      total_delivery_qty = _total_delivery_qty if _total_delivery_qty is not None and _allOk_qty is None else existing_material.total_delivery_qty,
+      assemble_qty = _allOk_qty if _allOk_qty is not None and _total_delivery_qty is None else 0,
+
+      shortage_note = _shortage_note,
+
+      is_copied_from_id=existing_material.id,  # ✅ 設定來源
+    )
+
+    s.add(new_material)   # 加入新的 Material 資料紀錄
+    s.flush()             # 獲取新的 Material ID (new_id)
+
+    print(f"Duplicated assemble: new_id={new_material.id} from original_id={existing_material.id}")
+
+    # 複製 receive=True 的 Bom 資料
+    for bom in [b for b in existing_material._bom if not b.receive]:
+      new_bom = Bom(
+        material_id=new_material.id,  # 關聯到新的 Material ID
+        seq_num=bom.seq_num,
+        material_num=bom.material_num,
+        material_comment=bom.material_comment,
+        req_qty=bom.req_qty,
+        pick_qty=bom.pick_qty,
+        non_qty=bom.non_qty,
+        lack_qty=bom.lack_qty,
+        lack=bom.lack,
+        start_date=bom.start_date,
+      )
+      s.add(new_bom)
+
+    # 複製 Assemble
+    for asm in existing_material._assemble:
+      new_asm = Assemble(
+          material_id=new_material.id,
+          material_num=asm.material_num,
+          material_comment=asm.material_comment,
+          seq_num=asm.seq_num,
+          work_num=asm.work_num,
+          process_step_code=asm.process_step_code,
+          must_receive_qty = _total_delivery_qty,
+          user_id='',
+      )
+      s.add(new_asm)
+
+      # 修改原資料的 must_receive_qty 減去 _delivery_qty
+      if asm.must_receive_qty is not None:
+        asm.must_receive_qty = _delivery_qty
+
+    s.commit()
+    print("Process data create successfully.")
+
+    #_object = {
+    #  'id': new_material.id,
+    #}
+
+    return jsonify({
+      #'material_data': _object,
+      'material_data': new_material.to_dict(),
+    })
+
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return jsonify({
+        'material_data': {},
+        'error': '錯誤! 資料新增複製沒有成功...',
+        'detail': str(e)
+    }), 500
+  finally:
+    s.close()
+
+
 # copy material data table
 @createTable.route("/copyMaterial", methods=['POST'])
 def copy_material():

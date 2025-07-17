@@ -398,7 +398,9 @@ const selectFile = (fileName) => {
   selectedFileName.value = fileName;
 
   const fileNameWithoutExt = fileName.split('.').slice(0, -1).join('.');
-  barcodeText.value = fileNameWithoutExt;
+	const new_barcode_text = fileNameWithoutExt.split('_')[0];
+  barcodeText.value = new_barcode_text;
+  //barcodeText.value = fileNameWithoutExt;
 
   fileReady.value = true;  // 準備好
 };
@@ -484,7 +486,9 @@ const readFileFun = async () => {
 		//console.log("readFileFun step2...")
     const fileNameWithoutExtension = selectedFile.value.split('.').slice(0, -1).join('.');
 		//console.log("readFileFun step3...")
-    barcodeText.value = fileNameWithoutExtension;
+		const new_barcode_text = fileNameWithoutExtension.split('_')[0];
+  	barcodeText.value = new_barcode_text;
+    //barcodeText.value = fileNameWithoutExtension;
 
     // 設置顯示條碼，並自動插入條碼
     showTextarea.value = true; 			// 顯示 <textarea />

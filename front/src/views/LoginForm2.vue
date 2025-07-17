@@ -16,18 +16,19 @@
       <!--<div style="position: relative; top: -220px; right: -240px; height: 50px; width: max-content">-->
         <!--<Vue3Marquee :pause-on-hover="true" :vertical="true">-->
       <!--水平滾動-->
+      <!--
       <div style="position: relative; top: -220px; right: -240px; width: 650px;">
         <Vue3Marquee :pause-on-hover="true">
             <template v-for="(word, index) in marquees" :key="index">
-            <!--<template v-for="(word, index) in helloArray" :key="index">-->
             <span>{{ word }}</span>
-            <span>&nbsp;&nbsp;&nbsp;</span> <!-- 間隔3個空白 -->
+            <span>&nbsp;&nbsp;&nbsp;</span>
           </template>
         </Vue3Marquee>
       </div>
+      -->
       <!--企業視覺圖像-->
       <img id="sourceImage" :src="imageSrc" alt="Logo" style="display: none;" />
-      <canvas id="canvas" class="logo_img" />
+      <canvas id="canvas" class="logo_img"></canvas>
       <p class="logo_text">{{ company_name }}</p>
       <!--<p class="logo_designer_text">{{ designer_name }}</p>-->
       <img :src="pmcLogoSrc" alt="PMC Logo" class="logo_designer_img" />
@@ -105,7 +106,9 @@
 
         </div>
         <p class="mark_texts">員工註冊 <a href="#" @click.prevent="togglePanel">註冊</a></p>
-        <h8 style="position:relative; top:100px; font-weight:300; font-size: 12px;"> {{ 'Build 2025-06-26' }} </h8>
+        <span style="position:relative; top:100px; font-weight:300; font-size: 12px;">
+          {{ 'Build 2025-07-08' }}
+        </span>
 
         <!--<div v-if="openMenu" class="floating-menu-wrapper">-->
       <!--
@@ -218,6 +221,12 @@ import { useRouter } from 'vue-router';
 import { Vue3Marquee } from 'vue3-marquee';
 import { routerLinks } from '../router/index.js';
 import { myMixin } from '../mixins/common.js';
+
+import { useClientIdentifier } from '../mixins/useClientIdentifier.js';
+
+import { useSocketio } from '../mixins/SocketioService.js';
+import { socket_server_ip }  from '../mixins/crud.js';
+
 //import { empPermMapping, roleMappings, menus } from '../mixins/MenuConstants.js';
 import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants.js';
 
@@ -225,16 +234,23 @@ import eventBus from '../mixins/enentBus.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { departments, marquees, temp_desserts, loginUser, loginEmpIDInput }  from '../mixins/crud.js';
-import { apiOperation, setupListUsersWatcher }  from '../mixins/crud.js';
+//import { marqueest }  from '../mixins/crud.js';
+import { departments }  from '../mixins/crud.js';
+import { loginUser, loginEmpIDInput }  from '../mixins/crud.js';
+//import { temp_desserts }  from '../mixins/crud.js';
+import { temp_desserts2 }  from '../mixins/crud.js';
+//import { setupListUsersWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
 const listMarquees = apiOperation('get', '/listMarquees');
 
-const listUsers = apiOperation('get', '/listUsers');
+//const listUsers = apiOperation('get', '/listUsers');
+const listUsers2 = apiOperation('get', '/listUsers2');
 const register = apiOperation('post', '/register');
 const login = apiOperation('post', '/login');
+const reLogin = apiOperation('post', '/reLogin');
 
 //=== component name ==
 defineComponent({
@@ -245,7 +261,11 @@ defineComponent({
 const { initAxios } = myMixin();
 
 //=== data ===
-const imageSrc = ref(require('../assets/pet4-rb.png')); //企業視覺圖像
+//const imageSrc = ref(require('../assets/pet4-rb.png')); //企業視覺圖像
+//const imageSrc = ref(require('../assets/20250630-chumpower-login.png')); //企業視覺圖像
+//const imageSrc = ref(require('../assets/20250708-chumpower-login-rb.png')); //企業視覺圖像
+const imageSrc = ref(require('../assets/20250708-chumpower-login2.png')); //企業視覺圖像
+
 const company_name = ref('銓寶工業股份有限公司')
 //const designer_name = ref('財團法人精密機械研究發展中心設計')
 const pmcLogoSrc = ref(require('../assets/pmc_logo.png')); // PMC logo 圖像
@@ -299,9 +319,17 @@ const isOnline = ref(navigator.onLine);
 
 const screenSizeInInches = ref(null);
 
+// 初始化Socket連接
+const userId = 'user_chumpower';
+const clientAppName = 'LoginForm2';
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
+
+const { localIP, userAgent, uuid } = useClientIdentifier()
+
 //=== mounted ===
-onMounted(() => {
+onMounted(async () => {
   console.log("LoginForm, onMounted()...")
+
   //+++
   const dpi = window.devicePixelRatio;
   const widthInPx = screen.width;
@@ -357,6 +385,16 @@ onMounted(() => {
   if (loginEmpIDInput.value) {
     loginEmpIDInput.value.focus()
   }
+
+  //處理socket連線
+  console.log('等待socket連線...');
+
+  try {
+    await setupSocketConnection();
+    console.log('Socket連線ok...');
+  } catch (error) {
+    console.error('Socket連線失敗:', error);
+  }
 });
 
 //=== unmounted ===
@@ -391,7 +429,7 @@ onBeforeUnmount(() => {
 });
 
 //=== watch ===
-setupListUsersWatcher();
+//setupListUsersWatcher();
 
 // 監視 loginEmpID
 watch(() => loginUser.loginEmpID,
@@ -437,7 +475,8 @@ const initialize = async () => {
     // 使用 async/await 等待 API 請求完成，確保順序正確
     await listMarquees();      // 最後加載廣告牌資料
     await listDepartments();   // 再加載部門資料
-    await listUsers();         // 先加載使用者資料
+    //await listUsers();         // 先加載使用者資料
+    await listUsers2();         // 先加載使用者資料
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -476,7 +515,7 @@ const setupListUsers = (focused) => {
         loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
     }
 
-    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
+    foundDessert.value = temp_desserts2.value.find(dessert => dessert.emp_id === loginUser.loginEmpID);
     //console.log("foundDessert:",foundDessert.value);
     if (foundDessert.value) {
       loginUser.loginName = foundDessert.value.emp_name;
@@ -500,7 +539,7 @@ const checkUsers = (focused) => {
     console.log("checkUser()...");
 
     isRegisterUserFocused.value=false;
-    foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
+    foundDessert.value = temp_desserts2.value.find(dessert => dessert.emp_id === registerUser.empID);
     console.log("foundDessert:",foundDessert.value);
     if (foundDessert.value) {
       console.log("step, found...", registerUser.empID);
@@ -673,19 +712,58 @@ const resetRegisterForm = () => {
   //}
 //};
 
-const userLogin = () => {
+const userLogin = async () => {
   console.log("userLogin()...");
 
-  const payload = {
+  //const localIP = await getLocalIP();
+
+  let payload = {
     empID: loginUser.loginEmpID,
     password: loginUser.loginPassword,
+
+    local_ip: localIP.value,     // ✅ 傳入後端
+    user_agent: userAgent.value, // ✅ 若需後端記錄
+    device_id: uuid.value        // ✅ 可作裝置識別
   };
 
+  const data = await reLogin(payload);
+  console.log("data:",data);
+  //data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
+  if (data.status === true) {
+    if (data.forceLogoutRequired) {
+      socket.value.emit('triggerLogout', { empID: data.user.empID });
+      console.log("送出 triggerLogout 強迫登出訊息...", data.user.empID);
+    }
+
+    signInUser(data.user)
+    console.log("登入成功...", data.user.empID);
+
+  ////} else if (data.forceLogoutRequired) {
+    // ❗ 提示：已在線上登入，顯示強制登出對話框
+    //showForceLogoutDialog.value = true
+    //eventBus.emit('triggerLogout');   // 觸發 'triggerLogout' 事件
+    //socket.value.emit('triggerLogout');  //2025-02-24 add payload
+    //console.log("送出 triggerLogout 強迫登出訊息...");
+
+    // ❗ 提示：已在線上登入，強制登出其他模組
+    //console.log(data);
+  ////  socket.value.emit('triggerLogout', { empID: data.user.empID });
+  ////  console.log("送出 triggerLogout 強迫登出訊息...", data.user.empID);
+  ////
+  ////  signInUser(data.user);
+  } else {
+    console.log("帳號不存在、密碼錯誤...");
+    showSnackbar(data.message, 'red accent-2')
+  }
+
+
+  /*
   login(payload).then(data => {
     console.log("data:", data);
 
     data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
   });
+  */
 };
 
 const signInUser = (user) => {
@@ -808,6 +886,32 @@ const allowBackspaceInInputs = (event) => {
   }
 };
 //
+
+const getLocalIP = () => {
+  return new Promise((resolve, reject) => {
+    const pc = new RTCPeerConnection({
+      iceServers: []
+    });
+
+    pc.createDataChannel('');
+
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer))
+      .catch(reject);
+
+    pc.onicecandidate = (event) => {
+      if (!event || !event.candidate) return;
+
+      const candidate = event.candidate.candidate;
+      const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3})/;
+      const ipMatch = candidate.match(ipRegex);
+      if (ipMatch) {
+        resolve(ipMatch[1]); // 回傳第一個符合的 IP
+        pc.close();
+      }
+    };
+  });
+};
 </script>
 
 <style lang="scss" scoped>

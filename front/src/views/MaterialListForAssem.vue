@@ -735,6 +735,8 @@
 <script setup>
 import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
 
+import eventBus from '../mixins/enentBus.js';
+
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
 
@@ -749,16 +751,23 @@ const router = useRouter();
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-import { materials, boms, currentBoms, desserts, currentAGV, material_copy_id ,socket_server_ip, fileCount }  from '../mixins/crud.js';
-import { apiOperation, setupGetBomsWatcher, setupListUsersWatcher }  from '../mixins/crud.js';
+//import { desserts }  from '../mixins/crud.js';
+import { desserts2 }  from '../mixins/crud.js';
+import { materials, boms, currentBoms, currentAGV, material_copy, material_copy_id, fileCount }  from '../mixins/crud.js';
+import { socket_server_ip }  from '../mixins/crud.js';
+
+import { setupGetBomsWatcher }  from '../mixins/crud.js';
+//import { setupListUsersWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listMaterials = apiOperation('get', '/listMaterials');
-const listUsers = apiOperation('get', '/listUsers');
-const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+//const listUsers = apiOperation('get', '/listUsers');
+const listUsers2 = apiOperation('get', '/listUsers2');
+//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const getBoms = apiOperation('post', '/getBoms');
 const getAGV = apiOperation('post', '/getAGV');
@@ -766,12 +775,16 @@ const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
 const copyMaterial = apiOperation('post', '/copyMaterial');
+const copyMaterialAndBom = apiOperation('post', '/copyMaterialAndBom');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
 const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
 const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
 const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
+const updateBomXorReceive = apiOperation('post', '/updateBomXorReceive');
+
+const updateSetting = apiOperation('post', '/updateSetting');
 
 //=== component name ==
 defineComponent({
@@ -912,7 +925,7 @@ const agv2EndTime = ref(null);
 const dialog = ref(false);
 const isConfirmed = ref(false);
 
-const editedRecord = ref(null); // 儲存當前點擊的記錄
+const editedRecord = ref(null);       // 點擊詳情按鍵的目前紀錄
 
 const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
@@ -932,7 +945,7 @@ const abnormalDialog_autocomplete_message = ref('');
 const abnormalDialog_message = ref('');
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_item = ref(null);
+const abnormalDialog_record = ref(null);    // 點擊鈴鐺icon的目前紀錄
 
 const itemsWithIcons = [
   { text: '臨時領料', icon: 'mdi-clock-outline' },
@@ -942,7 +955,7 @@ const itemsWithIcons = [
 //=== watch ===
 setupGetBomsWatcher();
 
-setupListUsersWatcher();
+//setupListUsersWatcher();
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
@@ -999,7 +1012,7 @@ return (day) => {
 });
 
 const formattedDesserts = computed(() =>
-desserts.value.map(emp => ({
+desserts2.value.map(emp => ({
   ...emp,
   display: `${emp.emp_id} ${emp.emp_name}`,
 }))
@@ -1348,18 +1361,42 @@ onMounted(async () => {
           let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
 
           payload = {
-            copy_id: myMaterial.id,
-            delivery_qty: myMaterial.delivery_qty,
-            total_delivery_qty: tempDelivery,
-            show2_ok: 2,
+            copy_id: myMaterial.id,                 //工單table id
+            delivery_qty: myMaterial.delivery_qty,  //備料數量
+            total_delivery_qty: tempDelivery,       //應備數量
+            show2_ok: 2,                            //備料完成
             shortage_note: '',
           }
           await copyMaterial(payload);
           test_count.value += 1;
           console.log('步驟2-4...', test_count.value);
         } else {
+          //if (myMaterial.isLackMaterial == 0) {
+            payload = {
+              //order_num: my_material_orderNum,
+              id: myMaterial.id,
+              record_name: 'show2_ok',
+              record_data: 3                  // 等待組裝作業
+            };
+            await updateMaterial(payload);
+          //}
+          //console.log("myMaterial.is_copied, id:", myMaterial.is_copied, myMaterial.id)
+          if (myMaterial.is_copied)  {
+            payload = {
+              copied_material_id: myMaterial.id,
+            };
+            await updateBomXorReceive(payload);
 
-        }
+            // 延遲 1 秒
+            await delay(1000);
+
+            // 通知合併工單顯示
+            eventBus.emit('merge_work_orders');
+            console.log('合併工單顯示通知已發出')
+          }
+
+
+        } // end else loop
       });
 
       // 記錄AGV狀態資料
@@ -1384,7 +1421,7 @@ onMounted(async () => {
       }
       //待待
       window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-    });
+    }); // end socket loop
 
     //socket.value.on('station2_agv_ready', async () => {
     //  console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
@@ -1445,6 +1482,40 @@ onMounted(async () => {
     //socket.value.on('agv_ack', async () => {
     //  console.log('收到 agv_ack 回應');
     //});
+
+    socket.value.on('triggerLogout', async (data) => {
+      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
+
+      // 如果你想根據 empID 執行判斷，可以這樣：
+      if (data.empID && data.empID === currentUser.value.empID) {
+        console.log("本裝置符合 empID，執行強制登出流程");
+
+        let payload = {
+          itemsPerPage: 0,
+          seeIsOk: '0',
+          lastRoutingName: 'Main',
+          empID: userData.empID,
+        };
+
+        //let isAuthenticated = false;
+
+        try {
+          await updateSetting(payload);
+        } finally {
+          //setAuthenticated(isAuthenticated);
+          //localStorage.setItem('Authenticated', isAuthenticated);
+          localStorage.setItem('Authenticated', false);
+          removelocalStorage();
+
+          const resolvedRoute = router.resolve({ name: 'LoginRegister' });
+          const path = resolvedRoute.href;
+          console.log('triggerLogout socket...', path)
+          router.replace({ path });
+        }
+      } else {
+        console.log("本裝置 empID 不符，忽略此 triggerLogout");
+      }
+    });
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -1470,19 +1541,20 @@ initialize();
 
 //=== method ===
 const initialize = async () => {
-try {
-  console.log("initialize()...");
+  try {
+    console.log("initialize()...");
 
-  // 使用 async/await 等待 API 請求完成，確保順序正確
-  await listMaterials();
+    // 使用 async/await 等待 API 請求完成，確保順序正確
+    await listMaterials();
 
-  await listUsers();
+    //await listUsers();
+    await listUsers2();
 
-  //await listSocketServerIP();
-  //console.log("initialize, socket_server_ip:", socket_server_ip.value)
-} catch (error) {
-  console.error("Error during initialize():", error);
-}
+    //await listSocketServerIP();
+    //console.log("initialize, socket_server_ip:", socket_server_ip.value)
+  } catch (error) {
+    console.error("Error during initialize():", error);
+  }
 };
 /*
 const handlePopState = () => {
@@ -1583,7 +1655,7 @@ const handleBarCode = () => {
 const handleEmployeeSearch = () => {
   console.log("handleEmployeeSearch()...");
 
-  let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
+  let selected = desserts2.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
   if (selected) {
     selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
     console.log("已更新選中員工: ", selectedEmployee.value);
@@ -1600,7 +1672,7 @@ const handleEmployeeSearch = () => {
 const updateEmployeeFieldFromSelect = () => {
   console.log("更新 TextField: ", inputSelectEmployee.value);
 
-  const selected = desserts.value.find(emp => emp.emp_id === inputSelectEmployee.value);
+  const selected = desserts2.value.find(emp => emp.emp_id === inputSelectEmployee.value);
   if (selected) {
     selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
     console.log("已更新選中員工: ", selectedEmployee.value);
@@ -1646,16 +1718,22 @@ const checkReceiveQty = (item) => {
   console.log("checkReceiveQty,", item);
 
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-  const deliveryQty = Number(item.delivery_qty) || 0;
+  const deliveryQty = Number(item.delivery_qty) || 0;   //備料數量
   //const totalDeliveryQty = Number(item.total_delivery_qty) || 0;
   //const reqQty = Number(item.req_qty) || 0;
-  const totalQty = Number(item.total_delivery_qty) || 0;
+  const totalQty = Number(item.total_delivery_qty);    //應備數量
 
   //console.log("deliveryQty > reqQty:", deliveryQty, reqQty)
   console.log("deliveryQty > totalQty:", deliveryQty, totalQty)
+
+  if (item.isLackMaterial == 0  && deliveryQty != totalQty && deliveryQty != 0) {
+    let temp_str = item.order_num + '工單缺料情況，備料數量不能改變！'
+    showSnackbar(temp_str, 'red accent-2');
+    return; // 不改變選擇狀態
+  }
+
   // 檢查是否超過需求數量
   if (deliveryQty > totalQty) {
-
   //const total = Number(item.delivery_qty) + Number(item.total_delivery_qty);
   //const temp = Number(item.req_qty)
   //if (total > temp) {
@@ -1673,6 +1751,7 @@ const checkReceiveQty = (item) => {
 };
 
 const handleKeyDown = (event) => {
+  console.log("handleKeyDown()...")
   const inputChar = event.key;
 
   const caps = event.getModifierState && event.getModifierState('CapsLock');
@@ -1691,8 +1770,8 @@ const handleKeyDown = (event) => {
 
   const inputValue = event.target.value || ''; // 確保 inputValue 是字串
 
-  // 檢查輸入的長度是否超過3，阻止多餘的輸入
-  if (inputValue.length >= 3) {
+  // 檢查輸入的長度是否超過5，及輸入數字小於10000, 阻止多餘的輸入, 2025-07-02 modify
+  if (inputValue.length > 5 && inputValue < 10000) {
     event.preventDefault();
     return;
   }
@@ -1815,7 +1894,7 @@ const toggleExpand = async (item) => {
   };
   await getBoms(payload);
   current_cell.value = item.delivery_qty
-  editedRecord.value = item;
+  editedRecord.value = item;          // 點擊詳情按鍵的目前紀錄
   //console.log("toggleExpand, editedRecord", editedRecord.value)
 
   // 記錄當前開始備料時間
@@ -1848,14 +1927,14 @@ const checkTextEditField = (focused, item) => {
 
     //updateItem2(item);
   } else {
-    //console.log("checkTextEditField(): 獲得焦點");
+    console.log("checkTextEditField(): 獲得焦點");
   }
 };
 
 const addAbnormalInMaterial = (item) => {
   console.log("addAbnormalInMaterial(),", item);
 
-  abnormalDialog_item.value = materials.value.find(m => m.id == item.id);
+  abnormalDialog_record.value = materials.value.find(m => m.id == item.id);
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
@@ -1878,14 +1957,14 @@ const createAbnormalFun = async () => {
       //  cause_user: currentUser.value.empID,
       //};
       //await updateAssembleAlarmMessage(payload);
-      console.log("abnormalDialog_item.order_num:", abnormalDialog_item.value.order_num)
+      console.log("abnormalDialog_record.order_num:", abnormalDialog_record.value.order_num)
       payload = {
-        order_num: abnormalDialog_item.value.order_num,
+        order_num: abnormalDialog_record.value.order_num,
         record_name: 'Incoming0_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateMaterial(payload);
-      abnormalDialog_item.value.Incoming0_Abnormal=false;
+      abnormalDialog_record.value.Incoming0_Abnormal=false;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials.value.findIndex(
@@ -1970,7 +2049,8 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
 
   let payload = {}
 
-  if (!take_out) {                    // 該筆訂單檢料未完成, 缺料
+  // begin block檢查是否缺料
+  if (!take_out) {    // 該筆訂單缺料且檢料完成
     payload = {                       // 更新 materials 資料，shortage_note = '(缺料)'
       //order_num: my_material_orderNum,
       id: editedRecord.value.id,
@@ -1980,16 +2060,17 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     await updateMaterial(payload);
     editedRecord.value.shortage_note = '(缺料)';
 
-    payload = {               // 2. 更新 materials 資料，isLackMaterial = 1
+    payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
       //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'isLackMaterial',
-      record_data: 0,          //缺料
+      record_data: 0,          //缺料flag
     };
     await updateMaterial(payload);
 
-    editedRecord.value.isLackMaterial = 0;
-  } else {
+    editedRecord.value.isLackMaterial = 0;    //缺料(尚未拆單)且檢料完成
+
+  } else {            // 沒有缺料且檢料完成
     payload = {
       //order_num: my_material_orderNum,
       id: editedRecord.value.id,
@@ -1999,7 +2080,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     await updateMaterial(payload);
     editedRecord.value.shortage_note = '';
 
-    payload = {
+    payload = {       // 2. 更新 materials 資料，isLackMaterial = 99
       //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'isLackMaterial',
@@ -2007,26 +2088,28 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     };
     await updateMaterial(payload);
 
-    editedRecord.value.isLackMaterial = 0;
+    editedRecord.value.isLackMaterial = 99;   //沒有缺料且檢料完成 flag
   }
+  // end block檢查是否缺料
 
-  payload = {                       // 2. 更新 materials 資料, 按確定鍵的狀態
+  // 紀錄已經按了確定鍵的狀態
+  payload = {
     //order_num: my_material_orderNum,
     id: editedRecord.value.id,
     record_name: 'isTakeOk',
     record_data: true
   };
   await updateMaterial(payload);
-
   editedRecord.value.isTakeOk = true;
+  //
 
   //2025-02-07 mark the if condition
   //if (take_out) {                     // 該筆訂單檢料完成且沒有缺料
-    payload = {               // 2. 更新 materials 資料，show2_ok = 2
+    payload = {
       //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'show2_ok',
-      record_data: 2                  // 設為 2，表示備料完成
+      record_data: 2                  // 備料完成
     };
     await updateMaterial(payload);
 
@@ -2046,6 +2129,38 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
 
     await listMaterials();    //2025-02-07 mark this line
   //}
+
+  if (!take_out) {                     // 該筆訂單檢料完成且缺料
+    payload = {
+      copy_id: editedRecord.value.id,
+      delivery_qty: editedRecord.value.delivery_qty,
+      //total_delivery_qty: tempDelivery,
+      show2_ok: 2,            //備料完成
+      shortage_note: '',
+    }
+    await copyMaterialAndBom(payload);
+    //console.log("material_copy:", material_copy.value)
+
+    payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
+      id: material_copy.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 0,          //缺料flag
+    };
+    await updateMaterial(payload);
+    material_copy.value.isLackMaterial = 0;
+
+    materials.value.push(material_copy.value);
+
+    // 立刻排序：
+    materials.value.sort((a, b) => {
+      if (a.order_num === b.order_num) {
+        // isTakeOk: True 排前面 → False > True 時應該 return 1
+        return (a.isTakeOk === b.isTakeOk) ? 0 : (a.isTakeOk ? -1 : 1);
+      }
+      // order_num 升序
+      return a.order_num.localeCompare(b.order_num);
+    });
+  }
 
   dialog.value = false;
 };
@@ -2264,6 +2379,21 @@ const moveToAllFacets = (index) => {
   allFacets.value.push(item);
 };
 */
+
+// 設定localStorage內容
+const setAuthenticated = (isLogin) => {
+  localStorage.setItem('Authenticated', isLogin)
+};
+
+// 清除localStorage內容
+const removelocalStorage = () => {
+  if (localStorage.getItem('loginedUser')) {
+    localStorage.removeItem('loginedUser');
+  }
+  if (localStorage.getItem('Authenticated')) {
+    localStorage.removeItem('Authenticated');
+  }
+};
 </script>
 
 <style lang="scss" scoped>

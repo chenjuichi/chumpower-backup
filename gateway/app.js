@@ -160,7 +160,7 @@ io.on('connection', (socket) => {
   connectedPeers.add(socket.id);
 
   //client.write('connection');     //發送至kuka伺服器的訊息(B)
-  socket.emit('connected');      //發送至所有client的訊息
+  socket.emit('connected');         //發送至所有client的訊息
 
   // 如果沒有與kuka伺服器連上，馬上通知 client
   if (!csharpReady) {
@@ -321,6 +321,14 @@ io.on('connection', (socket) => {
     resetRequested = true;          // 設置重置請求為 true
     //socket.emit('agv_ack');       // 向客戶端確認收到重置請求
     client.write('agv_reset');      // 廣播至後端kuka伺服器的訊息(B)
+  });
+
+  socket.on('triggerLogout', (payload) => {
+    console.log('📩 Received triggerLogout from:', payload.empID);
+
+    // Broadcast 給其他所有 client（除了發送者）
+    socket.broadcast.emit('triggerLogout', payload);
+    //socket.emit('triggerLogout', payload);
   });
 
   // 使用 socket.onAny 監聽所有事件

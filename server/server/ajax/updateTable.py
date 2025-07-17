@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlalchemy import distinct
 from sqlalchemy import inspect
 from sqlalchemy import and_
+from sqlalchemy.orm import joinedload
 
 from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Product, Agv, Session
 
@@ -831,4 +832,62 @@ def update_assemble_alarm_message():
 
   finally:
     s.close()
+
+
+@updateTable.route("/updateBomXorReceive", methods=["POST"])
+def update_bom_xor_receive():
+    print("updateBomXorReceive....")
+
+    data = request.get_json()
+    copied_id = data.get("copied_material_id")
+    print("copied_id", copied_id)
+
+    s = Session()
+
+    # 找到複製資料
+    copied_material = s.query(Material).options(joinedload(Material._bom)).filter_by(id=copied_id).first()
+    if not copied_material or not copied_material.is_copied_from_id:
+        return jsonify({"error": "Invalid copied material or missing source ID"}), 400
+    print("copied_material:",copied_material)
+
+    # 找到原始資料
+    source_material = s.query(Material).options(joinedload(Material._bom)).filter_by(id=copied_material.is_copied_from_id).first()
+    if not source_material:
+        return jsonify({"error": "Source material not found"}), 404
+    print("source_material:",source_material)
+
+    # 條件限制：兩者其中之一 isLackMaterial 必須為 0 才繼續
+    if source_material.isLackMaterial != 0 and copied_material.isLackMaterial != 0:
+        return jsonify({"message": "No update required, neither material has isLackMaterial == 0"}), 200
+
+    # 建立 dict 以 seq_num 為 key 對應 receive
+    source_boms = {bom.seq_num: bom for bom in source_material._bom}
+    copied_boms = {bom.seq_num: bom for bom in copied_material._bom}
+    print("source_boms:",source_boms)
+    print("copied_boms:",copied_boms)
+
+    updated = False
+    for seq_num, source_bom in source_boms.items():
+        if seq_num in copied_boms:
+            copied_bom = copied_boms[seq_num]
+            xor_result = int(source_bom.receive) ^ int(copied_bom.receive)
+            if xor_result == 1:
+                source_bom.receive = True  # 將缺料清除
+                source_material.isLackMaterial = 99
+                #source_material.show2_ok = 3        # 等待組裝作業
+                copied_material.isLackMaterial = 0
+                updated = True
+            #else:
+            #    source_material.isLackMaterial = 0
+            #    updated = True
+
+    if updated:
+        s.commit()
+
+    s.close()
+
+    return jsonify({
+      'status': True,
+      'message': "Updated successfully."
+    })
 

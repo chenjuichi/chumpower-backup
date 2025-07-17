@@ -6,8 +6,11 @@ import { ref, reactive, watch } from 'vue';
 // for countExcelFiles
 export const fileCount = ref(0);         //定義 fileCount 狀態變數
 
-// for copyMaterial
+// for copyMaterial, copyMaterialAndBom
 export const material_copy_id = ref(0);
+
+// for copyMaterialAndBom
+export const material_copy = ref(null);
 
 // for copyAssemble
 export const assemble_copy_ids = ref([]);
@@ -79,6 +82,17 @@ export const loginUser = reactive({
   loginName: '',
   loginPassword: ''
 });
+
+// for listUsers2
+//export const loginEmpIDInput = ref(null);
+export const temp_desserts2 = ref([]);
+export const desserts2 = ref([]);
+//export const loginUser = reactive({
+//  loginEmpID: '',
+//  loginName: '',
+//  loginPassword: ''
+//});
+
 
 export const currentAGV = ref({})
 //  status: 0,
@@ -207,6 +221,24 @@ export const apiOperation = (operation, path, payload) => {
             list_table_is_ok.value = true;
           }
 
+          if (path == '/listUsers2') {
+            temp_desserts2.value = res.data.users;
+
+            // 檢查每個對象的 dep_name，如果是 null、"NULL" 或 "Null"，則替換為空字符串
+            temp_desserts2.value = temp_desserts2.value.map(user => {
+              if (user.dep_name == null || user.dep_name.toLowerCase() === "null") {
+                user.dep_name = ' '; // 替換為空字符串
+              }
+              return user;
+            });
+
+            desserts2.value = [...temp_desserts2.value];                // 複製原員工資料(未排序)
+
+            temp_desserts2.value.sort((a, b) => a.emp_id - b.emp_id);   // 升冪排序
+            desserts2.value = Object.assign([], temp_desserts2.value);  // 複製原員工資料(已排序)
+            //list_table_is_ok.value = true;
+          }
+
           if (path == '/readAllExcelFiles' || path == '/deleteAssemblesWithNegativeGoodQty') {
             //console.log("get, path is", path)
             return res.data;
@@ -226,12 +258,13 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' ||
               path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
-              path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2') {
+              path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2' ||
+              path == 'updateBomXorReceive') {
             //console.log("res.data:", res.data);
             return res.data.status;
           }
 
-          if (path == '/login' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
+          if (path == '/login' || path == '/reLogin' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation') {
             //console.log("res.data:", res.data);
             return res.data;
@@ -373,10 +406,16 @@ export const apiOperation = (operation, path, payload) => {
             currentAGV.value = res.data.agv_data;
           }
 
+          if (path == '/copyMaterialAndBom') {
+            //console.log("copyMaterial(), material_copy_id:", res.data.material_data.id)
+            material_copy.value = res.data.material_data;
+          }
+
           if (path == '/copyMaterial') {
             //console.log("copyMaterial(), material_copy_id:", res.data.material_data.id)
             material_copy_id.value = res.data.material_data.id;
           }
+
 
           if (path == '/copyAssemble') {
             //console.log("copyAssemble(), assemble_copy_ids:", res.data.assemble_data)

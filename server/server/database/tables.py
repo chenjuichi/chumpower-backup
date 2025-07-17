@@ -30,6 +30,8 @@ class User(BASE):
   setting_id = Column(Integer, ForeignKey('setting.id'))  # 一對多(多)
   isRemoved = Column(Boolean, default=True)               # false:已經刪除資料
   isOnline = Column(Boolean, default=False)               # false:user不在線上(logout)
+  last_login_ip = Column(String(100), nullable=True)      # 紀錄登入IP, 2025-07-02 add
+  last_login_time = Column(DateTime, nullable=True)       # 2025-07-02 add
   #_production = relationship('Production', backref="user")              # 一對多(一), 生管
   #_process =  relationship('Process', backref="user")                 # 一對多(一), 備料
   #_assembler =  relationship('Assembler', backref="user")               # 一對多(一), 裝配
@@ -174,7 +176,7 @@ class Material(BASE):
     must_allOk_qty = Column(Integer, default=0)                     # (成品）應入庫數量, 2025-06-24 add
 
     total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
-    isLackMaterial = Column(Integer, default=99)                    # 0:備料缺料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
+    isLackMaterial = Column(Integer, default=99)                    # 0:缺料且檢料完成(還沒拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
     sd_time_B109 = Column(String(30))
     sd_time_B106 = Column(String(30))
@@ -225,6 +227,32 @@ class Material(BASE):
       '''
       return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
 
+    def to_dict(self):
+      return {
+        'id': self.id,
+        'order_num': self.order_num,
+        'material_num': self.material_num,
+
+        'req_qty': self.material_qty,                   #需求數量(訂單數量)
+        'delivery_qty': self.delivery_qty,              #備料數量
+        'total_delivery_qty': self.total_delivery_qty,  #應備數量
+        'input_disable': self.input_disable,
+        'date': self.material_date,                     #(建立日期)
+        'delivery_date': self.material_delivery_date,   #交期
+        'shortage_note': self.shortage_note,            #缺料註記 '元件缺料'
+        'comment': self.material_comment,               #說明
+        'isTakeOk' : self.isTakeOk,
+        'isLackMaterial' : self.isLackMaterial,
+        'isBatchFeeding' :  self.isBatchFeeding,
+        'isShow' : self.isShow,
+        'whichStation' : self.whichStation,
+        'show1_ok' : self.show1_ok,
+        'show2_ok' : self.show2_ok,
+        'show3_ok' : self.show3_ok,
+        'Incoming0_Abnormal': self.Incoming0_Abnormal == '',
+        'is_copied': bool(self.is_copied_from_id and self.is_copied_from_id > 0),
+      }
+
 
 # ------------------------------------------------------------------
 
@@ -262,8 +290,8 @@ class Bom(BASE):
     req_qty = Column(Integer)                   #需求數量
     pick_qty = Column(Integer, default=0)       #領料數量
     non_qty = Column(Integer, default=0)        #未結數量
-    lack_qty = Column(Integer, default=0)       #缺料數量
-    receive = Column(Boolean, default=True)
+    lack_qty = Column(Integer, default=0)       #數量
+    receive = Column(Boolean, default=True)     # 缺料:False
     lack = Column(Boolean, default=False)
     isPickOK = Column(Boolean, default=False)               # true:檢料完成
     start_date = Column(String(12), nullable=False)         #開始日期

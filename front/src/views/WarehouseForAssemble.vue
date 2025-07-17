@@ -319,6 +319,7 @@
           hide-details
           style="max-width: 60px; text-align: center; z-index: 1;"
           :id="`allOkQtyID-${item.id}`"
+          @keydown="handleKeyDown"
           @update:modelValue="checkQtyField(item)"
           @update:focused="(focused) => checkTextEditField(focused, item)"
           @keyup.enter="updateItem2(item)"
@@ -375,15 +376,18 @@ const router = useRouter();
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-import { materials, warehouses, boms, currentBoms, desserts, currentAGV, material_copy_id ,socket_server_ip, fileCount }  from '../mixins/crud.js';
-import { apiOperation, setupGetBomsWatcher, setupListUsersWatcher }  from '../mixins/crud.js';
+import { desserts2 }  from '../mixins/crud.js';
+import { materials, warehouses, boms, currentBoms, currentAGV, material_copy_id ,socket_server_ip, fileCount }  from '../mixins/crud.js';
+//import { setupListUsersWatcher }  from '../mixins/crud.js';
+import { setupGetBomsWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 //const listWarehouseForAssemble = apiOperation('get', '/listWarehouseForAssemble');
-const listUsers = apiOperation('get', '/listUsers');
+const listUsers2 = apiOperation('get', '/listUsers2');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const getBoms = apiOperation('post', '/getBoms');
@@ -538,12 +542,12 @@ const abnormalDialog_new_must_receive_qty = ref('');
 const abnormalDialog_message = ref('');
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_item = ref(null);
+const abnormalDialog_record = ref(null);
 
 //=== watch ===
 setupGetBomsWatcher();
 
-setupListUsersWatcher();
+//setupListUsersWatcher();
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
@@ -578,7 +582,7 @@ return (day) => {
 });
 
 const formattedDesserts = computed(() =>
-desserts.value.map(emp => ({
+desserts2.value.map(emp => ({
   ...emp,
   display: `${emp.emp_id} ${emp.emp_name}`,
 }))
@@ -989,7 +993,7 @@ const initialize = async () => {
     //await listWarehouseForAssemble();
     await getWarehouseForAssembleByHistoryFun();
 
-    await listUsers();
+    await listUsers2();
 
     //await listSocketServerIP();
     //console.log("initialize, socket_server_ip:", socket_server_ip.value)
@@ -1043,29 +1047,29 @@ return {
 };
 
 const handleDateChange = (newDate) => {
-if (newDate instanceof Date) {
-  // 調整為本地時區日期
-  const localDate = new Date(newDate.getTime() - newDate.getTimezoneOffset() * 60000);
-  fromDateVal.value = localDate;
-  formattedDate.value = localDate.toISOString().split('T')[0]; // 格式化為 YYYY-MM-DD
+  if (newDate instanceof Date) {
+    // 調整為本地時區日期
+    const localDate = new Date(newDate.getTime() - newDate.getTimezoneOffset() * 60000);
+    fromDateVal.value = localDate;
+    formattedDate.value = localDate.toISOString().split('T')[0]; // 格式化為 YYYY-MM-DD
 
-  editDialogBtnDisable.value = false;
-}
-fromDateMenu.value = false;
+    editDialogBtnDisable.value = false;
+  }
+  fromDateMenu.value = false;
 };
 
 const parseDate = (formatted, format) => {
-const parts = formatted.split('/');
-switch (format) {
-  case 'MM/DD/YYYY':
-    return { month: parts[0], day: parts[1], year: parts[2] };
-  case 'DD/MM/YYYY':
-    return { day: parts[0], month: parts[1], year: parts[2] };
-  case 'YYYY/MM/DD':
-    return { year: parts[0], month: parts[1], day: parts[2] };
-  default:
-    throw new Error('Unsupported date format');
-}
+  const parts = formatted.split('/');
+  switch (format) {
+    case 'MM/DD/YYYY':
+      return { month: parts[0], day: parts[1], year: parts[2] };
+    case 'DD/MM/YYYY':
+      return { day: parts[0], month: parts[1], year: parts[2] };
+    case 'YYYY/MM/DD':
+      return { year: parts[0], month: parts[1], day: parts[2] };
+    default:
+      throw new Error('Unsupported date format');
+  }
 };
 
 // 定義一個延遲函數
@@ -1093,7 +1097,7 @@ placeholderTextForOrderNum.value = "請選擇工單";
 const handleEmployeeSearch = () => {
 console.log("handleEmployeeSearch()...");
 
-let selected = desserts.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
+let selected = desserts2.value.find(emp => emp.emp_id.replace(/^0+/, '') === selectedEmployee.value);
 if (selected) {
   selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
   console.log("已更新選中員工: ", selectedEmployee.value);
@@ -1109,7 +1113,7 @@ placeholderTextForEmployee.value = "請選擇員工";
 
 const updateEmployeeFieldFromSelect = () => {
 console.log("更新 TextField: ", inputSelectEmployee.value);
-const selected = desserts.value.find(emp => emp.emp_id === inputSelectEmployee.value);
+const selected = desserts2.value.find(emp => emp.emp_id === inputSelectEmployee.value);
 if (selected) {
   selectedEmployee.value = `${selected.emp_id} ${selected.emp_name}`;
   console.log("已更新選中員工: ", selectedEmployee.value);
@@ -1154,12 +1158,13 @@ const checkQtyField = (item) => {
   console.log("checkQtyField,", item);
 
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-  const deliveryQty = Number(item.delivery_qty) || 0;   //到庫數量
+  //const deliveryQty = Number(item.delivery_qty) || 0;   //到庫數量
+  const deliveryQty = Number(item.must_allOk_qty);      //應入庫數量
   const totalQty = Number(item.allOk_qty) || 0;         //入庫數量
   console.log("deliveryQty , totalQty:", deliveryQty, totalQty)
 
   if (deliveryQty < totalQty) {       // 檢查是否超過到庫數量
-    delivery_qty_alarm.value = '入庫數量超過到庫數量!';
+    delivery_qty_alarm.value = '入庫數量超過應入庫數量!';
 
     item.tooltipVisible = true;       // 顯示 Tooltip
     setTimeout(() => {
@@ -1192,8 +1197,8 @@ const handleKeyDown = (event) => {
 
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-  // 檢查輸入的長度是否超過3，阻止多餘的輸入
-  if (inputValue.length >= 3) {
+  // 檢查輸入的長度是否超過5，及輸入數字小於10000, 阻止多餘的輸入, 2025-07-02 modify
+  if (inputValue.length > 5 && inputValue < 10000) {
     event.preventDefault();
     return;
   }
@@ -1213,6 +1218,7 @@ const handleKeyDown = (event) => {
     console.log('Return key pressed');
     // 如果需要，這裡可以執行其他操作，或進行額外的驗證
   }
+
   editDialogBtnDisable.value = false;
 };
 
@@ -1344,7 +1350,7 @@ const checkTextEditField = (focused, item) => {
 const addAbnormalInMaterial = (item) => {
   console.log("addAbnormalInMaterial(),", item);
 
-  abnormalDialog_item.value = warehouses.value.find(m => m.id == item.id);
+  abnormalDialog_record.value = warehouses.value.find(m => m.id == item.id);
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
@@ -1370,14 +1376,14 @@ const createAbnormalFun = async () => {
       //  cause_user: currentUser.value.empID,
       //};
       //await updateAssembleAlarmMessage(payload);
-      console.log("abnormalDialog_item.order_num:", abnormalDialog_item.value.order_num)
+      console.log("abnormalDialog_record.order_num:", abnormalDialog_record.value.order_num)
       payload = {
-        order_num: abnormalDialog_item.value.order_num,
+        order_num: abnormalDialog_record.value.order_num,
         record_name: 'Incoming2_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateMaterial(payload);
-      abnormalDialog_item.value.Incoming2_Abnormal=false;
+      abnormalDialog_record.value.Incoming2_Abnormal=false;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = warehouses.value.findIndex(

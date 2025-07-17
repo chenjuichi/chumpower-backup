@@ -486,11 +486,12 @@ import { currentAGV }  from '../mixins/crud.js';
 //import { desserts }  from '../mixins/crud.js';
 import { desserts2 }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
-
+//import { setupListUsersWatcher}  from '../mixins/crud.js';
 import { apiOperation}  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+//const listUsers = apiOperation('get', '/listUsers');
 const listUsers2 = apiOperation('get', '/listUsers2');
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
@@ -623,6 +624,7 @@ const panel_flag = ref(false)     // 允許拖曳的開關
 const screenSizeInInches = ref(null);
 
 // === watch ===
+// setupListUsersWatcher();
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
@@ -1157,8 +1159,8 @@ const initialize = async () => {
       item.pickEnd = [];
     });
 
+    //await listUsers();
     await listUsers2();
-
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -1301,8 +1303,8 @@ const handleKeyDown = (event) => {
 
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
-  // 檢查輸入的長度是否超過5，及輸入數字小於10000, 阻止多餘的輸入, 2025-07-02 modify
-  if (inputValue.length > 5 && inputValue < 10000) {
+  // 檢查輸入的長度是否超過4，及輸入數字小於4000, 阻止多餘的輸入, 2025-07-02 modify
+  if (inputValue.length > 4 && inputValue < 4000) {
     event.preventDefault();
     return;
   }

@@ -1,4 +1,5 @@
 <template>
+<div class="background-container" >
   <div class="container">
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
@@ -11,39 +12,16 @@
     </v-snackbar>
 
     <div class="overlay-container">
-      <!--跑馬燈效果-->
-      <!--垂直滾動-->
-      <!--<div style="position: relative; top: -220px; right: -240px; height: 50px; width: max-content">-->
-        <!--<Vue3Marquee :pause-on-hover="true" :vertical="true">-->
-      <!--水平滾動-->
-      <!--
-      <div style="position: relative; top: -220px; right: -240px; width: 650px;">
-        <Vue3Marquee :pause-on-hover="true">
-            <template v-for="(word, index) in marquees" :key="index">
-            <span>{{ word }}</span>
-            <span>&nbsp;&nbsp;&nbsp;</span>
-          </template>
-        </Vue3Marquee>
-      </div>
-      -->
       <!--企業視覺圖像-->
-      <img id="sourceImage" :src="imageSrc" alt="Logo" style="display: none;" />
-      <canvas id="canvas" class="logo_img"></canvas>
       <p class="logo_text">{{ company_name }}</p>
-      <!--<p class="logo_designer_text">{{ designer_name }}</p>-->
       <img :src="pmcLogoSrc" alt="PMC Logo" class="logo_designer_img" />
     </div>
 
     <!--登入-->
-    <transition name="slide-in-left">
       <div v-if="!signUp" class="sign-in">
         <div @submit.prevent="userLogin" style="position: relative; top: -20px;">
-          <!--
-            @change='checkEmpty("loginEmpID")'
-          -->
           <v-text-field
             label="工號"
-
             @update:focused ="setupListUsers"
             prepend-icon="mdi-account"
             v-model="loginUser.loginEmpID"
@@ -52,7 +30,6 @@
             @keypress="handleKeyDown"
             @keydown.enter="focusPasswordInput"
             @keydown.tab.prevent="focusPasswordInput"
-
             id="loginEmpID"
             style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
@@ -64,12 +41,9 @@
             v-model="loginUser.loginName"
             style="width:15rem; min-width:15rem; position:relative; left:0em;"
           />
-          <!--
-            @change='checkEmpty("loginPassword")'
-          -->
+
           <v-text-field
             label="密碼"
-
             prepend-icon="mdi-lock"
             :append-icon="eyeShow ? 'mdi-eye-off' : 'mdi-eye'"
             :type="eyeShow ? 'password' : 'text'"
@@ -91,134 +65,29 @@
 
           <v-icon
             dark
-
             :style="{
               position: 'relative',
               top: '5px',
               left: '20px',
-
               opacity: caps ? 1 : 0,
               transition: 'opacity 0.5s ease',
             }"
           >
             mdi-caps-lock
           </v-icon>
-
         </div>
-        <p class="mark_texts">員工註冊 <a href="#" @click.prevent="togglePanel">註冊</a></p>
-        <span style="position:relative; top:100px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2025-07-18' }}
+        <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
+          {{ 'Build 2025-07-24' }}
         </span>
-
-        <!--<div v-if="openMenu" class="floating-menu-wrapper">-->
-      <!--
-        <div v-if="false" class="floating-menu-wrapper">
-          <v-menu>
-            <template v-slot:activator="{ props }">
-              <v-btn color="primary" variant="outlined" v-bind="props" style="width: 100px;" class="floating-menu-button">
-                <v-icon icon="mdi-menu" start></v-icon>
-                系統選單
-              </v-btn>
-            </template>
-            <v-card>
-              <v-card-text class="pa-6">
-                <nav class="floating-menu">
-                  <router-link :to="link1.to" class="floating-menu-link" :class="{ 'disabled-link': !link1.isEnabled }">
-                    {{ link1.text }}
-                  </router-link>
-                  <router-link :to="link2.to" class="floating-menu-link" :class="{ 'disabled-link': !link2.isEnabled }">
-                    {{ link2.text }}
-                  </router-link>
-                </nav>
-              </v-card-text>
-            </v-card>
-          </v-menu>
-        </div>
-      -->
       </div>
-    </transition>
-
-    <!--註冊-->
-    <transition name="slide-in-right">
-      <div v-if="signUp" class="sign-up">
-        <div style="position: relative; top: 0px;">
-          <v-text-field
-            label="工號"
-            color="primary"
-            prepend-icon="mdi-account"
-            v-model="registerUser.empID"
-            :rules="[requiredRule, empIDRule]"
-
-            @update:focused ="checkUsers"
-            @keypress="handleKeyDown"
-            ref="registerEmpIDInput"
-            style="width:15rem; min-width:15rem; position:relative; left:0em;"
-          />
-
-          <v-text-field
-            label="姓名"
-            color="primary"
-            prepend-icon="mdi-account-edit"
-            v-model="registerUser.name"
-            :rules="[requiredRule, nameRule]"
-            style="width:15rem; min-width:15rem; position:relative; left:0em;"
-          />
-
-          <v-select
-            :items="departments"
-            label="部門"
-            color="primary"
-            prepend-icon="mdi-account-group"
-            v-model="registerUser.dep"
-            :rules="[requiredRule]"
-
-            @update:menu="handleMenuUpdate"
-            @update:modelValue="handleModelValueUpdate"
-
-            style="width:15rem; min-width:15rem; position:relative; left:0em;"
-          />
-
-          <v-text-field
-            label="密碼"
-            color="primary"
-            prepend-icon="mdi-lock"
-            :append-icon="eyeShow1 ? 'mdi-eye-off' : 'mdi-eye'"
-            :type="eyeShow1 ? 'password' : 'text'"
-            @click:append="eyeShow1 = !eyeShow1"
-            v-model="registerUser.password"
-            :rules="[requiredRule, passwordRule]"
-            ref="registerPasswordInput"
-            style="width:15rem; min-width:15rem; position:relative; left:0em;"
-          />
-
-          <v-text-field
-            label="確認密碼"
-            color="primary"
-            prepend-icon="mdi-account-check"
-            :type="eyeShow1 ? 'password' : 'text'"
-            v-model="registerUser.confirmPassword"
-            :rules="[requiredRule, confirmPasswordRule]"
-            @keydown.enter="register"
-            @keydown.tab.prevent="handlePasswordConfirmTab"
-            style="width:15rem; min-width:15rem; position:relative; left:0em;"
-          />
-          <v-btn ref="registerButton" type="submit" color="primary" class="btns" id="register" @click="userRegister">
-            <i class="fa-solid fa-user-plus fa-fade" style="color: #63E6BE;"></i>
-            註冊
-          </v-btn>
-        </div>
-        <p class="lg_mark_texts">員工登入 <a href="#" @click.prevent="togglePanel">登入</a></p>
-
-      </div>
-    </transition>
   </div>
+</div>
 </template>
 
 <script setup>
 import { ref, reactive, defineComponent, watch, onBeforeMount, onMounted, onUnmounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Vue3Marquee } from 'vue3-marquee';
 import { routerLinks } from '../router/index.js';
 import { myMixin } from '../mixins/common.js';
 
@@ -227,44 +96,32 @@ import { useClientIdentifier } from '../mixins/useClientIdentifier.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 import { socket_server_ip }  from '../mixins/crud.js';
 
-//import { empPermMapping, roleMappings, menus } from '../mixins/MenuConstants.js';
 import { empPermMapping, roleMappings, flatItems } from '../mixins/MenuConstants.js';
 
 import eventBus from '../mixins/enentBus.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-//import { marqueest }  from '../mixins/crud.js';
-import { departments }  from '../mixins/crud.js';
+//import { departments }  from '../mixins/crud.js';
 import { loginUser, loginEmpIDInput }  from '../mixins/crud.js';
-//import { temp_desserts }  from '../mixins/crud.js';
 import { temp_desserts2 }  from '../mixins/crud.js';
-//import { setupListUsersWatcher }  from '../mixins/crud.js';
+
 import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-const listDepartments = apiOperation('get', '/listDepartments');
-const listMarquees = apiOperation('get', '/listMarquees');
-
-//const listUsers = apiOperation('get', '/listUsers');
 const listUsers2 = apiOperation('get', '/listUsers2');
 const register = apiOperation('post', '/register');
 const login = apiOperation('post', '/login');
 const reLogin = apiOperation('post', '/reLogin');
 
 //=== component name ==
-defineComponent({
-  name: 'LoginForm2'
-});
+defineComponent({ name: 'LoginForm3' });
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== data ===
-//const imageSrc = ref(require('../assets/pet4-rb.png')); //企業視覺圖像
-//const imageSrc = ref(require('../assets/20250630-chumpower-login.png')); //企業視覺圖像
-//const imageSrc = ref(require('../assets/20250708-chumpower-login-rb.png')); //企業視覺圖像
-const imageSrc = ref(require('../assets/20250708-chumpower-login2.png')); //企業視覺圖像
+const imageSrc = ref(require('../assets/20250708-chumpower-login.png')); //企業視覺圖像
 
 const company_name = ref('銓寶工業股份有限公司')
 //const designer_name = ref('財團法人精密機械研究發展中心設計')
@@ -283,7 +140,6 @@ const caps =ref(false);
 
 const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 
-//const helloArray = ['公告欄: 測試...測試...', '部門A:', '訊息', , '部門B:', '訊息',, '部門C:', '訊息',]
 const registerUser = reactive({
   empID: '',
   name: '',
@@ -295,18 +151,12 @@ const reactiveLinks = reactive(flatItems.value);
 
 const emit = defineEmits(['setLinks']);
 
-//const loginEmpIDInput = ref(null);
 const registerEmpIDInput = ref(null);
 
 const passwordInput = ref(null);
 const loginButton = ref(null);
 const registerButton = ref(null);
 const registerPasswordInput = ref(null);
-
-//const foundDessert_index = ref(-1);
-//const snackbar = ref(false);
-//const snackbar_info = ref('');
-//const snackbar_color = ref('red accent-2');
 
 let myIdField = null;
 let loginEmpID_max_length = 8;
@@ -325,6 +175,15 @@ const clientAppName = 'LoginForm2';
 const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
 const { localIP, userAgent, uuid } = useClientIdentifier()
+
+const backgroundStyle = ref({
+  backgroundImage: `url('../assets/20250708-chumpower-login.png')`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  backgroundSize: `${window.innerWidth}px ${window.innerHeight}px`,
+  width: '100vw',
+  height: '100vh',
+});
 
 //=== mounted ===
 onMounted(async () => {
@@ -361,16 +220,8 @@ onMounted(async () => {
 
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
-  /*
-  window.history.pushState(null, '', window.location.href);
-  popStateHandler.value = (event) => {
-    event.preventDefault();
-    window.history.pushState(null, '', window.location.href);
-  };
-  window.addEventListener('popstate', popStateHandler.value);
-  */
-  //
-  replaceImageColor();  //處理企業圖像
+
+  window.addEventListener('resize', updateBackgroundSize);
 
   myIdField = document.getElementById("loginEmpID");
   //if (myIdField) {
@@ -406,6 +257,8 @@ onUnmounted(() => {
 
   window.removeEventListener('online', updateOnlineStatus);
   window.removeEventListener('offline', updateOnlineStatus);
+
+  window.removeEventListener('resize', updateBackgroundSize);
 });
 
 //=== destroyed ===
@@ -455,31 +308,22 @@ onBeforeMount(() => {
 });
 
 //=== method ===
-/*
-const initialize = () => {
-  console.log("initialize()...")
-
-  //listDepartments();
-
-  listUsers();
-  //setupListUsersWatcher();
-  listDepartments();
-
-  listMarquees();
-};
-*/
 const initialize = async () => {
   try {
     console.log("initialize()...");
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
-    await listMarquees();      // 最後加載廣告牌資料
-    await listDepartments();   // 再加載部門資料
-    //await listUsers();         // 先加載使用者資料
+    //await listMarquees();      // 最後加載廣告牌資料
+    //await listDepartments();   // 再加載部門資料
+
     await listUsers2();         // 先加載使用者資料
   } catch (error) {
     console.error("Error during initialize():", error);
   }
+};
+
+const updateBackgroundSize = () => {
+  backgroundStyle.value.backgroundSize = `${window.innerWidth}px ${window.innerHeight}px`;
 };
 
 const handlePopState = () => {
@@ -638,84 +482,8 @@ const togglePanel = () => {
   signUp.value = !signUp.value;
 };
 
-const replaceImageColor = () => {
-  console.log("replaceImageColor()...");
-
-  const sourceImage = document.getElementById('sourceImage');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-
-  ctx.canvas.willReadFrequently = true;   //啟動 willReadFrequently 優化
-
-  sourceImage.onload = function() {
-    canvas.width = sourceImage.width;
-    canvas.height = sourceImage.height;
-
-    ctx.drawImage(sourceImage, 0, 0);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-
-        // If the pixel is white, make it transparent
-        if (r > 240 && g > 240 && b > 240) {
-            data[i + 3] = 0; // Alpha channel
-        }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  };
-
-  // 觸發圖片加載
-  sourceImage.src = imageSrc.value;
-}
-
-const userRegister = () => {
-  validateFields();       // 輸入資料檢查
-  let temp_routingPriv = initialSelection.join(',');
-  console.log("temp_routingPriv:",temp_routingPriv);
-  let temp_perm=parseInt(getEmpPermKey('員工'));
-
-  const payload = {
-    emp_id: registerUser.empID,
-    emp_name: registerUser.name,
-    dep_name: registerUser.dep,
-    password: registerUser.password,
-    routingPriv: temp_routingPriv,
-    emp_perm: temp_perm,
-  };
-  //register(payload).then(status => {
-  //  status && (resetRegisterForm(), togglePanel());
-  //});
-  register(payload)
-  .finally(() => {
-    resetRegisterForm();
-    togglePanel();
-  });
-};
-
-const resetRegisterForm = () => {
-  registerUser.empID = '';
-  registerUser.name = '';
-  registerUser.dep = '';
-  registerUser.password = '';
-  registerUser.confirmPassword = '';
-};
-// 在工號為7位數時, 則前方自動補0成為8位數
-//const padEmpID = () => {
-  //if (loginUser.loginEmpID.length === 7) {
-  //  loginUser.loginEmpID = loginUser.loginEmpID.padStart(8, '0');
-  //}
-//};
-
 const userLogin = async () => {
   console.log("userLogin()...");
-
-  //const localIP = await getLocalIP();
 
   let payload = {
     empID: loginUser.loginEmpID,
@@ -737,33 +505,10 @@ const userLogin = async () => {
 
     signInUser(data.user)
     console.log("登入成功...", data.user.empID);
-
-  ////} else if (data.forceLogoutRequired) {
-    // ❗ 提示：已在線上登入，顯示強制登出對話框
-    //showForceLogoutDialog.value = true
-    //eventBus.emit('triggerLogout');   // 觸發 'triggerLogout' 事件
-    //socket.value.emit('triggerLogout');  //2025-02-24 add payload
-    //console.log("送出 triggerLogout 強迫登出訊息...");
-
-    // ❗ 提示：已在線上登入，強制登出其他模組
-    //console.log(data);
-  ////  socket.value.emit('triggerLogout', { empID: data.user.empID });
-  ////  console.log("送出 triggerLogout 強迫登出訊息...", data.user.empID);
-  ////
-  ////  signInUser(data.user);
   } else {
     console.log("帳號不存在、密碼錯誤...");
     showSnackbar(data.message, 'red accent-2')
   }
-
-
-  /*
-  login(payload).then(data => {
-    console.log("data:", data);
-
-    data.status ? signInUser(data.user) : showSnackbar(data.message, 'red accent-2');
-  });
-  */
 };
 
 const signInUser = (user) => {
@@ -802,19 +547,6 @@ const signInUser = (user) => {
   const resolvedRoute = router.resolve({ name: router_name });
   const path = resolvedRoute.href;    // 取得解析後的 path
   router.replace({ path });           // 使用 path 來進行導航
-
-  /*
-  //router.push({ name: router_name });
-  const currentState = history.state;
-  router.push({ name: router_name }).then(() => {
-    // 保留現有的歷史狀態
-    history.replaceState(currentState, '', router.resolve({ name: router_name }).href);
-  }).catch(err => {
-    if (err.name !== 'NavigationDuplicated') {
-      throw err;
-    }
-  });
-  */
 };
 
 const removelocalStorage = () => {
@@ -828,7 +560,7 @@ const removelocalStorage = () => {
     localStorage.removeItem('selectedItems');
   }
 };
-
+/*
 const validateFields = () => {
   if (['empID', 'name', 'dep', 'password', 'confirmPassword'].some(field => !registerUser[field])) {
     showSnackbar('所有欄位都需要填!', 'yellow lighten-5');
@@ -840,7 +572,7 @@ const validateFields = () => {
     return;
   }
 };
-
+*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -851,27 +583,27 @@ const showSnackbar = (message, color) => {
 
 const requiredRule = value => !!value || '必須輸入資料...';
 const empIDRule = value => /^[0-9]{7,8}$/.test(value) || '必須是7或8位數字!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
-const nameRule = value => value.length <= 10 || '資料長度太長!';
+//const nameRule = value => value.length <= 10 || '資料長度太長!';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
-const confirmPasswordRule = value => value === registerUser.password || '密碼不相同!';
+//const confirmPasswordRule = value => value === registerUser.password || '密碼不相同!';
 
 const reverseEmpPermMapping = Object.fromEntries(
   Object.entries(empPermMapping).map(([key, value]) => [value, key])
 );
 
-const getEmpPermKey = (permText) => {
-  return reverseEmpPermMapping[permText] || '未知';
-};
+//const getEmpPermKey = (permText) => {
+//  return reverseEmpPermMapping[permText] || '未知';
+//};
+
+//const disableBackButton = () => {
+//  window.history.pushState(null, '', window.location.href);
 //
-const disableBackButton = () => {
-  window.history.pushState(null, '', window.location.href);
-
-  popStateHandler.value = (event) => {
-    window.history.pushState(null, '', window.location.href);
-  };
-
-  window.addEventListener('popstate', popStateHandler.value);
-};
+//  popStateHandler.value = (event) => {
+//    window.history.pushState(null, '', window.location.href);
+//  };
+//
+//  window.addEventListener('popstate', popStateHandler.value);
+//};
 
 const enableBackButton = () => {
   window.removeEventListener('popstate', popStateHandler.value);
@@ -885,8 +617,8 @@ const allowBackspaceInInputs = (event) => {
     event.preventDefault();
   }
 };
-//
 
+/*
 const getLocalIP = () => {
   return new Promise((resolve, reject) => {
     const pc = new RTCPeerConnection({
@@ -912,6 +644,7 @@ const getLocalIP = () => {
     };
   });
 };
+*/
 </script>
 
 <style lang="scss" scoped>
@@ -920,16 +653,22 @@ const getLocalIP = () => {
 );
 @import "../styles/variables.scss";
 
-.container {
-  position: relative;
-  width: 768px;
-  height: 480px;
-  border-radius: 10px;
+html, body {
+  margin: 0;
+  padding: 0;
   overflow: hidden;
-  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2), 0 10px 10px rgba(0, 0, 0, 0.2); //區塊陰影
-  background: linear-gradient(to left, $SYSTEM_BACKGROUND_COLOR, #f2f2f2);                     //漸層顏色
-  //margin-top: 10vh;
-  margin-top: 20px;
+  height: 100%;
+}
+
+.container {
+  //z-index: 3;         // 確保內容在背景上方
+  //max-width: 100%;
+  //max-height: 100%;
+  //overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;   // 防止內容溢出
 }
 
 .overlay-container {
@@ -946,10 +685,10 @@ const getLocalIP = () => {
   background: none;
 }
 
-.sign-in, .sign-up {
+.sign-in {
   position: absolute;
   top: 0;
-  left: -60px;
+  left: 20px;
   width: 50%;
   height: 100%;
   display: flex;
@@ -964,133 +703,13 @@ const getLocalIP = () => {
   border: none;
   box-shadow: none;
 }
+
 .sign-in {
   z-index: 2;
 }
-.sign-up {
-  z-index: 1;
-}
 
-.floating-menu-wrapper {
-  position: relative;
-    right: -180px;
-    top: -274px;
-}
-.floating-menu-button {
-  width: 100px;
-}
-.floating-menu {
-  background: #f9f9f9;
-  padding: 5px;
-  width: 130px;
-  z-index: 100;
-  position: fixed;
-  top: 0px;
-  right: -12px;
-  border-radius: 5px;
-}
-.floating-menu .floating-menu-link {
-  font-size: 0.9em;
-  margin: 0 0.5em;
-  transition: color 0.3s, background-color 0.3s;
-  padding-top: 10px;
-  padding-bottom: 10px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-decoration: none;
-  //color: inherit;
-  font-weight: bolder;
-}
-.floating-menu .floating-menu-link:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-  color: #01d1b7;
-}
-
-/*
-.disabled-link {
-  color: rgba(0, 0, 0, 0.2);  // 灰色並且透明度淡
-  pointer-events: none;           // 禁用點擊事件
-  cursor: not-allowed;            // 禁用指針顯示
-  //font-weight: 400;
-}
-*/
-
-/*
-h3 {
-  margin: 0;
-  font-family: "Noto Sans TC", "Microsoft Yahei", "微軟雅黑", sans-serif;
-}
-
-button {
-  border-radius: 20px;
-  border: 1px solid #009345;
-  background-color: #009345;
-  color: #fff;
-  font-size: 1rem;
-  font-weight: bold;
-  padding: 10px 40px;
-  margin-top: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 0.1s ease-in;
-
-  &:active {
-    transform: scale(0.9);
-  }
-
-  &:focus {
-    outline: none;
-  }
-}
-*/
-.v-text-field,
-.v-select {
+.v-text-field, .v-select {
   min-width: 17vw;
-}
-
-.block_ticker {
-  font-size: 14px;
-  border-block: 1px solid red;
-  padding-block: 8px;
-  display: flex;
-  gap: 2rem
-}
-
-.block_ticker ul {
-  list-style: none;
-  font-size: 12px;
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap:2rem;
-}
-
-.mark_texts {
-  margin-top: -10px;
-  margin-bottom: 1rem;
-  font-size: 12px;
-  color:#36558b;
-}
-
-.lg_mark_texts {
-  margin-top: 10px;
-  margin-bottom: 1rem;
-  font-size: 12px;
-  color:#36558b;
-}
-
-.mark_texts > a {
-  margin-top: 1rem;
-}
-
-.lg_mark_texts > a {
-  margin-top: 1rem;
 }
 
 .logo_img {
@@ -1107,15 +726,17 @@ button {
   position: absolute;   // 以 absolute 更精確地控制位置
   bottom: -18px;        // 顯示在容器底部
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   opacity: 0.5;
   color: #000;
   //background: rgba(255, 255, 255, 0.7);   // 添加背景以便更清晰地看到文字
   padding: 5px;
 }
+
 .logo_text {
   left: 400px;       // 顯示在容器左邊
 }
+
 .logo_designer_text {
   left: 560px;      // 顯示在容器左邊
 }
@@ -1128,35 +749,6 @@ button {
   height: auto;
 }
 
-//.logo_text {
-  //position: relative;
-  //top: 250px;
-  //font-size: 12px;
-  //right: 60px;
-  //border: 1px solid red;
-  //max-width: 100%;
-  //overflow: visible;
-//}
-
-//.logo_designer_text {
-  //position: relative;
-  //top: 250px;
-  //font-size: 12px;
-  //right: 0px;
-  //color: blue;
-  //font-weight: 700;
-  //opacity: 0.5;
-  //border: 1px solid green;
-  //max-width: 100%;
-  //overflow: visible;
-//}
-
-@keyframes blinker {
-  50% {
-    opacity: 0;
-  }
-}
-
 .btns {
   width: auto;
   height: 3.077rem;
@@ -1167,7 +759,6 @@ button {
   background-color: #8BB5D6;
   border-radius: 0.615rem;
   border: none;
-  //margin-top: 1.538rem;
   margin-top: 10px !important;
   padding: 0rem 1.538rem;
   transition: border 0.05s ease;
@@ -1195,7 +786,6 @@ button#register {
   color:#36558b !important;
 }
 
-/* turn off min-width for all buttons */
 :deep(.v-btn) {
   min-width: 0;
 }
@@ -1204,30 +794,38 @@ button#register {
   font-size: 14px;
 }
 
-//.password-field .v-input__details {
 :deep(.v-input__details) {
   position: relative;
   right: 25px !important;
   width: 270px !important;
 }
-
-.slide-in-left-enter-active,
-.slide-in-left-leave-active {
-  transition: all 0.5s ease;
+/*
+.background-container {
+  width: 100vw;
+  height: 100vh;
+  background-image: url('../assets/20250708-chumpower-login.png');
+  background-size: cover;                         // 讓背景覆蓋整個視窗
+  //background-position: center + 150px;
+  background-position: center calc(50% - 40px);
+  background-repeat: no-repeat;                   // 不重複圖片
+  overflow: hidden;                               // 防止滾動
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+*/
 
-.slide-in-left-enter,
-.slide-in-left-leave-to {
-  transform: translateX(100%);
-}
-
-.slide-in-right-enter-active,
-.slide-in-right-leave-active {
-  transition: all 0.5s ease;
-}
-
-.slide-in-right-enter,
-.slide-in-right-leave-to {
-  transform: translateX(-100%);
+.background-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background-image: url('../assets/20250708-chumpower-login-3.png');
+  background-position: center;
+  //background-position: center calc(50% - 30px);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  //background-size: cover;
+  background-size:auto 100%;    // height covering the whole page height
+  overflow: hidden;
 }
 </style>

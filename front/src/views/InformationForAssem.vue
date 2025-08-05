@@ -212,7 +212,8 @@
             <v-dialog v-model="process_dialog" max-width="1280px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  裝配紀錄
+                  裝配報工紀錄 -
+                  <span style="font-size: 20px;">{{ current_order_num }}</span>
                   <v-fade-transition mode="out-in">
                     <v-btn
                       style="position: relative; right: -550px;"
@@ -233,9 +234,9 @@
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left">備料/組裝</th>
-                        <th class="text-left">開始時間</th>
-                        <th class="text-left">結束時間</th>
+                        <th class="text-left" style="width:240px;">備料/組裝</th>
+                        <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
+                        <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
                         <th class="text-left">領料數量</th>
                         <th class="text-left">實際耗時(分)</th>
                         <th class="text-left">實際工時(分)</th>
@@ -253,10 +254,14 @@
                         }"
                       >
                         <td>{{ process_item.seq_num }}</td>
-                        <td>{{ process_item.process_type }}</td>
-                        <td>{{ process_item.begin_time }}</td>
-                        <td>{{ process_item.end_time }}</td>
-                        <td>{{ process_item.total_delivery_qty }}</td>
+                        <td style="width: 240px;">
+                          {{ process_item.process_type }}
+                          <span style="color:red">{{ process_item.normal_type }}</span>
+                        </td>
+                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
+                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
+                        <!--<td>{{ process_item.total_delivery_qty }}</td>-->
+                        <td>{{ process_item.process_work_time_qty }}</td>
                         <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
@@ -446,6 +451,8 @@ const search = ref('');
 
 const history = ref(false);
 const currentUser = ref({});
+
+const current_order_num = ref('');
 
 //const showExplore = ref(false);
 //const showVirtualTable = ref(false);
@@ -950,6 +957,7 @@ const getServerIP = async () => {   // 定義一個異步函數來請求socket�
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),", item.order_num);
 
+  current_order_num.value = item.order_num;
   let payload = {
     order_num: item.order_num,
   };

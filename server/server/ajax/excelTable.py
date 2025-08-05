@@ -10,6 +10,7 @@ import math
 
 import pymysql
 from sqlalchemy import exc
+from sqlalchemy import exists
 
 import re
 
@@ -18,6 +19,7 @@ import openpyxl
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from database.tables import User, Session, Material, Bom, Assemble, Product
+from database.tables import ProcessedFile
 from flask import Blueprint, jsonify, request, current_app
 
 #from werkzeug.utils import secure_filename
@@ -80,6 +82,57 @@ def pad_zeros(str):
     return str.zfill(4)
     #else:
     #    return str.zfill(length + 3)
+
+'''
+def clean_nan_values(obj):
+    """
+    將 dict 或 ORM object 中的 nan / NaT 轉換為 None
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, float) and math.isnan(v):
+                obj[k] = None
+            elif isinstance(v, pd._libs.tslibs.nattype.NaTType):
+                obj[k] = None
+    else:
+        # 處理 SQLAlchemy ORM 物件
+        for attr, value in vars(obj).items():
+            if attr.startswith("_"):  # 跳過 SQLAlchemy 私有屬性
+                continue
+            if isinstance(value, float) and math.isnan(value):
+                setattr(obj, attr, None)
+            elif isinstance(value, pd._libs.tslibs.nattype.NaTType):
+                setattr(obj, attr, None)
+    return obj
+
+
+def normalize_order_number(value):
+    """將單號轉為純字串，不帶小數點"""
+    if pd.isna(value):
+        return ''
+    try:
+        return str(int(float(value)))  # 例如 121100017702.0 -> '121100017702'
+    except ValueError:
+        return str(value).strip()
+'''
+
+def clean_nan(value):
+    """清理單一值的 NaN / NaT，轉為 None"""
+    if pd.isna(value) or str(value).lower() == 'nan':
+        return None
+    return value
+
+def normalize_order_number(value):
+    """
+    將單號轉為純字串，不帶小數點，並處理 NaN。
+    例如：121100017702.0 -> '121100017702'
+    """
+    if pd.isna(value) or str(value).lower() == 'nan':
+        return ''
+    try:
+        return str(int(float(value)))
+    except (ValueError, TypeError):
+        return str(value).strip()
 
 
 @excelTable.route("/fetchGlobalVar", methods=['GET'])
@@ -278,40 +331,77 @@ def read_all_excel_files():
 
   return_value = False
   return_message1 = '錯誤, 沒有工單檔案!'
-  return_message2 = ''
-  return_message = ''
-  file_count_total = 0  #檔案總數目
-  file_count_ok = 0     #檔案內總筆數
+  file_count_total = 0  #檔案總數
 
   # 2025-06-12, 改順序
   code_to_assembleStep = {    #組裝區工作順序, 3:最優先
     '109': 3,
-    #'106': 2,
-    #'110': 1,
-    '106': 1,
-    '110': 2,
+    #'106': 2, '110': 1,
+    '106': 1, '110': 2,
   }
 
   _base_dir = current_app.config['baseDir']
   _target_dir = _base_dir.replace("_in", "_out")
   print("read excel files, 目錄: ", _base_dir)
   print("move excel files to, 目錄: ", _target_dir)
+  '''
+  # 取得 excel_out 內已處理檔案（移除 _copy_x 尾碼以便比對）
+  processed_files = {
+      re.sub(r'_copy_\d+', '', f)
+      for f in os.listdir(_target_dir)
+      if os.path.isfile(os.path.join(_target_dir, f)) and f.endswith('.xlsx')
+  }
+  '''
 
   # 讀取指定目錄下的所有指定檔案名稱
   #files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.startswith('Report_') and f.endswith('.xlsx')]
-  files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.endswith('.xlsx')]
-  if (files):   #有工單檔案, if condition_a
-    sheet_names_to_check = [
-      current_app.config['excel_product_sheet'],
-      current_app.config['excel_bom_sheet'],
-      current_app.config['excel_work_time_sheet']
-    ]
-    _startRow = int(current_app.config['startRow'])
+  #files = [f for f in os.listdir(_base_dir) if os.path.isfile(os.path.join(_base_dir, f)) and f.endswith('.xlsx')]
+  files = [
+     f for f in os.listdir(_base_dir)
+     if os.path.isfile(os.path.join(_base_dir, f))
+     and f.endswith('.xlsx')
+  ]
 
-    s = Session()
+  '''
+  # 排除已處理的檔案
+  files = [
+      f for f in os.listdir(_base_dir)
+      if os.path.isfile(os.path.join(_base_dir, f))
+        and f.endswith('.xlsx')
+        and f not in processed_files
+  ]
+  '''
+  if not files:
+    return jsonify({'status': False, 'message': return_message1})
 
-    for _file_name in files:  #檔案讀取, for loop_1
-      file_count_total +=1
+  #if (files):   #有工單檔案, if condition_a
+  sheet_names_to_check = [
+    current_app.config['excel_product_sheet'],
+    current_app.config['excel_bom_sheet'],
+    current_app.config['excel_work_time_sheet']
+  ]
+  #_startRow = int(current_app.config['startRow'])
+
+  s = Session()
+
+  for _file_name in files:  #檔案讀取, for loop_1
+    file_count_total +=1
+    file_name_base = re.sub(r'_copy_\d+', '', _file_name)   # 從檔名中移除像 _copy_1、_copy_2 這樣的字串，取得原始檔案名稱
+
+    # 檢查是否已處理過
+    already_processed = s.query(
+      exists().where(ProcessedFile.file_name == file_name_base)
+    ).scalar()
+
+    if already_processed:
+      temp_msg =f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
+      print(temp_msg)
+      _path = os.path.join(_base_dir, _file_name)
+      file_count_total -=1
+      return_message1 = temp_msg
+
+    #  continue
+    else:
       _path = _base_dir + '\\' + _file_name
       global_var = _path + ' 檔案讀取中...'
 
@@ -319,142 +409,128 @@ def read_all_excel_files():
         workbook = openpyxl.load_workbook(filename=file, read_only=True)
         return_value = True
         return_message1 = ''
-        missing_sheets = [sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames]
+
+        #missing_sheets = [sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames]
+        missing_sheets = [
+          sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames
+        ]
 
         if missing_sheets:
-          return_value = False
-          return_message1 = '錯誤, 工單檔案內沒有相關工作表!'
-          print(return_message1)
-          break
+          return jsonify({'status': False, 'message': '錯誤, 工單檔案內沒有相關工作表!'})
+
+          #return_value = False
+          #return_message1 = '錯誤, 工單檔案內沒有相關工作表!'
+          #print(return_message1)
+          #break
 
         print(sheet_names_to_check[0] + ' sheet exists, data reading...')
 
         material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
-        bom_df = pd.read_excel(_path, sheet_name=1)       # Second sheet for Bom
-        assemble_df = pd.read_excel(_path, sheet_name=2)  # 3rd sheet for Assemble
+        bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
+        assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
 
-        # Insert Material data, for loop_1_a_1
-        for index, row in material_df.iloc[0:].iterrows():
-          ### 新增 Material table 資料
-          tempQty=row['數量']
-          temp_sd_time_B109 =  0 if math.isnan(row['B109組裝工時(分)']) else row['B109組裝工時(分)']
-          temp_sd_time_B106 =  0 if math.isnan(row['B106雷刻工時(分)']) else row['B106雷刻工時(分)']
-          temp_sd_time_B110 =  0 if math.isnan(row['B110檢驗工時(分)']) else row['B110檢驗工時(分)']
+        # 統一處理 BOM 和 Assemble 的 訂單欄位
+        if '訂單' in bom_df.columns:
+            bom_df['訂單'] = bom_df['訂單'].apply(normalize_order_number)
+        assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].apply(normalize_order_number)
 
-          material = Material(
-            order_num=row['單號'],
-            material_num=row['料號'],
-            material_comment=row['說明'],
-            material_qty=tempQty,
-            material_date=convert_date(row['立單日']),
-            material_delivery_date=convert_date(row['交期']),
-            total_delivery_qty=tempQty,
-            sd_time_B109 = "{:.2f}".format(temp_sd_time_B109),
-            sd_time_B106 = "{:.2f}".format(temp_sd_time_B106),
-            sd_time_B110 = "{:.2f}".format(temp_sd_time_B110),
-          )
-          s.add(material)
+        # 處理 Material
+        for _, row in material_df.iterrows(): # for loop_material
+            order_num = normalize_order_number(row.get('單號'))
+            if not order_num:
+                print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
+                continue
 
-          s.flush()
-          ###
+            tempQty = clean_nan(row.get('數量')) or 0
+            temp_sd_time_B109 = clean_nan(row.get('B109組裝工時(分)')) or 0
+            temp_sd_time_B106 = clean_nan(row.get('B106雷刻工時(分)')) or 0
+            temp_sd_time_B110 = clean_nan(row.get('B110檢驗工時(分)')) or 0
 
-          ### 新增 Product table 資料
-          product = Product(
-            material_id=material.id,
-          )
-          s.add(product)
-
-          s.commit()
-          ###
-
-          ### 新增 Bom table 資料
-          material_order = str(row.iloc[1]).strip()                 #確保 row.iloc[1] 為 str 型別
-
-          bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)      #檢查是否存在 NaN 值
-          bom_df['訂單'] = bom_df['訂單'].fillna('').astype(str)     #保持字串型態
-          bom_entries = bom_df[bom_df.iloc[:, 0] == material_order] # 查詢對應的 BOM 項目
-          print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
-
-          # Insert corresponding BOM entries, for loop_1_a_1_a
-          for bom_index, bom_row in bom_entries.iterrows():
-
-            bom = Bom(
-                material_id=material.id,                  # Use the ID of the inserted material
-                seq_num=bom_row['預留項目'],
-                material_num=bom_row['物料'],
-                material_comment=bom_row['物料說明'],
-                req_qty=bom_row['需求數量'],
-                start_date=convert_date(row['交期'])
+            material = Material(
+                order_num=order_num,
+                material_num=clean_nan(row.get('料號')) or '',
+                material_comment=clean_nan(row.get('說明')) or '',
+                material_qty=tempQty,
+                material_date=convert_date(row.get('立單日')),
+                material_delivery_date=convert_date(row.get('交期')),
+                total_delivery_qty=tempQty,
+                sd_time_B109="{:.2f}".format(float(temp_sd_time_B109)),
+                sd_time_B106="{:.2f}".format(float(temp_sd_time_B106)),
+                sd_time_B110="{:.2f}".format(float(temp_sd_time_B110)),
             )
-            s.add(bom)
-          #end for loop_1_a_1_a
-          s.commit()
-          ###
+            s.add(material)
+            s.flush()  # 確保 material.id 可用
 
-          ### 新增 Assemble table 資料
-          assemble_entries = assemble_df[assemble_df.iloc[:, 0].astype(str).str.strip() == material_order.strip()]  #清除空格
-          print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+            # Product
+            product = Product(material_id=material.id)
+            s.add(product)
+            s.commit()
 
-          order_nums = set()  # 用於追踪已處理過的 order_num
+            # BOM
+            bom_entries = bom_df[bom_df['訂單'] == order_num]
+            print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
 
-          # Insert corresponding Assemble entries, for loop_1_a_1_b
-          for assemble_index, assemble_row in assemble_entries.iterrows():
-            # 處理 NaN 值，將 NaN 替換為 None（SQLAlchemy 可以接受 None）
-            #reason = assemble_row['差異原因'] if not pd.isna(assemble_row['差異原因']) else None
-            #
-            #emp_num = assemble_row['員工號碼'] if not pd.isna(assemble_row['員工號碼']) else None
-            #
-            emp_num = assemble_row.get('員工號碼')
-            emp_num = emp_num if not pd.isna(emp_num) else None
-            #confirm_comment = assemble_row['確認內文'] if not pd.isna(assemble_row['確認內文']) else None
+            for _, bom_row in bom_entries.iterrows(): # for loop_bom
+                bom = Bom(
+                    material_id=material.id,
+                    seq_num=clean_nan(bom_row.get('預留項目')),
+                    material_num=clean_nan(bom_row.get('物料')),
+                    material_comment=clean_nan(bom_row.get('物料說明')),
+                    req_qty=clean_nan(bom_row.get('需求數量')),
+                    start_date=convert_date(row.get('交期'))
+                )
+                s.add(bom)
+            s.commit()
 
-            #GMEIN = assemble_row['確認良品率 (GMEIN)']
-            #if GMEIN == 0:
-            #  continue
+            # Assemble
+            assemble_entries = assemble_df[assemble_df.iloc[:, 0] == order_num]
+            print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
 
-            workNum = assemble_row['工作中心']
-            if workNum in order_nums:
-              continue
-            order_nums.add(workNum)
+            processed_work_nums = set()
+            for _, assemble_row in assemble_entries.iterrows(): # for loop_assemble
+                workNum = clean_nan(assemble_row.get('工作中心'))
+                if not workNum or workNum in processed_work_nums:
+                    continue
+                processed_work_nums.add(workNum)
 
-            code = workNum[1:]             # 取得字串中的代碼 (去掉字串中的第一個字元)
-            step_code = code_to_assembleStep.get(code, 0)   #
+                code = workNum[1:]
+                step_code = code_to_assembleStep.get(code, 0)
+                #abnormal_field = (workNum == 'B109')     # 2025-07-29 modify
+                abnormal_field = False
 
-            abnormal_field=False
-            if (workNum == 'B109'):   #組裝途程, 異常欄位disable
-              abnormal_field=True
+                assemble = Assemble(
+                    material_id=material.id,
+                    material_num=clean_nan(assemble_row.get('物料')),
+                    material_comment=clean_nan(assemble_row.get('物料說明')),
+                    seq_num=clean_nan(assemble_row.get('作業')),
+                    work_num=workNum,
+                    process_step_code=step_code,
+                    input_abnormal_disable=abnormal_field,
+                    user_id=''
+                )
+                s.add(assemble)
+            s.commit()
+        # end for loop_material
 
-            assemble = Assemble(
-              material_id=material.id,                    # Use the ID of the inserted material
-              material_num=assemble_row['物料'],
-              material_comment=assemble_row['物料說明'],
-              seq_num=assemble_row['作業'],
-              work_num = workNum,
-              process_step_code = step_code,
-              input_abnormal_disable = abnormal_field,
-              #user_id = emp_num,
-              user_id = '',
-            )
-            s.add(assemble)
-          #end for loop_1_a_1_b
-          s.commit()
-          ###
-        #end for loop_1_a_1
-      #end with loop_1_a
+        # ✅ 資料處理完後，記錄檔案處理紀錄
+        processed_file = ProcessedFile(file_name=file_name_base)
+        s.add(processed_file)
+        s.commit()
 
-      try:
-        unique_filename = get_unique_filename(_target_dir, _file_name, "copy")  # 生成唯一檔案名稱
-        unique_target_path = os.path.join(_target_dir, unique_filename)         # 獲取完整目標路徑
-        print("unique_target_path:",unique_target_path)
-        shutil.move(_path, unique_target_path)                                  # 移動檔案到目標路徑
-        print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
-      except PermissionError as e:
-        print(f"無法移動文件 {_path}，因為它仍然被佔用: {e}")
-      except Exception as e:
-        print(f"移動檔案時發生錯誤: {e}")
+    # 移動處理完成的檔案
+    try:
+      unique_filename = get_unique_filename(_target_dir, _file_name, "copy")
+      unique_target_path = os.path.join(_target_dir, unique_filename)
+      print("unique_target_path:", unique_target_path)
+      shutil.move(_path, unique_target_path)
+      print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+    except Exception as e:
+      print(f"移動檔案時發生錯誤: {e}")
 
-    #end for loop_1
-    s.close()
+    continue
+
+  #end for loop_1
+  s.close()
   #end if condition_a
 
   return jsonify({
@@ -521,7 +597,9 @@ def modify_excel_files():
 
         print(sheet_names_to_check[0] + ' sheet exists, data reading...')
 
-        bom_df = pd.read_excel(_path, sheet_name=1)               # Second sheet for Bom
+        #bom_df = pd.read_excel(_path, sheet_name=1)               # Second sheet for Bom
+        bom_df = pd.read_excel(_path, sheet_name=1).replace({pd.NaT: None})   #為 bom_entries 清理 NaN
+        bom_df = bom_df.fillna('')                                            #DataFrame 讀取後 .fillna('') 處理空值
 
         bom_df['訂單'] = bom_df['訂單'].fillna(0).astype(int)     # 檢查是否存在 NaN 值
         bom_df['訂單'] = bom_df['訂單'].fillna('').astype(str)    # 保持字串型態

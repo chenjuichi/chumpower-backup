@@ -136,7 +136,8 @@ def reLogin():
 
     # ✅ 若已經登入且 IP 不同，禁止登入（或選擇強制登出）
     #if user.isOnline and user.last_login_ip != current_ip:
-    if user.isOnline and user.last_login_ip != local_ip:
+    #if user.isOnline and user.last_login_ip != local_ip:
+    if user.isOnline and user.last_login_ip and user.last_login_ip.strip() and user.last_login_ip != local_ip:
     #if user.isOnline:
       #status = False
       forceLogoutRequired = True
@@ -582,16 +583,19 @@ def get_processes_by_order_num():
         status = code_to_name.get(record.process_type, '空白')
         print("name:", record.user_id)
         name = record.user_id.lstrip("0")
-        if record.process_type == 1:
+        if record.process_type == 1 or record.process_type == 21 or record.process_type == 22 or record.process_type == 23 or record.process_type == 31:
           user = s.query(User).filter_by(emp_id=record.user_id).first()
           status = status + '(' + name + user.emp_name + ')'
+        #if not record.normal_work_time:
+        #  status = status + ' - 異常整修'
         print("status:", status)
         seq_num = seq_num + 1
         _object = {
             'seq_num': seq_num,
             'id': material.id,
             'order_num': material.order_num,
-            'total_delivery_qty': material.total_delivery_qty,
+            #'total_delivery_qty': material.total_delivery_qty,
+            'process_work_time_qty': '' if (record.process_type == 2 or record.process_type == 3 or record.process_type == 19 or record.process_type == 29) else record.process_work_time_qty,
             'sd_time_B109': material.sd_time_B109,
             'sd_time_B106': material.sd_time_B106,
             'sd_time_B110': material.sd_time_B110,
@@ -602,6 +606,7 @@ def get_processes_by_order_num():
             'work_time': work_time_str if record.process_type != 31 else '',
             'single_std_time': single_std_time_str if record.process_type != 31 else '',
             'process_type': status,
+            'normal_type': ' - 異常整修' if not record.normal_work_time else '',
             'create_at': record.create_at
         }
         _results.append(_object)
@@ -888,7 +893,8 @@ def get_informations_for_assemble_error_by_history():
       temp_show2_ok = int(material_record.show2_ok)
 
       for assemble_record in material_record._assemble:   # for loop b
-        if assemble_record.alarm_enable:   #False:異常
+        #if assemble_record.alarm_enable:   #False:異常
+        if assemble_record.alarm_enable and assemble_record.isAssembleFirstAlarm:   #False:異常
           continue
 
         assemble_ok = True
@@ -980,6 +986,7 @@ def get_informations_for_assemble_error_by_history():
           'show3_ok': str3[int(material_record.show3_ok)],          # 現況備註
           'cause_user': writerName,   #填寫人員
           'user': user.emp_name,      #檢點人員
+          #'work_num'
           #'user': user_id,
           'work': work,
           #**abnormal_cause                                         # 將 cause_id, cause_number, cause_message 展開加入字典
@@ -1346,7 +1353,7 @@ def get_materials_and_assembles_by_user():
             assemble_record.isAssembleStationShow
            ):
         '''
-        if (assemble_record.user_id != _user_id):
+        if (assemble_record.user_id != _user_id):   # 相同登入者
           continue
 
         #print("1. :", assemble_record.input_disable, assemble_record.input_end_disable, assemble_record.isAssembleStationShow)
@@ -1413,11 +1420,11 @@ def get_materials_and_assembles_by_user():
         #
 
         _object = {
-          'index': index,                             #agv送料序號
-          'id': material_record.id,                   #訂單編號
-          'order_num': material_record.order_num,                   #訂單編號
-          'assemble_work': format_name,                             #工序
-          'material_num': material_record.material_num,             #物料編號
+          'index': index,                                   #agv送料序號
+          'id': material_record.id,                         #訂單編號
+          'order_num': material_record.order_num,           #訂單編號
+          'assemble_work': format_name,                     #工序
+          'material_num': material_record.material_num,     #物料編號
           #'assemble_process': '' if (num > 2 and not step_enable) else str2[num],       #途程目前狀況 isTakeOk & step_enable
           'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
           'assemble_process_num': num,
@@ -1438,11 +1445,17 @@ def get_materials_and_assembles_by_user():
           'receive_qty': assemble_record.completed_qty,                                 #組裝區領料完成數量
           'delivery_date': material_record.material_delivery_date,                      #交期
           'delivery_qty': material_record.delivery_qty,                                 #現況數量
-          'assemble_qty': material_record.assemble_qty,                                 #(組裝）完成數量
+          #'assemble_qty': material_record.assemble_qty,                                 #(組裝）完成數量
+          'abnormal_qty': assemble_record.isAssembleFirstAlarm_qty if code == '109' else assemble_record.abnormal_qty,
+
           'total_assemble_qty': material_record.total_assemble_qty,                     #已(組裝）完成總數量
 
           'comment': cleaned_comment,                                                   #說明
           'isAssembleAlarm' : material_record.isAssembleAlarm,
+
+          'isAssembleFirstAlarm' : assemble_record.isAssembleFirstAlarm,                # 2025-07-24
+          'isAssembleFirstAlarm_qty' : assemble_record.isAssembleFirstAlarm_qty,
+
           'alarm_enable' : assemble_record.alarm_enable,
           'whichStation' : material_record.whichStation,
           'isTakeOk': material_record.isAssembleStation3TakeOk,                         # true:組裝站製程3完成(最後製程)
@@ -1458,6 +1471,12 @@ def get_materials_and_assembles_by_user():
           'input_end_disable': assemble_record.input_end_disable,
           'input_abnormal_disable': assemble_record.input_abnormal_disable,
           'process_step_enable': step_enable,
+
+          'code': code,
+
+          'assemble_count': len(material_record._assemble),
+
+          'is_copied_from_id': assemble_record.is_copied_from_id,
         }
 
         processed_records.add((order_num_id, format_name))

@@ -19,9 +19,32 @@
       <v-card-title class="text-h6">選擇上傳類型</v-card-title>
       <v-card-text class="d-flex flex-column align-center">
         <v-radio-group v-model="uploadType" column>
-          <v-radio label="上傳工單 (Excle)" value="excel" />
+          <v-radio value="excel">
+            <template #label>
+              上傳工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
+          <!--
+          <v-radio label="上傳工單 (Excel)" value="excel" />
           <v-radio label="上傳物料清單 (PDF)" value="pdf" />
           <v-radio label="上傳領退料單 (PDF)" value="pdf1" />
+          -->
+          <v-radio value="pdf">
+            <template #label>
+              上傳物料清單 (PDF
+              <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
+              )
+            </template>
+          </v-radio>
+          <v-radio value="pdf1">
+            <template #label>
+              上傳領退料單 (PDF
+              <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
+              )
+            </template>
+          </v-radio>
         </v-radio-group>
       </v-card-text>
       <v-card-actions>

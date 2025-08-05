@@ -30,7 +30,8 @@ import J4 from '../views/dataForMachineAlarm.vue';
 
 //import MyTable from '../views/MyTable.vue';
 //import LoginRegister from '@/views/LoginRegister.vue';
-import LoginRegister from '../views/LoginForm2.vue';
+//import LoginRegister from '../views/LoginForm2.vue';
+import LoginRegister from '../views/LoginForm3.vue';
 import Employer from '../views/Employer.vue';
 import Main from '../views/Main.vue';
 import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面

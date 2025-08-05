@@ -302,6 +302,13 @@
       </div>
     </template>
 
+    <!-- 自訂 '點檢人員' 欄位 -->
+    <template v-slot:item.user="{ item }">
+        <div>
+          {{item.work}}-{{ item.user }}
+        </div>
+    </template>
+
     <!-- 自訂 '說明' 欄位 -->
     <template v-slot:item.comment="{ item }">
       <div>
@@ -323,7 +330,6 @@
 
         class="custom-combobox"
         @update:search="onSearchUpdate"
-
 
         @update:menu="(isOpen) => onMenuUpdate(isOpen, item)"
         :ref="el => setComboboxRef(el, item.order_num)"
@@ -403,11 +409,11 @@ const route = useRoute(); // Initialize router
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:110 },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:140 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
   { title: '交期', sortable: false, key: 'delivery_date', width:90 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:40 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:40 },
-  { title: '點檢人員', sortable: false, key: 'user', width:110 },
+  { title: '點檢人員', sortable: false, key: 'user', width:120 },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
   { title: '異常原因', sortable: false, key: 'cause_message' },
   //{ title: '異常原因填寫', sortable: false, key: 'cause_message' },

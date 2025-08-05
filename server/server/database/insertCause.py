@@ -135,51 +135,51 @@ new_cause = AbnormalCause(number='M01031', message='爪軸GO下不去')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01032', message='驗不起來(對點)')
+new_cause = AbnormalCause(number='M02032', message='驗不起來(對點)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01033', message='驗不起來(高點不同)')
+new_cause = AbnormalCause(number='M02033', message='驗不起來(高點不同)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01034', message='驗不起來(弧度不良)')
+new_cause = AbnormalCause(number='M02034', message='驗不起來(弧度不良)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01035', message='驗不起來(偏擺過大)')
+new_cause = AbnormalCause(number='M02035', message='驗不起來(偏擺過大)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01036', message='驗不起來(高點不同，對點)')
+new_cause = AbnormalCause(number='M02036', message='驗不起來(高點不同，對點)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01037', message='驗不起來(高點不同，弧度不良)')
+new_cause = AbnormalCause(number='M02037', message='驗不起來(高點不同，弧度不良)')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01038', message='卡死')
+new_cause = AbnormalCause(number='M02038', message='卡死')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01039', message='作動不順暢')
+new_cause = AbnormalCause(number='M02039', message='作動不順暢')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01040', message='固定環卡砂')
+new_cause = AbnormalCause(number='M02040', message='固定環卡砂')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01041', message='內孔偏擺過大')
+new_cause = AbnormalCause(number='M02041', message='內孔偏擺過大')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01042', message='組裝後偏擺過大')
+new_cause = AbnormalCause(number='M02042', message='組裝後偏擺過大')
 s.add(new_cause)
 insert_count +=1
 
-new_cause = AbnormalCause(number='M01043', message='M8攻牙同心不良')
+new_cause = AbnormalCause(number='M02043', message='M8攻牙同心不良')
 s.add(new_cause)
 insert_count +=1
 

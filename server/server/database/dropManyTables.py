@@ -20,6 +20,8 @@ def drop_table(table_name):
 s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
 
 # 執行多個資料表的 DROP
+drop_table('processed_file')
+
 drop_table('bom')
 drop_table('assemble')
 drop_table('product')

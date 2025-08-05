@@ -465,7 +465,7 @@ export const apiOperation = (operation, path, payload) => {
       .catch((error) => {
         // 處理錯誤情況，並顯示 Snackbar 提示
         console.error(error);
-        showSnackbar('錯誤! API 連線問題...', 'red accent-2');
+        showSnackbar('錯誤! API 連線問題或伺服器未上線...', 'red accent-2');
         throw error; // 把錯誤繼續傳遞
       });
   };

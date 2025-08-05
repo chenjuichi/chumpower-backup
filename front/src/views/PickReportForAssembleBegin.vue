@@ -18,6 +18,10 @@
   <v-data-table
     :headers="headers"
     :items="materials_and_assembles"
+
+    :search="search"
+    :custom-filter="customFilter"
+
     fixed-header
     density="comfortable"
     style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
@@ -110,15 +114,30 @@
           </div>
 
           <div style="display: flex; flex-direction: column; align-items: center;">
+            <!--客製化搜尋-->
+            <v-text-field
+              id="bar_code"
+
+              v-model="search"
+
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              hide-details
+              single-line
+              style="position: relative; top: 45px; right: 250px; min-width: 150px;"
+              density="compact"
+            />
+
             <!-- 客製化barcode輸入 -->
             <v-text-field
+              id="bar_code"
               v-model="bar_code"
               :value="bar_code"
               ref="barcodeInput"
               @keyup.enter="handleBarCode"
               hide-details="auto"
               prepend-icon="mdi-barcode"
-              style="min-width:200px; width:200px; position: relative; top: 0.6em;"
+              style="min-width:200px; position: relative; top: 15px; right: 50px;"
               class="align-center"
               density="compact"
             />
@@ -166,7 +185,7 @@
       </div>
     </template>
 
-    <!-- 客製化 '應領數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+    <!-- 客製化 '應領取數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
     <template v-slot:header.must_receive_qty="{ column }">
       <div style="text-align: center;">
         <div>應領取</div>
@@ -262,7 +281,7 @@
     <!-- 自訂 '應領取數量'欄位的資料藍位 -->
     <template v-slot:item.must_receive_qty="{ item }">
       <div style="display: flex; align-items: center;">
-        <template v-if="item.process_step_code == 3">
+        <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null"> <!--組裝途程-->
           <v-icon
             style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
             :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
@@ -274,10 +293,20 @@
           >
             mdi-bell-plus
           </v-icon>
+          <span style="margin-left: 15px;">
+            {{ item.must_receive_qty }}
+          </span>
         </template>
+        <template v-else>
+          <span style="margin-left: 25px;">
+            {{ item.must_receive_qty }}
+          </span>
+        </template>
+        <!--
         <span style="margin-left: 15px;">
           {{ item.must_receive_qty }}
         </span>
+        -->
       </div>
     </template>
 
@@ -394,6 +423,11 @@ import DraggablePanel from './DraggablePanel.vue';
 
 import { useRoute } from 'vue-router';
 
+const search = ref('');
+
+import { useRouter } from 'vue-router';
+const router = useRouter();
+
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
@@ -505,8 +539,8 @@ const pagination = reactive({
   page: 1,
 });
 
-const panelX = ref(1250);
-const panelY = ref(21);
+const panelX = ref(820);
+const panelY = ref(10);
 const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
 const panel_flag = ref(false)     // 允許拖曳的開關
 
@@ -781,8 +815,34 @@ onMounted(async () => {
     });
     */
 
+    socket.value.on('triggerLogout', async (data) => {
+      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
 
+      if (data.empID && data.empID === currentUser.value.empID) {
+        console.log("本裝置符合 empID，執行強制登出流程");
 
+        let payload = {
+          itemsPerPage: 0,
+          seeIsOk: '0',
+          lastRoutingName: 'Main',
+          empID: userData.empID,
+        };
+
+        try {
+          await updateSetting(payload);
+        } finally {
+          localStorage.setItem('Authenticated', false);
+          removelocalStorage();
+
+          const resolvedRoute = router.resolve({ name: 'LoginRegister' });
+          const path = resolvedRoute.href;
+          console.log('triggerLogout socket...', path)
+          router.replace({ path });
+        }
+      } else {
+        console.log("本裝置 empID 不符，忽略此 triggerLogout");
+      }
+    });
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -834,7 +894,6 @@ const handleSetLinks = (links) => {
   updateNavLinks(links);
 };
 
-
 const handleMaterialUpdate = async ()  => {
   console.log("handleMaterialUpdate 被觸發！")
 
@@ -863,6 +922,13 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const customFilter =  (value, query, item)  => {
+  return value != null &&
+    query != null &&
+    typeof value === 'string' &&
+    value.toString().toLocaleUpperCase().indexOf(query) !== -1
+}
 
 const handleBarCode = () => {
   if (bar_code.value.length !== 12) {
@@ -1126,7 +1192,7 @@ const updateItem = async (item) => {
   let startTime = new Date();                                                         // 記錄當前結束時間
   let formattedStartTime = formatDateTime(startTime); //完工生產報工開始時間
   console.log("formattedStartTime:", formattedStartTime)
-  console.log("item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0:", item.pickBegin.length, Number(item.total_receive_qty_num));
+  //console.log("item.pickBegin.length ==1 && Number(item.total_receive_qty)!=0:", item.pickBegin.length, Number(item.total_receive_qty_num));
   console.log("startTime step 1...")
   //2025-02-24 mark if condition
   // 確認是第1次領料
@@ -1166,7 +1232,7 @@ const updateItem = async (item) => {
   //await updateAssembleMustReceiveQtyByMaterialID(payload);
 
   // 3.暫存每次領取數量
-  item.pickBegin.push(item.receive_qty);
+  //item.pickBegin.push(item.receive_qty);
 
   // 4.記錄當前領取總數量
   let total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
@@ -1245,7 +1311,16 @@ const updateItem = async (item) => {
     console.log("item.must_receive_qty != item.receive_qty", item.must_receive_qty, item.receive_qty)
 
     let temp_qty = item.must_receive_qty - item.receive_qty;
-    console.log("")
+    console.log("temp_qty:", temp_qty)
+
+    //2025-08-04
+    payload = {
+      material_id: item.id,
+      record_name: 'must_receive_qty',
+      record_data: item.receive_qty,
+    };
+    await updateAssembleMustReceiveQtyByMaterialID(payload);
+    //
     payload = {
       copy_id: item.assemble_id,
       must_receive_qty: temp_qty,
@@ -1471,6 +1546,10 @@ const updateMousePosition = (event) => {
   color: red;
   min-width:60px;
   width:60px;
+}
+
+:deep(input#bar_code[type="text"]) {
+  color: black !important;
 }
 
 .custom-table {

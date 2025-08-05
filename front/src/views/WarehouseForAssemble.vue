@@ -962,6 +962,36 @@ onMounted(async () => {
     //socket.value.on('agv_ack', async () => {
     //  console.log('收到 agv_ack 回應');
     //});
+
+    socket.value.on('triggerLogout', async (data) => {
+      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
+
+      if (data.empID && data.empID === currentUser.value.empID) {
+        console.log("本裝置符合 empID，執行強制登出流程");
+
+        let payload = {
+          itemsPerPage: 0,
+          seeIsOk: '0',
+          lastRoutingName: 'Main',
+          empID: userData.empID,
+        };
+
+        try {
+          await updateSetting(payload);
+        } finally {
+          localStorage.setItem('Authenticated', false);
+          removelocalStorage();
+
+          const resolvedRoute = router.resolve({ name: 'LoginRegister' });
+          const path = resolvedRoute.href;
+          console.log('triggerLogout socket...', path)
+          router.replace({ path });
+        }
+      } else {
+        console.log("本裝置 empID 不符，忽略此 triggerLogout");
+      }
+    });
+
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }

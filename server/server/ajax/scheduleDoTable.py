@@ -54,22 +54,28 @@ def delete_pdf_files():
   os.makedirs(log_dir, exist_ok=True)  # 如果 logs 資料夾不存在則建立
   log_file_path = os.path.join(log_dir, "delete_pdf_log.txt")
 
+  pdf_dirs = [
+      "C:\\vue\\chumpower\\pdf_file\\領退料單",
+      "C:\\vue\\chumpower\\pdf_file\\物料清單"
+  ]
   # 使用 current_app 取得設定
+  #base_dir = current_app.config['pdfBaseDir']  # 物料清單
   #pdf_dirs = [
-  #    "C:\\vue\\chumpower\\pdf_file\\領退料單",
-  #    "C:\\vue\\chumpower\\pdf_file\\物料清單"
+  #    base_dir,
+  #    os.path.join(os.path.dirname(base_dir), "領退料單")
   #]
 
-  pdf_dirs = [
-      os.path.join(current_app.config['pdfBaseDir'].replace("物料清單", "領退料單")),
-      current_app.config['pdfBaseDir']
-  ]
+  #pdf_dirs = [
+  #    os.path.join(current_app.config['pdfBaseDir'].replace("物料清單", "領退料單")),
+  #    current_app.config['pdfBaseDir']
+  #]
 
   deleted_files = 0
   now = datetime.datetime.now()
   cutoff_time = now - datetime.timedelta(hours=36)  # ✅ 36 小時前的時間點
 
   with open(log_file_path, "a", encoding="utf-8") as log_file:
+  #with open(log_file_path, "a", encoding="utf-8-sig") as log_file:
     log_file.write(f"\n=== 執行時間: {now.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
 
     for pdf_dir in pdf_dirs:      # for loop_1
@@ -82,27 +88,29 @@ def delete_pdf_files():
       for filename in os.listdir(pdf_dir):    # for loop_2
         if filename.lower().endswith('.pdf'):
           file_path = os.path.join(pdf_dir, filename)
-          try:
-            file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+          if os.path.exists(file_path):
+            try:
+              file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
 
-            if file_mtime < cutoff_time:
+              #if file_mtime < cutoff_time:
               os.chmod(file_path, stat.S_IWRITE)   # 解除唯讀屬性（必要時）
               os.remove(file_path)
               deleted_files += 1
               msg = f"✅ 已刪除: {file_path}（時間：{file_mtime}）"
-              #print(f"已刪除: {file_path}")
-            else:
-              msg = f"⏩ 略過: {file_path}（時間：{file_mtime} < 36 小時）"
-              #print(f"略過: {file_path}（修改時間：{file_mtime} < 36 小時）")
+                #print(f"已刪除: {file_path}")
+              #else:
+              #  msg = f"⏩ 略過: {file_path}（時間：{file_mtime} < 36 小時）"
 
-            print(msg)
-            log_file.write(msg + "\n")
+              print(msg)
+              log_file.write(msg + "\n")
 
-          except Exception as e:
-            err_msg = f"❌ 無法刪除 {file_path}: {e}"
-            print(err_msg)
-            log_file.write(err_msg + "\n")
-            #print(f"無法刪除 {file_path}: {e}")
+            except Exception as e:
+              err_msg = f"❌ 無法刪除 {file_path}: {e}"
+              print(err_msg)
+              log_file.write(err_msg + "\n")
+              #print(f"無法刪除 {file_path}: {e}")
+          else:
+            print(f"⚠️ 檔案不存在（可能已被刪除）: {file_path}")
       # end for loop_2
     # end for loop_1
     summary_msg = f"\nPDF檔案刪除完畢，共刪除 {deleted_files} 個檔案。\n"
@@ -150,13 +158,14 @@ def delete_exec_files():
   # ✅ 基準時間為 7 天前
   cutoff_time = today - datetime.timedelta(days=7)
 
-  for filename in os.listdir(target_folder):
-    if filename.lower().endswith(".xlsx"):
+  for filename in os.listdir(target_folder):  # for loop
+    if filename.lower().endswith(".xlsx"):    # if loop_1
       file_path = os.path.join(target_folder, filename)
-      try:
-        file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+      if os.path.exists(file_path):           # if loop_2
+        try:
+          file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
 
-        if file_mtime < cutoff_time:
+          #if file_mtime < cutoff_time:
           os.chmod(file_path, stat.S_IWRITE)   # 解除唯讀屬性（必要時）
           os.remove(file_path)
           msg = f"✅ 已刪除: {file_path}"
@@ -164,17 +173,21 @@ def delete_exec_files():
           write_log(msg)
           #print(f"已刪除: {file_path}")
           deleted_count += 1
-        else:
-          msg = f"⏩ 略過: {file_path}（最後修改時間：{file_mtime} < 7 天）"
+          #else:
+          #  msg = f"⏩ 略過: {file_path}（最後修改時間：{file_mtime} < 7 天）"
+          #  print(msg)
+          #  write_log(msg)
+            #print(f"略過: {file_path}（最後修改時間：{file_mtime} < 7 天）")
+        except Exception as e:
+          msg = f"❌ 無法刪除 {file_path}: {e}"
           print(msg)
           write_log(msg)
-          #print(f"略過: {file_path}（最後修改時間：{file_mtime} < 7 天）")
-      except Exception as e:
-        msg = f"❌ 無法刪除 {file_path}: {e}"
-        print(msg)
-        write_log(msg)
-        #print(f"無法刪除 {file_path}: {e}")
-
+          #print(f"無法刪除 {file_path}: {e}")
+      else: # else loop_2
+        print(f"⚠️ 檔案不存在（可能已被刪除）: {file_path}")
+      # end if loop_2
+    # end if loop_1
+  # end for loop
   msg = f"✅ Excel 檔案刪除完畢，共刪除 {deleted_count} 個檔案。"
   print(msg)
   write_log(msg)

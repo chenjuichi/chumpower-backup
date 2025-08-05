@@ -5,7 +5,7 @@
 		@mousedown="startDrag"
 		@dblclick="togglePanelFlag"
 	>
-		<slot />
+		<slot></slot>
 	</div>
 </template>
 
@@ -20,16 +20,19 @@ const props = defineProps({
 
 //const x = ref(props.initX);
 //const y = ref(props.initY);
-const x = ref(0);
-const y = ref(0);
+//const x = ref(0);
+//const y = ref(0);
+const x = ref(props.initX);
+const y = ref(props.initY);
+
 const dragging = ref(false);
 const offsetX = ref(0);
 const offsetY = ref(0);
 const panel_flag = ref(false);
 
 // 監聽 props 的變化，更新 x 和 y
-watch(() => props.initX, (val) => x.value = val)
-watch(() => props.initY, (val) => y.value = val)
+//watch(() => props.initX, (val) => x.value = val)
+//watch(() => props.initY, (val) => y.value = val)
 /*
 watch(() => props.initX, (newVal) => {
   x.value = newVal
@@ -61,8 +64,10 @@ const panelStyle = computed(() => ({
 onMounted(() => {
 	console.log("DraggablePanel.vue, mounted()...");
 
-  x.value = props.initX
-  y.value = props.initY
+  //x.value = props.initX
+  //y.value = props.initY
+
+	console.log("mounted()...", x.value, y.value);
 })
 
 // 切換 panel_flag，僅當 isDraggable 為 true 時才有效
@@ -89,7 +94,6 @@ const onDrag = (e) => {
 	if (!dragging.value) return;
 	x.value = e.clientX - offsetX.value;
 	y.value = e.clientY - offsetY.value;
-
 }
 
 // 拖曳結束

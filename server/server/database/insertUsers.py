@@ -224,6 +224,18 @@ new_user = User(emp_id=emp_id, emp_name=emp_name, dep_name=dep_name, perm_id=2, 
 s.add(new_user)
 user_count += 1
 
+# user 17
+emp_id = "01024013"
+emp_name = "林湘絨"
+password = "a12345"
+dep_name = "11112260-配件生管課"
+new_user = User(emp_id=emp_id, emp_name=emp_name, dep_name=dep_name, perm_id=2, setting_id=1,
+                #password=generate_password_hash(password, method='sha256'))
+                password=generate_password_hash(password, method='scrypt'))
+s.add(new_user)
+user_count += 1
+
+
 try:
   s.commit()
   #print("User data committed successfully")

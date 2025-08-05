@@ -15,11 +15,14 @@
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
 
-  <!--items-per-page-text="每頁的資料筆數"-->
   <!-- data table -->
   <v-data-table
     :headers="headers"
     :items="materials"
+
+    :search="search"
+    :custom-filter="customFilter"
+
     fixed-header
     style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
     :items-per-page-options="footerOptions"
@@ -61,7 +64,7 @@
             :disabled="fileCount === 0"
             color="primary"
             variant="outlined"
-            style="position: relative; right: 90px; top: 0px; font-weight: 700; width:120px;"
+            style="position: relative; right: 170px; top: 0px; font-weight: 700; width:120px;"
             @click="readAllExcelFun"
           >
             <v-icon left color="green">mdi-microsoft-excel</v-icon>
@@ -334,7 +337,7 @@
           </div>
 
           <!--客製化 員工選單-->
-          <div style="position: relative; right: 113px; width: 160px;">
+          <div style="position: relative; right: 200px; width: 160px;">
             <!-- v-text-field 用於顯示選中員工 -->
             <v-text-field
               v-model="selectedEmployee"
@@ -410,12 +413,14 @@
             :disabled="c_isBlinking"
             color="primary"
             variant="outlined"
-            style="position: relative; left: -100px; top: 0px; font-weight: 700;"
+            style="position: relative; right: 195px; top: 0px; font-weight: 700;"
             @click="callAGV"
           >
             <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
             <span>備料送出</span>
           </v-btn>
+
+          <!--
           <span
             :style="{
               'fontSize': '14px',
@@ -426,9 +431,11 @@
           >
             {{order_num_on_agv_blink}}
           </span>
+          -->
 
           <div style="display: flex; flex-direction: column; align-items: center;">
             <!-- 客製化黃綠燈 -->
+            <!--
             <div
               :style="{
                 display: 'inline-block',
@@ -445,6 +452,19 @@
                 border: '1px solid black'
               }"
             ></div>
+            -->
+
+            <!--客製化搜尋-->
+            <v-text-field
+              v-model="search"
+
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              hide-details
+              single-line
+              style="position: relative; top: 47px; left: -200px; min-width: 150px;"
+              density="compact"
+            />
 
             <!-- 客製化barcode輸入 -->
             <v-text-field
@@ -454,7 +474,7 @@
               @keyup.enter="handleBarCode"
               hide-details="auto"
               prepend-icon="mdi-barcode"
-              style="min-width:200px; width:200px; position: relative; top: 15px;"
+              style="min-width:200px; position: relative; top: 18px;"
               class="align-center"
               density="compact"
 
@@ -462,7 +482,7 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-          <v-dialog v-model="dialog" max-width="800px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
+          <v-dialog v-model="dialog" max-width="850px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
             <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
               <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                 備料資訊
@@ -486,9 +506,9 @@
                   <thead style="color: black;">
                     <tr>
                       <th class="text-left">元件</th>
-                      <th class="text-left">物料</th>
+                      <th class="text-left" style="width: 400px;">物料</th>
                       <th class="text-left">數量</th>
-                      <th class="text-left">日期</th>
+                      <th class="text-left" style="width: 110px;">日期</th>
                       <th class="text-left">領料</th>
                     </tr>
                   </thead>
@@ -502,7 +522,7 @@
                       }"
                     >
                       <td>{{ bom_item.seq_num }}</td>
-                      <td>
+                      <td style="width: 400px;">
                         <div>
                           <div>{{ bom_item.material_num }}</div>
                           <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
@@ -511,7 +531,7 @@
                       <td>
                         <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
                       </td>
-                      <td>
+                      <td style="width: 110px;">
                         <div>
                           <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
                           <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
@@ -531,7 +551,7 @@
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
-              <!--消自動捲軸，完全依內容高度決定是否超出-->
+              <!--取消自動捲軸，完全依內容高度決定是否超出-->
               <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
                 <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
                   備料區檢料異常備註
@@ -547,20 +567,20 @@
                     <v-row dense>
                       <v-col cols="5" class="pa-0">{{ abnormalDialog_order_num }}</v-col>
                       <v-col cols="7" class="pa-0">
-<v-autocomplete
-  v-model="abnormalDialog_autocomplete_message"
-  :items="itemsWithIcons"
-  item-title="text"
-  item-value="text"
-  density="compact"
->
-  <template #item="{ item, props }">
-    <div v-bind="props" class="d-flex align-center px-4 py-2">
-      <v-icon class="mr-2" size="18" color="blue">{{ item.raw.icon }}</v-icon>
-      <span style="color: #212121; font-weight: 600">{{ item.raw.text }}</span>
-    </div>
-  </template>
-</v-autocomplete>
+                        <v-autocomplete
+                          v-model="abnormalDialog_autocomplete_message"
+                          :items="itemsWithIcons"
+                          item-title="text"
+                          item-value="text"
+                          density="compact"
+                        >
+                          <template #item="{ item, props }">
+                            <div v-bind="props" class="d-flex align-center px-4 py-2">
+                              <v-icon class="mr-2" size="18" color="blue">{{ item.raw.icon }}</v-icon>
+                              <span style="color: #212121; font-weight: 600">{{ item.raw.text }}</span>
+                            </div>
+                          </template>
+                        </v-autocomplete>
                       </v-col>
                     </v-row>
                   </template>
@@ -674,9 +694,9 @@
 
     <!-- 自訂 '應備數量'欄位的資料藍位 -->
     <template v-slot:item.total_delivery_qty="{ item }">
-      <div style="display: flex; align-items: center;">
+      <div style="display:flex; align-items:center;">
           <v-icon
-            style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+            style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
             :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
             @click="addAbnormalInMaterial(item)"
             size="16"
@@ -804,8 +824,8 @@ const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-const panelX = ref(810);      //led顯示面板x位置, 值越大, 越往右
-const panelY = ref(1);        //led顯示面板y位置, 值越大, 越往下
+const panelX = ref(820);      //led顯示面板x位置, 值越大, 越往右
+const panelY = ref(10);        //led顯示面板y位置, 值越大, 越往下
 const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
 const panel_flag = ref(false)     // 允許拖曳的開關
 
@@ -850,6 +870,8 @@ const inputSelectOrderNum = ref(null);
 let intervalId = null;                        // 10分鐘, 倒數計時器
 
 const route = useRoute();                     // Initialize router
+
+const search = ref('');
 
 const footerOptions = [
   { value: 5, title: '5' },
@@ -939,10 +961,10 @@ const userFacets = ref(['Facet 1', 'Facet 4']);
 const test_count = ref(0);
 
 const abnormalDialogBtnDisable = ref(true);
-const abnormalDialog = ref(false);
-const abnormalDialog_order_num = ref('');
-const abnormalDialog_autocomplete_message = ref('');
-const abnormalDialog_message = ref('');
+const abnormalDialog = ref(false);                    // dialog顯示切換開關
+const abnormalDialog_order_num = ref('');             // 訂單編號
+const abnormalDialog_autocomplete_message = ref('');  // v-autocomplete component所選擇的字串
+const abnormalDialog_message = ref('');               // dialog顯示訊息
 const abnormalDialog_display = ref(true);
 
 const abnormalDialog_record = ref(null);    // 點擊鈴鐺icon的目前紀錄
@@ -1486,7 +1508,6 @@ onMounted(async () => {
     socket.value.on('triggerLogout', async (data) => {
       console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
 
-      // 如果你想根據 empID 執行判斷，可以這樣：
       if (data.empID && data.empID === currentUser.value.empID) {
         console.log("本裝置符合 empID，執行強制登出流程");
 
@@ -1556,6 +1577,27 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const customFilter =  (value, query, item)  => {
+  return value != null &&
+    query != null &&
+    typeof value === 'string' &&
+    value.toString().toLocaleUpperCase().indexOf(query) !== -1
+}
+/*
+const customFilter = (value, search, item) => {
+  //const customFilter = (search, item) => {
+  console.log("customFilter, item:", item);
+
+    if (!search) return true;
+  search = search.toLowerCase();
+
+  return Object.values(item).some(val =>
+    String(val).toLowerCase().includes(search)
+  );
+};
+*/
+
 /*
 const handlePopState = () => {
 // 重新添加歷史紀錄以阻止實際後退
@@ -1932,15 +1974,18 @@ const checkTextEditField = (focused, item) => {
 };
 
 const addAbnormalInMaterial = (item) => {
-  console.log("addAbnormalInMaterial(),", item);
+  //console.log("addAbnormalInMaterial(),", item);
 
   abnormalDialog_record.value = materials.value.find(m => m.id == item.id);
+
+  console.log("addAbnormalInMaterial(),", item, abnormalDialog_record.value);
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
   abnormalDialog_autocomplete_message.value = '';
   abnormalDialog_display.value = item.Incoming0_Abnormal;
   abnormalDialog.value = true;
+  abnormalDialog_message.value = item.Incoming0_Abnormal_message;
 }
 
 const createAbnormalFun = async () => {
@@ -1965,6 +2010,7 @@ const createAbnormalFun = async () => {
       };
       await updateMaterial(payload);
       abnormalDialog_record.value.Incoming0_Abnormal=false;
+      abnormalDialog_record.value.Incoming0_Abnormal_message=abnormalDialog_message.value;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials.value.findIndex(
@@ -1976,6 +2022,7 @@ const createAbnormalFun = async () => {
         materials.value[targetIndex] = {
           ...materials.value[targetIndex],
           Incoming0_Abnormal: false,
+          Incoming0_Abnormal_message: abnormalDialog_message.value,
         };
       }
 
@@ -2289,8 +2336,9 @@ const readAllExcelFun = async () => {
     const excel_file_data = await readAllExcelFiles();
     console.log("data:", excel_file_data);
 
+    fileCount.value = 0;
     if (excel_file_data.status) {
-      fileCount.value = 0;
+      //fileCount.value = 0;
       await deleteAssemblesWithNegativeGoodQty();
       listMaterials();
 
@@ -2683,7 +2731,7 @@ const removelocalStorage = () => {
 .button-container {
   position: relative;
   width: fit-content;     // 調整寬度以適應按鈕
-  right: 100px;
+  right: 190px;
   top: 0px;
 }
 

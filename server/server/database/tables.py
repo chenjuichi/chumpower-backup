@@ -131,6 +131,27 @@ association_material_abnormal = Table('association_material_abnormal', BASE.meta
 # ------------------------------------------------------------------
 
 
+class ProcessedFile(BASE):
+    __tablename__ = 'processed_file'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_name = Column(String(255), unique=True, nullable=False)  # 不含 copy_x 的原始檔名
+    processed_time = Column(DateTime, default=datetime.now(UTC))
+    create_at = Column(DateTime, server_default=func.now())
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      fields = ', '.join([f"{name}={getattr(self, name)}" for name in self.__mapper__.columns.keys()])
+      return f"<LargeTable({fields})>"
+
+    # 定義class的dict內容
+    def get_dict(self):
+      return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+
+
+# ------------------------------------------------------------------
+
+
 class Material(BASE):
     __tablename__ = 'material'
 
@@ -151,6 +172,9 @@ class Material(BASE):
     isTakeOk = Column(Boolean, default=False)                       # true:檢料區檢料完成,指定訂單可以派車
     isShow = Column(Boolean, default=False)                         # true:檢料完成且已call AGV, 就disable詳情按鍵
     isAssembleAlarm = Column(Boolean, default=True)                 # false:組裝異常,
+
+    #isAssembleFirstAlarm = Column(Boolean, default=True)            # false:組裝第1工序異常, 2025-07-24 add
+
     isAssembleAlarmRpt = Column(Boolean, default=False)             # false:未填報異常原因,
     isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成,
     isAssembleStation2TakeOk = Column(Boolean, default=False)       # true:組裝站製程2完成, 即完成生產報工中, 按結束鍵
@@ -376,6 +400,10 @@ class Assemble(BASE):
     alarm_enable = Column(Boolean, default=True)                  # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
     alarm_message = Column(String(100), default='')
 
+    isAssembleFirstAlarm = Column(Boolean, default=True)          # false:組裝途程第1工序按了異常鍵->異常,
+    isAssembleFirstAlarm_message = Column(String(100), default='')
+    isAssembleFirstAlarm_qty = Column(Integer, default=0)
+
     whichStation = Column(Integer, default=1)                     # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
     show1_ok = Column(String(20), server_default='1')
     show2_ok = Column(String(20), server_default='0')
@@ -481,14 +509,17 @@ class Process(BASE):
     process_type = Column(Integer, default=1)                     #1:備料區,
                                                                   #2:組裝區(含20, 21, 22, 23)
                                                                   # 20:AGV運行到組裝區
-                                                                  # 21:在第1途程
-                                                                  # 22:在第2途程
-                                                                  # 23:在第3途程
+                                                                  # 21:在第1途程, 組裝
+                                                                  # 22:在第2途程, 檢驗
+                                                                  # 23:在第3途程, 雷射
                                                                   # (含20, 21, 22, 23)
-                                                                  #3:成品區(含31, 32, 33)
-                                                                  #4:加工區(含41, 42, 43)
-                                                                  #99:agv
+                                                                  # 3:成品區(含31, 32, 33)
+                                                                  # 4:加工區(含41, 42, 43)
+                                                                  # 99:agv
+                                                                  # 88: 暫停
     #process_status = Column(Integer, default=0)                   # material bom_agv_status
+    process_work_time_qty = Column(Integer, default=0)             # 報工數量
+    normal_work_time = Column(Boolean, default=True)              # true:正常工時, false:異常整修工時
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容

@@ -462,6 +462,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2025-06-26\x1b[0m`);
+  console.log(`\x1b[34mBuild 2025-07-18\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

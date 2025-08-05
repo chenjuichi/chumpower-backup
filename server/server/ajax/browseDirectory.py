@@ -957,7 +957,10 @@ def stamp_file():
     pdf_path = data.get('filepath')
     png_path = data.get('png_path')
     pdf_type = data.get('pdfType')
+    print("pdf_type:",pdf_type, type(pdf_type))
+
     approve = data.get('approve')
+    print("approve:",approve, type(approve))
 
     #insert_position = data.get('position', {'x': 185, 'y': 30})
 
@@ -986,12 +989,12 @@ def stamp_file():
 
         # 決定插章位置
         print("pdf_type:",pdf_type, type(pdf_type))
-        if pdf_type == 1:
+        if pdf_type == 1:   # 物料清單
           if approve == 0:
             insert_position = {'x': 110, 'y': 730}  # 物料清單的位置
           else:
             insert_position = {'x': 450, 'y': 730}  # 物料清單的位置
-        elif pdf_type == 2:
+        elif pdf_type == 2:   # 領退料單
           if approve == 0:
             insert_position = {'x': 70, 'y': 770}   # 領退料單的位置
           else:
@@ -1016,7 +1019,14 @@ def stamp_file():
         # 打開原始 PDF
         doc = fitz.open(pdf_path)
 
+        # 只在最後一頁蓋章
+        last_page_index = doc.page_count - 1
+        page = doc[last_page_index]
+
+        # 頁面是 A4 格式 (例如 595 x 842 pt)
+
         # 插入章到每一頁
+        '''
         for page in doc:
           rect = fitz.Rect(
             insert_position['x'],
@@ -1025,6 +1035,14 @@ def stamp_file():
             insert_position['y'] + insert_position['height']
           )
           page.insert_image(rect, filename=processed_png_path)
+        '''
+        rect = fitz.Rect(
+          insert_position['x'],
+          insert_position['y'],
+          insert_position['x'] + insert_position['width'],
+          insert_position['y'] + insert_position['height']
+        )
+        page.insert_image(rect, filename=processed_png_path)
 
         # 儲存第一階段：有插章，但還沒加遮罩
         doc.save(stamped_path)

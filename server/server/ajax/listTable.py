@@ -283,7 +283,7 @@ def list_materials():
         # 標記這個 order_num 已處理過
         #processed_order_nums.add(order_num)
         processed_order_nums.add(order_num_id)
-
+        print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
         _object = {
           'id': record['id'],
           'order_num': record['order_num'],                   #訂單編號
@@ -304,8 +304,8 @@ def list_materials():
           'show1_ok' : record['show1_ok'],
           'show2_ok' : record['show2_ok'],
           'show3_ok' : record['show3_ok'],
-
           'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
+          'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
           'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
         }
 
@@ -543,7 +543,7 @@ def list_wait_for_assemble():
       #print("end_count:", end_count)
 
       #print("nums:", nums)
-
+      pre_step_code=99
       for begin_assemble_record in assemble_records:  # loop_2_a
       #for begin_assemble_record in material_record._assemble:  # loop_2_b
         #print("begin_assemble_record id:",begin_assemble_record.id)
@@ -560,9 +560,20 @@ def list_wait_for_assemble():
 
         #print(begin_assemble_record.id, " : ", step_code, max_step_code, begin_assemble_record.input_disable)
 
-        if step_enable==False or begin_assemble_record.input_disable:  # 2025-06-16 add, 改順序
-          continue
-
+        # 2025-08-04 modify
+        skip_condition = (not step_enable or begin_assemble_record.input_disable)
+        if skip_condition:
+            #if pre_step_code == 0 and step_code != 0 and not step_enable:
+            if pre_step_code == 0 and step_code != 0:
+                pre_step_code = step_code
+                pass  # 不跳過，繼續執行後續程式
+            else:
+                pre_step_code = 99
+                continue
+        #
+        #if step_enable==False or begin_assemble_record.input_disable:  # 2025-06-16 add, 改順序
+        #  continue
+        #
         # 缺料併單
         if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
           continue
@@ -758,7 +769,8 @@ def list_materials_and_assembles():
             date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
             temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
         #print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
-
+      pre_step_code=99
+      sub_process_step_enable=False
       for assemble_record in material_record._assemble:
 
         cleaned_comment = material_record.material_comment.strip()    # 刪除 material_comment 字串前後的空白
@@ -786,9 +798,25 @@ def list_materials_and_assembles():
         step_code = assemble_record.process_step_code
         max_step_code = max_step_code_per_order.get(order_num_id, 0)
         step_enable = (step_code == max_step_code and material_record.whichStation==2)
-        if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
-          continue
-
+        print("pre_step_code, step_code, max_step_code, step_enable:",pre_step_code, step_code, max_step_code, step_enable)
+        # 2025-08-04 modify, 領料數 != 應領料數
+        skip_condition = (not step_enable or assemble_record.input_disable)
+        print("skip_condition:", skip_condition)
+        if skip_condition:
+            #if pre_step_code == 0 and step_code != 0 and not step_enable:
+            print("pre_step_code == 0 and step_code != 0:", pre_step_code, step_code)
+            if pre_step_code == 0 and step_code != 0:
+                pre_step_code = step_code
+                sub_process_step_enable = True
+                pass  # 不跳過，繼續執行後續程式
+            else:
+                pre_step_code = 99
+                continue
+        #
+        #if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
+        #  pre_step_code=assemble_record.process_step_code
+        #  continue
+        #
         # 缺料併單
         if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
           continue
@@ -834,7 +862,7 @@ def list_materials_and_assembles():
           'tooltipVisible': False,
           'input_disable': assemble_record.input_disable,
           #'process_step_code': step_code,
-          'process_step_enable': step_enable,
+          'process_step_enable': step_enable or sub_process_step_enable,
           'process_step_code': assemble_record.process_step_code,
 
           'isLackMaterial' : material_record.isLackMaterial,
@@ -843,6 +871,8 @@ def list_materials_and_assembles():
           #'Incomin2_gAbnormal': assemble_record.Incomin2_gAbnormal,
           'Incoming1_Abnormal': assemble_record.Incoming1_Abnormal == '',
           #'Incoming2_Abnormal': assemble_record.Incoming2_Abnormal == ''
+
+          'is_copied_from_id': assemble_record.is_copied_from_id,
         }
         #print(_object)
         _results.append(_object)

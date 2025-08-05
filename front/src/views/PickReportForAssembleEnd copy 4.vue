@@ -37,6 +37,7 @@
       :sort-desc.sync="sortDesc"
 
       class="elevation-10 custom-table"
+
     >
       <!-- 客製化 '選擇框' 欄位表頭 -->
       <template v-slot:header.data-table-select>
@@ -63,6 +64,7 @@
 
             <!--客製化 員工選單-->
             <div style="position: relative; width: 160px; margin-right:5px;">
+              <!-- v-text-field 用於顯示選中員工 -->
               <v-text-field
                 v-model="selectedEmployee"
                 @keyup.enter="handleEmployeeSearch"
@@ -181,8 +183,6 @@
             -->
               <!--客製化搜尋-->
               <v-text-field
-                id="bar_code"
-
                 v-model="search"
 
                 prepend-inner-icon="mdi-magnify"
@@ -195,7 +195,6 @@
 
               <!-- 客製化barcode輸入 -->
               <v-text-field
-                id="bar_code"
                 v-model="bar_code"
                 :value="bar_code"
                 ref="barcodeInput"
@@ -396,8 +395,7 @@
             style="max-width: 60px; text-align: center; z-index: 1;"
             :id="`abnormalQtyID-${item.assemble_id}`"
             @keydown="handleKeyDown"
-
-            @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
+            @update:modelValue="checkAbnormalQty(item)"
             @update:focused="(focused) => checkTextEditField(focused, item)"
 
             :disabled="item.input_abnormal_disable"
@@ -455,11 +453,21 @@
             variant="tonal"
 
             @click="updateAbnormal(item)"
-            :style="getBtnStyle(item)"
+            :style="{
+              fontSize: '13px',
+              fontWeight: '700',
+              fontFamily: '\'微軟正黑體\', sans-serif',
+              marginLeft: '20px',
+              paddingLeft: '4px',
+              paddingRright: '4px',
+              marginLeft: '0px !important',
+              background: item.alarm_enable ? '#e8eaf6' : '#ff0000',
+              color: item.alarm_enable ? '#000' : '#fff'
+            }"
           >
             異 常
             <v-icon
-              :style="getBtnStyle(item)"
+              :style="{color: item.alarm_enable ? '#000' : '#fff'}"
               end
             >
               mdi-alert-circle-outline
@@ -672,21 +680,6 @@ const c_isBlinking = computed(() => selectedItems.value.length === 0);
 //  return temp;
 //};
 //});
-
-const todayStr = computed(() => {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-})
-
-// 控制面板樣式，包括邊框顏色和層級 (z-index)
-const panelStyle = computed(() => ({
-  cursor: panel_flag.value ? 'move' : 'default',
-  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
-  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
-}))
 
 //=== mounted ===
 onMounted(async () => {
@@ -1000,8 +993,6 @@ onMounted(async () => {
           order_num: targetItem.order_num,
           id: targetItem.id,                        //2025-02-24 add
           process_type: 3,                          //在成品區
-
-          normal_work_time: true,
         };
         await createProcess(payload);
         console.log('步驟2-1...');
@@ -1114,9 +1105,7 @@ onMounted(async () => {
           user_id: 'AGV2-1',                        //在組裝區('AGV2'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
           order_num: targetItem.order_num,
           id: targetItem.id,                        //2025-02-24 add
-          process_type: 29,                         //在組裝區
-
-          normal_work_time: true,
+          process_type: 29,                          //在組裝區
         };
         await createProcess(payload);
       });
@@ -1305,10 +1294,7 @@ const handlePopState = () => {
 }
 
 const isButtonDisabled = (item) => {
-  let temp_TF =(item.whichStation != 2 || item.input_end_disable) || item.process_step_code==0;
-  //let temp_TF =(item.whichStation != 2 || item.input_end_disable) || !item.process_step_enable;
-  console.log("temp_TF:", item.whichStation, item.input_end_disable, !item.process_step_enable, "TF:", temp_TF)
-  return temp_TF;
+  return (item.whichStation != 2 || item.input_end_disable) || !item.process_step_enable;
 };
 
 const checkReceiveQty = (item) => {
@@ -1329,18 +1315,6 @@ const checkReceiveQty = (item) => {
   } else {
     item.tooltipVisible = false;
   }
-};
-
-const onAbnormalQtyUpdate = (item, value) => {
-  item.abnormal_qty = value;
-
-  // 當 item.code = '109' 時，組裝途程, 自動同步到 item.isAssembleFirstAlarm_qty
-  if (item.code === '109') {
-    item.isAssembleFirstAlarm_qty = value;
-  }
-
-  // 保留原本的檢查邏輯
-  checkAbnormalQty(item);
 };
 
 const checkAbnormalQty = (item) => {
@@ -1413,40 +1387,6 @@ const getStatusStyle = (status) =>{
     fontSize: '12px',
   };
 };
-
-const getBtnStyle = (item) => {
-  return {
-    fontSize: '13px',
-    fontWeight: '700',
-    fontFamily: "'微軟正黑體', sans-serif",
-    marginLeft: '0px !important',
-    paddingLeft: '4px',
-    paddingRright: '4px',
-    background: computed(() => {
-      if (item.process_step_code == 3) {
-        return item.isAssembleFirstAlarm ? '#e8eaf6' : '#ff0000'
-      } else {
-        return item.alarm_enable ? '#e8eaf6' : '#ff0000'
-      }
-      /*
-      if (!item.input_abnormal_disable) {
-        return item.alarm_enable ? '#e8eaf6' : '#ff0000'
-      } else {
-        return item.isAssembleFirstAlarm ? '#e8eaf6' : '#ff0000'
-      }
-      */
-    }).value,
-    //color: item.alarm_enable ? '#000' : '#fff'
-
-    color: computed(() => {
-      if (item.process_step_code == 3) {
-        return item.isAssembleFirstAlarm ? '#000' : '#fff'
-      } else {
-        return item.alarm_enable ? '#000' : '#fff'
-      }
-    }).value,
-  }
-}
 
 const setActive = (value) => {
   toggle_exclusive.value = value; // 設置當前活動按鈕
@@ -1604,7 +1544,7 @@ const updateItem = async (item) => {
     return;
   }
 
-  // targetIndex, 為目前table data record 的 index
+  // targetIndex為目前table data record 的 index
   const targetIndex = materials_and_assembles_by_user.value.findIndex(
     (kk) => kk.assemble_id === item.assemble_id
   );
@@ -1627,7 +1567,7 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  //item.pickEnd.push(item.receive_qty);
+  item.pickEnd.push(item.receive_qty);
 
   let current_total_completed_qty=Number(item.total_receive_qty_num);   //已完成總數量
   let total = current_total_completed_qty + current_completed_qty;
@@ -1637,8 +1577,7 @@ const updateItem = async (item) => {
   // 記錄當前完成總數量
   payload = {
     //assemble_id: item.assemble_id,
-    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-    assemble_id: current_assemble_id,
+    assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     record_name: 'total_completed_qty',
     record_data: total,
   };
@@ -1652,8 +1591,7 @@ const updateItem = async (item) => {
     temp_qty=3
   payload = {
     //assemble_id: item.assemble_id,
-    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-    assemble_id: current_assemble_id,
+    assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     record_name: 'total_ask_qty_end',
     record_data: temp_qty,
   };
@@ -1815,19 +1753,14 @@ const updateItem = async (item) => {
       order_num: item.order_num,
       process_type: temp_no,
       //id: item.id,
-      //id: materials_and_assembles_by_user.value[targetIndex].id,
-      id: current_material_id,
-
-      process_work_time_qty: current_completed_qty,
-      normal_work_time: materials_and_assembles_by_user.value[targetIndex].is_copied_from_id == null ? true : false,
+      id: materials_and_assembles_by_user.value[targetIndex].id,
     };
     await createProcess(processPayload);
 
     // 記錄當前紀錄, 目前途程結束
     payload = {
       //assemble_id: item.assemble_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
+      assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
       record_name: 'process_step_code',
       record_data: 0,
     };
@@ -1837,28 +1770,14 @@ const updateItem = async (item) => {
     payload = {
       //id: item.id,
       //asm_id: item.assemble_id,
-      //id: materials_and_assembles_by_user.value[targetIndex].id,
-      id: current_material_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
+      id: materials_and_assembles_by_user.value[targetIndex].id,
+      assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     };
     //await updateAssembleProcessStep(payload);
     let response = await updateAssembleProcessStep(payload);
-
-    //if (response ) {
-    if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
+    if (response) {
       console.log("take ok...")
-      /*
-      // 記錄當前工單最終途程的完成總數量
-      payload = {
-        //assemble_id: item.assemble_id,
-        //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-        assemble_id: current_assemble_id,
-        record_name: 'total_completed_qty',
-        record_data: current_completed_qty,
-      };
-      await updateAssemble(payload);
-      */
+
       //if (targetItem) {
       //  targetItem.isTakeOk = true;
       //}
@@ -1871,19 +1790,7 @@ const updateItem = async (item) => {
       }
       //item.isTakeOk = true
     }
-    /*
-    } else {
-      // 記錄當前工單非最終途程的完成總數量
-      payload = {
-        //assemble_id: item.assemble_id,
-        //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-        assemble_id: current_assemble_id,
-        record_name: 'total_completed_qty',
-        record_data: 0,
-      };
-      await updateAssemble(payload);
-    }
-    */
+
   //}     , 2025-06-18 mark, 改順序
   console.log("step5...");
 
@@ -1923,19 +1830,17 @@ const updateAbnormal = async (item) => {
     return;
   }
   */
+  // 檢查異常欄位是否輸入了空白或 0
 
-  let payload = {};
-  if (item.process_step_code == 3 || item.code === '109') {  //組裝
-  //if (item.input_abnormal_disable) {   //input_abnormal_disable=false:最後製成
-    console.log("組裝異常程序...")
+  if (item.input_abnormal_disable) {   //input_abnormal_disable=false:最後製成
 
     let temp_isAssembleFirstAlarm = !item.isAssembleFirstAlarm;
 
     const targetIndex_0 = materials_and_assembles_by_user.value.findIndex(
       (kk) => kk.assemble_id === item.assemble_id
     );
-    //const current_material_id_0 = materials_and_assembles_by_user.value[targetIndex_0].id;
-    const current_assemble_id_0 = materials_and_assembles_by_user.value[targetIndex_0].assemble_id
+
+    const current_material_id_0 = materials_and_assembles_by_user.value[targetIndex_0].id;
 
     //顯示按鍵之後的值(顏色)
     if (targetIndex_0 !== -1) {
@@ -1947,56 +1852,16 @@ const updateAbnormal = async (item) => {
     }
 
     payload = {
-      assemble_id: current_assemble_id_0,
+      id: current_material_id_0,
       record_name: 'isAssembleFirstAlarm',
-      record_data: temp_isAssembleFirstAlarm,
+      record_data: temp_isAssembleFirstAlarm
     };
-    await updateAssemble(payload);
+    await updateMaterial(payload);
 
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'isAssembleFirstAlarm_qty',
-      record_data: item.isAssembleFirstAlarm_qty,
-    };
-    await updateAssemble(payload);
-
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'isAssembleFirstAlarm_qty',
-      record_data: item.isAssembleFirstAlarm_qty,
-    };
-    await updateAssemble(payload);
-
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'abnormal_qty',
-      record_data: 0,
-    };
-    await updateAssemble(payload);
-
-
-    /*
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'writer_id',
-      record_data: currentUser.value.empID,
-    };
-    await updateAssemble(payload);
-
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'write_date',
-      record_data: todayStr.value,
-    };
-    await updateAssemble(payload);
-    */
     return;
   }
 
-  // 檢查異常欄位是否輸入了空白或 0
   if (!item.abnormal_qty || Number(item.abnormal_qty) === 0) {
-    console.log("檢驗異常程序...")
-
     abnormal_qty_alarm.value = '異常數量不可為空白或0!'
     item.abnormal_tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
@@ -2022,7 +1887,7 @@ const updateAbnormal = async (item) => {
   temp_alarm_enable = !temp_alarm_enable
 
   // 記錄組裝區當前紀錄, 按鍵之後的值
-  payload = {
+  let payload = {
     //assemble_id: item.assemble_id,
     assemble_id: current_assemble_id,
     record_name: 'alarm_enable',
@@ -2188,8 +2053,6 @@ const checkTextEditField = (focused, item) => {
       item.receive_qty = item.pickEnd[item.pickEnd.length - 1];
     }
     */
-  //} else {
-
   }
 };
 
@@ -2210,6 +2073,13 @@ const toggleSort = (key) => {
 const toggleDrag = () => {
   panel_flag.value = !panel_flag.value
 }
+
+// 控制面板樣式，包括邊框顏色和層級 (z-index)
+const panelStyle = computed(() => ({
+  cursor: panel_flag.value ? 'move' : 'default',
+  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
+  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
+}))
 
 </script>
 
@@ -2253,10 +2123,6 @@ const toggleDrag = () => {
   text-align: center;
   color: red;
   min-width:60px;
-}
-
-:deep(input#bar_code[type="text"]) {
-  color: black !important;
 }
 
 .custom-table {

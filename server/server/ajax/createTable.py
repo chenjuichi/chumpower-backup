@@ -342,6 +342,9 @@ def create_process():
   _order_num = request_data['order_num']
   _id = request_data['id']
   _process_type= request_data['process_type']
+  _process_work_time_qty = request_data.get('process_work_time_qty')
+  _normal_work_time = request_data.get('normal_work_time')
+
   print("id:", _id, type(_id))
 
   s = Session()
@@ -366,6 +369,8 @@ def create_process():
     end_time = _end_time,
     period_time = period_time,  # 計算期間時間
     process_type = _process_type,
+    normal_work_time = _normal_work_time,
+    process_work_time_qty = _process_work_time_qty,
   )
   print("step3...")
 
@@ -422,6 +427,7 @@ def copy_assemble():
       process_step_code=record.process_step_code,
       must_receive_qty = _must_qty,     #應領取數量
       ask_qty=0,
+      is_copied_from_id=record.id,
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID
@@ -479,12 +485,11 @@ def copy_new_assemble():
     abnormal_field=False
     if record.work_num == 'B109':
       process_step_code =3
-      abnormal_field=True
+      #abnormal_field=True            # 2025-07-31 mark
     if record.work_num == 'B110':
       process_step_code =2
     if record.work_num == 'B106':
       process_step_code =1
-
 
     new_record = Assemble(
       material_id=record.material_id,
@@ -500,6 +505,7 @@ def copy_new_assemble():
       completed_qty = 0,                    #完成數量
       total_completed_qty = 0,
       ask_qty=0,
+      is_copied_from_id=record.id,
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID

@@ -11,7 +11,7 @@
   </v-snackbar>
 
   <!-- 燈號控制面板 -->
-  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true" ref="draggablePanel">
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
 
@@ -60,11 +60,19 @@
           <v-spacer />
 
           <!--客製化 匯入清單按鍵-->
+          <!--  style="position: relative; right: 170px; top: 0px; font-weight: 700; width:120px;" -->
           <v-btn
             :disabled="fileCount === 0"
             color="primary"
             variant="outlined"
             style="position: relative; right: 170px; top: 0px; font-weight: 700; width:120px;"
+            :style="{
+              position: 'relative',
+              right: screenSizeInInches > 20 ? '600px' : '170px',
+              top: '0px',
+              fontWeight: '700',
+              width: '120px'
+            }"
             @click="readAllExcelFun"
           >
             <v-icon left color="green">mdi-microsoft-excel</v-icon>
@@ -415,6 +423,8 @@
             variant="outlined"
             style="position: relative; right: 195px; top: 0px; font-weight: 700;"
             @click="callAGV"
+            ref="sendButton"
+
           >
             <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
             <span>備料送出</span>
@@ -482,7 +492,7 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-          <v-dialog v-model="dialog" max-width="850px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
+          <v-dialog v-model="dialog" max-width="980px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
             <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
               <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                 備料資訊
@@ -491,7 +501,9 @@
                     style="position: relative; right: -550px;"
                     color="success"
                     prepend-icon="mdi-check-circle-outline"
-                    :disabled="enableDialogBtn"
+
+                    :disabled="isDialogConfirmDisabled"
+
                     text="確定"
                     class="text-none"
                     @click="updateItem"
@@ -506,9 +518,9 @@
                   <thead style="color: black;">
                     <tr>
                       <th class="text-left">元件</th>
-                      <th class="text-left" style="width: 400px;">物料</th>
+                      <th class="text-left" style="width: 520px;">物料</th>
                       <th class="text-left">數量</th>
-                      <th class="text-left" style="width: 110px;">日期</th>
+                      <th class="text-left" style="width: 120px;">日期</th>
                       <th class="text-left">領料</th>
                     </tr>
                   </thead>
@@ -522,7 +534,7 @@
                       }"
                     >
                       <td>{{ bom_item.seq_num }}</td>
-                      <td style="width: 400px;">
+                      <td style="width: 520px;">
                         <div>
                           <div>{{ bom_item.material_num }}</div>
                           <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
@@ -531,7 +543,7 @@
                       <td>
                         <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
                       </td>
-                      <td style="width: 110px;">
+                      <td style="width: 120px;">
                         <div>
                           <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
                           <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
@@ -640,9 +652,9 @@
           mdi-pencil
         </v-icon>
         <!-- Order Info -->
-        <div style="color: red; margin-right: 2px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
-          {{ item.order_num }}&nbsp;&nbsp;
-          <span style="font-weight: 700; font-size: 16px;">缺料</span>
+        <div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
+          <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
+          <span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>
         </div> <!--檢料完成-->
         <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
           {{ item.order_num }}
@@ -828,6 +840,10 @@ const panelX = ref(820);      //led顯示面板x位置, 值越大, 越往右
 const panelY = ref(10);        //led顯示面板y位置, 值越大, 越往下
 const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
 const panel_flag = ref(false)     // 允許拖曳的開關
+
+// 獲取元件引用
+const draggablePanel = ref(null)
+const sendButton = ref(null)
 
 const screenSizeInInches = ref(null);
 
@@ -1027,10 +1043,10 @@ watch(dialog, async (newVal, oldVal) => {
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
 const formatWeekday = computed(() => {
-return (day) => {
-  console.log('day:', day); // 調試輸出
-  return weekdays[day];
-};
+  return (day) => {
+    console.log('day:', day); // 調試輸出
+    return weekdays[day];
+  };
 });
 
 const formattedDesserts = computed(() =>
@@ -1042,15 +1058,22 @@ desserts2.value.map(emp => ({
 
 const c_isBlinking = computed(() => selectedItems.value.length === 0);
 
-const containerStyle = computed(() => ({
-bottom: props.showFooter ? '60px' : '0'
-}));
+const containerStyle = computed(() => ( {bottom: props.showFooter ? '60px' : '0'} ));
 
 const routeName = computed(() => route.name);
 
 // 顯示格式化日期
 const formattedDate = computed(() => {
-return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
+  return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
+});
+
+//const enableDialogBtnByReceive = computed(() => {
+//  // 如果 boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
+//  return boms.length === 0 || boms.every(b => b.receive === false);
+//});
+const isDialogConfirmDisabled = computed(() => {
+  // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
+  return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
 });
 
 //=== mounted ===
@@ -1078,10 +1101,19 @@ onMounted(async () => {
   console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
 
   if (screenSizeInInches.value != null) {
-    panelX.value = screenSizeInInches.value > 20 ? 1480 : 825;
-    panelY.value = screenSizeInInches.value > 20 ? 11 : 11;
+    //panelX.value = screenSizeInInches.value > 20 ? 1480 : 825;
+    panelX.value = window.innerWidth - 195 + 114 + 5;
+    //calculatePanelPosition();
+    //panelY.value = screenSizeInInches.value > 20 ? 11 : 11;
+    panelY.value = 11;
   }
+  console.log("window.innerWidth, panelX, panelY:", window.innerWidth, panelX.value, panelY.value)
   //+++
+
+  //calculatePanelPosition();
+
+  // 如果窗口大小變化需要重新計算
+  //window.addEventListener('resize', calculatePanelPosition);
 
   // 阻止直接後退
   window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
@@ -1303,7 +1335,7 @@ onMounted(async () => {
           record_data: 3,
         };
         await updateAssemble(payload);
-
+        */
         payload = {
           material_id: targetItem.id,
           delivery_qty: 0,
@@ -1315,7 +1347,7 @@ onMounted(async () => {
           record_data3: 3,
         };
         await updateAssmbleDataByMaterialID(payload)
-        */
+
       });
       console.log('agv_end 處理步驟1...');
 
@@ -1544,7 +1576,9 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
-window.removeEventListener('popstate', handlePopState)
+//window.removeEventListener('resize', calculatePanelPosition);
+
+window.removeEventListener('popstate', handlePopState);
 clearInterval(intervalId);
 //clearInterval(intervalIdForLed);
 stopFlashing();
@@ -1584,6 +1618,23 @@ const customFilter =  (value, query, item)  => {
     typeof value === 'string' &&
     value.toString().toLocaleUpperCase().indexOf(query) !== -1
 }
+
+// 計算面板位置函數
+const calculatePanelPosition = () => {
+  nextTick(() => {
+    if (sendButton.value?.$el) {
+      const buttonRect = sendButton.value.$el.getBoundingClientRect()
+      // 設置面板位置為按鈕右邊 + 5px
+      panelX.value = buttonRect.right + 50
+      console.log("panelX.value:",panelX.value);
+      // 如果有需要可以調用面板的更新位置方法
+      //if (draggablePanel.value?.updatePosition) {
+      //  draggablePanel.value.updatePosition(panelX.value, panelY.value)
+      //}
+    }
+  })
+}
+
 /*
 const customFilter = (value, search, item) => {
   //const customFilter = (search, item) => {

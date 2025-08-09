@@ -1022,6 +1022,8 @@ const isGifDisabled = (item) => {
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
 
+  item.receive_qty = Number(item.receive_qty || 0);   //領取數量
+
   //const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
   const total = Number(item.receive_qty) || 0;  //領取數量
@@ -1156,10 +1158,13 @@ const createAbnormalFun = async () => {
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
+  item.receive_qty = Number(item.receive_qty || 0);
+
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
     //item.receive_qty = Number(item.delivery_qty) || 0;
-    item.receive_qty = item.must_receive_qty || 0;
+    //item.receive_qty = item.must_receive_qty || 0;          // 2025-08-05 modify
+    item.receive_qty = Number(item.must_receive_qty) || 0;
   //} else {
   //  item.receive_qty = Number(item.receive_qty) || 0;
   }
@@ -1173,6 +1178,8 @@ const updateItem2 = async (item) => {
 
 const updateItem = async (item) => {
   console.log("PickReportForAssembleBegin, updateItem(),", item);
+
+  item.receive_qty = item.receive_qty || 0;
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -1307,7 +1314,7 @@ const updateItem = async (item) => {
     //await listWaitForAssemble();    // 2025-06-16 mark, 改順序
   //}   // 2025-06-16 mark, 改順序
 
-  if (item.must_receive_qty != item.receive_qty) {
+  if (Number(item.must_receive_qty) != Number(item.receive_qty)) {
     console.log("item.must_receive_qty != item.receive_qty", item.must_receive_qty, item.receive_qty)
 
     let temp_qty = item.must_receive_qty - item.receive_qty;
@@ -1317,7 +1324,7 @@ const updateItem = async (item) => {
     payload = {
       material_id: item.id,
       record_name: 'must_receive_qty',
-      record_data: item.receive_qty,
+      record_data: Number(item.receive_qty),
     };
     await updateAssembleMustReceiveQtyByMaterialID(payload);
     //
@@ -1420,6 +1427,10 @@ const checkTextEditField = (focused, item) => {
   if (!focused) { // 當失去焦點時
     console.log("checkTextEditField()...");
 
+    console.log("離開 focus");
+    if (item.receive_qty === '' || item.receive_qty === null || item.receive_qty === undefined) {
+      item.receive_qty = 0;
+    }
     //if (item.receive_qty.trim().length == 0)
     //  item.receive_qty =0;        // 強迫輸入值為0
 
@@ -1431,6 +1442,12 @@ const checkTextEditField = (focused, item) => {
       item.receive_qty = item.pickBegin[item.pickBegin.length - 1]; // 若不是空陣列，將最後一筆值 assign 給 item.receive_qty
     }
     */
+  //}
+  } else {
+    console.log("進入 focus");
+    if (item.receive_qty === 0 || item.receive_qty === '0') {
+      item.receive_qty = '';
+    }
   }
 };
 

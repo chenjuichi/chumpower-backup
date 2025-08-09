@@ -220,6 +220,7 @@ class Material(BASE):
     _process =  relationship('Process', backref="material")         # 一對多(一),
     material_stockin_date = Column(String(12))                      # 入庫日期
     create_at = Column(DateTime, server_default=func.now())
+    update_time = Column(String(30))
 
     # 新增欄位：追蹤來源
     is_copied_from_id = Column(Integer, ForeignKey('material.id'), nullable=True)
@@ -315,9 +316,11 @@ class Bom(BASE):
     pick_qty = Column(Integer, default=0)       #領料數量
     non_qty = Column(Integer, default=0)        #未結數量
     lack_qty = Column(Integer, default=0)       #數量
-    receive = Column(Boolean, default=True)     # 缺料:False
+    #receive = Column(Boolean, default=True)     # False: 不領料 checkbox
+    receive = Column(Boolean)     # False: 不領料 checkbox
     lack = Column(Boolean, default=False)
     isPickOK = Column(Boolean, default=False)               # true:檢料完成
+    lack_bom_qty = Column(Integer, default=0)
     start_date = Column(String(12), nullable=False)         #開始日期
     create_at = Column(DateTime, server_default=func.now())
 
@@ -409,7 +412,7 @@ class Assemble(BASE):
     show2_ok = Column(String(20), server_default='0')
     show3_ok = Column(String(20), server_default='0')
 
-    update_time = Column(String(30))                              #alarm 更新時間
+    update_time = Column(String(30))
     create_at = Column(DateTime, server_default=func.now())
     # 新增欄位：追蹤來源
     is_copied_from_id = Column(Integer, ForeignKey('assemble.id'), nullable=True)

@@ -471,13 +471,16 @@ def read_all_excel_files():
             print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
 
             for _, bom_row in bom_entries.iterrows(): # for loop_bom
+                temp=clean_nan(bom_row.get('物料短缺'))
                 bom = Bom(
                     material_id=material.id,
                     seq_num=clean_nan(bom_row.get('預留項目')),
                     material_num=clean_nan(bom_row.get('物料')),
                     material_comment=clean_nan(bom_row.get('物料說明')),
                     req_qty=clean_nan(bom_row.get('需求數量')),
-                    start_date=convert_date(row.get('交期'))
+                    start_date=convert_date(row.get('交期')),
+                    lack_bom_qty=temp,
+                    receive= True if temp==0 else False,
                 )
                 s.add(bom)
             s.commit()

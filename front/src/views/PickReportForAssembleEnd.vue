@@ -358,6 +358,7 @@
       </template>
     -->
 
+      <!-- 自訂 '應完成數量'欄位 -->
       <template v-slot:item.must_receive_end_qty="{ item }">
         {{ item.must_receive_end_qty }}
       </template>
@@ -398,7 +399,7 @@
             @keydown="handleKeyDown"
 
             @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
-            @update:focused="(focused) => checkTextEditField(focused, item)"
+            @update:focused="(focused) => checkAbnormalField(focused, item)"
 
             :disabled="item.input_abnormal_disable"
           />
@@ -941,7 +942,7 @@ onMounted(async () => {
           //id: item.id,
           id: current_material_id,
           record_name: 'must_allOk_qty',
-          record_data: targetItem.receive_qty
+          record_data: Number(targetItem.receive_qty)
         };
         await updateMaterial(payload);
 
@@ -1314,6 +1315,8 @@ const isButtonDisabled = (item) => {
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
 
+  item.receive_qty = Number(item.receive_qty || 0);
+
   //const total = Number(item.receive_qty)+Number(item.abnormal_qty)
   const total = Number(item.receive_qty) || 0;    //完成數量
   const temp = Number(item.must_receive_end_qty)  //應完成數量
@@ -1345,6 +1348,8 @@ const onAbnormalQtyUpdate = (item, value) => {
 
 const checkAbnormalQty = (item) => {
   console.log("checkAbnormalQty(),", item);
+
+  item.abnormal_qty = Number(item.abnormal_qty || 0);
 
   //const total = Number(item.receive_qty) + Number(item.abnormal_qty);
   const total = Number(item.abnormal_qty) || 0;   //異常數量
@@ -1575,6 +1580,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
+  item.receive_qty = Number(item.receive_qty) || 0;
+
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
     item.receive_qty = item.must_receive_end_qty || 0;
@@ -1591,6 +1598,8 @@ const updateItem2 = async (item) => {
 
 const updateItem = async (item) => {
   console.log("PickReportForAssembleEnd, updateItem(),", item);
+
+  item.receive_qty = Number(item.receive_qty || 0);
 
   // 檢查完成數量欄位是否為空白或輸入了0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -1644,12 +1653,12 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  // 紀錄當前已結束(完成)總數量顯示順序
-  let temp_qty=1
+  // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
+  let temp_qty=1  //組裝
   if (item.process_step_code == 2 )
-    temp_qty=2
+    temp_qty=2    //檢驗
   if (item.process_step_code == 1 )
-    temp_qty=3
+    temp_qty=3    //雷射
   payload = {
     //assemble_id: item.assemble_id,
     //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
@@ -1806,7 +1815,6 @@ const updateItem = async (item) => {
       //temp_no = 21
       temp_no = 22
     }
-
     let processPayload = {
       begin_time: formattedStartTime,
       end_time: formattedEndTime,
@@ -1910,6 +1918,9 @@ const updateItem = async (item) => {
 
 const updateAbnormal = async (item) => {
   console.log("updateAbnormal(),", item);
+
+  item.abnormal_qty = Number(item.abnormal_qty) || 0;
+
   /*
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -2058,7 +2069,7 @@ const updateAbnormal = async (item) => {
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'abnormal_qty',
-    record_data: item.abnormal_qty,
+    record_data: Number(item.abnormal_qty),
   };
   await updateAssemble(payload);
   /*
@@ -2092,7 +2103,7 @@ const updateAbnormal = async (item) => {
   // 3. 新增異常組裝製程的應領取數量
   payload = {
     copy_id: current_assemble_id,
-    must_receive_qty: item.abnormal_qty,
+    must_receive_qty: Number(item.abnormal_qty),
   }
   await copyNewAssemble(payload);
 
@@ -2101,6 +2112,7 @@ const updateAbnormal = async (item) => {
   };
   await getMaterialsAndAssemblesByUser(payload);
 };
+// end updateAbnormal()
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
@@ -2177,6 +2189,11 @@ const checkTextEditField = (focused, item) => {
   if (!focused) { // 當失去焦點時
     console.log("checkTextEditField()...");
 
+    console.log("離開 focus");
+    if (item.receive_qty === '' || item.receive_qty === null || item.receive_qty === undefined) {
+      item.receive_qty = 0;
+    }
+
     //if (item.receive_qty.trim().length == 0)
     //  item.receive_qty =0;
     // 檢查 item.pickBegin 是否為空陣列
@@ -2188,10 +2205,33 @@ const checkTextEditField = (focused, item) => {
       item.receive_qty = item.pickEnd[item.pickEnd.length - 1];
     }
     */
-  //} else {
-
+  //}
+  } else {
+    console.log("進入 focus");
+    if (item.receive_qty === 0 || item.receive_qty === '0') {
+      item.receive_qty = '';
+    }
   }
 };
+
+
+const checkAbnormalField = (focused, item) => {
+  if (!focused) { // 當失去焦點時
+    console.log("checkAbnormalField()...");
+
+    console.log("離開 focus");
+    if (item.abnormal_qty === '' || item.abnormal_qty === null || item.abnormal_qty === undefined) {
+      item.abnormal_qty = 0;
+    }
+
+  } else {
+    console.log("進入 focus");
+    if (item.abnormal_qty === 0 || item.abnormal_qty === '0') {
+      item.abnormal_qty = '';
+    }
+  }
+};
+
 
 const toggleSort = (key) => {
   let nn = sortBy.value.indexOf(key)

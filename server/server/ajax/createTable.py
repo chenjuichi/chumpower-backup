@@ -427,6 +427,12 @@ def copy_assemble():
       process_step_code=record.process_step_code,
       must_receive_qty = _must_qty,     #應領取數量
       ask_qty=0,
+
+      show1_ok = record.show1_ok,
+      show2_ok = 3,   #等待組裝作業
+      show3_ok = record.show3_ok,
+
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=record.id,
     )
     s.add(new_record)
@@ -505,6 +511,7 @@ def copy_new_assemble():
       completed_qty = 0,                    #完成數量
       total_completed_qty = 0,
       ask_qty=0,
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=record.id,
     )
     s.add(new_record)
@@ -567,6 +574,7 @@ def copy_material_and_bom():
 
       shortage_note = _shortage_note,
 
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=existing_material.id,  # ✅ 設定來源
     )
 
@@ -588,6 +596,10 @@ def copy_material_and_bom():
         lack_qty=bom.lack_qty,
         lack=bom.lack,
         start_date=bom.start_date,
+        lack_bom_qty=bom.lack_bom_qty,
+
+        receive= bom.receive,
+
       )
       s.add(new_bom)
 
@@ -671,6 +683,7 @@ def copy_material():
 
     shortage_note = _shortage_note,
 
+    update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     is_copied_from_id=existing_material.id,  # ✅ 設定來源
   )
 

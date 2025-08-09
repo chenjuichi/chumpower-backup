@@ -568,7 +568,8 @@ def list_wait_for_assemble():
                 pre_step_code = step_code
                 pass  # 不跳過，繼續執行後續程式
             else:
-                pre_step_code = 99
+                pre_step_code = step_code
+                #pre_step_code = 99
                 continue
         #
         #if step_enable==False or begin_assemble_record.input_disable:  # 2025-06-16 add, 改順序
@@ -756,19 +757,37 @@ def list_materials_and_assembles():
       if material_record.isAssembleStationShow:
       #if not material_record.isShow or material_record.isAssembleStationShow:
         continue
+    #  assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
       num = int(material_record.show2_ok)
       temp_temp_show2_ok_str = str2[num]
-      assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
-      # 針對組裝區目前途程完成數量, 處理 show2_ok 的顯示
-      if num == 5 or num == 7 or num == 9:
-        for assemble_record in assemble_records:
-          # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
-          if assemble_record.total_ask_qty_end in [1, 2, 3]:
-            completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
-            date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
-            date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
-            temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
+    #  #assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
+    #  # 針對組裝區目前途程完成數量, 處理 show2_ok 的顯示
+    #  if num == 5 or num == 7 or num == 9:
+    #    for assemble_record in assemble_records:
+    #  my_temp_temp_show2_ok_str = []
+    #  i = 0
+    #  while i < len(assemble_records):
+    #    assemble_record = assemble_records[i]
+    #    i +=1
+      #for assemble_record in material_record._assemble:
+    #    num = int(assemble_record.show2_ok)
+    #    print("num:", assemble_record.id, num)
+    #    temp_temp_show2_ok_str = str2[num]
+        #assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
+        # 針對組裝區目前途程完成數量, 處理 show2_ok 的顯示
+    #    if (num == 5 or num == 7 or num == 9) and assemble_record.total_ask_qty_end in [1, 2, 3]:
+
+
+    #      # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+    #      if assemble_record.total_ask_qty_end in [1, 2, 3]:
+    #        completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
+    #        date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+    #        date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+    #        temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
         #print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
+    #    my_temp_temp_show2_ok_str.append(temp_temp_show2_ok_str)
+    #  print("temp_temp_show2_ok_str:", temp_temp_show2_ok_str)
+
       pre_step_code=99
       sub_process_step_enable=False
       for assemble_record in material_record._assemble:
@@ -798,19 +817,21 @@ def list_materials_and_assembles():
         step_code = assemble_record.process_step_code
         max_step_code = max_step_code_per_order.get(order_num_id, 0)
         step_enable = (step_code == max_step_code and material_record.whichStation==2)
-        print("pre_step_code, step_code, max_step_code, step_enable:",pre_step_code, step_code, max_step_code, step_enable)
+        #print("pre_step_code, step_code, max_step_code, step_enable:",pre_step_code, step_code, max_step_code, step_enable)
         # 2025-08-04 modify, 領料數 != 應領料數
         skip_condition = (not step_enable or assemble_record.input_disable)
-        print("skip_condition:", skip_condition)
+        #print("skip_condition:", skip_condition)
+        #print("pre_step_code, step_code, max_step_code, step_enable, skip_condition:",pre_step_code, step_code, max_step_code, step_enable, skip_condition)
         if skip_condition:
             #if pre_step_code == 0 and step_code != 0 and not step_enable:
-            print("pre_step_code == 0 and step_code != 0:", pre_step_code, step_code)
+            #print("pre_step_code == 0 and step_code != 0:", pre_step_code, step_code)
             if pre_step_code == 0 and step_code != 0:
                 pre_step_code = step_code
                 sub_process_step_enable = True
                 pass  # 不跳過，繼續執行後續程式
             else:
-                pre_step_code = 99
+                pre_step_code = step_code
+                #pre_step_code = 99
                 continue
         #
         #if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
@@ -825,6 +846,25 @@ def list_materials_and_assembles():
         #print("max_step_code_per_order:",max_step_code_per_order)
         #print("step_code , max_step_code:", step_code , max_step_code, step_enable)
 
+        num = int(assemble_record.show2_ok)
+        temp_temp_show2_ok_str = str2[num]
+        print("temp_temp_show2_ok_str:", temp_temp_show2_ok_str)
+
+        print("start num:", num)
+        print("start total_ask_qty_end:", assemble_record.id, assemble_record.total_ask_qty_end)
+        if num in [5, 7, 9]:
+    #      # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+          #if assemble_record.total_ask_qty_end in [1, 2, 3]:
+            completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
+            print("completed_qty:",completed_qty)
+            date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+            print("date_parts:",date_parts)
+            date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+            print("date_parts[assemble_record.total_ask_qty_end - 1]:",)
+            temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
+            print("temp_temp_show2_ok_str:",temp_temp_show2_ok_str)
+        print("assemble_record.id, num, assemble_record.total_ask_qty_end, temp_temp_show2_ok_str, step_enable:", assemble_record.id, num, assemble_record.total_ask_qty_end, temp_temp_show2_ok_str, step_enable)
+
         format_name = f"{assemble_record.work_num}({name})"
         #num = int(material_record.show2_ok)
         index=index+1
@@ -836,7 +876,9 @@ def list_materials_and_assembles():
           'material_num': material_record.material_num,             #物料編號(成品)
           #'assemble_process': str2[num],                           #途程目前狀況 material_record.isTakeOk & step_enable
           #'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
-          'assemble_process': '' if (num > 2 and not step_enable) else temp_temp_show2_ok_str,                            #途程目前狀況 isTakeOk & step_enable
+          #'assemble_process': '' if (num > 2 and not step_enable) else temp_temp_show2_ok_str,                #途程目前狀況 isTakeOk & step_enable
+          'assemble_process': '' if (num > 2 and not (step_enable or sub_process_step_enable)) else temp_temp_show2_ok_str,                #途程目前狀況 isTakeOk & step_enable
+
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
           #'req_qty': assemble_record.meinh_qty,                                # 需求數量(作業數量)

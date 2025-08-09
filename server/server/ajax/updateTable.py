@@ -339,6 +339,26 @@ def update_assemble_process_step():
 
     material_record.isAssembleStation3TakeOk = False
     assemble_record.isAssembleStationShow = False
+
+    sorted_records = sorted(assemble_records, key=lambda r: r.id)
+    current_index = next((i for i, r in enumerate(sorted_records) if r.id == assemble_id), None)
+
+    if current_index is not None and current_index + 1 < len(sorted_records):
+        next_record = sorted_records[current_index + 1]
+        #material_record.next_assemble_id = next_record.id  # 設定到 material
+        print(f"next_assemble_id 設為 {next_record.id}")
+
+        # 2️⃣ 修改 next_assemble_id record 的 show2_ok = 5
+        if next_record.process_step_code == 2:  #下一個程序為檢驗
+          next_record.show2_ok = 5
+          next_record.total_ask_qty_end = 1
+        if next_record.process_step_code == 3:  #下一個程序為雷射
+          next_record.show2_ok = 7
+          next_record.total_ask_qty_end = 2
+
+        next_record.completed_qty = assemble_record.completed_qty
+        print(f"更新 assemble id={next_record.id} 的 show2_ok 為 5")
+
     return_value = False
     #return jsonify({"message": "Not all process_step_code are zero"}), 200
   s.commit()

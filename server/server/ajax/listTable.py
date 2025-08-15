@@ -283,7 +283,7 @@ def list_materials():
         # 標記這個 order_num 已處理過
         #processed_order_nums.add(order_num)
         processed_order_nums.add(order_num_id)
-        print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
+        #print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
         _object = {
           'id': record['id'],
           'order_num': record['order_num'],                   #訂單編號
@@ -326,8 +326,8 @@ def list_materials():
     _results.sort(key=lambda x: (x['order_num'], not x['isTakeOk']))
 
     return jsonify({
-        'status': return_value,
-        'materials': _results
+      'status': return_value,
+      'materials': _results
     })
 
 
@@ -950,12 +950,12 @@ def list_informations():
     _results = []
     return_value = True
     str1=['備料站', '組裝站', '成品站']
-    #       0        1         2                 3              4            5           6             7            8             9          10                  11            12           13          14          15            16          17
+    #       0        1         2                 3              4            5           6             7            8             9          10                  11            12           13          14          15            16           17            18
     #str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
     str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '檢驗進行中', '00/00/00',  '雷射進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
-    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)     16(agv_start)
+    #      0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)     16(agv_start)   17
     #str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start']
-    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '檢驗進行中', '檢驗已結束', '雷射進行中', '雷射已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start']
+    str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '檢驗進行中', '檢驗已結束', '雷射進行中', '雷射已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業', 'agv Start',     '推車送料至組裝區中',]
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 

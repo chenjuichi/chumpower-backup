@@ -14,7 +14,7 @@ from sqlalchemy import inspect
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 
-from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Product, Agv, Session
+from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -492,6 +492,56 @@ def update_assemble_data_by_material_id():
       print("更新失敗:", str(e))
       return_value = False
       #return
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+@updateTable.route("/updateProcessDataByMaterialID", methods=['POST'])
+def update_process_data_by_material_id():
+  print("updateProcessDataByMaterialID....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _seq = request_data.get('seq')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
+
+  s = Session()
+
+  try:
+      material = s.query(Material).get(_material_id)
+      print("step1")
+      if not material:
+        return jsonify({'status': False, 'msg': 'Material not found'})
+      print("step2")
+
+      # 確保 _seq 不超過範圍
+      if _seq < 0 or _seq > len(material._process):
+        return jsonify({'status': False, 'msg': 'seq out of range'})
+
+      print("step3")
+
+      # 取出對應的 Process
+      target_process = material._process[_seq-1]
+      print("target_process:", target_process)
+      # 更新欄位
+      if _record_name1 and _record_data1 is not None:
+        setattr(target_process, _record_name1, _record_data1)
+      print("step4")
+
+      # 提交更新
+      s.commit()
+      print("target_process:", target_process)
+      print(f"更新成功!")
+      return_value = True
+  except Exception as e:
+      s.rollback()
+      print("更新失敗:", str(e))
+      return_value = False
 
   return jsonify({
     'status': return_value

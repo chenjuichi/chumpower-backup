@@ -98,6 +98,8 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
     items_per_page = Column(Integer, default=10)            # 每頁顯示行數, default=10
     isSee = Column(String(1), default=text("0"))            # 0:user沒有看公告資料
     message = Column(String(30))                            # 訊息
+    #pdf__manager = Column(Integer, default=0)               # 1:配件生管主管, 2:配件組立加工主管
+    merg_manage = Column(Boolean, default=True)             # False: 備料工單在組裝線不合併
     routingPriv = Column(String(70), default=text("0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0"))
     lastRoutingName = Column(String(70), default=text(""))  # user最後瀏覽的網頁routing name, max 3 個, 以,分隔
     _user = relationship('User', backref='setting')         # 一對多(一 )
@@ -210,7 +212,7 @@ class Material(BASE):
     rt_total_time_B110 = Column(String(30))
 
     move_by_automatic_or_manual = Column(Boolean, default=True)     # true:agv自動搬運, false:人工送料
-    move_by_process_type = Column(Integer, default = 2)             # 2:備料給組裝區, 4:備料給加工區
+    move_by_process_type = Column(Integer, default = 2)             # 2:工單給組裝線, 4:工單給加工線
 
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),
@@ -505,7 +507,7 @@ class Process(BASE):
     #material_id = Column(Integer, ForeignKey('material.id'), nullable=False)  # 確保有這行
     #order_num = Column(String(20), nullable=False)                #訂單編號
     work_num =  Column(String(20))                                #工作中心
-    user_id = Column(String(8), nullable=False)                   #員工編號
+    user_id = Column(String(20), nullable=False)                  #員工編號
     begin_time = Column(String(30))                               #開始時間
     end_time = Column(String(30))                                 #結束時間
     period_time =  Column(String(30))
@@ -518,10 +520,10 @@ class Process(BASE):
                                                                   # (含20, 21, 22, 23)
                                                                   # 3:成品區(含31, 32, 33)
                                                                   # 4:加工區(含41, 42, 43)
-                                                                  # 99:agv
+                                                                  # 99:agv, 98:forklift
                                                                   # 88: 暫停
     #process_status = Column(Integer, default=0)                   # material bom_agv_status
-    process_work_time_qty = Column(Integer, default=0)             # 報工數量
+    process_work_time_qty = Column(Integer, default=0)            # 報工數量
     normal_work_time = Column(Boolean, default=True)              # true:正常工時, false:異常整修工時
     create_at = Column(DateTime, server_default=func.now())
 

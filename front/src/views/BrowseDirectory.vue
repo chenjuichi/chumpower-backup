@@ -191,6 +191,11 @@ onBeforeMount(() => {
 const checkDataForSaveButton = computed(() => {
   return !(fileReady.value);
 });
+
+const isAssemblyOrProcess = computed(() => {
+  const dep = currentUser.value.dep || ''
+  return dep.includes('組立') || dep.includes('加工')
+})
 /*
 const splitName = computed(() => {
 	console.log("currentUser.value.name:", currentUser.value.name)
@@ -296,6 +301,8 @@ const createNewPdf = async () => {
 
   if (!selectedFile.value) return;
 
+	//console.log("selectedFile:", selectedFile.value, selectedFileName.value)
+
   try {
     const barcodePayload = {
       filepath: `${currentPath.value}\\${selectedFile.value}`,
@@ -337,19 +344,33 @@ const createNewPdf = async () => {
 			finalPath = stampRes.filepath;
       finalName = stampRes.filename;
 
+			console.log("isAssemblyOrProcess:", isAssemblyOrProcess.value);
+
 			// 加蓋預設主管日期章
-      const stampPayload2 = {
-        last_name: '林',
-        first_name: '淑雲',
-        filepath: finalPath,           // 同樣使用第一次蓋章後的檔案
-        png_path: "C:\\vue\\chumpower\\日期章\\stamp0.png",
-        pdfType: pdfType.value,
-        approve: 1,
-      };
+			let stampPayload2 = {};
+	  	if (isAssemblyOrProcess.value) {	//判斷部門別組管
+				stampPayload2 = {
+					last_name: '廖',
+					first_name: '萬潔',
+					filepath: finalPath,           // 同樣使用第一次蓋章後的檔案
+					png_path: "C:\\vue\\chumpower\\日期章\\stamp0.png",
+					pdfType: pdfType.value,
+					approve: 1,
+				};
+			} else {
+      	stampPayload2 = {
+					last_name: '林',
+					first_name: '淑雲',
+					filepath: finalPath,           // 同樣使用第一次蓋章後的檔案
+					png_path: "C:\\vue\\chumpower\\日期章\\stamp0.png",
+					pdfType: pdfType.value,
+					approve: 1,
+      	};
+			}
       const stampRes2 = await stampFile(stampPayload2);
       finalPath = stampRes2.filepath;
       finalName = stampRes2.filename;
-		}
+		}	// end if
 
     // 備份檔案
 		const copyPayload = {
@@ -369,7 +390,6 @@ const createNewPdf = async () => {
     //localPdf.value = false;
     localPdf.value = true;
 		emit('update:pdf', true);
-
   }
 };
 
@@ -398,7 +418,9 @@ const selectFile = (fileName) => {
   selectedFileName.value = fileName;
 
   const fileNameWithoutExt = fileName.split('.').slice(0, -1).join('.');
-	const new_barcode_text = fileNameWithoutExt.split('_')[0];
+	let new_barcode_text = fileNameWithoutExt.split('_')[0];
+	new_barcode_text = new_barcode_text.split('-')[0];
+	new_barcode_text = new_barcode_text.slice(0, 12); // 限制前 12 個字
   barcodeText.value = new_barcode_text;
   //barcodeText.value = fileNameWithoutExt;
 

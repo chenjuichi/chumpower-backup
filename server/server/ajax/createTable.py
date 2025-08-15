@@ -345,6 +345,8 @@ def create_process():
   _process_work_time_qty = request_data.get('process_work_time_qty')
   _normal_work_time = request_data.get('normal_work_time')
 
+  print("process_work_time_qty:", _process_work_time_qty)
+
   print("id:", _id, type(_id))
 
   s = Session()

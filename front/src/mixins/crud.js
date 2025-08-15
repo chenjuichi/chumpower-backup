@@ -256,7 +256,7 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
-              path == '/updateAssmbleDataByMaterialID' ||
+              path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
               path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
               path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2' ||
               path == 'updateBomXorReceive') {

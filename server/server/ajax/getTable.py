@@ -595,7 +595,8 @@ def get_processes_by_order_num():
             'id': material.id,
             'order_num': material.order_num,
             #'total_delivery_qty': material.total_delivery_qty,
-            'process_work_time_qty': '' if (record.process_type == 2 or record.process_type == 3 or record.process_type == 19 or record.process_type == 29) else record.process_work_time_qty,
+            #'process_work_time_qty': '' if (record.process_type == 2 or record.process_type == 3 or record.process_type == 19 or record.process_type == 29) else record.process_work_time_qty,
+            'process_work_time_qty': record.process_work_time_qty,
             'sd_time_B109': material.sd_time_B109,
             'sd_time_B106': material.sd_time_B106,
             'sd_time_B110': material.sd_time_B110,
@@ -607,6 +608,7 @@ def get_processes_by_order_num():
             'single_std_time': single_std_time_str if record.process_type != 31 else '',
             'process_type': status,
             'normal_type': ' - 異常整修' if not record.normal_work_time else '',
+            'user_comment': '',
             'create_at': record.create_at
         }
         _results.append(_object)

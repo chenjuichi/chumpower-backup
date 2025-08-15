@@ -431,8 +431,43 @@ def read_all_excel_files():
 
         # 統一處理 BOM 和 Assemble 的 訂單欄位
         if '訂單' in bom_df.columns:
-            bom_df['訂單'] = bom_df['訂單'].apply(normalize_order_number)
-        assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].apply(normalize_order_number)
+          # 2025-08-11 modify
+          #bom_df['訂單'] = bom_df['訂單'].apply(normalize_order_number)
+          '''
+          bom_df['訂單'] = (
+            bom_df['訂單']
+            .apply(normalize_order_number)
+            .astype(str)
+            .replace('nan', '')
+          )
+          '''
+          bom_df.iloc[:, 0] = (
+              bom_df.iloc[:, 0]
+              .apply(normalize_order_number)
+              .replace('nan', '')
+              .astype(str)   # 直接最後轉成 str → object
+          )
+
+          # 明確把 dtype 設成 object
+          bom_df = bom_df.astype({bom_df.columns[0]: object})
+
+        # 2025-08-11 modify
+        #assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].apply(normalize_order_number)
+        '''
+        assemble_df.iloc[:, 0] = (
+          assemble_df.iloc[:, 0]
+          .apply(normalize_order_number)
+          .astype(str)
+          .replace('nan', '')
+        )
+        '''
+        assemble_df.iloc[:, 0] = (
+            assemble_df.iloc[:, 0]
+            .apply(normalize_order_number)
+            .replace('nan', '')
+            .astype(str)
+        )
+        assemble_df = assemble_df.astype({assemble_df.columns[0]: object})
 
         # 處理 Material
         for _, row in material_df.iterrows(): # for loop_material

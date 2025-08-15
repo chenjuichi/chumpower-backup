@@ -41,6 +41,40 @@
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
 
+          <!--客製化 堆高機送料中按鍵-->
+          <!--
+          <v-btn
+            :disabled="!station2_trans_ready"
+            color="primary"
+            variant="outlined"
+            :style="{
+              position: 'relative',
+              right: screenSizeInInches > 20 ? '600px' : '570px',
+              top: '0px',
+              fontWeight: '700',
+              width: '120px',
+              background: '#e67e22',
+              background: station2_trans_ready ? '#e67e22' : '#e7e9eb',
+            }"
+            @click="forkliftNoticeFun"
+          >
+
+            <div v-if="station2_trans_ready" class="blink" style="display: flex; align-items: center;">
+              <v-icon left color="#fff">mdi-forklift</v-icon>
+              <span style="color: #fff;">堆高機送料中</span>
+            </div>
+            <div v-else style="display: flex; align-items: center;">
+              <v-icon left color="#000">mdi-forklift</v-icon>
+              <span style="color: #000;">堆高機送料中</span>
+            </div>
+          </v-btn>
+
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <div style="position:relative;right: 550px; font-size: 16px;">{{ station2_trans_empName }}</div>
+          </div>
+          -->
+
+          <!--
           <v-btn
             v-if="materials_and_assembles.length > 0"
             color="primary"
@@ -51,6 +85,7 @@
             <v-icon left color="blue">mdi-refresh</v-icon>
             更新訂單
           </v-btn>
+          -->
 
           <!-- 組裝區來料異常備註 -->
           <div class="pa-4 text-center">
@@ -468,6 +503,17 @@ const inputIDs = ref([]);
 
 const showBackWarning = ref(true);
 
+const station2_trans_ready = ref(false);    // false:堆高機沒有動作
+const station2_trans_empID = ref('');
+const station2_trans_empName = ref('');
+const station2_trans_show1 = ref(false);
+const station2_trans_password = ref('password');
+const requiredRule = value => !!value || '必須輸入資料...';
+const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
+
+//const showText = ref(true) // 控制閃爍
+//let blinkInterval = null
+
 const bar_code = ref('');
 const barcodeInput = ref(null);
 
@@ -571,7 +617,22 @@ watch(bar_code, (newVal) => {
     handleBarCode();
   }
 })
-
+/*
+// 監控 station2_trans_ready
+watch(station2_trans_ready, (newVal) => {
+  if (newVal) {
+    // 開始閃爍
+    blinkInterval = setInterval(() => {
+      showText.value = !showText.value
+    }, 500)
+  } else {
+    // 停止閃爍
+    clearInterval(blinkInterval)
+    blinkInterval = null
+    showText.value = true
+  }
+})
+*/
 //=== computed ===
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -700,6 +761,16 @@ onMounted(async () => {
     // 燈號
     socket.value.on('station1_agv_ready', async () => {
       activeColor.value='blue';   // 機器人進入組裝區
+    })
+
+    socket.value.on('station2_trans_ready', async (data) => {
+      console.log("收到 station2_trans_ready訊息...", data);
+      //station2_trans_empID.value =data.empID;
+      //station2_trans_empName.value =data.empName;
+      station2_trans_ready.value = true;
+      forkliftNoticeFun();
+
+      initialize();
     })
 
     /*
@@ -855,6 +926,8 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
   //clearInterval(intervalId);
   window.removeEventListener('mousemove', updateMousePosition);
 
+  //clearInterval(blinkInterval);
+
   eventBus.off('merge_work_orders', handleMaterialUpdate)
 
   //+++
@@ -980,6 +1053,14 @@ const focusItemField = async (item) => {
   } else {
     console.warn(`找不到欄位: receiveQtyID-${item.index}`)
   }
+}
+
+const forkliftNoticeFun = () => {
+  console.log("forkliftNoticeFun()...");
+
+  socket.value.emit('station2_trans_begin');
+
+  station2_trans_ready.value = false;
 }
 
 /*
@@ -1615,4 +1696,12 @@ const updateMousePosition = (event) => {
   left: 15px;
 }
 
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.blink {
+  animation: blink 1s infinite;
+}
 </style>

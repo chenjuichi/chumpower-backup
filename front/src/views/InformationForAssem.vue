@@ -237,7 +237,7 @@
                         <th class="text-left" style="width:240px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
-                        <th class="text-left">領料數量</th>
+                        <th class="text-left">數量</th>
                         <th class="text-left">實際耗時(分)</th>
                         <th class="text-left">實際工時(分)</th>
                         <th class="text-left">單件標工(分)</th>
@@ -265,6 +265,7 @@
                         <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
+                        <td>{{ process_item.user_comment }}</td>
                       </tr>
                     </tbody>
                   </v-table>
@@ -429,7 +430,7 @@ const footerOptions = [
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:150 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:170 },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },

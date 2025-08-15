@@ -99,10 +99,13 @@ const handlePopState = () => {
 }
 */
 const handlePopState = () => {
-  // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL)
-  //history.replaceState(history.state, '', document.URL);
-  window.history.pushState(history.state, '', document.URL)
+  //// ✅ 正確方式：保留 Vue Router 的 state
+  ////history.pushState(history.state, '', document.URL)
+  ////history.replaceState(history.state, '', document.URL);
+  //window.history.pushState(history.state, '', document.URL)
+
+  // 重新 push 一次，但保留原狀態
+  window.history.pushState({ ...history.state }, '', document.URL);
 
 
   if (showBackWarning.value) {

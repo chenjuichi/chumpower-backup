@@ -149,6 +149,11 @@ let connectedPeers = new Set();   //使用Set以確保socket.id唯一性
 
 let resetRequested = false;       // 重置狀態
 
+// 儲存每個 socket 的 interval ID
+//const readyIntervals = new Map();
+let readyInterval_ready = null; // 用來存 setInterval 的 ID
+let readyInterval_end = null;   // 用來存 setInterval 的 ID
+
 // 瀏覽器 Socket.IO 事件處理
 io.on('connection', (socket) => {
   const clientAPP = socket.handshake.query.clientAPP;
@@ -331,9 +336,63 @@ io.on('connection', (socket) => {
     //socket.emit('triggerLogout', payload);
   });
 
+  socket.on('station2_trans_call', (payload) => {
+    console.log('📩 Received station2_trans by:', payload.empID , payload.empName);
+
+    if (readyInterval_ready) {
+      console.log('⏳ 已在持續發送 station2_trans_ready， 忽略本次呼叫');
+      return;
+    }
+
+    readyInterval_ready = setInterval(() => {
+      io.emit('station2_trans_ready', payload); // 全部 client 收到
+      console.log(`📤 Sent station2_trans_ready`);
+    }, 2000);
+  });
+
+  // 當收到 station2_trans_begin 時，停止發送
+  socket.on('station2_trans_begin', () => {
+    console.log(`🛑 Received station2_trans_begin from ${socket.id}`);
+
+     if (readyInterval_ready) {
+      clearInterval(readyInterval_ready);
+      readyInterval_ready = null;
+    }
+
+    if (readyInterval_end) {
+      console.log('⏳ 已在持續發送 station2_trans_end， 忽略本次呼叫');
+      return;
+    }
+
+    readyInterval_end = setInterval(() => {
+      io.emit('station2_trans_end'); // 全部 client 收到
+      console.log(`📤 Sent station2_trans_end`);
+    }, 2000);
+  });
+
+  socket.on('station2_trans_over', () => {
+    console.log(`🛑 Received station2_trans_over from ${socket.id}`);
+
+     if (readyInterval_end) {
+      clearInterval(readyInterval_end);
+      readyInterval_end = null;
+    }
+  });
+
+  // 斷線時也清掉 interval
+  //socket.on('disconnect', () => {
+  //  if (readyIntervals.has(socket.id)) {
+  //    clearInterval(readyIntervals.get(socket.id));
+  //    readyIntervals.delete(socket.id);
+  //  }
+  //  connectedPeers.delete(socket.id);
+  //  console.log(`❌ Client disconnected: ${socket.id}`);
+  //});
+
   // 使用 socket.onAny 監聽所有事件
   socket.onAny(async (eventName) => {
-    let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect', 'error'];
+    //let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect', 'error'];
+    let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect'];
 
     //if (!socket.connected) {
     //  console.log('Socket disconnected, cannot proceed this socket');
@@ -462,6 +521,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2025-07-18\x1b[0m`);
+  console.log(`\x1b[34mBuild 2025-08-13\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

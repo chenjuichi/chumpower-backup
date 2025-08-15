@@ -426,134 +426,25 @@ def read_all_excel_files():
         print(sheet_names_to_check[0] + ' sheet exists, data reading...')
 
         material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
-        bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
-        assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
+        #bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
+        #assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
+        bom_df = pd.read_excel(_path, sheet_name=1, dtype={0: str}).fillna('')
+        assemble_df = pd.read_excel(_path, sheet_name=2, dtype={0: str}).fillna('')
 
         # 統一處理 BOM 和 Assemble 的 訂單欄位
         if '訂單' in bom_df.columns:
-          # 2025-08-11 modify
-          #bom_df['訂單'] = bom_df['訂單'].apply(normalize_order_number)
-          '''
-          bom_df.iloc[:, 0] = bom_df.iloc[:, 0].astype(object)
-          #bom_df['訂單'] = (
-            #bom_df['訂單']
-          bom_df.iloc[:, 0] = (
-            bom_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)        #轉成 object dtype
-          )
-          '''
-
-          '''
-          col_bom = (
-              bom_df['訂單']
-              .apply(normalize_order_number)
-              .replace('nan', '')
-              .astype(str)
-          )
-          bom_df['訂單'] = col_bom
-          '''
-
-          '''
-          bom_col = (
-              bom_df.iloc[:, 0]
-              .apply(normalize_order_number)  # 轉成字串，處理 NaN
-              .replace('nan', '')             # 將文字 'nan' 轉空字串
-              .astype(str)                    # 統一成 str 型態
-          )
-          bom_df.iloc[:, 0] = bom_col
-          '''
-
           # BOM
-          '''
-          bom_df.iloc[:, 0] = bom_df.iloc[:, 0].astype(object)  # 先轉成 object
-          bom_df.iloc[:, 0] = (
-              bom_df.iloc[:, 0]
-              .apply(normalize_order_number)
-              .replace('nan', '')
-              .astype(str)
-          )
-          '''
-
-          bom_df.iloc[:, 0] = (
-              bom_df.iloc[:, 0]
-              .apply(normalize_order_number)
-              .replace('nan', '')
-              .astype(str)   # 直接最後轉成 str → object
-          )
-
-          # 明確把 dtype 設成 object
-          bom_df = bom_df.astype({bom_df.columns[0]: object})
-
-        '''
-        # 2025-08-11 modify
-        #assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].apply(normalize_order_number)
-        assemble_df.iloc[:, 0] = (
-          assemble_df.iloc[:, 0]
-          .apply(normalize_order_number)
-          .astype(str)
-          .replace('nan', '')
-        )
-        '''
-        # 先保證欄位型別為 object（可以放字串）
-        #assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].astype(object)
-
-        '''
-        # Assemble：先把 dtype 改成 object，避免 int64 → object 直接賦值
-        assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].astype(object)
-        # 再做轉換，確保都是字串，nan 轉成空字串
-        assemble_df.iloc[:, 0] = (
-            assemble_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            #.replace('nan', '')
-            .replace(to_replace='nan', value='', regex=False)  # 明確關閉 regex
-            .astype(str)
-        )
-        '''
+          bom_df.iloc[:, 0] = bom_df.iloc[:, 0].apply(normalize_order_number)
 
         # Assemble
-        '''
-        assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].astype(object)  # 先轉成 object
-        assemble_df.iloc[:, 0] = (
-            assemble_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-        )
-        '''
-
-        assemble_df.iloc[:, 0] = (
-            assemble_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-        )
-        assemble_df = assemble_df.astype({assemble_df.columns[0]: object})
-
-        '''
-        col_assemble = (
-            assemble_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-        )
-        assemble_df.iloc[:, 0] = col_assemble
-        '''
-        assemble_col = (
-            assemble_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-        )
-        assemble_df.iloc[:, 0] = assemble_col
+        assemble_df.iloc[:, 0] = assemble_df.iloc[:, 0].apply(normalize_order_number)
 
         # 處理 Material
         for _, row in material_df.iterrows(): # for loop_material
             order_num = normalize_order_number(row.get('單號'))
             if not order_num:
-                print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
-                continue
+              print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
+              continue
 
             tempQty = clean_nan(row.get('數量')) or 0
             temp_sd_time_B109 = clean_nan(row.get('B109組裝工時(分)')) or 0
@@ -561,16 +452,16 @@ def read_all_excel_files():
             temp_sd_time_B110 = clean_nan(row.get('B110檢驗工時(分)')) or 0
 
             material = Material(
-                order_num=order_num,
-                material_num=clean_nan(row.get('料號')) or '',
-                material_comment=clean_nan(row.get('說明')) or '',
-                material_qty=tempQty,
-                material_date=convert_date(row.get('立單日')),
-                material_delivery_date=convert_date(row.get('交期')),
-                total_delivery_qty=tempQty,
-                sd_time_B109="{:.2f}".format(float(temp_sd_time_B109)),
-                sd_time_B106="{:.2f}".format(float(temp_sd_time_B106)),
-                sd_time_B110="{:.2f}".format(float(temp_sd_time_B110)),
+              order_num=order_num,
+              material_num=clean_nan(row.get('料號')) or '',
+              material_comment=clean_nan(row.get('說明')) or '',
+              material_qty=tempQty,
+              material_date=convert_date(row.get('立單日')),
+              material_delivery_date=convert_date(row.get('交期')),
+              total_delivery_qty=tempQty,
+              sd_time_B109="{:.2f}".format(float(temp_sd_time_B109)),
+              sd_time_B106="{:.2f}".format(float(temp_sd_time_B106)),
+              sd_time_B110="{:.2f}".format(float(temp_sd_time_B110)),
             )
             s.add(material)
             s.flush()  # 確保 material.id 可用
@@ -582,50 +473,52 @@ def read_all_excel_files():
 
             # BOM
             bom_entries = bom_df[bom_df['訂單'] == order_num]
-            print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
+            #print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
 
             for _, bom_row in bom_entries.iterrows(): # for loop_bom
-                temp=clean_nan(bom_row.get('物料短缺'))
-                bom = Bom(
-                    material_id=material.id,
-                    seq_num=clean_nan(bom_row.get('預留項目')),
-                    material_num=clean_nan(bom_row.get('物料')),
-                    material_comment=clean_nan(bom_row.get('物料說明')),
-                    req_qty=clean_nan(bom_row.get('需求數量')),
-                    start_date=convert_date(row.get('交期')),
-                    lack_bom_qty=temp,
-                    receive= True if temp==0 else False,
-                )
-                s.add(bom)
+              temp=clean_nan(bom_row.get('物料短缺'))
+              bom = Bom(
+                material_id=material.id,
+                seq_num=clean_nan(bom_row.get('預留項目')),
+                material_num=clean_nan(bom_row.get('物料')),
+                material_comment=clean_nan(bom_row.get('物料說明')),
+                req_qty=clean_nan(bom_row.get('需求數量')),
+                start_date=convert_date(row.get('交期')),
+                lack_bom_qty=temp,
+                receive= True if temp==0 else False,
+              )
+              s.add(bom)
+            # end for loop_bom
             s.commit()
 
             # Assemble
             assemble_entries = assemble_df[assemble_df.iloc[:, 0] == order_num]
-            print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+            #print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
 
             processed_work_nums = set()
-            for _, assemble_row in assemble_entries.iterrows(): # for loop_assemble
-                workNum = clean_nan(assemble_row.get('工作中心'))
-                if not workNum or workNum in processed_work_nums:
-                    continue
-                processed_work_nums.add(workNum)
+            for _, assemble_row in assemble_entries.iterrows():   # for loop_assemble
+              workNum = clean_nan(assemble_row.get('工作中心'))
+              if not workNum or workNum in processed_work_nums:
+                continue
+              processed_work_nums.add(workNum)
 
-                code = workNum[1:]
-                step_code = code_to_assembleStep.get(code, 0)
-                #abnormal_field = (workNum == 'B109')     # 2025-07-29 modify
-                abnormal_field = False
+              code = workNum[1:]
+              step_code = code_to_assembleStep.get(code, 0)
+              #abnormal_field = (workNum == 'B109')     # 2025-07-29 modify
+              abnormal_field = False
 
-                assemble = Assemble(
-                    material_id=material.id,
-                    material_num=clean_nan(assemble_row.get('物料')),
-                    material_comment=clean_nan(assemble_row.get('物料說明')),
-                    seq_num=clean_nan(assemble_row.get('作業')),
-                    work_num=workNum,
-                    process_step_code=step_code,
-                    input_abnormal_disable=abnormal_field,
-                    user_id=''
-                )
-                s.add(assemble)
+              assemble = Assemble(
+                material_id=material.id,
+                material_num=clean_nan(assemble_row.get('物料')),
+                material_comment=clean_nan(assemble_row.get('物料說明')),
+                seq_num=clean_nan(assemble_row.get('作業')),
+                work_num=workNum,
+                process_step_code=step_code,
+                input_abnormal_disable=abnormal_field,
+                user_id=''
+              )
+              s.add(assemble)
+            # end for loop_assemble
             s.commit()
         # end for loop_material
 

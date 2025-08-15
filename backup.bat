@@ -100,4 +100,21 @@ xcopy "C:\vue\chumpower\console2\TestSocketIOServer" "C:\chumpower-backup\consol
 
 echo 複製完成
 pause
+
+REM 取得 yyyy-mm-dd 格式日期
+for /f "tokens=1-3 delims=- " %%a in ('powershell -command "Get-Date -Format yyyy-MM-dd"') do (
+    set TODAY=%%a
+)
+
+echo 準備進行git
+pause
+
+REM Git 操作
+git add .
+git commit -m "%TODAY%"
+git push --all origin
+
+echo git完成
+pause
+
 @echo on

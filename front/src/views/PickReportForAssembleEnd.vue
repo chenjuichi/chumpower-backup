@@ -113,7 +113,7 @@
                   }"
                   @click="setActive(1)"
                 >
-                  <v-icon right color="#003171">mdi-cart-outline</v-icon>
+                  <v-icon right color="#003171">mdi-forklift</v-icon>
                   <span>手動推車</span>
                 </v-btn>
 

@@ -102,9 +102,10 @@ echo 複製完成
 pause
 
 REM 取得 yyyy-mm-dd 格式日期
-for /f "tokens=1-3 delims=- " %%a in ('powershell -command "Get-Date -Format yyyy-MM-dd"') do (
-    set TODAY=%%a
-)
+for /f %%a in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set TODAY=%%a
+
+REM Git 操作
+
 
 echo 準備進行git
 pause

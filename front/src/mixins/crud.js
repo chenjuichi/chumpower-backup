@@ -169,6 +169,10 @@ export const apiOperation = (operation, path, payload) => {
             materials.value = [...res.data.materials];
           }
 
+          if (path == '/listMaterialsP') {
+            materials.value = [...res.data.materials];
+          }
+
           if (path == '/listWarehouseForAssemble') {
             warehouses.value = [...res.data.warehouse_for_assemble];
           }
@@ -239,12 +243,13 @@ export const apiOperation = (operation, path, payload) => {
             //list_table_is_ok.value = true;
           }
 
-          if (path == '/readAllExcelFiles' || path == '/deleteAssemblesWithNegativeGoodQty') {
+          if (path == '/readAllExcelFiles' || path == '/readAllExcelFilesP' ||
+              path == '/deleteAssemblesWithNegativeGoodQty') {
             //console.log("get, path is", path)
             return res.data;
           }
 
-          if (path == '/countExcelFiles') {
+          if (path == '/countExcelFilesP' || path == '/countExcelFiles') {
             fileCount.value = res.data.count;
           }
 
@@ -254,6 +259,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
+              path == '/updateProcessData' ||
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
@@ -265,7 +271,8 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
-              path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation') {
+              path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
+              path == '/dialog2StartProcess' || path == '/dialog2UpdateProcess' || path == '/dialog2ToggleProcess' || path == '/dialog2CloseProcess') {
             //console.log("res.data:", res.data);
             return res.data;
           }

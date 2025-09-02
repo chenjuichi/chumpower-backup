@@ -77,7 +77,7 @@
           </v-icon>
         </div>
         <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2025-08-15' }}
+          {{ 'Build 2025-09-02' }}
         </span>
       </div>
   </div>
@@ -171,7 +171,7 @@ const screenSizeInInches = ref(null);
 
 // 初始化Socket連接
 const userId = 'user_chumpower';
-const clientAppName = 'LoginForm2';
+const clientAppName = 'LoginForm3';
 const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
 
 const { localIP, userAgent, uuid } = useClientIdentifier()
@@ -540,6 +540,7 @@ const signInUser = (user) => {
   });
 
   localStorage.setItem('loginedUser', JSON.stringify(user));  //重新設定使用者登入資料於localStorage
+  sessionStorage.setItem('auth_user', JSON.stringify(user));
   let isAuthenticated = 'true'; // 確保初始值為字串 'true'
   localStorage.setItem('Authenticated', isAuthenticated);
 

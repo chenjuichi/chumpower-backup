@@ -237,6 +237,83 @@ def list_boms():
     })
 '''
 
+
+# list all materials
+@listTable.route("/listMaterialsP", methods=['GET'])
+def list_materials_p():
+    print("listMaterialsP....")
+
+    s = Session()
+
+    _results = []
+    return_value = True
+
+    _objects = s.query(Material).filter(Material.move_by_process_type == 4).all()
+    materials = [u.__dict__ for u in _objects]
+    processed_order_nums = set()  # 用於追踪已處理過的 order_num
+    for record in materials:
+      if not record['isShow']:   # 檢查 isShow 是否為 False
+        cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
+        temp_data = record['id']                              # 該筆訂單編號的table id
+        if temp_data in processed_order_nums:                 # 如果這個 order_num 已經處理過，跳過本次處理
+          continue
+
+        # 計算 temp_delivery 的值
+        order_num_id = temp_data
+        material_qty = record['material_qty']
+        delivery_qty = record['delivery_qty']
+        temp_delivery=record['total_delivery_qty']
+
+        # 標記這個 order_num 已處理過
+        #processed_order_nums.add(order_num)
+        processed_order_nums.add(order_num_id)
+        _object = {
+          'id': record['id'],
+          'order_num': record['order_num'],                   #訂單編號
+          'material_num': record['material_num'],             #物料編號
+          'req_qty': material_qty,                            #需求數量(訂單數量)
+          'delivery_qty': delivery_qty,                       #備料數量
+          'total_delivery_qty': temp_delivery,                #應備數量
+          'input_disable': record['input_disable'],
+          'date': record['material_date'],                    #(建立日期)
+          'delivery_date':record['material_delivery_date'],   #交期
+          'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
+          'comment': cleaned_comment,                         #說明
+          'isTakeOk' : record['isTakeOk'],
+          'isLackMaterial' : record['isLackMaterial'],
+          'isBatchFeeding' :  record['isBatchFeeding'],
+          'isShow' : record['isShow'],
+          'whichStation' : record['whichStation'],
+          'show1_ok' : record['show1_ok'],
+          'show2_ok' : record['show2_ok'],
+          'show3_ok' : record['show3_ok'],
+          'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
+          'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
+          'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
+        }
+
+        _results.append(_object)
+
+    s.close()
+
+    temp_len = len(_results)
+    print("listMaterialsP, 總數: ", temp_len)
+    if (temp_len == 0):
+        return_value = False
+
+    ## 根據 isTakeOk 屬性的值進行排序
+    #_results = sorted(_results, key=lambda x: not x['isTakeOk'])
+    ## 根據 'order_num' 排序
+    #_results = sorted(_results, key=lambda x: x['order_num'])
+    # 根據 order_num 升序，再根據 isTakeOk 降序 (True > False)
+    _results.sort(key=lambda x: (x['order_num'], not x['isTakeOk']))
+
+    return jsonify({
+      'status': return_value,
+      'materials': _results
+    })
+
+
 # list all materials
 @listTable.route("/listMaterials", methods=['GET'])
 def list_materials():
@@ -247,7 +324,8 @@ def list_materials():
     _results = []
     return_value = True
 
-    _objects = s.query(Material).all()
+    #_objects = s.query(Material).all()
+    _objects = s.query(Material).filter(Material.move_by_process_type == 2).all()
     materials = [u.__dict__ for u in _objects]
     processed_order_nums = set()  # 用於追踪已處理過的 order_num
     for record in materials:
@@ -296,6 +374,11 @@ def list_materials():
           'delivery_date':record['material_delivery_date'],   #交期
           'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
           'comment': cleaned_comment,                         #說明
+
+          'isOpen': record['isOpen'],
+          'isOpenEmpId': record['isOpenEmpId'],
+          'hasStarted': record['hasStarted'],
+
           'isTakeOk' : record['isTakeOk'],
           'isLackMaterial' : record['isLackMaterial'],
           'isBatchFeeding' :  record['isBatchFeeding'],
@@ -308,6 +391,8 @@ def list_materials():
           'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
           'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
         }
+
+        #print("materials => i, isOpen:", record['id'], record['order_num'], record['isOpen'])
 
         _results.append(_object)
 
@@ -545,6 +630,8 @@ def list_wait_for_assemble():
       #print("nums:", nums)
       pre_step_code=99
       for begin_assemble_record in assemble_records:  # loop_2_a
+        if begin_assemble_record.input_disable:
+           continue
       #for begin_assemble_record in material_record._assemble:  # loop_2_b
         #print("begin_assemble_record id:",begin_assemble_record.id)
         #if begin_assemble_record.material_num in nums:
@@ -678,9 +765,7 @@ def list_materials_and_assembles():
       '106': 1,
       '110': 2,
     }
-    # 2025-06-12, 改順序
     #       0         1        2          3             4            5           6            7           8            9           10              11           12
-    #str2=['未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00', '雷射進行中', '00/00/00', '檢驗進行中', '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成']
     str2=['未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成']
 
     _objects = s.query(Material).with_for_update().all()  # 使用 with_for_update() 來加鎖
@@ -791,6 +876,8 @@ def list_materials_and_assembles():
       pre_step_code=99
       sub_process_step_enable=False
       for assemble_record in material_record._assemble:
+        if assemble_record.input_disable: #領料已禁止輸入, 則不再顯示
+           continue
 
         cleaned_comment = material_record.material_comment.strip()    # 刪除 material_comment 字串前後的空白
 
@@ -848,7 +935,7 @@ def list_materials_and_assembles():
 
         num = int(assemble_record.show2_ok)
         temp_temp_show2_ok_str = str2[num]
-        print("temp_temp_show2_ok_str:", temp_temp_show2_ok_str)
+        print("kk, temp_temp_show2_ok_str, num:", temp_temp_show2_ok_str, num)
 
         print("start num:", num)
         print("start total_ask_qty_end:", assemble_record.id, assemble_record.total_ask_qty_end)

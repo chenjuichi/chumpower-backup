@@ -22,6 +22,10 @@ from database.tables import User, Session, Material, Bom, Assemble, Product
 from database.tables import ProcessedFile
 from flask import Blueprint, jsonify, request, current_app
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning,
+                        message=".*Setting an item of incompatible dtype.*")
+
 #from werkzeug.utils import secure_filename
 
 excelTable = Blueprint('excelTable', __name__)
@@ -141,6 +145,31 @@ def fetch_global_var():
 
   global global_var
   return jsonify({'value': global_var})
+
+
+@excelTable.route("/countExcelFilesP", methods=['GET'])
+def count_excel_files_p():
+    print("countExcelFilesP....")
+
+    _base_dir = current_app.config['baseDir']
+    _target_dir = _base_dir.replace("_in", "_out")
+    _base_dir = _base_dir.replace("_in", "_in_p")
+    print("read excel files, 目錄: ", _base_dir)
+    print("move excel files to, 目錄: ", _target_dir)
+
+    # 構建路徑模式，匹配以 "Report_" 開頭的 .xlsx 檔案
+    #path_pattern = f"{_base_dir}/Report_*.xlsx"
+    path_pattern = f"{_base_dir}/*.xlsx"
+    # 使用 glob 找到所有符合條件的檔案
+    files = glob.glob(path_pattern)
+    # 計算檔案數量
+    count = len(files)
+    print("count:", count)
+    # 如果沒有找到檔案，返回0
+    #return count if count > 0 else 0
+    return jsonify({
+      'count': count
+    })
 
 
 @excelTable.route("/countExcelFiles", methods=['GET'])
@@ -322,6 +351,242 @@ def read_all_excel_files():
     'message': return_message1,
   })
 '''
+
+
+@excelTable.route("/readAllExcelFilesP", methods=['GET'])
+def read_all_excel_files_p():
+  print("readAllExcelFilesP....")
+
+  global global_var_p
+
+  return_value = False
+  return_message1 = '錯誤, 沒有工單檔案!'
+  file_count_total = 0  #檔案總數
+
+  code_to_assembleStep = {    #加工區區工作順序, 10:最優先
+     '100': 10,
+     '102': 9,
+     '103': 8,
+     '104': 7,
+     '105': 6,
+     '106': 5,
+     '107': 4,
+     '108': 3,
+     '109': 2,
+     '110': 1,
+  }
+
+  _base_dir = current_app.config['baseDir']
+  _target_dir = _base_dir.replace("_in", "_out")
+  _base_dir = _base_dir.replace("_in", "_in_p")
+  print("read excel files, 目錄: ", _base_dir)
+  print("move excel files to, 目錄: ", _target_dir)
+
+  # 讀取指定目錄下的所有指定檔案名稱
+  files = [
+     f for f in os.listdir(_base_dir)
+     if os.path.isfile(os.path.join(_base_dir, f))
+     and f.endswith('.xlsx')
+  ]
+
+  if not files:
+    return jsonify({'status': False, 'message': return_message1})
+
+  sheet_names_to_check = [
+    current_app.config['excel_product_sheet'],
+    current_app.config['excel_bom_sheet'],
+    current_app.config['excel_work_time_sheet']
+  ]
+
+  s = Session()
+
+  for _file_name in files:  #檔案讀取, for loop_1
+    file_count_total +=1
+    file_name_base = re.sub(r'_copy_\d+', '', _file_name)   # 從檔名中移除像 _copy_1、_copy_2 這樣的字串，取得原始檔案名稱
+
+    # 檢查是否已處理過
+    already_processed = s.query(
+      exists().where(ProcessedFile.file_name == file_name_base)
+    ).scalar()
+
+    if already_processed:
+      temp_msg =f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
+      print(temp_msg)
+      _path = os.path.join(_base_dir, _file_name)
+      file_count_total -=1
+      return_message1 = temp_msg
+
+    #  continue
+    else:
+      _path = _base_dir + '\\' + _file_name
+      global_var = _path + ' 檔案讀取中...'
+
+      with open(_path, 'rb') as file:   # with loop_1_a
+        workbook = openpyxl.load_workbook(filename=file, read_only=True)
+        return_value = True
+        return_message1 = ''
+
+        print("workbook.sheetnames:", workbook.sheetnames)
+
+        missing_sheets = [
+          sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames
+        ]
+
+        if missing_sheets:
+          return jsonify({'status': False, 'message': '錯誤, 工單檔案內沒有相關工作表!'})
+
+        print(sheet_names_to_check[0] + ' sheet exists, data reading...')
+
+        material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
+        bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
+        assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
+
+        # 處理 BOM 和 Assemble 的 訂單欄位
+        if '訂單' in bom_df.columns:
+          bom_df.iloc[:, 0] = (
+              bom_df.iloc[:, 0]
+              .apply(normalize_order_number)
+              .replace('nan', '')
+              .astype(str)
+          )
+          bom_df = bom_df.astype({bom_df.columns[0]: object})   # 把 dtype 設成 object
+        else:
+          # 如果沒資料，建立一個空的 DataFrame，或直接跳過
+          bom_df = pd.DataFrame(columns=["訂單"])  # 預設空結構
+          print("⚠️ bom_df 沒有資料或缺少 '訂單' 欄位，已建立空 DataFrame")
+        # end if
+
+        print("bom_df:", bom_df, len(bom_df) )
+
+        assemble_df.iloc[:, 0] = (
+            assemble_df.iloc[:, 0]
+            .apply(normalize_order_number)
+            .replace('nan', '')
+            .astype(str)
+        )
+        assemble_df = assemble_df.astype({assemble_df.columns[0]: object})
+
+        # 處理 Material
+        for _, row in material_df.iterrows(): # for loop_material
+            order_num = normalize_order_number(row.get('單號'))
+            if not order_num:
+              print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
+              continue
+
+            # 先檢查 BOM 是否有資料
+            bom_entries = bom_df[bom_df['訂單'] == order_num]
+            if bom_entries.empty:
+                print(f"[略過] 單號 {order_num} 沒有 BOM 資料，不建立 Material")
+                continue   # 直接跳過，不建 Material / Product / Assemble
+
+            # --------- 有 BOM 才建立 Material ----------
+            tempQty = clean_nan(row.get('數量')) or 0
+            temp_sd_time_B100 = clean_nan(row.get('B100加工(一)工時(分)')) or 0
+            temp_sd_time_B102 = clean_nan(row.get('B102KL加工綜合工時(分)')) or 0
+            temp_sd_time_B103 = clean_nan(row.get('B103KT加工工時(分)')) or 0
+            temp_sd_time_B107 = clean_nan(row.get('B107震動研磨工時(分)')) or 0
+            temp_sd_time_B108 = clean_nan(row.get('B108綜合加工工時(分)')) or 0
+
+            material = Material(
+                order_num=order_num,
+                material_num=clean_nan(row.get('料號')) or '',
+                material_comment=clean_nan(row.get('說明')) or '',
+                material_qty=tempQty,
+                material_date=convert_date(row.get('立單日')),
+                material_delivery_date=convert_date(row.get('交期')),
+                total_delivery_qty=tempQty,
+                sd_time_B100="{:.2f}".format(float(temp_sd_time_B100)),
+                sd_time_B102="{:.2f}".format(float(temp_sd_time_B102)),
+                sd_time_B103="{:.2f}".format(float(temp_sd_time_B103)),
+                sd_time_B107="{:.2f}".format(float(temp_sd_time_B107)),
+                sd_time_B108="{:.2f}".format(float(temp_sd_time_B108)),
+                move_by_automatic_or_manual = False,
+                move_by_process_type = 4,
+            )
+            s.add(material)
+            s.flush()  # 確保 material.id 可用
+
+            # Product
+            product = Product(material_id=material.id)
+            s.add(product)
+            s.commit()
+
+            # BOM
+            bom_entries = bom_df[bom_df['訂單'] == order_num]
+            print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
+
+            for _, bom_row in bom_entries.iterrows(): # for loop_bom
+              temp=clean_nan(bom_row.get('物料短缺'))
+              bom = Bom(
+                  material_id=material.id,
+                  seq_num=clean_nan(bom_row.get('預留項目')),
+                  material_num=clean_nan(bom_row.get('物料')),
+                  material_comment=clean_nan(bom_row.get('物料說明')),
+                  req_qty=clean_nan(bom_row.get('需求數量')),
+                  start_date=convert_date(row.get('交期')),
+                  lack_bom_qty=temp,
+                  receive= True if temp==0 else False,
+              )
+              s.add(bom)
+            # end for loop_bom
+            s.commit()
+
+            # Assemble
+            assemble_entries = assemble_df[assemble_df.iloc[:, 0] == order_num]
+            print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+
+            processed_work_nums = set()
+            for _, assemble_row in assemble_entries.iterrows(): # for loop_assemble
+              workNum = clean_nan(assemble_row.get('工作中心'))
+              if not workNum or workNum in processed_work_nums:
+                continue
+              processed_work_nums.add(workNum)
+
+              code = workNum[1:]
+              step_code = code_to_assembleStep.get(code, 0)
+              abnormal_field = False
+
+              assemble = Assemble(
+                  material_id=material.id,
+                  material_num=clean_nan(assemble_row.get('物料')),
+                  material_comment=clean_nan(assemble_row.get('物料說明')),
+                  seq_num=clean_nan(assemble_row.get('作業')),
+                  work_num=workNum,
+                  process_step_code=step_code,
+                  input_abnormal_disable=abnormal_field,
+                  user_id=''
+              )
+              s.add(assemble)
+            # end loop_assemble
+            s.commit()
+
+        # end for loop_material
+
+        # ✅ 資料處理完後，記錄檔案處理紀錄
+        processed_file = ProcessedFile(file_name=file_name_base)
+        s.add(processed_file)
+        s.commit()
+
+    # 移動處理完成的檔案
+    try:
+      unique_filename = get_unique_filename(_target_dir, _file_name, "copy")
+      unique_target_path = os.path.join(_target_dir, unique_filename)
+      print("unique_target_path:", unique_target_path)
+      shutil.move(_path, unique_target_path)
+      print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
+    except Exception as e:
+      print(f"移動檔案時發生錯誤: {e}")
+
+    continue
+
+  #end for loop_1
+  s.close()
+
+  return jsonify({
+    'status': return_value,
+    'message': return_message1,
+  })
+
 
 @excelTable.route("/readAllExcelFiles", methods=['GET'])
 def read_all_excel_files():
@@ -1018,6 +1283,9 @@ def upload_excel_file():
 
   file = request.files.get('file')
 
+  upload_type = request.form.get('uploadType')
+  print("uploadType:", upload_type)
+
   if not file:
     return jsonify({'message': '沒有選擇檔案'}), 400
 
@@ -1027,6 +1295,10 @@ def upload_excel_file():
 
   if file.filename == '':
     return jsonify({'message': '沒有選擇檔案'}), 400
+
+  if upload_type == "excelp":
+    _base_dir = os.path.join(os.path.dirname(_base_dir), "excel_in_p")
+    print("base_dir:", _base_dir)
 
   file_path = os.path.join(_base_dir, file.filename)
   # 檢查檔案是否已存在

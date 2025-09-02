@@ -717,6 +717,21 @@ onMounted(async () => {
   currentUser.value = user ? JSON.parse(user) : null;
   console.log("currentUser:", currentUser.value);
 
+  //#
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw)
+    userRaw = localStorage.getItem('loginedUser');
+
+  try {
+    const u = userRaw ? JSON.parse(userRaw) : null;
+    // 只讀，避免被誤改
+    currentUser.value = u ? Object.freeze({ ...u }) : null;
+  } catch {
+    currentUser.value = null;
+  }
+  console.log('currentUser:', currentUser.value);
+  //#
+
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
     const myIdField = document.getElementById(`receiveQtyID-${item.assemble_id}`);
@@ -904,7 +919,9 @@ onMounted(async () => {
         } finally {
           localStorage.setItem('Authenticated', false);
           removelocalStorage();
-
+          //#
+          sessionStorage.removeItem('auth_user');  // 刪掉使用者
+          //#
           const resolvedRoute = router.resolve({ name: 'LoginRegister' });
           const path = resolvedRoute.href;
           console.log('triggerLogout socket...', path)
@@ -1600,6 +1617,16 @@ const updateMousePosition = (event) => {
   mouseX.value = event.clientX;
   mouseY.value = event.clientY;
 }
+
+// 清除localStorage內容
+const removelocalStorage = () => {
+  if (localStorage.getItem('loginedUser')) {
+    localStorage.removeItem('loginedUser');
+  }
+  if (localStorage.getItem('Authenticated')) {
+    localStorage.removeItem('Authenticated');
+  }
+};
 </script>
 
 <style lang="scss" scoped>

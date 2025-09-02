@@ -21,11 +21,20 @@
         <v-radio-group v-model="uploadType" column>
           <v-radio value="excel">
             <template #label>
-              上傳工單 (Excel
+              上傳組裝線工單 (Excel
               <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
               )
             </template>
           </v-radio>
+
+          <v-radio value="excelp">
+            <template #label>
+              上傳加工線工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
+
           <!--
           <v-radio label="上傳工單 (Excel)" value="excel" />
           <v-radio label="上傳物料清單 (PDF)" value="pdf" />
@@ -62,9 +71,9 @@
     <v-card-text class="d-flex flex-column align-center">
       <v-file-input
         v-model="file"
-        :label="uploadType === 'excel' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (可複選, 按住Shift鍵)'"
-        :accept="uploadType === 'excel' ? '.xlsx,.xls' : '.pdf'"
-        :multiple="uploadType != 'excel'"
+        :label="uploadType === 'excel' || uploadType === 'excelp' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (最多複選2個檔案, 按住Shift鍵)'"
+        :accept="uploadType === 'excel' || uploadType === 'excelp' ? '.xlsx,.xls' : '.pdf'"
+        :multiple="uploadType != 'excel' &&  uploadType != 'excelp'"
         show-size
         prepend-icon="mdi-file-arrow-left-right"
 
@@ -253,7 +262,7 @@ const handleUpload = async () => {
     return;
   }
 
-  if (uploadType.value === 'excel') {
+  if (uploadType.value === 'excel' || uploadType.value === 'excelp') {
     await uploadExcelFileFun();
   } else {
     await uploadPdfFilesFun();
@@ -261,7 +270,7 @@ const handleUpload = async () => {
 };
 
 const uploadExcelFileFun = async () => {
-	console.log("uploadExcelFileFun()...");
+	console.log("uploadExcelFileFun()...", uploadType.value);
 
   //if (!file.value) {
 	//	showSnackbar('請選擇檔案', 'red accent-2');
@@ -270,6 +279,7 @@ const uploadExcelFileFun = async () => {
 
   let formData = new FormData();					  //封裝表單資料，以用於上傳檔案
   formData.append('file', file.value[0]);		//將所選擇的檔案 (file.value) 加入 FormData 物件中
+  formData.append('uploadType', uploadType.value);
 
   // 多個檔案，要用 getlist('files') 方式處理，所以 key 要用 'files'
   //file.value.forEach((f) => {

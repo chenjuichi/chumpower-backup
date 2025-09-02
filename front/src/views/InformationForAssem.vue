@@ -234,7 +234,7 @@
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left" style="width:240px;">備料/組裝</th>
+                        <th class="text-left" style="width:300px; padding-left:0px; padding-right:8px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
                         <th class="text-left">數量</th>
@@ -254,7 +254,7 @@
                         }"
                       >
                         <td>{{ process_item.seq_num }}</td>
-                        <td style="width: 240px;">
+                        <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
                           {{ process_item.process_type }}
                           <span style="color:red">{{ process_item.normal_type }}</span>
                         </td>
@@ -291,7 +291,7 @@
       <div
         style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
       >
-        組裝/雷射/檢驗
+        組裝/檢驗/雷射
       </div>
     </template>
 
@@ -314,7 +314,7 @@
 
     <!-- 自訂 '現況備註' 欄位 -->
     <template v-slot:item.show3_ok="{ item }">
-      <div style="font-weight:600;">{{ item.show3_ok }}</div>
+      <div style="font-weight:600; text-align:left;">{{ item.show3_ok }}</div>
     </template>
 
     <template v-slot:item.req_qty="{ item }">
@@ -595,6 +595,21 @@ onMounted(async () => {
   let user = localStorage.getItem("loginedUser");
   currentUser.value = user ? JSON.parse(user) : null;
   console.log("currentUser:", currentUser.value);
+
+  //#
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw)
+    userRaw = localStorage.getItem('loginedUser');
+
+  try {
+    const u = userRaw ? JSON.parse(userRaw) : null;
+    // 只讀，避免被誤改
+    currentUser.value = u ? Object.freeze({ ...u }) : null;
+  } catch {
+    currentUser.value = null;
+  }
+  console.log('currentUser:', currentUser.value);
+  //#
 
   //fileCount.value = countExcelFiles();
   //console.log("fileCount:", fileCount.value);

@@ -86,6 +86,13 @@ def reLogin():
       'user': _user_object,
     })
 '''
+def seconds_to_hms_str(seconds: int) -> str:
+    """將秒數轉換成 hh:mm:ss"""
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02}:{m:02}:{s:02}"
+
 
 @getTable.route('/reLogin', methods=['POST'])
 def reLogin():
@@ -519,6 +526,299 @@ def get_information_details():
   })
 '''
 
+@getTable.route("/dialog2StartProcess", methods=['POST'])
+def start_process():
+    print("dialog2StartProcess API....")
+
+    data = request.json
+    material_id = data["material_id"]
+    user_id = data["user_id"]
+    process_type = data.get("process_type", 1)
+    assemble_id = data.get("assemble_id")
+
+    s = Session()
+
+    # 找到最後一筆紀錄
+    log = (s.query(Process)
+           .filter_by(material_id=material_id,
+                      user_id=user_id,
+                      process_type=process_type)
+           .filter(Process.end_time.is_(None))
+           .order_by(Process.begin_time.desc())
+           .first())
+
+    if not log or log.end_time is not None:
+        print("step1...")
+        # 🚩 新建一筆
+        log = Process(
+            material_id=material_id,
+            user_id=user_id,
+            #
+            #begin_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            begin_time=None,
+            end_time=None,
+            elapsedActive_time=0,
+            is_pause=True,        # 進入後顯示"開始"
+            #is_pause=False,
+            has_started=False,    # 尚未按開始
+            #
+            pause_time=0,
+            pause_started_at=None,
+            process_type=process_type
+        )
+        s.add(log)
+        s.commit()  # 需要 commit 以拿到 id
+    else:
+        print("step2...")
+        '''
+        # 🚩 延續紀錄
+        if log.is_pause :
+            log.is_pause = False
+            # 可以記錄 resume_time (若有欄位)
+        # 若已在計時中就不動
+        '''
+        # 不做自動恢復/暫停；只在「暫停但未記起點」時補上，方便之後恢復時計算段長
+        if log.is_pause and log.pause_started_at is None:
+            log.pause_started_at = datetime.utcnow()
+            s.commit()
+
+    return jsonify({
+        "process_id": log.id,
+        "begin_time": log.begin_time,
+        "elapsed_time": log.elapsedActive_time or 0,
+        "is_paused": log.is_pause,
+        "pause_time": log.pause_time or 0,
+        #"pause_count": int(log.pause_count or 0),
+        "has_started": bool(log.has_started),
+    })
+
+
+@getTable.route("/dialog2UpdateProcess", methods=['POST'])
+def update_process():
+    print("dialog2UpdateProcess API....")
+
+    data = request.json
+    process_id = data["process_id"]
+
+    if not process_id:
+      return jsonify(success=False, message="missing process_id"), 400
+
+    # 允許前端傳秒或毫秒（可選）
+    elapsed_time = data.get("elapsed_time")   # 期望：秒（int）
+    #elapsed_ms   = data.get("elapsed_ms")    # 如果你想直接帶毫秒也可以（可選）
+    is_paused_in = data.get("is_paused")      #是否暫停
+
+    try:
+        if elapsed_time is not None:
+            elapsed_sec = max(int(elapsed_time), 0)
+        else:
+            elapsed_sec = None
+    except Exception:
+        return jsonify(success=False, message="invalid elapsed_time"), 400
+
+    s = Session()
+
+    log = s.query(Process).get(process_id)
+
+    if not log:
+        return jsonify(success=False, message="process not found"), 404
+
+    if log.end_time is not None:
+        print("step5...")
+        print("log.end_time:", log.end_time)
+    #    # 已經關閉就不再更新
+    #    return jsonify(success=False, message="process already closed"), 400
+
+    # ✅ 只更新「有效計時」，不碰 pause_time
+    if elapsed_sec is not None:
+        print("step6...")
+        log.elapsedActive_time = elapsed_sec
+        try:
+            # 若你有這個欄位（原本就有）
+            log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time))
+        except Exception:
+            # 忽略格式錯誤
+            pass
+
+    if log and log.end_time is None:  # 確保作業還在進行
+        print("step7...")
+        log.elapsedActive_time = data.get("elapsed_time", log.elapsedActive_time)
+        log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time))
+        log.is_pause = data.get("is_paused", log.is_pause)
+        s.commit()
+
+    # 可選：同步 is_paused（不影響 pause_time 的累加，累加只在 toggle/close 做）
+    if is_paused_in is not None:
+        log.is_pause = bool(is_paused_in)
+
+    s.commit()
+
+    return jsonify(
+        success=True,
+        process_id=log.id,
+        elapsed_time=log.elapsedActive_time or 0,
+        is_paused=log.is_pause,
+        pause_time=log.pause_time or 0, # 只是回報；不在此路由更動
+        #hasStarted,
+    )
+
+    #return jsonify(success=True)
+
+
+@getTable.route("/dialog2ToggleProcess", methods=['POST'])
+def toggle_process():
+    print("dialog2ToggleProcess API....")
+
+    """
+    切換暫停/恢復：
+      - is_paused=True  → 進入暫停狀態：只記下 pause_started_at（若當前不是暫停）
+      - is_paused=False → 恢復：把 (now - pause_started_at) 累加到 pause_time，並清空 pause_started_at
+    """
+
+    data = request.json
+    process_id = data["process_id"]
+    want_pause = bool(data["is_paused"])
+
+    s = Session()
+
+    now = datetime.utcnow()  # UTC；若本地時間也行，保持一致即可
+
+    log = s.query(Process).get(process_id)
+
+    if not log:
+        return jsonify(success=False, message="process not found"), 404
+    if log.end_time is not None:
+        return jsonify(success=False, message="process already closed"), 400
+
+    if want_pause:
+        # → 要暫停
+        if not log.is_pause:
+            # 只有從「非暫停」→「暫停」時，才記錄起點
+            log.is_pause = True
+            log.pause_started_at = now
+            # 不修改 pause_time（等恢復時再累加）
+    else:
+        # → 要恢復
+        if log.is_pause:
+            # 從「暫停」→「恢復」時，把這段暫停秒數累加到 pause_time
+            if log.pause_started_at:
+                delta = int((now - log.pause_started_at).total_seconds())
+                log.pause_time = (log.pause_time or 0) + max(delta, 0)
+            log.pause_started_at = None
+            log.is_pause = False
+
+        # 第一次開始時，標記 has_started=True，並補 begin_time
+        if not getattr(log, "has_started", False):
+            # 若你的模型已有 has_started 欄位，這裡會生效
+            try:
+                log.has_started = True
+            except AttributeError:
+                # 若模型尚未加欄位，就忽略，不影響既有邏輯
+                pass
+
+            if not log.begin_time:
+                log.begin_time = now
+
+    s.commit()
+
+    return jsonify(
+        success=True,
+        is_paused=log.is_pause,
+        elapsed_time=int(log.elapsedActive_time or 0),
+        pause_time=log.pause_time or 0,
+        pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
+        # 回傳 has_started 讓前端可用（即使沒有欄位也安全處理）
+        #has_started=getattr(log, "has_started", None),
+        has_started=bool(log.has_started),
+    )
+
+    '''
+    if log and log.end_time is None:
+        is_paused = data["is_paused"]
+        log.is_pause = is_paused
+
+        if is_paused:
+            # 🚩暫停：紀錄暫停開始時間 (若需要，可加欄位 pause_start_time)
+            pass
+        else:
+            # 🚩恢復：累加 pause_time
+            # 這裡需要在前端或後端計算 pause 時長，再加總
+            pass
+
+        s.commit()
+
+    return jsonify(success=True)
+    '''
+
+@getTable.route("/dialog2CloseProcess", methods=['POST'])
+def close_process():
+    print("dialog2CloseProcess API....")
+
+    data = request.json
+    process_id = data["process_id"]
+    elapsed_time  = data.get("elapsed_time")
+
+    s = Session()
+
+    log = s.query(Process).get(process_id)
+    if log and log.end_time is None:
+        now = datetime.now()
+
+        # 1) 「暫停中」，先把最後這段暫停秒數補進 pause_time
+        if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
+            try:
+                # pause_started_at 可能是字串或 datetime，視你的欄位型別而定
+                if isinstance(log.pause_started_at, str):
+                    # 若你資料庫存字串，請依你的格式解析；以下示範 ISO 格式
+                    pause_start_dt = datetime.fromisoformat(log.pause_started_at)
+                else:
+                    pause_start_dt = log.pause_started_at
+
+                delta = int((now - pause_start_dt).total_seconds())
+                log.pause_time = (log.pause_time or 0) + max(delta, 0)
+            except Exception as e:
+                print("close_process: pause_time accumulate failed:", e)
+            finally:
+                # 清掉起點
+                log.pause_started_at = None
+
+        # 2) 把『有效計時秒數』覆蓋進去（獨立統計，不與 pause_time 相減）
+        if elapsed_time is not None:
+            try:
+                log.elapsedActive_time = max(int(elapsed_time), 0)
+            except Exception:
+                pass  # 忽略格式錯誤，保留原值
+
+        # 3) 可選：產生 HH:MM:SS 文字（若你原本就有）
+        try:
+            log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
+        except Exception:
+            pass
+
+        # 4) 關閉狀態
+        log.is_pause = True
+        log.end_time = now.strftime("%Y-%m-%d %H:%M:%S")  # 你原本用字串就維持一致
+
+        s.commit()
+
+        return jsonify(
+            success=True,
+            elapsed_time=log.elapsedActive_time or 0,
+            pause_time=log.pause_time or 0,
+            end_time=log.end_time
+        )
+
+    return jsonify(success=False, message="process not found or already closed"), 400
+'''
+        log.elapsedActive_time = data.get("elapsed_time", log.elapsedActive_time)
+        log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time))
+        log.is_pause = True
+        log.end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        s.commit()
+
+    return jsonify(success=True)
+'''
+
 # get all processes data by order number
 @getTable.route("/getProcessesByOrderNum", methods=['POST'])
 def get_processes_by_order_num():
@@ -538,6 +838,9 @@ def get_processes_by_order_num():
       29: '等待AGV(組裝區)',
       3: 'AGV運行(組裝區->成品區)',
       31: '成品入庫',
+
+      5: '堆高機運行(備料區->組裝區)',
+      6: '堆高機運行(組裝區->成品區)',
     }
     _results = []
 
@@ -548,7 +851,9 @@ def get_processes_by_order_num():
     #processes = s.query(Process).filter(Process.order_num == _order_num).all()
     seq_num =0
     for record in material._process:
-
+      status = code_to_name.get(record.process_type, '空白')
+      temp_period_time =''
+      if record.process_type != 6 and record.process_type != 5:
         # 轉換為 datetime 物件
         start_time = datetime.strptime(record.begin_time, "%Y-%m-%d %H:%M:%S")
         end_time = datetime.strptime(record.end_time, "%Y-%m-%d %H:%M:%S")
@@ -559,13 +864,20 @@ def get_processes_by_order_num():
         # 轉換為分鐘數（小數點去掉）
         period_time = int(time_diff.total_seconds() // 60)
 
+        # 轉換為 hh:mm:ss 格式字串
+        total_seconds = int(time_diff.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_diff_str_format = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
         work_time = period_time / work_qty
         work_time = round(period_time / work_qty, 1)  # 取小數點後 1 位
 
 
         # 轉換為字串格式
         time_diff_str = str(time_diff)
-        period_time_str = str(period_time)
+        #period_time_str = str(period_time)
+        period_time_str = record.period_time
         work_time_str = str(work_time)  if (record.process_type == 21 or record.process_type == 22 or record.process_type == 23) else ''
         single_std_time_str = ''
         if record.process_type == 22:
@@ -579,39 +891,57 @@ def get_processes_by_order_num():
           single_std_time_str = str(material.sd_time_B110)
 
         print("period_time:",period_time_str)
-
-        status = code_to_name.get(record.process_type, '空白')
+        '''
+        #status = code_to_name.get(record.process_type, '空白')
         print("name:", record.user_id)
         name = record.user_id.lstrip("0")
-        if record.process_type == 1 or record.process_type == 21 or record.process_type == 22 or record.process_type == 23 or record.process_type == 31:
+        if record.process_type == 1 or record.process_type == 5 or record.process_type == 6 or record.process_type == 21 or record.process_type == 22 or record.process_type == 23 or record.process_type == 31:
           user = s.query(User).filter_by(emp_id=record.user_id).first()
           status = status + '(' + name + user.emp_name + ')'
         #if not record.normal_work_time:
         #  status = status + ' - 異常整修'
         print("status:", status)
-        seq_num = seq_num + 1
-        _object = {
-            'seq_num': seq_num,
-            'id': material.id,
-            'order_num': material.order_num,
-            #'total_delivery_qty': material.total_delivery_qty,
-            #'process_work_time_qty': '' if (record.process_type == 2 or record.process_type == 3 or record.process_type == 19 or record.process_type == 29) else record.process_work_time_qty,
-            'process_work_time_qty': record.process_work_time_qty,
-            'sd_time_B109': material.sd_time_B109,
-            'sd_time_B106': material.sd_time_B106,
-            'sd_time_B110': material.sd_time_B110,
-            'user_id': name,
-            'begin_time': record.begin_time,
-            'end_time': record.end_time if record.process_type != 31 else '',
-            'period_time': period_time_str if record.process_type != 31 else '',
-            'work_time': work_time_str if record.process_type != 31 else '',
-            'single_std_time': single_std_time_str if record.process_type != 31 else '',
-            'process_type': status,
-            'normal_type': ' - 異常整修' if not record.normal_work_time else '',
-            'user_comment': '',
-            'create_at': record.create_at
-        }
-        _results.append(_object)
+        '''
+        temp_period_time = time_diff_str_format
+        if record.process_type == 1:
+          temp_period_time = record.period_time
+        if record.process_type == 31:
+          temp_period_time = ''
+        print("temp_period_time:", temp_period_time, record.process_type)
+
+      print("name:", record.user_id)
+      name = record.user_id.lstrip("0")
+      if record.process_type == 1 or record.process_type == 5 or record.process_type == 6 or record.process_type == 21 or record.process_type == 22 or record.process_type == 23 or record.process_type == 31:
+        user = s.query(User).filter_by(emp_id=record.user_id).first()
+        status = status + '(' + name + user.emp_name + ')'
+      #if not record.normal_work_time:
+      #  status = status + ' - 異常整修'
+      print("status:", status)
+
+      seq_num = seq_num + 1
+      _object = {
+          'seq_num': seq_num,
+          'id': material.id,
+          'order_num': material.order_num,
+          #'total_delivery_qty': material.total_delivery_qty,
+          #'process_work_time_qty': '' if (record.process_type == 2 or record.process_type == 3 or record.process_type == 19 or record.process_type == 29) else record.process_work_time_qty,
+          'process_work_time_qty': record.process_work_time_qty if (record.process_type !=19 and record.process_type !=29 and record.process_type !=2 and record.process_type !=3 and record.process_type !=5 and record.process_type !=6) else '',
+          'sd_time_B109': material.sd_time_B109,
+          'sd_time_B106': material.sd_time_B106,
+          'sd_time_B110': material.sd_time_B110,
+          'user_id': name,
+          'begin_time': record.begin_time,
+          'end_time': record.end_time if record.process_type != 31 else '',
+          #'period_time': period_time_str if record.process_type != 31 else '',
+          'period_time': temp_period_time if record.process_type != 1 else record.str_elapsedActive_time,
+          'work_time': work_time_str if record.process_type != 31 else '',
+          'single_std_time': single_std_time_str if record.process_type != 31 else '',
+          'process_type': status,
+          'normal_type': ' - 異常整修' if not record.normal_work_time else '',
+          'user_comment': '',
+          'create_at': record.create_at
+      }
+      _results.append(_object)
 
     s.close()
 

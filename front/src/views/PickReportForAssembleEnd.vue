@@ -10,7 +10,7 @@
       </template>
     </v-snackbar>
 
-    <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+    <DraggablePanel v-show="toggle_exclusive === 2" :initX="panelX" :initY="panelY" :isDraggable="true" ref="draggablePanel">
       <LedLights :activeColor="activeColor" />
     </DraggablePanel>
 
@@ -137,11 +137,13 @@
               :disabled="c_isBlinking"
               color="primary"
               variant="outlined"
-              style="position: relative; top:0px; height:48px; font-weight: 700;"
-              @click="callAGV"
+              style="position:relative; right:155px; top:0px; font-weight:700; padding-left:8px;
+                    padding-right:8px;"
+              @click="select_transportation_method"
+              ref="sendButton"
             >
               <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-              <span>組裝送出</span>
+              <span>{{ transport_message }}</span>
             </v-btn>
 
             <!-- 測試用訊息-->
@@ -179,6 +181,19 @@
 
               <div style="position: relative; top:0px; left: -90px;"></div>
             -->
+
+              <span
+                style="position:relative; top:30px; right:180px;"
+                :style="{
+                  'fontSize': '14px',
+                  'display': 'inline-block',
+                  'min-width': '120px',
+                  'visibility': (!isVisible && isCallForklift) ? 'visible' : 'hidden',
+                }"
+              >
+                堆高機送料中
+              </span>
+
               <!--客製化搜尋-->
               <v-text-field
                 id="bar_code"
@@ -531,6 +546,8 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+const transport_message = ref('備料自動送出')
+
 const history = ref(false);               // 設定歷史紀錄為不顯示
 
 const isCallAGV = ref(false);             // 確認是否已經按了callAGV按鍵, true:已經按鍵了, 不能重複按鍵
@@ -607,15 +624,18 @@ const outputStatus = ref({
 const currentUser = ref({});
 //const permDialog = ref(false);
 
-const componentKey = ref(0)             // key值用於強制重新渲染
+const componentKey = ref(0)                 // key值用於強制重新渲染
 
-const periodTime = ref('');             // 記錄時間間距
-//const currentStartTime = ref(null);  // 記錄開始時間
+const periodTime = ref('');                 // 記錄時間間距
+//const currentStartTime = ref(null);       // 記錄開始時間
 
-const agv1StartTime = ref(null);
+const agv1StartTime = ref(null);            // 等待agv計時開始
 const agv1EndTime = ref(null);
-const agv2StartTime = ref(null);
+const agv2StartTime = ref(null);            // 運行agv計時開始
 const agv2EndTime = ref(null);
+
+const forklift2StartTime = ref(null);       // 堆高機運行計時開始
+const forklift2EndTime = ref(null);         // 堆高機運行計時結束
 
 const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
@@ -626,10 +646,14 @@ const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-const panelX = ref(830);
-const panelY = ref(11);
+const panelX = ref(830);          // led顯示面板x位置, 值越大, 越往右
+const panelY = ref(11);           // led顯示面板y位置, 值越大, 越往下
 const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
 const panel_flag = ref(false)     // 允許拖曳的開關
+
+// 獲取元件引用
+const draggablePanel = ref(null)
+const sendButton = ref(null)
 
 const screenSizeInInches = ref(null);
 
@@ -731,6 +755,21 @@ onMounted(async () => {
   currentUser.value = user ? JSON.parse(user) : null;
   console.log("currentUser:", currentUser.value);
 
+  //#
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw)
+    userRaw = localStorage.getItem('loginedUser');
+
+  try {
+    const u = userRaw ? JSON.parse(userRaw) : null;
+    // 只讀，避免被誤改
+    currentUser.value = u ? Object.freeze({ ...u }) : null;
+  } catch {
+    currentUser.value = null;
+  }
+  console.log('currentUser:', currentUser.value);
+  //#
+
   initialize();
 
   // 取得每個 v-text-field 的唯一 ID
@@ -798,6 +837,11 @@ onMounted(async () => {
       }
     });
     */
+    socket.value.on('station2_error', async () => {
+      console.log("receive station2_error socket...");
+      activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
+    });
+
     socket.value.on('station2_loading_ready', async(data) => {
       //const num = parseInt(data.message, 10);
 
@@ -812,7 +856,6 @@ onMounted(async () => {
       //  console.error('接收到不合法的裝卸站號碼:', data.message);
       //}
     });
-
 
     socket.value.on('station2_agv_start', async () => {
       console.log('AGV 運行任務開始，press Start按鍵, 收到 station2_agv_start 訊息');
@@ -904,7 +947,7 @@ onMounted(async () => {
 
       // 記錄agv在站與站之間運行結束時間
       agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV Start time:", agv2EndTime.value);
+      console.log("AGV end time:", agv2EndTime.value);
 
       let payload = {};
       let targetItem = {};
@@ -922,12 +965,24 @@ onMounted(async () => {
         payload = {
           //id: targetItem.id,
           id: current_material_id,
-          show1_ok: 3,        //成品站
-          show2_ok: 10,      //等待入庫
-          show3_ok: 3,       //等待組裝中
-          whichStation: 3,  //目標途程:組裝站
+          show1_ok: 3,        // 成品站
+          show2_ok: 10,       // 等待入庫
+          show3_ok: 3,        // 等待組裝中
+          whichStation: 3,    // 目標途程:成品站
         };
         await updateMaterialRecord(payload);
+
+        payload = {
+          material_id: current_material_id,
+          delivery_qty: 0,
+          record_name1: 'show1_ok',
+          record_data1: 3,
+          record_name2: 'show2_ok',
+          record_data2: 10,
+          record_name3: 'show3_ok',
+          record_data3: 3,
+        };
+        await updateAssmbleDataByMaterialID(payload)
 
         // 2025-06-24, add
         payload = {
@@ -972,7 +1027,7 @@ onMounted(async () => {
         };
         await updateAssemble(payload);
         */
-      });
+      }); // end forEach
       console.log('agv_end 處理步驟1...');
 
       let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
@@ -997,12 +1052,12 @@ onMounted(async () => {
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: agv2PeriodTime,
-          user_id: 'AGV2-2',                        //在組裝區('AGV2')至成品區, 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
+          user_id: 'AGV2-2',                        // 在組裝區('AGV2')至成品區, 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
           order_num: targetItem.order_num,
           id: targetItem.id,                        //2025-02-24 add
-          process_type: 3,                          //在成品區
+          process_type: 3,                          // 在成品區
 
-          normal_work_time: true,
+          normal_work_time: true,                   // 正常工時
         };
         await createProcess(payload);
         console.log('步驟2-1...');
@@ -1024,7 +1079,7 @@ onMounted(async () => {
           record_data: temp_total_assemble_qty
         };
         await updateMaterial(payload);
-        console.log('步驟2-2-1...');
+        console.log('步驟2-3...');
 
         //紀錄該筆的agv組裝完成狀態
         //if (Number(myMaterial.delivery_qty) !=0 && Number(myMaterial.total_delivery_qty) !=0) {
@@ -1034,7 +1089,7 @@ onMounted(async () => {
           record_data: true
         };
         await updateMaterial(payload);
-        console.log('步驟2-3...');
+        console.log('步驟2-4...');
         //下面這一段, 待討論....
         /*
         if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
@@ -1078,9 +1133,158 @@ onMounted(async () => {
       window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
     });
 
-    //socket.value.on('station3_agv_ready', async () => {
-    //  console.log('AGV 已在成品區裝卸站, 收到 station3_agv_ready 訊息...');
-    //});
+    socket.value.on('station3_trans_end', async (data) => {
+      console.log("收到 station3_trans_ready訊息...", data);
+
+      socket.value.emit('station3_trans_over');
+      console.log("送出 station3_trans_over訊息...");
+
+      // 記錄forklift在站與站之間運行結束時間
+      forklift2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
+      console.log("forklift end time:", forklift2EndTime.value);
+
+      let payload = {};
+      let targetItem = {};
+
+      selectedItems.value.forEach(async (item) => {
+        targetItem = materials_and_assembles_by_user.value.find(
+          (kk) => kk.index === item
+        );
+        console.log("targetItem:", targetItem)
+
+        let current_assemble_id=targetItem.assemble_id
+        let current_material_id=targetItem.id
+
+        payload = {
+          id: current_material_id,
+          show1_ok: 3,        // 成品站
+          show2_ok: 10,       // 等待入庫
+          show3_ok: 3,        // 等待組裝中
+          whichStation: 3,    // 目標途程:成品站
+        };
+        await updateMaterialRecord(payload);
+
+        payload = {
+          material_id: current_material_id,
+          delivery_qty: 0,
+          record_name1: 'show1_ok',
+          record_data1: 3,
+          record_name2: 'show2_ok',
+          record_data2: 10,
+          record_name3: 'show3_ok',
+          record_data3: 3,
+        };
+        await updateAssmbleDataByMaterialID(payload)
+
+        payload = {
+          material_id: current_material_id,
+          record_name: 'isAssembleStationShow',
+          record_data: false,
+        };
+        await updateAssembleMustReceiveQtyByMaterialID(payload);
+
+        payload = {
+          id: current_material_id,
+          record_name: 'must_allOk_qty',
+          record_data: Number(targetItem.receive_qty)
+        };
+        await updateMaterial(payload);
+
+        payload = {
+          id: targetItem.id,
+          record_name: 'move_by_automatic_or_manual_2',
+          record_data: false
+        };
+        await updateMaterial(payload);
+      });
+      // end forEach loop
+      console.log('trans_end 處理步驟1...');
+
+      let transPeriodTime = calculatePeriodTime(forklift2StartTime.value, forklift2EndTime.value);  // 計算時間間隔
+      let transStartTime = formatDateTime(forklift2StartTime.value);
+      let transEndTime = formatDateTime(forklift2EndTime.value);
+      console.log("forklift 運行 Start Time:", transStartTime);
+      console.log("forklift 運行 End Time:", transEndTime);
+      console.log("forklift 運行 Period time:", transPeriodTime);
+
+      console.log('agv_end 處理步驟2...');
+      selectedItems.value.forEach(async (item) => {
+        targetItem = materials_and_assembles_by_user.value.find(
+          (kk) => kk.index === item
+        );
+        console.log("targetItem:", targetItem)
+
+        payload = {
+          begin_time: transStartTime,
+          end_time: transEndTime,
+          periodTime: transPeriodTime,
+          user_id: currentUser.value.empID,
+          order_num: targetItem.order_num,
+          id: targetItem.id,
+          process_type: 6,                          // 在成品區
+
+          normal_work_time: true,                   // 正常工時
+        };
+        await createProcess(payload);
+        console.log('步驟2-1...');
+
+        //紀錄該筆的組裝完成數量
+        payload = {
+          id: targetItem.id,
+          record_name: 'assemble_qty',
+          record_data: targetItem.delivery_qty
+        };
+        await updateMaterial(payload);
+        console.log('步驟2-2...');
+
+        //紀錄該筆訂單已組裝完成總數量
+        let temp_total_assemble_qty = targetItem.total_assemble_qty + targetItem.delivery_qty
+        payload = {
+          id: targetItem.id,
+          record_name: 'total_assemble_qty',
+          record_data: temp_total_assemble_qty
+        };
+        await updateMaterial(payload);
+        console.log('步驟2-3...');
+
+        //紀錄該筆的組裝完成狀態
+        payload = {
+          id: targetItem.id,
+          record_name: 'isAssembleStationShow',
+          record_data: true
+        };
+        await updateMaterial(payload);
+        console.log('步驟2-4...');
+
+        //下面這一段, 待討論....
+        /*
+        if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
+          console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
+
+          let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
+
+          payload_new = {
+            copy_id: myMaterial.id,
+            total_delivery_qty: tempDelivery,
+            show2_ok: 2,
+            shortage_note: '',
+          }
+          await copyMaterial(payload_new);
+          console.log('步驟2-4...');
+        }
+        */
+      });
+
+      // 插入延遲 3 秒
+      await delay(3000);
+
+      selectedItems.value = [];
+      if (localStorage.getItem('selectedItems')) {
+        localStorage.removeItem('selectedItems');
+      }
+      //待待
+      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+    })
 
     socket.value.on('station2_agv_ready', async () => {
       console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
@@ -1164,7 +1368,9 @@ onMounted(async () => {
         } finally {
           localStorage.setItem('Authenticated', false);
           removelocalStorage();
-
+          //#
+          sessionStorage.removeItem('auth_user');  // 刪掉使用者
+          //#
           const resolvedRoute = router.resolve({ name: 'LoginRegister' });
           const path = resolvedRoute.href;
           console.log('triggerLogout socket...', path)
@@ -1454,11 +1660,14 @@ const getBtnStyle = (item) => {
 }
 
 const setActive = (value) => {
-  toggle_exclusive.value = value; // 設置當前活動按鈕
-  if (toggle_exclusive.value == 1)
+  toggle_exclusive.value = value;       // 設置當前活動按鈕
+  if (toggle_exclusive.value == 1) {
     showMenu.value = true;
-  else
+    transport_message.value = '備料人工送出'
+  } else {
     showMenu.value = false;
+    transport_message.value = '備料自動送出'
+  }
 }
 
 const updateEmployeeFieldFromSelect = () => {
@@ -1517,6 +1726,164 @@ const toggleSelect = (item) => {
   } else {
     selectedItems.value.splice(nn, 1);       // 若已選中，則移除 columns.index
   }
+};
+
+const select_transportation_method = () => {
+  if (toggle_exclusive.value == 1) {
+    callForklift();
+  } else {
+    callAGV();
+  }
+};
+
+const callForklift = async () => {
+  console.log("callForklift()...");
+
+  let payload = {};
+
+  if (!isCallForklift.value) {                          // 沒有重複呼叫
+    if (selectedItems.value.length == 0) {              // 已點選選單
+      showSnackbar("請選擇送料的工單!", 'red accent-2');
+      return;
+    }
+    isCallForklift.value = true
+  } else {
+    showSnackbar("請不要重複按鍵!", 'red accent-2');
+    return;
+  } // end if
+
+  console.log('trans_end 處理步驟1...');
+  selectedItems.value.forEach(async (item) => {
+    console.log('selectedItems, item:', item);
+
+    targetItem = materials_and_assembles_by_user.value.find(
+      (kk) => kk.index === item
+    );
+    console.log("targetItem:", targetItem)
+
+    let current_assemble_id=targetItem.assemble_id
+    let current_material_id=targetItem.id
+
+    payload = {
+      id: current_material_id,
+      show1_ok: 3,        // 成品站
+      show2_ok: 10,       // 等待入庫
+      show3_ok: 3,        // 等待組裝中
+      whichStation: 3,    // 目標途程:成品站
+    };
+    await updateMaterialRecord(payload);
+
+    payload = {
+      material_id: current_material_id,
+      delivery_qty: 0,
+      record_name1: 'show1_ok',
+      record_data1: 3,
+      record_name2: 'show2_ok',
+      record_data2: 10,
+      record_name3: 'show3_ok',
+      record_data3: 3,
+    };
+    await updateAssmbleDataByMaterialID(payload)
+
+    payload = {
+      id: targetItem.id,
+      record_name: 'move_by_automatic_or_manual_2',
+      record_data: false
+    };
+    await updateMaterial(payload);
+
+    payload = {
+      material_id: current_material_id,
+      record_name: 'isAssembleStationShow',
+      record_data: false,
+    };
+    await updateAssembleMustReceiveQtyByMaterialID(payload);
+
+    payload = {
+      id: current_material_id,
+      record_name: 'must_allOk_qty',
+      record_data: Number(targetItem.receive_qty)
+    };
+    await updateMaterial(payload);
+  }); // end forEach loop
+
+  console.log('agv_end 處理步驟2...');
+  selectedItems.value.forEach(async (item) => {
+    targetItem = materials_and_assembles_by_user.value.find(
+      (kk) => kk.index === item
+    );
+    console.log("targetItem:", targetItem)
+
+    payload = {
+      //begin_time: transStartTime,
+      //end_time: transEndTime,
+      //periodTime: transPeriodTime,
+      user_id: currentUser.value.empID,
+      //order_num: targetItem.order_num,
+      id: targetItem.id,
+      process_type: 6,                          // 在成品區
+      //normal_work_time: true,                   // 正常工時
+    };
+    await createProcess(payload);
+    console.log('步驟2-1...');
+
+    //紀錄該筆的組裝完成數量
+    payload = {
+      id: targetItem.id,
+      record_name: 'assemble_qty',
+      record_data: targetItem.delivery_qty
+    };
+    await updateMaterial(payload);
+    console.log('步驟2-2...');
+
+    //紀錄該筆訂單已組裝完成總數量
+    let temp_total_assemble_qty = targetItem.total_assemble_qty + targetItem.delivery_qty
+    payload = {
+      id: targetItem.id,
+      record_name: 'total_assemble_qty',
+      record_data: temp_total_assemble_qty
+    };
+    await updateMaterial(payload);
+    console.log('步驟2-3...');
+
+    //紀錄該筆的組裝完成狀態
+    payload = {
+      id: targetItem.id,
+      record_name: 'isAssembleStationShow',
+      record_data: true
+    };
+    await updateMaterial(payload);
+    console.log('步驟2-4...');
+
+    //下面這一段, 待討論....
+    /*
+    if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
+      console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
+
+      let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
+
+      payload_new = {
+        copy_id: myMaterial.id,
+        total_delivery_qty: tempDelivery,
+        show2_ok: 2,
+        shortage_note: '',
+      }
+      await copyMaterial(payload_new);
+      console.log('步驟2-4...');
+    }
+    */
+  });
+
+  // 插入延遲 3 秒
+  await delay(3000);
+
+  selectedItems.value = [];
+  if (localStorage.getItem('selectedItems')) {
+    localStorage.removeItem('selectedItems');
+  }
+  //待待
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+//##
 };
 
 const callAGV = async () => {
@@ -2251,6 +2618,15 @@ const toggleDrag = () => {
   panel_flag.value = !panel_flag.value
 }
 
+// 清除localStorage內容
+const removelocalStorage = () => {
+  if (localStorage.getItem('loginedUser')) {
+    localStorage.removeItem('loginedUser');
+  }
+  if (localStorage.getItem('Authenticated')) {
+    localStorage.removeItem('Authenticated');
+  }
+};
 </script>
 
 <style lang="scss" scoped>

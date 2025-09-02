@@ -37,7 +37,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-08-13' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2025-09-02' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -166,6 +166,7 @@ if __name__ == '__main__':
   #方法1
   #app.run(host=host_ip, port=7010, debug=True)  # 啟動app
   app.run(host='0.0.0.0', port=7010, debug=True)  # 啟動app
+  #app.run(host='0.0.0.0', port=7010, debug=False, use_reloader=False)  # 啟動app, 避免觸發reloader，連線就被中斷
 
   #方法2
   '''

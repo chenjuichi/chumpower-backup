@@ -86,7 +86,7 @@
                 :to="localNavLinks[6].isEnabled ? localNavLinks[6].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[6].isEnabled}]"
                 @click.prevent="!openMenuItem && $event.stopPropagation()"
-                style="display:none;"
+
               >
                 {{ localNavLinks[6].text }}
               </router-link>
@@ -627,6 +627,9 @@ const logout = () => {
   .finally(() => {
     setAuthenticated(isAuthenticated);
     removelocalStorage();
+    //#
+    sessionStorage.removeItem('auth_user');  // 刪掉使用者
+    //#
     //router.replace({ name: 'LoginRegister' });
     const resolvedRoute = router.resolve({ name: 'LoginRegister' });
     const path = resolvedRoute.href;  // 取得解析後的 path
@@ -667,11 +670,24 @@ const setAuthenticated = (isLogin) => {
 };
 
 //
+/*
 const disableBackButton = () => {
   window.history.pushState(null, '', window.location.href);
 
   popStateHandler.value = (event) => {
     window.history.pushState(null, '', window.location.href);
+  };
+
+  window.addEventListener('popstate', popStateHandler.value);
+};
+*/
+const disableBackButton = () => {
+  // 初始化時 push 一次，保留原狀態
+  window.history.pushState({ ...window.history.state }, '', window.location.href);
+
+  popStateHandler.value = () => {
+    // 返回時再 push 一次，但保留 router 狀態
+    window.history.pushState({ ...window.history.state }, '', window.location.href);
   };
 
   window.addEventListener('popstate', popStateHandler.value);

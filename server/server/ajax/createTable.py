@@ -335,18 +335,22 @@ def create_process():
   request_data = request.get_json()
   print("request_data:", request_data)
 
-  _begin_time = request_data['begin_time']
-  _end_time = request_data['end_time']
-  _period_time = request_data['periodTime']
-  _user_id = request_data['user_id']
-  _order_num = request_data['order_num']
-  _id = request_data['id']
-  _process_type= request_data['process_type']
+  _begin_time = request_data.get('begin_time')
+  _end_time = request_data.get('end_time')
+  _period_time = request_data.get('periodTime')
+  _period_time2 = request_data.get('periodTime2')
   _process_work_time_qty = request_data.get('process_work_time_qty')
   _normal_work_time = request_data.get('normal_work_time')
 
-  print("process_work_time_qty:", _process_work_time_qty)
+  _user_id = request_data['user_id']
+  #_order_num = request_data['order_num']
+  _id = request_data['id']
+  _process_type= request_data['process_type']
 
+  print("process_type:", _process_type)
+  print("begin_time:", _begin_time)
+  print("end_time:", _end_time)
+  print("process_work_time_qty:", _process_work_time_qty)
   print("id:", _id, type(_id))
 
   s = Session()
@@ -358,21 +362,26 @@ def create_process():
     return jsonify({"error": "order_num 不存在"}), 400  # 找不到對應的 Material 記錄
   print("step1...", material.id)
 
-  # 計算期間時間
-  time_diff = datetime.strptime(_end_time, "%Y-%m-%d %H:%M:%S") - datetime.strptime(_begin_time, "%Y-%m-%d %H:%M:%S")
-  period_time = str(time_diff).split('.')[0]  # 去除微秒，格式為 'HH:MM:SS'
-  print("step2-1...")
+  if _process_type != 6 and _process_type != 5:
+    # 計算期間時間
+    if _period_time2:
+      period_time = _period_time2
+    else:
+      time_diff = datetime.strptime(_end_time, "%Y-%m-%d %H:%M:%S") - datetime.strptime(_begin_time, "%Y-%m-%d %H:%M:%S")
+      period_time = str(time_diff).split('.')[0]  # 去除微秒，格式為 'HH:MM:SS'
+    print("step2-1...", period_time)
 
   # 3️⃣ 直接新增 process 記錄（無論是否已存在）
   new_process = Process(
     material_id = _id,
     user_id = _user_id,
-    begin_time = _begin_time,
-    end_time = _end_time,
-    period_time = period_time,  # 計算期間時間
     process_type = _process_type,
     normal_work_time = _normal_work_time,
-    process_work_time_qty = _process_work_time_qty,
+
+    begin_time = _begin_time if _process_type != 6 and _process_type != 5 else '',
+    end_time = _end_time if _process_type != 6 and _process_type != 5 else '',
+    period_time = period_time if _process_type != 6 and _process_type != 5 else '',
+    process_work_time_qty = _process_work_time_qty if _process_type != 6 and _process_type != 5 else 0,
   )
   print("step3...")
 

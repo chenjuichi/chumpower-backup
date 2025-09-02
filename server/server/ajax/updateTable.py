@@ -343,6 +343,7 @@ def update_assemble_process_step():
     sorted_records = sorted(assemble_records, key=lambda r: r.id)
     current_index = next((i for i, r in enumerate(sorted_records) if r.id == assemble_id), None)
 
+    print("current_index, current_index + 1, len(sorted_records:",current_index, current_index + 1, len(sorted_records))
     if current_index is not None and current_index + 1 < len(sorted_records):
         next_record = sorted_records[current_index + 1]
         #material_record.next_assemble_id = next_record.id  # 設定到 material
@@ -724,6 +725,37 @@ def update_assemble():
   # 動態設置欄位值
   if hasattr(assemble_record, _record_name):
     setattr(assemble_record, _record_name, _record_data)
+    s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+# from material table update some data by id
+@updateTable.route("/updateProcessData", methods=['POST'])
+def update_process_data():
+  print("updateProcessData....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _process_id = request_data['process_id']
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+
+  #print("_record_name:", _record_name)
+
+  return_value = True  # true: 資料正確, 註冊成功
+  s = Session()
+
+  # 查找對應的記錄
+  process_record = s.query(Process).filter_by(id = _process_id).first()
+
+  # 動態設置欄位值
+  if hasattr(process_record, _record_name):
+    setattr(process_record, _record_name, _record_data)
     s.commit()
 
   s.close()

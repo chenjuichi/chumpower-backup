@@ -12,14 +12,13 @@ const os = require('os');
 app.use(express.json());    // 解析 JSON POST 資料
 
 // 提供前端靜態頁面或資料，如 index.html, config.json
-app.use(express.static('public'));    //for vue3 application, npm run serve
+app.use(express.static('public'));      //for vue3 application, npm run serve
 //app.use(express.static('dist'));      //for vue3 application, npm run build
 
+// 載入 Node.js 內建的 path 模組，用來處理檔案與目錄路徑（可以跨平台，不必自己手動處理 / 或 \）
 const path = require('path');
-//const logDir = path.resolve(__dirname); // 如果 service.log 是放在當前目錄
-//const logFilePath = path.join(logDir, 'service.log');
-const logFilePath = path.join(__dirname, 'service.log');
-//console.log('\n📝 service.log 目前位於：', logFilePath);
+const logFilePath = path.join(__dirname, 'service.log');  // 程式所在的資料夾路徑 和 service.log 組合成一個完整路徑
+
 const fs = require('fs');
 
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
@@ -31,25 +30,32 @@ let client = new net.Socket();
 
 let csharpReady = false;    // 用來標記是否成功連線kuka伺服器
 let on_line = false;        // false: off line 模擬模式, true: on line 上線模式
+let on_line_move_mode = true;
 let lastErrorMessage = '';
 
 // HTTP API 和 WebSocket 共用同一個 Port 6500, 伺服器同時處理 HTTP 請求和 WebSocket 連線(協定不同)
 const PORT = Number(process.env.PORT) || 6500;
+
 // 針對 與kuka伺服器連線, 所使用的 Port 6600
 const CSHARP_PORT = Number(process.env.CSHARP_PORT) || 6600;
 // 針對 與kuka伺服器連線, 所使用的 IP
 const CSHARP_SERVER_IP = process.env.CSHARP_SERVER_IP;
-
 const SERVER_IP = process.env.SERVER_IP;
 console.log(`\nSERVER_IP: ${SERVER_IP}`);
-let RUN_MODE = false;
-RUN_MODE = ['true', '1', 'yes'].includes(
-  (process.env.RUN_MODE || '').toLowerCase()
-);
+
+let RUN_MODE = false;   // true:上線模式, false:模擬模式
+RUN_MODE = ['true', '1', 'yes'].includes((process.env.RUN_MODE || '').toLowerCase());
 console.log(`\nRUN_MODE: ${RUN_MODE}`)
 
+let MOVE_MODE = true;  // true: agv運輸, false: 堆高機運輸
+MOVE_MODE = ['true', '1', 'yes'].includes((process.env.MOVE_MODE || '').toLowerCase());
+console.log(`\nMOVE_MODE: ${MOVE_MODE}`)
+
+//====
 on_line = RUN_MODE;
+on_line_move_mode = MOVE_MODE;
 let localIP = SERVER_IP;
+//===
 
 /*
 A.區分兩個服務的端口：
@@ -91,7 +97,6 @@ if (process.stdin.isTTY) {
   process.stdin.setRawMode(true); // 設定為原始模式 (raw mode)，以便偵測單鍵輸入事件
 }
 
-
 // 監聽 Ctrl+C (SIGINT) 或應用程式結束
 const shutdown = () => {
   console.log('Server shutting down...');
@@ -101,29 +106,24 @@ const shutdown = () => {
   client.write('server_shutdown');              //廣播至後端kuka伺服器
 
   // 給點時間讓訊息發送後再關閉
-  setTimeout(() => {
-  //    io.close(() => console.log('Socket.io server closed.'));
-  //    client.close(() => console.log('TCP server closed.'));
-      process.exit(0);
-  }, 1000);
+  setTimeout(() => { process.exit(0); }, 1000);
 };
 
-// 監聽 `Ctrl+C` 事件
-process.on('SIGINT', shutdown);
+process.on('SIGINT', shutdown);   // 監聽 `Ctrl+C` 事件
 
-// 監聽 `process.exit`
-process.on('exit', shutdown);
+process.on('exit', shutdown);     // 監聽 `process.exit`
 
 function checkLogFileSize() {
-  const logPath = 'service.log';
-  if (fs.existsSync(logPath)) {
-    const stats = fs.statSync(logPath);
+  //const logPath = 'service.log';
+  if (fs.existsSync(logFilePath)) {
+    const stats = fs.statSync(logFilePath);
     if (stats.size > MAX_LOG_SIZE) {
-      const backupName = `service_${Date.now()}.log`;
-      fs.renameSync(logPath, backupName); // 備份舊 log
-      //fs.writeFileSync(logPath, '');      // 建立新空檔案
-      fs.promises.writeFile(logPath, '')
-        .catch(err => console.error('初始化 log 檔失敗:', err));
+      //const backupName = `service_${Date.now()}.log`;
+      const backupName = path.join(__dirname, `service_${Date.now()}.log`);
+      fs.renameSync(logFilePath, backupName);   // 備份舊 log
+      fs.writeFileSync(logFilePath, '');      // 建立新空檔案
+      //fs.promises.writeFile(logPath, '')
+      //  .catch(err => console.error('初始化 log 檔失敗:', err));
       console.log(`📁 日誌檔案過大，已備份為 ${backupName}`);
     }
   }
@@ -132,9 +132,9 @@ function checkLogFileSize() {
 // 確保 log 檔案存在，或建立空檔案（初始化）
 function ensureLogFileExists() {
   if (!fs.existsSync(logFilePath)) {
-    //fs.writeFileSync(logFilePath, ''); // 建立空檔案
-    fs.promises.writeFile(logFilePath, '')
-      .catch(err => console.error('初始化 log 檔失敗:', err));
+    fs.writeFileSync(logFilePath, ''); // 建立空檔案
+    //fs.promises.writeFile(logFilePath, '')
+    //  .catch(err => console.error('初始化 log 檔失敗:', err));
   }
 }
 
@@ -337,10 +337,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('station2_trans_call', (payload) => {
-    console.log('📩 Received station2_trans by:', payload.empID , payload.empName);
+    console.log('Received station2_trans by:', payload.empID , payload.empName);
 
     if (readyInterval_ready) {
-      console.log('⏳ 已在持續發送 station2_trans_ready， 忽略本次呼叫');
+      console.log('已在持續發送 station2_trans_ready， 忽略本次呼叫');
       return;
     }
 
@@ -371,7 +371,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('station2_trans_over', () => {
-    console.log(`🛑 Received station2_trans_over from ${socket.id}`);
+    console.log(`Received station2_trans_over from ${socket.id}`);
 
      if (readyInterval_end) {
       clearInterval(readyInterval_end);
@@ -391,8 +391,11 @@ io.on('connection', (socket) => {
 
   // 使用 socket.onAny 監聽所有事件
   socket.onAny(async (eventName) => {
-    //let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect', 'error'];
-    let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect'];
+    let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect', 'error',
+      'station2_trans_over', 'station2_trans_end', 'station2_trans_begin', 'station2_trans_call',
+      'station3_trans_over', 'station3_trans_end', 'station3_trans_begin', 'station3_trans_call',
+    ];
+    //let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect'];
 
     //if (!socket.connected) {
     //  console.log('Socket disconnected, cannot proceed this socket');
@@ -448,6 +451,8 @@ function bindClientHandlers() {
       case 'station2_loading_ready':
       case 'station3_agv_end':
       case 'station3_loading_ready':
+      case 'station1_error':
+      case 'station2_error':
         console.log("send", res, "to socket io...");
         io.emit(res); //廣播至前端瀏覽器
         break;
@@ -482,7 +487,7 @@ function bindClientHandlers() {
     if (errorMessage !== lastErrorMessage) {
       //require('fs').appendFileSync('service.log', errorMessage + '\n');
       checkLogFileSize();
-      fs.appendFileSync('service.log', errorMessage + '\n');
+      fs.appendFileSync(logFilePath, errorMessage + '\n');
       lastErrorMessage = errorMessage;
     }
     //require('fs').appendFileSync('service.log', `連線失敗: ${error.message}, mode: ${on_line}, RUN_MODE: ${RUN_MODE}\n`);
@@ -521,6 +526,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2025-08-13\x1b[0m`);
+  console.log(`\x1b[34mBuild 2025-09-02\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

@@ -333,102 +333,95 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-        <div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">
-          <v-dialog
-            v-model="dlg.dialogVisible"
-            max-width="980px"
-            @keydown.esc="handleEscClose(dlg)"
-            @click:outside="handleOutsideClick(dlg)">
+          <div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">
+            <v-dialog
+              v-model="dlg.dialogVisible"
+              max-width="980px"
+              @keydown.esc="handleEscClose(dlg)"
+              @click:outside="handleOutsideClick(dlg)">
 
-            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                備料資訊
-                <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
-                <!--<span style="font-size:16px;">訂單{{ dialog_order_num }}</span>&nbsp;&nbsp;-->
-                <TimerDisplay
-                  :ref="setTimerRef(dlg)"
-                  v-model:isPaused="dlg.proc.isPaused"
-                  :show="true"
-                  :autoStart="false"
-                  @update:time="dlg.proc.onTick"
-                />
-                <!--
-                <TimerDisplay
-                  :ref="el => (dlg.timerRef = el)"
-                  v-model:isPaused="dlg.proc.isPaused"
-                  :autoStart="false"
-                  @update:time="dlg.proc.onTick"
-                />
-                -->
-                <v-btn @click="dlg.proc.toggleTimer()" :prepend-icon = "getIcon(dlg.proc.isPaused)">
-                  {{ dlg.proc.isPaused ? "開始" : "暫停" }}
-                </v-btn>
-
-                <v-fade-transition mode="out-in">
-                  <v-btn
-                    style="position: relative; right: -250px;"
-                    color="success"
-                    prepend-icon="mdi-check-circle-outline"
-
-                    :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
-
-                    text="確定"
-                    class="text-none"
-
-                    @click="onConfirm(dlg)"
-
-                    variant="flat"
-                    flat
+              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+                  備料資訊
+                  <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
+                  <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
+                  <TimerDisplay
+                    :ref="setTimerRef(dlg)"
+                    v-model:isPaused="dlg.proc.isPaused"
+                    :show="true"
+                    :autoStart="false"
+                    @update:time="dlg.proc.onTick"
                   />
-                </v-fade-transition>
-              </v-card-title>
+                  <v-btn @click="dlg.proc.toggleTimer()" :prepend-icon = "getIcon(dlg.proc.isPaused)">
+                    {{ dlg.proc.isPaused ? "開始" : "暫停" }}
+                  </v-btn>
 
-              <v-card-text>
-                <v-table class="inner" density="compact" fixed-header>
-                  <thead style="color: black;">
-                    <tr>
-                      <th class="text-left">元件</th>
-                      <th class="text-left" style="width: 520px;">物料</th>
-                      <th class="text-left">數量</th>
-                      <th class="text-left" style="width: 120px;">日期</th>
-                      <th class="text-left">領料</th>
-                    </tr>
-                  </thead>
+                  <v-fade-transition mode="out-in">
+                    <v-btn
+                      style="position: relative; right: -250px;"
+                      color="success"
+                      prepend-icon="mdi-check-circle-outline"
 
-                  <tbody>
-                    <tr
-                      v-for="(bom_item, index) in boms"
-                      :key="bom_item.seq_num"
-                      :style="{
-                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                      }"
-                    >
-                      <td>{{ bom_item.seq_num }}</td>
-                      <td style="width: 520px;">
-                        <div>
-                          <div>{{ bom_item.material_num }}</div>
-                          <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                      </td>
-                      <td style="width: 120px;">
-                        <div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
-                      </td>
-                    </tr>
-                  </tbody>
-                </v-table>
-              </v-card-text>
-            </v-card>
-          </v-dialog>
-        </div>
+                      :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
+
+                      text="確定"
+                      class="text-none"
+
+                      @click="onConfirm(dlg)"
+
+                      variant="flat"
+                      flat
+                    />
+                  </v-fade-transition>
+                </v-card-title>
+
+                <v-card-text>
+                  <v-table class="inner" density="compact" fixed-header>
+                    <thead style="color: black;">
+                      <tr>
+                        <th class="text-left">元件</th>
+                        <th class="text-left" style="width: 520px;">物料</th>
+                        <th class="text-left">數量</th>
+                        <th class="text-left" style="width: 120px;">日期</th>
+                        <th class="text-left">領料</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      <tr
+                        v-for="(bom_item, index) in boms"
+                        :key="bom_item.seq_num"
+                        :style="{
+                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
+                        }"
+                      >
+                        <td>{{ bom_item.seq_num }}</td>
+                        <td style="width: 520px;">
+                          <div>
+                            <div>{{ bom_item.material_num }}</div>
+                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                        </td>
+                        <td style="width: 120px;">
+                          <div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </v-card-text>
+              </v-card>
+            </v-dialog>
+          </div>
+
           <!-- 備料區檢料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
@@ -514,21 +507,26 @@
         <!-- v-icon -->
         <v-icon
           style="transition: opacity 0.3s ease, visibility 0.3s ease;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-          @click="editOrderNum(item)"
+          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden',
+                    pointerEvents: !item.isTakeOk && !item.hasStarted ? 'auto' : 'none'
+                  }"
+          @click="!item.isTakeOk && !item.hasStarted && editOrderNum(item)"
           small
           class="mr-2"
         >
           mdi-pencil
         </v-icon>
         <!-- Order Info -->
+        <!--備料完成(缺料)-->
         <div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
           <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
           <span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>
-        </div> <!--檢料完成-->
+        </div>
+        <!--備料完成-->
         <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
           {{ item.order_num }}
-        </div> <!--檢料完成-->
+        </div>
+        <!--備料尚未完成-->
         <div style="margin-right: 20px;" v-else>
           {{ item.order_num }}
         </div>
@@ -564,9 +562,9 @@
     <!-- 自訂 '詳情' 按鍵 -->
     <template v-slot:item.action="{ item }">
       <v-badge
-        v-if="ishasWorked(item)"
+        v-if="item.hasStarted"
         dot
-        :color="isStarted(item) ? 'green' : 'red'"
+        :color="item.startStatus ? 'green' : 'red'"
         location="top end"
         offset-x="6"
         offset-y="6"
@@ -575,16 +573,20 @@
           size="small"
           variant="tonal"
           style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-
           @click="toggleExpand(item)"
         >
           詳 情
+          <v-icon color='green-darken-3' end>
+            {{ 'mdi-note-search-outline' }}
+          </v-icon>
+          <!--
           <v-icon
-            :color="item.hasStarted ? 'orange-darken-4' : 'green-darken-3'"
+            :color="item.hasStarted && !item.isTakeOk ? 'orange-darken-4' : 'green-darken-3'"
             end
           >
-            {{ item.hasStarted ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
+            {{ item.hasStarted && !item.isTakeOk ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
           </v-icon>
+          -->
         </v-btn>
       </v-badge>
 
@@ -596,12 +598,17 @@
         @click="toggleExpand(item)"
       >
         詳 情
+        <v-icon color='green-darken-3' end>
+          {{ 'mdi-note-search-outline' }}
+        </v-icon>
+        <!--
         <v-icon
           :color="item.hasStarted ? 'orange-darken-4' : 'green-darken-3'"
           end
         >
           {{ item.hasStarted ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
         </v-icon>
+        -->
       </v-btn>
     </template>
 
@@ -679,7 +686,7 @@ import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
 import { desserts2 }  from '../mixins/crud.js';
-import { materials, boms, currentBoms, currentAGV, material_copy, material_copy_id, fileCount }  from '../mixins/crud.js';
+import { materials, boms, currentBoms, currentAGV, material_copy, fileCount }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
@@ -708,26 +715,16 @@ const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialA
 const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
 const updateProcessDataByMaterialID = apiOperation('post', '/updateProcessDataByMaterialID');
 const updateBomXorReceive = apiOperation('post', '/updateBomXorReceive');
-
 const updateSetting = apiOperation('post', '/updateSetting');
-/*
-const dialog2StartProcess = apiOperation('post', '/dialog2StartProcess');
-const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcess');
-const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcess');
-const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcess');
-*/
+
 //=== component name ==
-defineComponent({
-  name: 'MaterialListForAssem'
-});
+defineComponent({ name: 'MaterialListForAssem' });
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 const transport_message = ref('備料自動送出')
@@ -782,7 +779,8 @@ const inputSelectEmployee = ref(null);
 const inputSelectOrderNum = ref(null);
 
 let intervalId = null;                        // 10分鐘, 倒數計時器, for exce file 偵測
-let refreshTimerId = null           // 30秒, for refresh materials[]
+let refreshTimerId = null                     // 11秒, for refresh materials[]
+const refreshTimerMs = ref(11 * 1000)         // 11秒
 const lastRefreshed = ref(null)
 const tableLoading = ref(false)
 
@@ -835,7 +833,7 @@ const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const currentUser = ref({});
-const componentKey = ref(0);       // key 值用於強制重新渲染
+const componentKey = ref(0);            // key 值用於強制重新渲染
 const currentProcessId = ref(0);
 
 const editDialog = ref(false);
@@ -865,7 +863,7 @@ let dialog_pauseStart = null              // 暫停開始時間（毫秒）
 const dialog = ref(false);
 const dialog_order_num = ref('');
 
-const dialogs = ref([]);  // 儲存多個 dialog 狀態
+const dialogs = ref([]);              // 儲存多個 dialog 狀態
 
 const isConfirmed = ref(false);
 
@@ -889,7 +887,7 @@ const abnormalDialog_autocomplete_message = ref('');  // v-autocomplete componen
 const abnormalDialog_message = ref('');               // dialog顯示訊息
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_record = ref(null);    // 點擊鈴鐺icon的目前紀錄
+const abnormalDialog_record = ref(null);              // 點擊鈴鐺icon的目前紀錄
 
 const itemsWithIcons = [
   { text: '臨時領料', icon: 'mdi-clock-outline' },
@@ -935,8 +933,15 @@ watch(
             record_name: "isOpen",
             record_data: true,
           });
+
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpenEmpId",
+            record_data: currentUser.value.empID,
+          });
+
         } catch (e) {
-          console.warn("update isOpen(true) 失敗:", e);
+          console.warn("update isOpen(true) or isOpenEmpId 失敗:", e);
         }
 
         // 在 table 中把該筆標成 isOpen=true（響應式）
@@ -945,6 +950,7 @@ watch(
           materials.value[targetIndex] = {
             ...materials.value[targetIndex],
             isOpen: true,
+            isOpenEmpId: currentUser.value.empID,
           };
         }
 
@@ -1001,11 +1007,11 @@ watch(
 
       // === dialog 剛關閉 ===
       if (!isOpenNow && wasOpen) {
-        console.log("🔴 Dialog closed");
+        console.log("Dialog closed");
 
         const reason = dlg.closeReason;
 
-        if (dlg.proc.for_vue3_has_started) {
+        if (dlg.proc.for_vue3_has_started) {  //工單已開始
           try {
             await updateMaterial({
               id: dlg.material_id,
@@ -1030,10 +1036,31 @@ watch(
               isOpenEmpId: currentUser.value.empID,
             };
           }
+        } else {
+          try {
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "isOpenEmpId",
+              record_data: "",
+              //record_data: currentUser.value.empID,
+            });
+          } catch (e) {
+            console.warn("update isOpenEmpId 失敗:", e);
+          }
+
+          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+          if (targetIndex2 !== -1) {
+            materials.value[targetIndex2] = {
+              ...materials.value[targetIndex2],
+              isOpenEmpId: "",
+              //isOpenEmpId: currentUser.value.empID,
+            };
+          }
         }
 
         try {
           if (reason === 'esc' || reason === 'outside') {
+            console.log("$$ esc狀態 $$")
             // ✅ ESC / 外點：流程保持運行，不暫停
             /*
             if (dlg?.proc?.updateActiveNoPause) {
@@ -1054,6 +1081,8 @@ watch(
             dlg.dialogVisible = false;
 
           } else {
+            console.log("$$ 確定按鍵狀態 $$")
+
             // 🛑 一般關閉：暫停 + 回寫
             dlg?.timerRef?.pause?.(); // 視覺上暫停
             if (dlg.proc.isPaused) dlg.proc.isPaused.value = true;
@@ -1088,8 +1117,8 @@ watch(
         }
 
         // ✅ 從陣列移除該 dialog（放在 nextTick 後移除，避免索引變動干擾當前迭代）
-        const idxToRemove = i;
-        await nextTick();
+        //const idxToRemove = i;
+        //await nextTick();
         //dialogs.value.splice(idxToRemove, 1);
 
         // 清空條碼（只對當前 dlg）
@@ -1153,6 +1182,7 @@ const isStarted = computed(() => {
         d.user_id === currentUser.value.empID
     );
     // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
+    console.log("dlg?.proc?.for_vue3_pause_or_start_status", dlg?.proc?.for_vue3_pause_or_start_status)
     return Boolean(dlg?.proc?.for_vue3_pause_or_start_status);
   };
 });
@@ -1214,9 +1244,6 @@ onMounted(async () => {
   //history.pushState(null, null, document.URL)
   window.addEventListener('popstate', handlePopState)
 
-  //const { current } = useLocale();
-  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
-
   console.log("current routeName:", routeName.value);
 
   let userRaw = sessionStorage.getItem('auth_user');
@@ -1236,7 +1263,6 @@ onMounted(async () => {
     localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
-
   console.log("currentUser:", currentUser.value);
 
   // 取得每個 v-text-field 的唯一 ID
@@ -1886,7 +1912,7 @@ function startAutoRefresh() {
     if (document.visibilityState === 'visible') {
       fetchMaterials()
     }
-  }, 30000) // 30 秒
+  }, refreshTimerMs.value) // 10 秒
 }
 
 function stopAutoRefresh() {
@@ -2203,7 +2229,6 @@ const handleKeyDown = (event) => {
   }
 
   /*
-
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
   // 使用正規化運算式檢查是否為數字且長度不超過3
@@ -2323,23 +2348,25 @@ async function enforceStartPausedIfNew(dlg) {
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),item.order_num, item.isOpen:", item.order_num, item.isOpen);
 
-  console.log("toggle==>", item.isOpen, item.hasStarted, item.isOpenEmpId, currentUser.value.empID)
-  console.log("toggle==>", item.isOpenEmpId !="" ,!(item.isOpen || item.hasStarted), item.isOpenEmpId != currentUser.value.empID)
+  //console.log("toggle==>", item.isOpen, item.hasStarted, item.isOpenEmpId, currentUser.value.empID)
+  //console.log("toggle==>", item.isOpenEmpId !="" ,!(item.isOpen || item.hasStarted), item.isOpenEmpId != currentUser.value.empID)
 
-  if (item.hasStarted && item.isOpenEmpId != currentUser.value.empID) {
-  //if (item.isOpen item.isOpenEmpId != currentUser.value.empID) {
-  //if (item.isOpen) {
-    showSnackbar("已經有人備料進行中...", "orange-darken-2");
+  if (item.isTakeOk) {
+    showSnackbar("備料已完成!", "orange-darken-2");
     return;
   }
 
-    //if (item.hasStarted && item.isOpenEmpId != currentUser.value.empID) {
-  if (item.isOpen) {
-  //if (item.isOpen) {
-    showSnackbar("已經有人預計備料中...", "orange-darken-2");
+  if (item.hasStarted && item.isOpenEmpId !="" && item.isOpenEmpId != currentUser.value.empID) {
+    let temp_msg = "員工" + item.isOpenEmpId + "備料進行中..."
+    showSnackbar(temp_msg, "orange-darken-2");
     return;
   }
 
+  if (item.isOpen && item.isOpenEmpId !="" && item.isOpenEmpId !="" && currentUser.value.empID != item.isOpenEmpId) {
+    let temp_msg = "員工" + item.isOpenEmpId + "準備中..."
+    showSnackbar(temp_msg, "orange-darken-2");
+    return;
+  }
 
   enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
 
@@ -2363,7 +2390,7 @@ const toggleExpand = async (item) => {
     id: item.id,
     //order_num: item.order_num,
     record_name: 'show2_ok',
-    record_data: 1                //備料中
+    record_data: 0                //未備料
   };
   await updateMaterial(payload);
 
@@ -2558,13 +2585,13 @@ const updateItem2 = async (item) => {
   await updateMaterial(payload);
   item.delivery_qty = deliveryQty
 
-    payload = {
-      material_id: item.id,
-      seq: 1,
-      record_name1: 'process_work_time_qty',
-      record_data1: deliveryQty,
-    };
-    await updateProcessDataByMaterialID(payload);
+  payload = {
+    material_id: item.id,
+    seq: 1,
+    record_name1: 'process_work_time_qty',
+    record_data1: deliveryQty,
+  };
+  await updateProcessDataByMaterialID(payload);
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
 
@@ -2655,7 +2682,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   }
   // end block檢查是否缺料
 
-  // 紀錄已經按了確定鍵的狀態
+  // 紀錄前端已經按了確定鍵的狀態
   payload = {
     //order_num: my_material_orderNum,
     id: editedRecord.value.id,
@@ -2664,6 +2691,18 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   };
   await updateMaterial(payload);
   editedRecord.value.isTakeOk = true;
+
+  // 紀錄前端備料已完成
+  payload = {
+    //order_num: my_material_orderNum,
+    id: editedRecord.value.id,
+    record_name: 'hasStarted',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.hasStarted = false;
+
+  await nextTick();
 
   payload = {
     //order_num: my_material_orderNum,

@@ -12,7 +12,8 @@ from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, func, 
 from sqlalchemy import text
 #from sqlalchemy.orm import relationship, backref, sessionmaker
 #from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, backref, sessionmaker, declarative_base  #for 2.0版
+from sqlalchemy.orm import relationship, backref, scoped_session, sessionmaker, declarative_base  #for 2.0版
+
 
 BASE = declarative_base()   # 宣告一個映射, 建立一個基礎類別
 
@@ -228,8 +229,10 @@ class Material(BASE):
     move_by_process_type = Column(Integer, default = 2)             # 2:工單給組裝線, 4:工單給加工線
 
     isOpen = Column(Boolean, default=False)                         #True: dialog open, False: dialog close
-    isOpenEmpId = Column(String(8), default="")     #工單已經開始備料的員工
-    hasStarted = Column(Boolean, default=False)     #True:工單已經開始備料
+    isOpenEmpId = Column(String(8), default="")     # 工單已經開始備料的員工
+    hasStarted = Column(Boolean, default=False)     # True:工單已經開始備料進行中, False:尚未備料或備料已完成
+    startStatus = Column(Boolean, default=False)    # toggle status, True:開始
+    #isConfirmWork = Column(Boolean, default=False)  # True:按確定, 備料完成
 
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),
@@ -933,10 +936,25 @@ class P_Process(BASE):
 
 
 # 建立連線（設定 charset=utf8mb4）
-engine = create_engine("mysql+pymysql://root:77974590@localhost:3306/chumpower?charset=utf8mb4", echo=False)
+DB_URL = "mysql+pymysql://root:77974590@localhost:3306/chumpower?charset=utf8mb4"
+engine = create_engine(
+  DB_URL,
+  echo=False,
+  pool_size=20,           # ↑ 原本默認5太小
+  max_overflow=40,        # 允許額外暫增連線
+  pool_timeout=30,        # 等待連線最久秒數
+  pool_recycle=1800,      # 30分鐘回收 (避免 MySQL 8 wait_timeout)
+  pool_pre_ping=True,     # 斷線自動偵測/重連
+  isolation_level="READ COMMITTED",  # 合理隔離等級
+  future=True,
+)
 
-# 建立與資料庫連線的 Session 類別
-Session = sessionmaker(bind=engine)
+SessionFactory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+Session = scoped_session(SessionFactory)  #建立與資料庫連線的 Session 類別, 每個 thread/context 有自己的 session
+#
+## 建立與資料庫連線的 Session 類別
+#Session = sessionmaker(bind=engine)
+#
 
 ## 建立連線
 #engine = create_engine("mysql+pymysql://root:77974590@localhost:3306/chumpower?charset=utf8mb4", echo=False)

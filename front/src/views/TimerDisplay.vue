@@ -17,12 +17,11 @@ defineComponent({
 
 const props = defineProps({
   autoStart: { type: Boolean, default: false },
-  //modelValue: { type: Boolean, default: true } // 綁定 isPaused
   isPaused: { type: Boolean, default: true },
   show: { type: Boolean, default: true },
 });
-//const emit = defineEmits(["update:time", "pause", "resume"]);
-const emit = defineEmits(["update:time", "pause", "resume", "update:modelValue"]);
+//const emit = defineEmits(["update:time", "pause", "resume", "update:modelValue", 'update:isPaused']);
+const emit = defineEmits(["update:time", "pause", "resume", 'update:isPaused']);
 
 const displayTime = ref("00:00:00");
 //const isPaused = ref(props.modelValue);
@@ -45,7 +44,9 @@ function start() {
   startTime = Date.now();
   intervalId = setInterval(update, 1000);
   paused.value = false;
-  emit("update:modelValue", false);
+  //emit("update:modelValue", false);
+  emit("update:isPaused", false);
+
   emit("resume", elapsed);
   update();
 }
@@ -63,7 +64,9 @@ function pause() {
   intervalId = null;
   startTime = null;
   //elapsed += Date.now() - startTime;
-  emit("update:modelValue", true);
+  //emit("update:modelValue", true);
+  emit("update:isPaused", true);
+
   emit("pause", elapsed);
   // 停下來也刷新一次
   displayTime.value = format(elapsed);
@@ -75,7 +78,9 @@ function resume() {
   paused.value = false;
   startTime = Date.now();
   intervalId = setInterval(update, 1000);
-  emit("update:modelValue", false);
+  //emit("update:modelValue", false);
+  emit("'update:isPaused'", false);
+
   emit("resume", elapsed);
   update();
 }

@@ -6,7 +6,8 @@ from dotenv import dotenv_values
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from flask import Flask, session, jsonify, request
+#from flask import Flask, session, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 
 from ajax.listTable import listTable
@@ -22,7 +23,8 @@ from ajax.scheduleDoTable import do_read_user_table, delete_log_files, delete_pd
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-#import subprocess
+from database.tables import Session
+
 
 from log_util import setup_logger
 logger = setup_logger('main')       # 將 app 取名為 main
@@ -37,7 +39,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-09-02' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2025-09-03' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -109,6 +111,13 @@ def hello():
   }
   return jsonify(output)
 
+#
+@app.teardown_appcontext
+def remove_session(exc):
+    # 不論成功/失敗，每次請求結束都清掉這個 thread 的 session
+    Session.remove()
+#
+
 # --------------------------
 
 def my_job1():
@@ -165,8 +174,8 @@ if __name__ == '__main__':
   #print("Scheduled version...")
   #方法1
   #app.run(host=host_ip, port=7010, debug=True)  # 啟動app
-  app.run(host='0.0.0.0', port=7010, debug=True)  # 啟動app
-  #app.run(host='0.0.0.0', port=7010, debug=False, use_reloader=False)  # 啟動app, 避免觸發reloader，連線就被中斷
+  #app.run(host='0.0.0.0', port=7010, debug=True)  # 啟動app
+  app.run(host='0.0.0.0', port=7010, debug=False, use_reloader=False)  # 啟動app, 避免觸發reloader，連線就被中斷
 
   #方法2
   '''

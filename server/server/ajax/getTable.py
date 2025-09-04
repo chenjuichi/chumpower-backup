@@ -9,7 +9,8 @@ from flask_cors import CORS
 
 from operator import itemgetter
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 getTable = Blueprint('getTable', __name__)
 
@@ -86,12 +87,71 @@ def reLogin():
       'user': _user_object,
     })
 '''
+
+
+TPE = ZoneInfo("Asia/Taipei")
+FMT = "%Y-%m-%d %H:%M:%S"
+
+def now_tpe_aware():
+    return datetime.now(TPE).replace(microsecond=0)
+
+def now_tpe_str():
+    return now_tpe_aware().strftime(FMT)
+
+def parse_tpe_str(s: str):
+    """把 'yyyy-mm-dd hh:mm:ss'（台北時區）轉成 aware datetime"""
+    if not s:
+        return None
+    return datetime.strptime(s, FMT).replace(tzinfo=TPE)
+
+def attach_tpe(dt: datetime):
+    """把 DB 撈出的 DATETIME（多半 naive）視為台北時間並補上 tzinfo"""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=TPE)
+
+def fmt_hhmmss(seconds: int):
+    seconds = max(0, int(seconds or 0))
+    h, r = divmod(seconds, 3600)
+    m, s = divmod(r, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+
+
 def seconds_to_hms_str(seconds: int) -> str:
     """將秒數轉換成 hh:mm:ss"""
     h = seconds // 3600
     m = (seconds % 3600) // 60
     s = seconds % 60
     return f"{h:02}:{m:02}:{s:02}"
+
+def parse_dt_maybe(v):
+    """把 v 轉成 datetime；支援 'YYYY-MM-DD HH:MM:SS[.ffffff]'、'YYYY-MM-DDTHH:MM:SS[.ffffff]'、結尾 'Z'。失敗回 None。"""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip().replace('T', ' ')
+    if s.endswith('Z'):
+        s = s[:-1]  # 你資料看起來沒時區，先移除 'Z'
+    try:
+        return datetime.fromisoformat(s)  # 可吃微秒
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+def fmt_dt(v):
+    dt = parse_dt_maybe(v)
+    return None if dt is None else dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ------------------------------------------------------------------
 
 
 @getTable.route('/reLogin', methods=['POST'])
@@ -538,6 +598,8 @@ def start_process():
 
     s = Session()
 
+    material_record = s.query(Material).filter_by(id=material_id).first()
+
     # 找到最後一筆紀錄
     log = (s.query(Process)
            .filter_by(material_id=material_id,
@@ -590,6 +652,11 @@ def start_process():
         "pause_time": log.pause_time or 0,
         #"pause_count": int(log.pause_count or 0),
         "has_started": bool(log.has_started),
+
+        "isOpen": material_record.isOpen,
+        "hasStarted": material_record.hasStarted,
+        "startStatus": material_record.startStatus,
+        "isOpenEmpId": material_record.isOpenEmpId,
     })
 
 
@@ -681,7 +748,8 @@ def toggle_process():
 
     s = Session()
 
-    now = datetime.utcnow()  # UTC；若本地時間也行，保持一致即可
+    #TPE = ZoneInfo("Asia/Taipei")
+    #FMT = "%Y-%m-%d %H:%M:%S"
 
     log = s.query(Process).get(process_id)
 
@@ -690,20 +758,32 @@ def toggle_process():
     if log.end_time is not None:
         return jsonify(success=False, message="process already closed"), 400
 
+    # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
+    now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
+    now_tpe_str = now_tpe_aw.strftime(FMT)
+
     if want_pause:
         # → 要暫停
         if not log.is_pause:
             # 只有從「非暫停」→「暫停」時，才記錄起點
             log.is_pause = True
-            log.pause_started_at = now
+
+            log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
+
             # 不修改 pause_time（等恢復時再累加）
     else:
         # → 要恢復
         if log.is_pause:
             # 從「暫停」→「恢復」時，把這段暫停秒數累加到 pause_time
             if log.pause_started_at:
-                delta = int((now - log.pause_started_at).total_seconds())
-                log.pause_time = (log.pause_time or 0) + max(delta, 0)
+                #delta = int((now - log.pause_started_at).total_seconds())
+
+                #
+                ps = log.pause_started_at
+                # DB 撈出的 DATETIME 多為 naive；視為台北本地時間並補 tzinfo
+                ps_aw = ps if ps.tzinfo else ps.replace(tzinfo=TPE)
+                delta = int((now_tpe_aw - ps_aw).total_seconds())
+                log.pause_time = (log.pause_time or 0) + max(0, delta)
             log.pause_started_at = None
             log.is_pause = False
 
@@ -717,7 +797,9 @@ def toggle_process():
                 pass
 
             if not log.begin_time:
-                log.begin_time = now
+                #log.begin_time = now
+                log.begin_time = now_tpe_str
+
 
     s.commit()
 
@@ -757,7 +839,7 @@ def close_process():
     data = request.json
     process_id = data["process_id"]
     elapsed_time  = data.get("elapsed_time")
-
+    print("process_id:", process_id)
     s = Session()
 
     log = s.query(Process).get(process_id)
@@ -819,6 +901,8 @@ def close_process():
     return jsonify(success=True)
 '''
 
+
+'''
 # get all processes data by order number
 @getTable.route("/getProcessesByOrderNum", methods=['POST'])
 def get_processes_by_order_num():
@@ -848,16 +932,19 @@ def get_processes_by_order_num():
 
     material = s.query(Material).filter(Material.order_num == _order_num).first()
     work_qty = material.total_delivery_qty
-    #processes = s.query(Process).filter(Process.order_num == _order_num).all()
     seq_num =0
     for record in material._process:
       status = code_to_name.get(record.process_type, '空白')
       temp_period_time =''
+      print("!!!!record.begin_time:", record.begin_time, record.process_type)
+
       if record.process_type != 6 and record.process_type != 5:
         # 轉換為 datetime 物件
-        start_time = datetime.strptime(record.begin_time, "%Y-%m-%d %H:%M:%S")
-        end_time = datetime.strptime(record.end_time, "%Y-%m-%d %H:%M:%S")
-
+        #start_time = datetime.strptime(record.begin_time, "%Y-%m-%d %H:%M:%S")
+        start_time = parse_dt_maybe(record.begin_time)
+        print("!!!!start_time, record.begin_time:", record.begin_time)
+        #end_time = datetime.strptime(record.end_time, "%Y-%m-%d %H:%M:%S")
+        end_time = parse_dt_maybe(record.end_time)
         # 計算時間差
         time_diff = end_time - start_time
 
@@ -891,17 +978,7 @@ def get_processes_by_order_num():
           single_std_time_str = str(material.sd_time_B110)
 
         print("period_time:",period_time_str)
-        '''
-        #status = code_to_name.get(record.process_type, '空白')
-        print("name:", record.user_id)
-        name = record.user_id.lstrip("0")
-        if record.process_type == 1 or record.process_type == 5 or record.process_type == 6 or record.process_type == 21 or record.process_type == 22 or record.process_type == 23 or record.process_type == 31:
-          user = s.query(User).filter_by(emp_id=record.user_id).first()
-          status = status + '(' + name + user.emp_name + ')'
-        #if not record.normal_work_time:
-        #  status = status + ' - 異常整修'
-        print("status:", status)
-        '''
+
         temp_period_time = time_diff_str_format
         if record.process_type == 1:
           temp_period_time = record.period_time
@@ -917,6 +994,7 @@ def get_processes_by_order_num():
       #if not record.normal_work_time:
       #  status = status + ' - 異常整修'
       print("status:", status)
+      print("222!!!!start_time, record.begin_time:", record.begin_time)
 
       seq_num = seq_num + 1
       _object = {
@@ -947,6 +1025,7 @@ def get_processes_by_order_num():
 
     temp_len = len(_results)
     print("getProcessesByOrderNum, 總數: ", temp_len)
+    print("_results:",_results)
 
     # 根據 create_at 屬性的值進行排序
     _results = sorted(_results, key=lambda x: x['create_at'])
@@ -955,6 +1034,145 @@ def get_processes_by_order_num():
 
       'processes': _results
     })
+'''
+
+
+# get all processes data by order number
+@getTable.route("/getProcessesByOrderNum", methods=['POST'])
+def get_processes_by_order_num():
+    print("getProcessesByOrderNum....")
+
+    request_data = request.get_json()
+    _order_num = request_data['order_num']
+    print("order_num:", _order_num)
+
+    code_to_name = {
+        1:  '備料',
+        19: '等待AGV(備料區)',
+        2:  'AGV運行(備料區->組裝區)',
+        23: '雷射',
+        21: '組裝',
+        22: '檢驗',
+        29: '等待AGV(組裝區)',
+        3:  'AGV運行(組裝區->成品區)',
+        31: '成品入庫',
+        5:  '堆高機運行(備料區->組裝區)',
+        6:  '堆高機運行(組裝區->成品區)',
+    }
+
+    _results = []
+    s = Session()
+
+    material = s.query(Material).filter(Material.order_num == _order_num).first()
+    if not material:
+        s.close()
+        return jsonify(success=False, message="order not found"), 404
+
+    work_qty = material.total_delivery_qty or 0
+    now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
+
+    seq_num = 0
+    for record in material._process:
+        seq_num += 1
+
+        status = code_to_name.get(record.process_type, '空白')
+
+        # ---- 使用者名稱附註（若有） ----
+        name_core = (record.user_id or "").lstrip("0")
+        if record.process_type in {1, 5, 6, 21, 22, 23, 31}:
+            user = s.query(User).filter_by(emp_id=record.user_id).first()
+            emp_name = user.emp_name if user and getattr(user, "emp_name", None) else ""
+            status = f"{status}({name_core}{emp_name})"
+
+        # ---- 計算時長（非 5/6 流動段才算）----
+        temp_period_time = ""
+        work_time_str = ""
+        single_std_time_str = ""
+
+        if record.process_type not in {5, 6}:
+            start_time = parse_dt_maybe(record.begin_time)
+            end_time = parse_dt_maybe(record.end_time)
+
+            # 設定各製程標準單件工時字串
+            if record.process_type == 22:   # 檢驗
+                single_std_time_str = str(material.sd_time_B110)
+            elif record.process_type == 23: # 雷射
+                single_std_time_str = str(material.sd_time_B106)
+            elif record.process_type == 21: # 組裝
+                single_std_time_str = str(material.sd_time_B109)
+            elif record.process_type == 31: # 成品入庫
+                single_std_time_str = str(material.sd_time_B110)
+
+            if start_time:
+                if end_time:
+                    # 已結束：用結束時間 - 開始時間
+                    total_seconds = int((end_time - start_time).total_seconds())
+                else:
+                    # 未結束：依目前狀態計算有效作業秒數
+                    pause_total = int(record.pause_time or 0)
+
+                    if getattr(record, "is_pause", False) and record.pause_started_at:
+                        ps_aw = attach_tpe(record.pause_started_at)
+                        if ps_aw:
+                            pause_total += max(0, int((now_tpe_aw - ps_aw).total_seconds()))
+
+                    total_seconds = int((now_tpe_aw - start_time).total_seconds()) - pause_total
+
+                total_seconds = max(0, total_seconds)
+                time_diff_str_format = fmt_hhmmss(total_seconds)
+
+                # 你的原始需求：製程 1（備料）顯示 front-end 的 str_elapsedActive_time 優先
+                if record.process_type == 1:
+                    temp_period_time = record.str_elapsedActive_time or record.period_time or time_diff_str_format
+                elif record.process_type == 31:
+                    temp_period_time = ""  # 入庫不顯示
+                else:
+                    # 若 DB 已有 period_time 就沿用；否則用動態計算
+                    temp_period_time = record.period_time or time_diff_str_format
+
+                # 分/單件（只對 21/22/23/31 有意義，其它依你原本邏輯空白）
+                if record.process_type in {21, 22, 23} and work_qty > 0:
+                    minutes_total = total_seconds // 60
+                    work_time = round(minutes_total / work_qty, 1)
+                    work_time_str = str(work_time)
+                elif record.process_type == 31:
+                    work_time_str = ""
+            else:
+                # 沒開始時間
+                temp_period_time = record.period_time or ""
+        # else: 5/6 不計時長
+
+        _object = {
+            'seq_num': seq_num,
+            'id': material.id,
+            'order_num': material.order_num,
+            'process_work_time_qty': (
+                record.process_work_time_qty
+                if record.process_type not in {19, 29, 2, 3, 5, 6}
+                else ''
+            ),
+            'sd_time_B109': material.sd_time_B109,
+            'sd_time_B106': material.sd_time_B106,
+            'sd_time_B110': material.sd_time_B110,
+            'user_id': name_core,
+            'begin_time': record.begin_time,
+            'end_time': record.end_time if record.process_type != 31 else '',
+            'period_time': temp_period_time if record.process_type != 1 else (record.str_elapsedActive_time or temp_period_time),
+            'work_time': work_time_str if record.process_type != 31 else '',
+            'single_std_time': single_std_time_str if record.process_type != 31 else '',
+            'process_type': status,
+            'normal_type': ' - 異常整修' if not getattr(record, "normal_work_time", True) else '',
+            'user_comment': '',
+            'create_at': record.create_at,
+        }
+        _results.append(_object)
+
+    s.close()
+
+    # 依 create_at 排序
+    _results = sorted(_results, key=lambda x: x['create_at'])
+
+    return jsonify({'processes': _results})
 
 
 # # get all all Warehouse For Assemble
@@ -1591,7 +1809,8 @@ def get_materials_and_assembles_by_user():
     str2=['未備料', '備料中', '備料完成',   '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中',  '入庫完成']
 
     # 使用 with_for_update() 來加鎖
-    _objects = s.query(Material).with_for_update().all()
+    #_objects = s.query(Material).with_for_update().all()
+    _objects = s.query(Material).all()
 
     # 初始化一個 set 來追蹤已處理的 (order_num_id, format_name)
     processed_records = set()

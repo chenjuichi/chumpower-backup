@@ -351,6 +351,7 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/getProcessesByOrderNum') {
+            console.log("hello, test")
             processes.value = [...res.data.processes];
           }
           /*

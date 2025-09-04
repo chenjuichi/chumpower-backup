@@ -476,7 +476,7 @@ onMounted(() => {
   //
   eventBus.on('updateCountdown', updateCountdown);
 
-  intervalId = setInterval(listWaitForAssembleFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+  intervalId = setInterval(listWaitForAssembleFun, 37 * 1000);  // 每 37秒鐘調用一次 API
 });
 
 onBeforeUnmount(() => {

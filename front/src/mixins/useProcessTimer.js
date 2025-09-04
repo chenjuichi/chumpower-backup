@@ -2,11 +2,15 @@ import { ref, nextTick } from "vue";
 
 import { apiOperation } from './crud.js';
 
+import { materials }  from './crud.js';
+
 // 封裝各 API
 const dialog2StartProcess = apiOperation('post', '/dialog2StartProcess');
 const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcess');
 const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcess');
 const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcess');
+
+const updateMaterial = apiOperation('post', '/updateMaterial');
 
 export function useProcessTimer(getTimerRef) {
 //export function useProcessTimer(timerRef) {
@@ -154,28 +158,88 @@ export function useProcessTimer(getTimerRef) {
   async function toggleTimer() {
     if (!processId.value) return;
 
+    console.log("toggleTimer()...")
+
     if (isPaused.value) {
+      console.log("toggleTimer() status: 開始", isPaused.value)
+
       // 開始
       timer()?.resume();
       isPaused.value = false;
 
-      if (!for_vue3_has_started.value)
+      if (!for_vue3_has_started.value) {
         for_vue3_has_started.value = true;
 
+        await updateMaterial({
+          id: materialId.value,
+          record_name: "hasStarted",
+          record_data: true,
+        });
+
+        await updateMaterial({
+          id: materialId.value,
+          record_name: "isOpenEmpId",
+          record_data: userId.value,
+        });
+
+        // 記錄當前途程狀態
+        const payload = {
+          id: materialId.value,
+          record_name: 'show2_ok',
+          record_data: 1                //備料中
+        };
+        await updateMaterial(payload);
+      }
+
       for_vue3_pause_or_start_status.value =true;
+      console.log("toggle pause")
+      await updateMaterial({
+        id: materialId.value,
+        record_name: "startStatus",
+        record_data: true,
+      });
+
+      const idx = materials.value.findIndex(r => r.id === materialId.value);
+      if (idx !== -1) {
+        materials.value[idx] = {
+          ...materials.value[idx],
+          //is_paused: false,
+          //startStatus: true,
+          hasStarted: true,
+        };
+      }
 
       _startLocalTicker();
       _startAutoUpdate();
     } else {
+      console.log("toggleTimer() status: 暫停", isPaused.value)
+
       // 暫停
       timer()?.pause();
       isPaused.value = true;
 
       for_vue3_pause_or_start_status.value =false;
+      console.log("toggle pause")
+      await updateMaterial({
+        id: materialId.value,
+        record_name: "startStatus",
+        record_data: false,
+      });
+
+      const idx = materials.value.findIndex(r => r.id === materialId.value);
+      if (idx !== -1) {
+        materials.value[idx] = {
+          ...materials.value[idx],
+          //is_paused: true,
+          startStatus: false,
+        };
+      }
 
       _stopLocalTicker();
       _stopAutoUpdate();
     }
+
+    await nextTick();
 
     // 後端同步暫停狀態
     const res = await dialog2ToggleProcess({
@@ -300,7 +364,7 @@ export function useProcessTimer(getTimerRef) {
 
   // 結束（關閉 dialog 時用）
   //async function closeProcess() {
-  async function closeProcess({ receive_qty } = {}) {
+  async function closeProcess() {
     if (!processId.value) return;
 
     const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
@@ -313,11 +377,13 @@ export function useProcessTimer(getTimerRef) {
     timer()?.pause();
     isPaused.value = true;
 
+    console.log("processId:", processId)
+    console.log("processId.value:", processId.value)
     // 通知後端關閉
     const res = await dialog2CloseProcess({
       process_id: processId.value,
       elapsed_time: Math.floor(ms / 1000),
-			receive_qty,
+
     });
 		const data = res?.data ?? res;
 

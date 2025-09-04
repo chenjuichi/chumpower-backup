@@ -319,84 +319,93 @@ def list_materials_p():
 def list_materials():
     print("listMaterials....")
 
-    s = Session()
-
     _results = []
     return_value = True
 
-    #_objects = s.query(Material).all()
-    _objects = s.query(Material).filter(Material.move_by_process_type == 2).all()
-    materials = [u.__dict__ for u in _objects]
-    processed_order_nums = set()  # 用於追踪已處理過的 order_num
-    for record in materials:
-      #if not record['isTakeOk']:   # 檢查 isTakeOk 是否為 False
-      #if not record['isShow'] and record['isLackMaterial'] != 0 and record['isBatchFeeding'] != 0:   # 檢查 isShow 是否為 False
-      if not record['isShow']:   # 檢查 isShow 是否為 False
-        cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
-        #temp_data = record['order_num']  # 訂單編號
-        temp_data = record['id']          # 該筆訂單編號的table id
-        if temp_data in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
-          continue
-        # 計算 temp_delivery 的值
-        #order_num = record['order_num']
-        #order_num = temp_data
-        order_num_id = temp_data
-        material_qty = record['material_qty']
-        delivery_qty = record['delivery_qty']
-        '''
-        # 找出所有具有相同 order_num 的資料
-        same_order_records = [r for r in materials if r['order_num'] == order_num]
+    s = Session()
+    try:
+      with s.begin():
+        #_objects = s.query(Material).all()
+        _objects = s.query(Material).filter(Material.move_by_process_type == 2).all()
+        materials = [u.__dict__ for u in _objects]
+        processed_order_nums = set()  # 用於追踪已處理過的 order_num
+        for record in materials:
+          #if not record['isTakeOk']:   # 檢查 isTakeOk 是否為 False
+          #if not record['isShow'] and record['isLackMaterial'] != 0 and record['isBatchFeeding'] != 0:   # 檢查 isShow 是否為 False
+          if not record['isShow']:   # 檢查 isShow 是否為 False
+            cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
+            #temp_data = record['order_num']  # 訂單編號
+            temp_data = record['id']          # 該筆訂單編號的table id
+            if temp_data in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
+              continue
+            # 計算 temp_delivery 的值
+            #order_num = record['order_num']
+            #order_num = temp_data
+            order_num_id = temp_data
+            material_qty = record['material_qty']
+            delivery_qty = record['delivery_qty']
+            '''
+            # 找出所有具有相同 order_num 的資料
+            same_order_records = [r for r in materials if r['order_num'] == order_num]
 
-        if all(r['delivery_qty'] == 0 for r in same_order_records):  # 若所有相同 order_num 的 delivery_qty 都為 0
-          temp_delivery = material_qty
-        else:  # 若有相同 order_num 的資料且 delivery_qty 都不為 0
-          total_delivery_qty_sum = sum(r['total_delivery_qty'] for r in same_order_records)
-          #temp_delivery = material_qty - total_delivery_qty_sum
-          #if temp_delivery == 0:
-          #  temp_delivery = total_delivery_qty_sum
-          temp_delivery = total_delivery_qty_sum if material_qty - total_delivery_qty_sum == 0 else material_qty - total_delivery_qty_sum
-        '''
-        temp_delivery=record['total_delivery_qty']
+            if all(r['delivery_qty'] == 0 for r in same_order_records):  # 若所有相同 order_num 的 delivery_qty 都為 0
+              temp_delivery = material_qty
+            else:  # 若有相同 order_num 的資料且 delivery_qty 都不為 0
+              total_delivery_qty_sum = sum(r['total_delivery_qty'] for r in same_order_records)
+              #temp_delivery = material_qty - total_delivery_qty_sum
+              #if temp_delivery == 0:
+              #  temp_delivery = total_delivery_qty_sum
+              temp_delivery = total_delivery_qty_sum if material_qty - total_delivery_qty_sum == 0 else material_qty - total_delivery_qty_sum
+            '''
+            temp_delivery=record['total_delivery_qty']
 
-        # 標記這個 order_num 已處理過
-        #processed_order_nums.add(order_num)
-        processed_order_nums.add(order_num_id)
-        #print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
-        _object = {
-          'id': record['id'],
-          'order_num': record['order_num'],                   #訂單編號
-          'material_num': record['material_num'],             #物料編號
-          'req_qty': material_qty,                            #需求數量(訂單數量)
-          'delivery_qty': delivery_qty,                       #備料數量
-          'total_delivery_qty': temp_delivery,                #應備數量
-          'input_disable': record['input_disable'],
-          'date': record['material_date'],                    #(建立日期)
-          'delivery_date':record['material_delivery_date'],   #交期
-          'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
-          'comment': cleaned_comment,                         #說明
+            # 標記這個 order_num 已處理過
+            #processed_order_nums.add(order_num)
+            processed_order_nums.add(order_num_id)
+            #print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
+            _object = {
+              'id': record['id'],
+              'order_num': record['order_num'],                   #訂單編號
+              'material_num': record['material_num'],             #物料編號
+              'req_qty': material_qty,                            #需求數量(訂單數量)
+              'delivery_qty': delivery_qty,                       #備料數量
+              'total_delivery_qty': temp_delivery,                #應備數量
+              'input_disable': record['input_disable'],
+              'date': record['material_date'],                    #(建立日期)
+              'delivery_date':record['material_delivery_date'],   #交期
+              'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
+              'comment': cleaned_comment,                         #說明
 
-          'isOpen': record['isOpen'],
-          'isOpenEmpId': record['isOpenEmpId'],
-          'hasStarted': record['hasStarted'],
+              'isOpen': record['isOpen'],
+              'isOpenEmpId': record['isOpenEmpId'],
+              'hasStarted': record['hasStarted'],
+              'startStatus': record['startStatus'],
 
-          'isTakeOk' : record['isTakeOk'],
-          'isLackMaterial' : record['isLackMaterial'],
-          'isBatchFeeding' :  record['isBatchFeeding'],
-          'isShow' : record['isShow'],
-          'whichStation' : record['whichStation'],
-          'show1_ok' : record['show1_ok'],
-          'show2_ok' : record['show2_ok'],
-          'show3_ok' : record['show3_ok'],
-          'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
-          'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
-          'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
-        }
+              'isTakeOk' : record['isTakeOk'],
+              'isLackMaterial' : record['isLackMaterial'],
+              'isBatchFeeding' :  record['isBatchFeeding'],
+              'isShow' : record['isShow'],
+              'whichStation' : record['whichStation'],
+              'show1_ok' : record['show1_ok'],
+              'show2_ok' : record['show2_ok'],
+              'show3_ok' : record['show3_ok'],
+              'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
+              'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
+              'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
+            }
 
-        #print("materials => i, isOpen:", record['id'], record['order_num'], record['isOpen'])
+            #print("materials => i, isOpen:", record['id'], record['order_num'], record['isOpen'])
 
-        _results.append(_object)
+            _results.append(_object)
 
-    s.close()
+    except Exception:
+        #s.rollback()
+        current_app.logger.exception("list_wait_for_assemble failed")
+        return jsonify(success=False), 500
+    #finally:
+    #    # 若在 app.py 有 @app.teardown_appcontext -> Session.remove()，這裡可省略
+    #    Session.remove()
+    ##s.close()
 
     temp_len = len(_results)
     print("listMaterials, 總數: ", temp_len)
@@ -571,7 +580,6 @@ def list_working_order_status():
 def list_wait_for_assemble():
     #print("listWaitForAssemble....")
 
-    s = Session()
 
     begin_count = 0
     end_count = 0
@@ -582,100 +590,75 @@ def list_wait_for_assemble():
     # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
     max_step_code_per_order = {}
 
-    _objects = s.query(Material).with_for_update().all()
+    s = Session()
+    try:
+      with s.begin():  # 這裡回傳的是 SessionTransaction，仍然用 s 來查詢
+        _objects = s.query(Material).all()
 
-    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
-    for material_record in _objects:
-      for assemble_record in material_record._assemble:
-        step_code = assemble_record.process_step_code   # 直接使用資料中的 step_code
-        order_num_id = material_record.id               # 該筆訂單編號的table id
+        # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
+        for material_record in _objects:
+          for assemble_record in material_record._assemble:
+            step_code = assemble_record.process_step_code   # 直接使用資料中的 step_code
+            order_num_id = material_record.id               # 該筆訂單編號的table id
 
-        # 設定或更新該 order_num_id 下的最大 step code
-        if order_num_id not in max_step_code_per_order:
-          max_step_code_per_order[order_num_id] = step_code
-        else:
-          current_max = max_step_code_per_order[order_num_id]
-          max_step_code_per_order[order_num_id] = max(current_max, step_code)
-
-    #print("max_step_code_per_order:",max_step_code_per_order)
-
-    for material_record in _objects:  # loop_1
-
-      #if material_record.delivery_qty == 0 or not material_record.isShow or material_record.isAssembleStationShow :   # 檢查 isShow 是否為 False
-      if not material_record.isShow or material_record.isAssembleStationShow :   # 檢查 isShow 是否為 False
-        continue
-
-      #nums = set()
-      #print("material_record.id:", material_record.id)
-      #for end_assemble_record in material_record._assemble:    # loop_2_a
-      assemble_records = s.query(Assemble).filter_by(material_id=material_record.id).all()
-      record_count = len(assemble_records)
-      #print("筆數:", record_count)
-
-      for end_assemble_record in assemble_records:  # loop_2_a
-        #print("end_assemble_record id:",end_assemble_record.id)
-        #print(end_assemble_record.input_disable, end_assemble_record.input_end_disable)
-
-        if (end_assemble_record.input_disable and
-            not end_assemble_record.input_end_disable
-           ):
-          #print("after: end_assemble_record id:", end_assemble_record.id)
-          end_count += 1
-          #nums.add(end_assemble_record.material_num)
-          #nums.add(end_assemble_record.id)
-          #break
-      # end loop_2_a
-      #print("end_count:", end_count)
-
-      #print("nums:", nums)
-      pre_step_code=99
-      for begin_assemble_record in assemble_records:  # loop_2_a
-        if begin_assemble_record.input_disable:
-           continue
-      #for begin_assemble_record in material_record._assemble:  # loop_2_b
-        #print("begin_assemble_record id:",begin_assemble_record.id)
-        #if begin_assemble_record.material_num in nums:
-        #if begin_assemble_record.id in nums:
-        #if begin_assemble_record.id in nums and begin_assemble_record.must_receive_qty == begin_assemble_record.ask_qty:
-        #if begin_assemble_record.id in nums and begin_assemble_record.ask_qty !=0:
-        #  break
-
-        #print("begin_assemble_record id:",begin_assemble_record.id)
-        step_code = begin_assemble_record.process_step_code
-        max_step_code = max_step_code_per_order.get(material_record.id, 0)
-        step_enable = (step_code == max_step_code and material_record.whichStation==2)
-
-        #print(begin_assemble_record.id, " : ", step_code, max_step_code, begin_assemble_record.input_disable)
-
-        # 2025-08-04 modify
-        skip_condition = (not step_enable or begin_assemble_record.input_disable)
-        if skip_condition:
-            #if pre_step_code == 0 and step_code != 0 and not step_enable:
-            if pre_step_code == 0 and step_code != 0:
-                pre_step_code = step_code
-                pass  # 不跳過，繼續執行後續程式
+            # 設定或更新該 order_num_id 下的最大 step code
+            if order_num_id not in max_step_code_per_order:
+              max_step_code_per_order[order_num_id] = step_code
             else:
-                pre_step_code = step_code
-                #pre_step_code = 99
-                continue
-        #
-        #if step_enable==False or begin_assemble_record.input_disable:  # 2025-06-16 add, 改順序
-        #  continue
-        #
-        # 缺料併單
-        if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
-          continue
+              current_max = max_step_code_per_order[order_num_id]
+              max_step_code_per_order[order_num_id] = max(current_max, step_code)
 
-        #if begin_assemble_record.process_step_code!=0 and not begin_assemble_record.input_disable:
-          #print("begin_assemble_record id:",begin_assemble_record.id)
-        begin_count += 1
-          #break
-      # end loop_2_b
-      #print("begin_count:", begin_count)
+        for material_record in _objects:  # loop_1
 
-    # end loop_1
+          if not material_record.isShow or material_record.isAssembleStationShow :   # 檢查 isShow 是否為 False
+            continue
 
-    s.close()
+          assemble_records = s.query(Assemble).filter_by(material_id=material_record.id).all()
+          #record_count = len(assemble_records)
+          #print("筆數:", record_count)
+
+          for end_assemble_record in assemble_records:  # loop_2_a
+            if (end_assemble_record.input_disable and
+                not end_assemble_record.input_end_disable
+              ):
+
+              end_count += 1
+          # end loop_2_a
+
+          pre_step_code = 99
+          for begin_assemble_record in assemble_records:  # loop_2_a
+            if begin_assemble_record.input_disable:
+              continue
+
+            step_code = begin_assemble_record.process_step_code
+            max_step_code = max_step_code_per_order.get(material_record.id, 0)
+            step_enable = (step_code == max_step_code and material_record.whichStation==2)
+
+            skip_condition = (not step_enable or begin_assemble_record.input_disable)
+            if skip_condition:
+                if pre_step_code == 0 and step_code != 0:
+                    pre_step_code = step_code
+                    pass  # 不跳過，繼續執行後續程式
+                else:
+                    pre_step_code = step_code
+                    continue
+            #
+            # 缺料併單
+            if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
+              continue
+
+            begin_count += 1
+          # end loop_2_b
+
+        # end loop_1
+    except Exception:
+        #s.rollback()
+        current_app.logger.exception("list_wait_for_assemble failed")
+        return jsonify(success=False), 500
+    #finally:
+    #    # 若在 app.py 有 @app.teardown_appcontext -> Session.remove()，這裡可省略
+    #    Session.remove()
+    ##s.close()
 
     return jsonify({
       'begin_count': begin_count,
@@ -768,7 +751,8 @@ def list_materials_and_assembles():
     #       0         1        2          3             4            5           6            7           8            9           10              11           12
     str2=['未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成']
 
-    _objects = s.query(Material).with_for_update().all()  # 使用 with_for_update() 來加鎖
+    #_objects = s.query(Material).with_for_update().all()  # 使用 with_for_update() 來加鎖
+    _objects = s.query(Material).all()
 
     # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
     max_step_code_per_order = {}
@@ -1051,8 +1035,9 @@ def list_informations():
       #print("record:", record)
       cleaned_comment = record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
 
-      temp_temp_show2_ok_str = str2[int(record.show2_ok)]
       temp_show2_ok = int(record.show2_ok)
+      #temp_temp_show2_ok_str = str2[int(record.show2_ok)]
+      temp_temp_show2_ok_str = str2[temp_show2_ok]
 
       # 處理 show2_ok 的情況
       if temp_show2_ok == 5 or temp_show2_ok == 7 or temp_show2_ok == 9:
@@ -1066,6 +1051,11 @@ def list_informations():
         print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
 
       if (temp_show2_ok == 1):
+        user = s.query(User).filter_by(emp_id=record.isOpenEmpId).first()
+        temp_name=''
+        if user:
+          temp_name = '(' + user.emp_name + ')'
+        temp_temp_show2_ok_str = temp_temp_show2_ok_str + temp_name
         temp_temp_show2_ok_str = temp_temp_show2_ok_str + record.shortage_note
 
       temp_temp_show2_ok_str = re.sub(r'\b00\b', 'na', temp_temp_show2_ok_str)
@@ -1083,6 +1073,7 @@ def list_informations():
         'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度
         'show2_ok' : temp_temp_show2_ok_str,            #現況進度(途程)
         'show3_ok' : str3[int(record.show3_ok)],        #現況備註
+        'isOpenEmpId': record.isOpenEmpId,
       }
 
       _results.append(_object)

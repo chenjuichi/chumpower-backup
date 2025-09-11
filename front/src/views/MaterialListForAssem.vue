@@ -468,19 +468,29 @@
                 </v-card-text>
 
                 <v-card-actions class="justify-center">
-                  <v-btn
-                    color="success"
-                    prepend-icon="mdi-content-save"
+                  <div v-if="abnormalDialog_display">
+                    <v-btn
+                      color="success"
+                      prepend-icon="mdi-content-save"
 
-                    text="確定"
-                    class="text-none"
-                    @click="createAbnormalFun"
-                    variant="flat"
-                  />
-                  <v-btn
-                    color="error"
-                    prepend-icon="mdi-close"
-                    text="取消"
+                      text="確定"
+                      class="text-none"
+                      @click="createAbnormalFun"
+                      variant="flat"
+                    />
+                    <v-btn
+                      color="error"
+                      prepend-icon="mdi-close"
+                      text="取消"
+                      class="text-none"
+                      @click="abnormalDialog = false"
+                      variant="flat"
+                    />
+                  </div>
+                  <v-btn v-else
+                    color="success"
+                    prepend-icon="mdi-exit-to-app"
+                    text="離開"
                     class="text-none"
                     @click="abnormalDialog = false"
                     variant="flat"
@@ -533,15 +543,6 @@
       </div>
     </template>
 
-    <!--
-    <template v-slot:item.material_num="{ item }">
-      <div>
-        <div>{{ item.material_num }}</div>
-        <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-      </div>
-    </template>
-    -->
-
     <!-- 自訂 '需求數量' (req_qty) 欄位 -->
     <template v-slot:item.req_qty="{ item }">
       <div>
@@ -562,7 +563,8 @@
     <!-- 自訂 '詳情' 按鍵 -->
     <template v-slot:item.action="{ item }">
       <v-badge
-        v-if="item.hasStarted"
+        v-if="!item.finished && item.hasStarted"
+
         dot
         :color="item.startStatus ? 'green' : 'red'"
         location="top end"
@@ -579,14 +581,6 @@
           <v-icon color='green-darken-3' end>
             {{ 'mdi-note-search-outline' }}
           </v-icon>
-          <!--
-          <v-icon
-            :color="item.hasStarted && !item.isTakeOk ? 'orange-darken-4' : 'green-darken-3'"
-            end
-          >
-            {{ item.hasStarted && !item.isTakeOk ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
-          </v-icon>
-          -->
         </v-btn>
       </v-badge>
 
@@ -891,7 +885,8 @@ const abnormalDialog_record = ref(null);              // 點擊鈴鐺icon的目�
 
 const itemsWithIcons = [
   { text: '臨時領料', icon: 'mdi-clock-outline' },
-  { text: '堆高機搬運物料', icon: 'mdi-forklift' }
+  { text: '堆高機搬運物料', icon: 'mdi-forklift' },
+  { text: '多筆備料', icon: 'mdi-clock-check'},
 ]
 
 //=== watch ===
@@ -965,41 +960,6 @@ watch(
 
           // 每次打開都向後端取最新狀態並還原
           await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
-          // startProcess 會：
-          // 1) setState(elapsed, paused)
-          // 2) 若 paused=false 會自動 resume()
-
-          // 若為全新工單就強制改成暫停
-          //await enforceStartPausedIfNew(dlg);
-          /*
-          // 偵測新工單、且正在跑 → 立刻停住並回寫成暫停。
-          // === 新增, begin：對「全新工單(00:00:00)」進場強制顯示「開始」 ===
-          await nextTick(); // 先等 TimerDisplay 掛好
-
-          setTimeout(async () => {
-            const ms =
-              dlg?.timerRef?.getElapsedMs?.() ??
-              dlg?.proc?.elapsedMs?.value ??
-              0;
-
-            const running = dlg?.proc?.isPaused?.value === false;
-
-            // 只有「毫秒 = 0」且「目前正在跑」才處理；其他全部不動
-            if (ms === 0 && running) {
-              // 1) 視覺先停住（畫面顯示「開始」）
-              dlg?.timerRef?.pause?.();
-              if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
-
-              // 2) 回寫到後端（把 is_paused=true，同步成真正暫停）
-              try {
-                await dlg?.proc?.updateProcess?.(); // 你現有的 API 會帶 is_paused=true
-              } catch (e) {
-                console.warn('force-start-paused (new order) → updateProcess failed:', e);
-              }
-            }
-          }, 0);
-          // === 新增, end：
-          */
         } catch (e) {
           console.error("startProcess 失敗：", e);
         }
@@ -1060,6 +1020,8 @@ watch(
 
         try {
           if (reason === 'esc' || reason === 'outside') {
+            if (!dlg?.proc) return;   // ← 這裡加，避免 undefined 錯誤
+
             console.log("$$ esc狀態 $$")
             // ✅ ESC / 外點：流程保持運行，不暫停
             /*
@@ -1070,12 +1032,27 @@ watch(
             }
             */
             // 根據當下狀態決定要維持暫停還是不中斷繼續
+            console.log("dlg?.proc?.isPaused:",dlg?.proc?.isPaused)
             if (dlg?.proc?.isPaused) {
               // ✅ 現在是暫停 → 維持暫停離開
               await dlg.proc.updateKeepPaused();
+              await dlg.proc.updateProcess();           // 存入最新 elapsed（暫停狀態）
+              // 同步表格列 → 紅
+              setRowState(dlg.material_id, {
+                is_paused: true,
+                startStatus: false,
+              });
             } else {
               // ✅ 現在在跑 → 不中斷離開
               await dlg.proc.updateActiveNoPause();
+              await dlg.proc.updateProcess();           // 存入最新 elapsed（運行中）
+              // 同步表格列 → 綠
+              setRowState(dlg.material_id, {
+                is_paused: false,
+                startStatus: true,
+                has_started: true,
+                isOpenEmpId: String(currentUser.value.empID || ''),
+              });
             }
 
             dlg.dialogVisible = false;
@@ -1085,7 +1062,7 @@ watch(
 
             // 🛑 一般關閉：暫停 + 回寫
             dlg?.timerRef?.pause?.(); // 視覺上暫停
-            if (dlg.proc.isPaused) dlg.proc.isPaused.value = true;
+            if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
             if (dlg.proc.updateProcess) await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
             if (dlg.proc.closeProcess)  await dlg.proc.closeProcess();
 
@@ -1905,6 +1882,12 @@ onBeforeUnmount(() => {
 })
 
 //=== method ===
+function setRowState(materialId, patch) {
+  const idx = materials.value.findIndex(r => r.id === materialId);
+  if (idx === -1) return;
+  materials.value[idx] = { ...materials.value[idx], ...patch };
+}
+
 function startAutoRefresh() {
   stopAutoRefresh()
   refreshTimerId = setInterval(() => {
@@ -1948,6 +1931,8 @@ const initialize = async () => {
     // 使用 async/await 等待 API 請求完成，確保順序正確
     //await listMaterials();
     await fetchMaterials();
+
+    console.log('## materials ##', materials)
 
     //await listUsers();
     await listUsers2();
@@ -3150,24 +3135,37 @@ const updateModifyMaterialAndBomsFun = async () => {
 
 const modifyExcelFilesFun = async () => {
   console.log("modifyExcelFilesFun()...");
-
+  console.log("id:",selectedId.value);
   let payload = {
-    id: selectedId.value,
-    material_id: selectedOrderNum.value,
+    id: selectedId.value,                   // material table id
+    //material_id: selectedOrderNum.value,    //工單編號
   };
 
   try {
     const modify_result = await modifyExcelFiles(payload);
 
     if (modify_result.status) {
-      modify_boms.value = [...modify_result.modifyBom];
-      modify_file_name.value = modify_result.modifyFileName;
-      //console.log("modify_file_name:", modify_file_name.value);
+      console.log("modify_result.status:", modify_result.status);
+      modify_boms.value = modify_result.bom;
+      modify_file_name.value = modify_result.processedFiles;
+      console.log("modify_boms:", modify_boms.value);
+      console.log("modify_file_name:", modify_file_name.value);
+      console.log("results:", modify_result.results);
+      console.log("message:", modify_result.message);
 
       editDialogBtnDisable.value = false;
+
+      // 重新抓清單
+      await listMaterials();
+
+      // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
+      await nextTick();
+
+      showSnackbar(modify_result.message, 'green darken-1');
     } else {
       showSnackbar(modify_result.message, 'red accent-2');
     }
+
   } catch (error) {
     console.error("Error during execution:", error);
     showSnackbar("An error occurred.", 'red accent-2');

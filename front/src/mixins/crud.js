@@ -249,6 +249,10 @@ export const apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
+          //if (path == '/modifyExcelFiles') {
+          //  return res.data;
+          //}
+
           if (path == '/countExcelFilesP' || path == '/countExcelFiles') {
             fileCount.value = res.data.count;
           }
@@ -270,7 +274,11 @@ export const apiOperation = (operation, path, payload) => {
             return res.data.status;
           }
 
-          if (path == '/login' || path == '/reLogin' || path == '/listDirectory' || path == '/modifyExcelFiles' ||
+          if (path == '/modifyExcelFiles') {
+            return res.data;
+          }
+
+          if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
               path == '/dialog2StartProcess' || path == '/dialog2UpdateProcess' || path == '/dialog2ToggleProcess' || path == '/dialog2CloseProcess') {
             //console.log("res.data:", res.data);

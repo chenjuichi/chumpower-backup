@@ -27,6 +27,14 @@
             </template>
           </v-radio>
 
+          <v-radio value="excelm">
+            <template #label>
+              上傳組裝線修正工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
+
           <v-radio value="excelp">
             <template #label>
               上傳加工線工單 (Excel
@@ -35,11 +43,6 @@
             </template>
           </v-radio>
 
-          <!--
-          <v-radio label="上傳工單 (Excel)" value="excel" />
-          <v-radio label="上傳物料清單 (PDF)" value="pdf" />
-          <v-radio label="上傳領退料單 (PDF)" value="pdf1" />
-          -->
           <v-radio value="pdf">
             <template #label>
               上傳物料清單 (PDF
@@ -47,6 +50,7 @@
               )
             </template>
           </v-radio>
+
           <v-radio value="pdf1">
             <template #label>
               上傳領退料單 (PDF
@@ -71,9 +75,9 @@
     <v-card-text class="d-flex flex-column align-center">
       <v-file-input
         v-model="file"
-        :label="uploadType === 'excel' || uploadType === 'excelp' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (最多複選2個檔案, 按住Shift鍵)'"
-        :accept="uploadType === 'excel' || uploadType === 'excelp' ? '.xlsx,.xls' : '.pdf'"
-        :multiple="uploadType != 'excel' &&  uploadType != 'excelp'"
+        :label ="uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (最多複選2個檔案, 按住Shift鍵)'"
+        :accept = "uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm'? '.xlsx,.xls' : '.pdf'"
+        :multiple = "uploadType != 'excel' &&  uploadType != 'excelp' &&  uploadType != 'excelm'"
         show-size
         prepend-icon="mdi-file-arrow-left-right"
 
@@ -262,7 +266,7 @@ const handleUpload = async () => {
     return;
   }
 
-  if (uploadType.value === 'excel' || uploadType.value === 'excelp') {
+  if (uploadType.value === 'excel' || uploadType.value === 'excelp' || uploadType.value === 'excelm') {
     await uploadExcelFileFun();
   } else {
     await uploadPdfFilesFun();

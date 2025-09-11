@@ -229,10 +229,10 @@ class Material(BASE):
     move_by_process_type = Column(Integer, default = 2)             # 2:工單給組裝線, 4:工單給加工線
 
     isOpen = Column(Boolean, default=False)                         #True: dialog open, False: dialog close
-    isOpenEmpId = Column(String(8), default="")     # 工單已經開始備料的員工
-    hasStarted = Column(Boolean, default=False)     # True:工單已經開始備料進行中, False:尚未備料或備料已完成
-    startStatus = Column(Boolean, default=False)    # toggle status, True:開始
-    #isConfirmWork = Column(Boolean, default=False)  # True:按確定, 備料完成
+    isOpenEmpId = Column(String(8), default="")       # 工單已經開始備料的員工
+    hasStarted = Column(Boolean, default=False)       # True:工單已經開始備料進行中, False:尚未備料或備料已完成
+    startStatus = Column(Boolean, default=False)      # toggle status, True:開始
+    #isConfirmWork = Column(Boolean, default=False)    # True:按確定, 備料完成
 
     #status_comment = Column(Integer, default=0)                    # 0: 空白, 1:等待agv搬運, 2:已送至組裝區, 3:已送至成品區, 4:agv送料進行中
     _bom =  relationship('Bom', backref="material")                 # 一對多(一),
@@ -540,8 +540,8 @@ class Process(BASE):
 
     is_pause = Column(Boolean, default=True)
 
-    process_type = Column(Integer, default=1)                     #1:備料區,
-                                                                  #2:組裝區(含20, 21, 22, 23)
+    process_type = Column(Integer, default=1)                     # 1:備料區,
+                                                                  # 2:組裝區(含20, 21, 22, 23)
                                                                   # 20:AGV運行到組裝區
                                                                   # 21:在第1途程, 組裝
                                                                   # 22:在第2途程, 檢驗

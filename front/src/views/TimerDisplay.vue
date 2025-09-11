@@ -66,7 +66,6 @@ function pause() {
   //elapsed += Date.now() - startTime;
   //emit("update:modelValue", true);
   emit("update:isPaused", true);
-
   emit("pause", elapsed);
   // 停下來也刷新一次
   displayTime.value = format(elapsed);

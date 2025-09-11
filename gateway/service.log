@@ -468,3 +468,33 @@
 連線時間: Wed Sep 03 2025 21:51:34 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
 連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
 連線時間: Thu Sep 04 2025 10:22:40 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect ECONNABORTED 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect EHOSTUNREACH 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect ECONNABORTED 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線時間: Mon Sep 08 2025 13:27:14 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Tue Sep 09 2025 09:50:11 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Tue Sep 09 2025 15:46:40 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線時間: Wed Sep 10 2025 10:10:54 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Wed Sep 10 2025 10:48:47 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線失敗: connect ECONNABORTED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Wed Sep 10 2025 17:42:43 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Wed Sep 10 2025 22:04:33 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.0.12:6600, mode: false, RUN_MODE: false
+連線時間: Thu Sep 11 2025 09:29:07 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.55:6600, mode: false, RUN_MODE: false
+連線時間: Thu Sep 11 2025 13:24:11 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Thu Sep 11 2025 13:24:30 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Thu Sep 11 2025 13:24:41 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false

@@ -21,16 +21,16 @@ export function useProcessTimer(getTimerRef) {
   const isPaused  = ref(true);
   const elapsedMs = ref(0);
 
-  let _ticker = null;
-  let _lastTs = null;
+	let _ticker = null;
+	let _lastTs = null;
   let _autoUpd = null;
 
-  const pauseTime = ref(0);   // 後端回報的總暫停秒數（可顯示用）
+	const pauseTime = ref(0);   // 後端回報的總暫停秒數（可顯示用）
   const pauseCount= ref(0);   // 後端回報的暫停次數（可顯示用）
   const for_vue3_has_started =ref(false)
   const for_vue3_pause_or_start_status =ref(false)
 
-  const materialId  = ref(0);
+	const materialId  = ref(0);
   const processType = ref(0);
   const userId      = ref(null);
   const assembleId  = ref(0);
@@ -54,24 +54,24 @@ export function useProcessTimer(getTimerRef) {
     _autoUpd = null;
   }
 
-  function _startLocalTicker() {
-    _stopLocalTicker();
-    _lastTs = Date.now();
-    _ticker = setInterval(() => {
-      const now = Date.now();
-      const delta = now - (_lastTs || now);
-      elapsedMs.value += delta;     // ✅ 就算沒有 TimerDisplay，也會自己累加
-      _lastTs = now;
-    }, 1000);
-  }
+	function _startLocalTicker() {
+		_stopLocalTicker();
+		_lastTs = Date.now();
+		_ticker = setInterval(() => {
+			const now = Date.now();
+			const delta = now - (_lastTs || now);
+			elapsedMs.value += delta;     // ✅ 就算沒有 TimerDisplay，也會自己累加
+			_lastTs = now;
+		}, 1000);
+	}
 
-  function _stopLocalTicker() {
-    if (_ticker) clearInterval(_ticker);
-    _ticker = null;
-    _lastTs = null;
-  }
+	function _stopLocalTicker() {
+		if (_ticker) clearInterval(_ticker);
+		_ticker = null;
+		_lastTs = null;
+	}
   /*
-  function timer() {
+	function timer() {
     // 每次要用時才取，避免還沒掛載時為 null
     return getTimerRef?.() || null;
   }
@@ -98,7 +98,7 @@ export function useProcessTimer(getTimerRef) {
 
   // 進入 dialog：後端建立/還原 + 同步 TimerDisplay
   async function startProcess(mId, pType, uId, aId=0) {
-    const assemble_id = Number(aId ?? 0);
+		const assemble_id = Number(aId ?? 0);
     const payload = {
       material_id: mId,
       process_type: pType,
@@ -106,26 +106,28 @@ export function useProcessTimer(getTimerRef) {
     };
     if (assemble_id != 0) payload.assemble_id = assemble_id;
 
-    materialId.value  = mId;
-    processType.value = pType;
-    userId.value      = uId;
-    assembleId.value  = assemble_id;
+		materialId.value  = mId;
+  	processType.value = pType;
+  	userId.value      = uId;
+  	assembleId.value  = assemble_id;
 
     const res  = await dialog2StartProcess(payload);
-    const data = res?.data ?? res;
+		const data = res?.data ?? res;
+
+    console.log("startProcess:", data)
 
     // 後端回傳建議包含：process_id, elapsed_time(秒), is_paused
-    processId.value = data?.process_id ?? processId.value;
+		processId.value = data?.process_id ?? processId.value;
 
     // 還原 TimerDisplay（秒 → ms）
     //const seconds   = Number(res.elapsed_time || 0);
-    //const seconds = Number(res.elapsed_time ?? 0);
-    const seconds = Number(data?.elapsed_time ?? 0);
-    const paused = !!data?.is_paused;
+		//const seconds = Number(res.elapsed_time ?? 0);
+		const seconds = Number(data?.elapsed_time ?? 0);
+		const paused = !!data?.is_paused;
     //const paused = !!res.is_paused;
-    const pauseTotal  = Number(data?.pause_time ?? 0);   // 總暫停秒數
+		const pauseTotal  = Number(data?.pause_time ?? 0);   // 總暫停秒數
 
-    pauseTime.value  = Number(data?.pause_time ?? 0);
+		pauseTime.value  = Number(data?.pause_time ?? 0);
     pauseCount.value = Number(data?.pause_count ?? 0);
 
     //elapsed_time.value = data?.elapsed_time ?? 0
@@ -149,9 +151,9 @@ export function useProcessTimer(getTimerRef) {
       _startAutoUpdate();
     }
 
-    console.log("🔹 後端回傳 pause_time =", pauseTotal, "秒");
+		console.log("🔹 後端回傳 pause_time =", pauseTotal, "秒");
 
-    return processId.value;
+		return processId.value;
   }
 
   // 暫停/恢復切換
@@ -159,7 +161,7 @@ export function useProcessTimer(getTimerRef) {
     if (!processId.value) return;
 
     console.log("toggleTimer()...")
-    console.log("isPaused:",isPaused.value)
+
     if (isPaused.value) {
       console.log("toggleTimer() status: 開始", isPaused.value)
 
@@ -246,13 +248,13 @@ export function useProcessTimer(getTimerRef) {
       process_id: processId.value,
       is_paused: isPaused.value,
     });
-    const data = res?.data ?? res;
+		const data = res?.data ?? res;
 
-    const pauseTotal = Number(data?.pause_time ?? 0);
-    console.log("🔸 累計暫停時間:", pauseTotal, "秒");
+		const pauseTotal = Number(data?.pause_time ?? 0);
+		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
-    pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
-    pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
+		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+		pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
   }
 
   // 週期性/關閉前更新（把目前毫秒回傳）
@@ -265,26 +267,26 @@ export function useProcessTimer(getTimerRef) {
       elapsed_time: Math.floor(ms / 1000),
       is_paused: isPaused.value,
     });
-    const data = res?.data ?? res;
+		const data = res?.data ?? res;
 
-    // 後端可能回傳校正後的 elapsed_time（秒）
-    if (data?.elapsed_time != null) {
-      elapsedMs.value = Number(data.elapsed_time) * 1000;
-    }
+		// 後端可能回傳校正後的 elapsed_time（秒）
+		if (data?.elapsed_time != null) {
+			elapsedMs.value = Number(data.elapsed_time) * 1000;
+		}
 
-    // is_paused/pause_time 只是回報，用得到就存下
-    if (typeof data?.is_paused === 'boolean') {
-      isPaused.value = data.is_paused;
-    }
+		// is_paused/pause_time 只是回報，用得到就存下
+		if (typeof data?.is_paused === 'boolean') {
+			isPaused.value = data.is_paused;
+		}
 
-    const pauseTotal = Number(data?.pause_time ?? 0);
-    console.log("🔸 累計暫停時間:", pauseTotal, "秒");
+		const pauseTotal = Number(data?.pause_time ?? 0);
+		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
-    pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
     pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
   }
 
-  // ESC/外點關閉時使用 —— 維持「計時中」
+	// ESC/外點關閉時使用 —— 維持「計時中」
   async function updateActiveNoPause() {
     if (!processId.value) return;
 
@@ -303,25 +305,25 @@ export function useProcessTimer(getTimerRef) {
     _startAutoUpdate();
 
     // 不改變前端的 isPaused / 不呼叫 pause()
-    /*
-    const data = res?.data ?? res;
+		/*
+		const data = res?.data ?? res;
 
-    // 後端可能回傳校正後的 elapsed_time（秒）
-    if (data?.elapsed_time != null) {
-      elapsedMs.value = Number(data.elapsed_time) * 1000;
-    }
+		// 後端可能回傳校正後的 elapsed_time（秒）
+		if (data?.elapsed_time != null) {
+			elapsedMs.value = Number(data.elapsed_time) * 1000;
+		}
 
-    // is_paused/pause_time 只是回報，用得到就存下
-    if (typeof data?.is_paused === 'boolean') {
-      isPaused.value = data.is_paused;
-    }
+		// is_paused/pause_time 只是回報，用得到就存下
+		if (typeof data?.is_paused === 'boolean') {
+			isPaused.value = data.is_paused;
+		}
 
-    const pauseTotal = Number(data?.pause_time ?? 0);
-    console.log("🔸 累計暫停時間:", pauseTotal, "秒");
+		const pauseTotal = Number(data?.pause_time ?? 0);
+		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
-    pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
     pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
-    */
+		*/
   }
 
   async function updateKeepPaused() {
@@ -385,36 +387,37 @@ export function useProcessTimer(getTimerRef) {
       elapsed_time: Math.floor(ms / 1000),
 
     });
-    const data = res?.data ?? res;
+		const data = res?.data ?? res;
 
     // 視覺重置（可選）
     timer()?.reset();
     processId.value = null;
     elapsedMs.value = 0;
 
-    const pauseTotal = Number(data?.pause_time ?? 0);
-    console.log("🔸 累計暫停時間:", pauseTotal, "秒");
+		const pauseTotal = Number(data?.pause_time ?? 0);
+		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
-    pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
     pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
 
-    //return {
-    //	processId, isPaused, elapsedMs, pauseTime, pauseCount,
-    //	onTick,
-    //	startProcess, toggleTimer, updateProcess, closeProcess
+		//return {
+		//	processId, isPaused, elapsedMs, pauseTime, pauseCount,
+		//	onTick,
+		//	startProcess, toggleTimer, updateProcess, closeProcess
     //};
   }
 
   return {
     // 狀態
     processId,
+
     isPaused,
     elapsedMs,
-    pauseTime, pauseCount,
+
+		pauseTime, pauseCount,
     for_vue3_has_started, for_vue3_pause_or_start_status,
 
-
-    materialId,
+		materialId,
     processType,
     userId,
     assembleId,
@@ -430,7 +433,7 @@ export function useProcessTimer(getTimerRef) {
     updateProcess,
     closeProcess,
 
-    updateActiveNoPause,
+		updateActiveNoPause,
     updateKeepPaused,
     nudgeResume,
 

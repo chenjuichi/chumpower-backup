@@ -333,102 +333,95 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-        <div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">
-          <v-dialog
-            v-model="dlg.dialogVisible"
-            max-width="980px"
-            @keydown.esc="handleEscClose(dlg)"
-            @click:outside="handleOutsideClick(dlg)">
+          <div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">
+            <v-dialog
+              v-model="dlg.dialogVisible"
+              max-width="980px"
+              @keydown.esc="handleEscClose(dlg)"
+              @click:outside="handleOutsideClick(dlg)">
 
-            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                備料資訊
-                <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
-                <!--<span style="font-size:16px;">訂單{{ dialog_order_num }}</span>&nbsp;&nbsp;-->
-                <TimerDisplay
-                  :ref="setTimerRef(dlg)"
-                  v-model:isPaused="dlg.proc.isPaused"
-                  :show="true"
-                  :autoStart="false"
-                  @update:time="dlg.proc.onTick"
-                />
-                <!--
-                <TimerDisplay
-                  :ref="el => (dlg.timerRef = el)"
-                  v-model:isPaused="dlg.proc.isPaused"
-                  :autoStart="false"
-                  @update:time="dlg.proc.onTick"
-                />
-                -->
-                <v-btn @click="dlg.proc.toggleTimer()" :prepend-icon = "getIcon(dlg.proc.isPaused)">
-                  {{ dlg.proc.isPaused ? "恢復" : "暫停" }}
-                </v-btn>
-
-                <v-fade-transition mode="out-in">
-                  <v-btn
-                    style="position: relative; right: -250px;"
-                    color="success"
-                    prepend-icon="mdi-check-circle-outline"
-
-                    :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
-
-                    text="確定"
-                    class="text-none"
-
-                    @click="onConfirm(dlg)"
-
-                    variant="flat"
-                    flat
+              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+                  備料資訊
+                  <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
+                  <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
+                  <TimerDisplay
+                    :ref="setTimerRef(dlg)"
+                    v-model:isPaused="dlg.proc.isPaused"
+                    :show="true"
+                    :autoStart="false"
+                    @update:time="dlg.proc.onTick"
                   />
-                </v-fade-transition>
-              </v-card-title>
+                  <v-btn @click="dlg.proc.toggleTimer()" :prepend-icon = "getIcon(dlg.proc.isPaused)">
+                    {{ dlg.proc.isPaused ? "開始" : "暫停" }}
+                  </v-btn>
 
-              <v-card-text>
-                <v-table class="inner" density="compact" fixed-header>
-                  <thead style="color: black;">
-                    <tr>
-                      <th class="text-left">元件</th>
-                      <th class="text-left" style="width: 520px;">物料</th>
-                      <th class="text-left">數量</th>
-                      <th class="text-left" style="width: 120px;">日期</th>
-                      <th class="text-left">領料</th>
-                    </tr>
-                  </thead>
+                  <v-fade-transition mode="out-in">
+                    <v-btn
+                      style="position: relative; right: -250px;"
+                      color="success"
+                      prepend-icon="mdi-check-circle-outline"
 
-                  <tbody>
-                    <tr
-                      v-for="(bom_item, index) in boms"
-                      :key="bom_item.seq_num"
-                      :style="{
-                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                      }"
-                    >
-                      <td>{{ bom_item.seq_num }}</td>
-                      <td style="width: 520px;">
-                        <div>
-                          <div>{{ bom_item.material_num }}</div>
-                          <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                      </td>
-                      <td style="width: 120px;">
-                        <div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
-                      </td>
-                    </tr>
-                  </tbody>
-                </v-table>
-              </v-card-text>
-            </v-card>
-          </v-dialog>
-        </div>
+                      :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
+
+                      text="確定"
+                      class="text-none"
+
+                      @click="onConfirm(dlg)"
+
+                      variant="flat"
+                      flat
+                    />
+                  </v-fade-transition>
+                </v-card-title>
+
+                <v-card-text>
+                  <v-table class="inner" density="compact" fixed-header>
+                    <thead style="color: black;">
+                      <tr>
+                        <th class="text-left">元件</th>
+                        <th class="text-left" style="width: 520px;">物料</th>
+                        <th class="text-left">數量</th>
+                        <th class="text-left" style="width: 120px;">日期</th>
+                        <th class="text-left">領料</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      <tr
+                        v-for="(bom_item, index) in boms"
+                        :key="bom_item.seq_num"
+                        :style="{
+                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
+                        }"
+                      >
+                        <td>{{ bom_item.seq_num }}</td>
+                        <td style="width: 520px;">
+                          <div>
+                            <div>{{ bom_item.material_num }}</div>
+                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                        </td>
+                        <td style="width: 120px;">
+                          <div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </v-card-text>
+              </v-card>
+            </v-dialog>
+          </div>
+
           <!-- 備料區檢料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
@@ -475,19 +468,29 @@
                 </v-card-text>
 
                 <v-card-actions class="justify-center">
-                  <v-btn
-                    color="success"
-                    prepend-icon="mdi-content-save"
+                  <div v-if="abnormalDialog_display">
+                    <v-btn
+                      color="success"
+                      prepend-icon="mdi-content-save"
 
-                    text="確定"
-                    class="text-none"
-                    @click="createAbnormalFun"
-                    variant="flat"
-                  />
-                  <v-btn
-                    color="error"
-                    prepend-icon="mdi-close"
-                    text="取消"
+                      text="確定"
+                      class="text-none"
+                      @click="createAbnormalFun"
+                      variant="flat"
+                    />
+                    <v-btn
+                      color="error"
+                      prepend-icon="mdi-close"
+                      text="取消"
+                      class="text-none"
+                      @click="abnormalDialog = false"
+                      variant="flat"
+                    />
+                  </div>
+                  <v-btn v-else
+                    color="success"
+                    prepend-icon="mdi-exit-to-app"
+                    text="離開"
                     class="text-none"
                     @click="abnormalDialog = false"
                     variant="flat"
@@ -514,35 +517,31 @@
         <!-- v-icon -->
         <v-icon
           style="transition: opacity 0.3s ease, visibility 0.3s ease;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-          @click="editOrderNum(item)"
+          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden',
+                    pointerEvents: !item.isTakeOk && !item.hasStarted ? 'auto' : 'none'
+                  }"
+          @click="!item.isTakeOk && !item.hasStarted && editOrderNum(item)"
           small
           class="mr-2"
         >
           mdi-pencil
         </v-icon>
         <!-- Order Info -->
+        <!--備料完成(缺料)-->
         <div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
           <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
           <span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>
-        </div> <!--檢料完成-->
+        </div>
+        <!--備料完成-->
         <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
           {{ item.order_num }}
-        </div> <!--檢料完成-->
+        </div>
+        <!--備料尚未完成-->
         <div style="margin-right: 20px;" v-else>
           {{ item.order_num }}
         </div>
       </div>
     </template>
-
-    <!--
-    <template v-slot:item.material_num="{ item }">
-      <div>
-        <div>{{ item.material_num }}</div>
-        <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-      </div>
-    </template>
-    -->
 
     <!-- 自訂 '需求數量' (req_qty) 欄位 -->
     <template v-slot:item.req_qty="{ item }">
@@ -563,39 +562,62 @@
 
     <!-- 自訂 '詳情' 按鍵 -->
     <template v-slot:item.action="{ item }">
+      <v-badge
+        v-if="item.hasStarted"
+        dot
+        :color="item.startStatus ? 'green' : 'red'"
+        location="top end"
+        offset-x="6"
+        offset-y="6"
+      >
+        <v-btn
+          size="small"
+          variant="tonal"
+          style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+          @click="toggleExpand(item)"
+        >
+          詳 情
+          <v-icon color='green-darken-3' end>
+            {{ 'mdi-note-search-outline' }}
+          </v-icon>
+        </v-btn>
+      </v-badge>
+
       <v-btn
+        v-else
         size="small"
         variant="tonal"
         style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-
         @click="toggleExpand(item)"
       >
         詳 情
-        <!--<v-icon color="orange-darken-4" end>mdi-note-search-outline</v-icon>-->
-
+        <v-icon color='green-darken-3' end>
+          {{ 'mdi-note-search-outline' }}
+        </v-icon>
+        <!--
         <v-icon
-          :color="item.isOpen ? 'orange-darken-4' : 'green-darken-3'"
+          :color="item.hasStarted ? 'orange-darken-4' : 'green-darken-3'"
           end
         >
-          {{ item.isOpen ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
+          {{ item.hasStarted ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
         </v-icon>
-
+        -->
       </v-btn>
     </template>
 
     <!-- 自訂 '應備數量'欄位的資料藍位 -->
     <template v-slot:item.total_delivery_qty="{ item }">
       <div style="display:flex; align-items:center;">
-          <v-icon
-            style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-            @click="addAbnormalInMaterial(item)"
-            size="16"
-            class="mr-2"
-            :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
-          >
-            mdi-bell-plus
-          </v-icon>
+        <v-icon
+          style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
+          @click="addAbnormalInMaterial(item)"
+          size="16"
+          class="mr-2"
+          :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
+        >
+          mdi-bell-plus
+        </v-icon>
         <span style="margin-left: 15px;">
           {{ item.total_delivery_qty }}
         </span>
@@ -605,12 +627,6 @@
     <!-- 自訂 '備料數量' 輸入欄位 -->
     <template v-slot:item.delivery_qty="{ item }">
       <div style="position: relative; display: inline-block;">
-        <!--
-        :disabled="item.input_disable"
-        :style="{
-            '--input-text-color': (item.isError || item.input_disable) ? 'red' : 'black'  // 動態設置 CSS 變數
-        }"
-        -->
         <v-text-field
           v-model="item.delivery_qty"
           dense
@@ -621,7 +637,6 @@
           @update:focused="(focused) => checkTextEditField(focused, item)"
           @keyup.enter="updateItem2(item)"
           :disabled="!item.isTakeOk"
-
           :style="{
             '--input-text-color': (item.isError || item.delivery_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
           }"
@@ -644,11 +659,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, shallowRef, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+import { ref, reactive, shallowRef, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, nextTick } from 'vue';
 
 import TimerDisplay from "./TimerDisplay.vue";
 import { useProcessTimer } from "../mixins/useProcessTimer.js";
-//import { formatMs } from "../mixins/timeUtils.js";
 
 import eventBus from '../mixins/enentBus.js';
 
@@ -658,21 +672,17 @@ import DraggablePanel from './DraggablePanel.vue';
 import draggable from 'vuedraggable';
 import { useRoute } from 'vue-router';
 
-//import { useLocale } from 'vuetify';
-
 import { useRouter } from 'vue-router';
 const router = useRouter();
 
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-//import { desserts }  from '../mixins/crud.js';
 import { desserts2 }  from '../mixins/crud.js';
-import { materials, boms, currentBoms, currentAGV, material_copy, material_copy_id, fileCount }  from '../mixins/crud.js';
+import { materials, boms, currentBoms, currentAGV, material_copy, fileCount }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
-//import { setupListUsersWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
@@ -680,9 +690,7 @@ const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listMaterials = apiOperation('get', '/listMaterials');
-//const listUsers = apiOperation('get', '/listUsers');
 const listUsers2 = apiOperation('get', '/listUsers2');
-//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const getBoms = apiOperation('post', '/getBoms');
 const getAGV = apiOperation('post', '/getAGV');
@@ -700,26 +708,16 @@ const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialA
 const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
 const updateProcessDataByMaterialID = apiOperation('post', '/updateProcessDataByMaterialID');
 const updateBomXorReceive = apiOperation('post', '/updateBomXorReceive');
-
 const updateSetting = apiOperation('post', '/updateSetting');
 
-const dialog2StartProcess = apiOperation('post', '/dialog2StartProcess');
-const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcess');
-const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcess');
-const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcess');
-
 //=== component name ==
-defineComponent({
-  name: 'MaterialListForAssem'
-});
+defineComponent({ name: 'MaterialListForAssem' });
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 const transport_message = ref('備料自動送出')
@@ -767,7 +765,6 @@ const bar_code = ref('');
 const barcodeInput = ref(null);         // 外部條碼欄位
 
 const deliveryQtyInput = ref(null)      // 對應 table 中備料數量欄位（稍後動態取得）
-//const currentItemId = ref(null)
 
 const placeholderTextForEmployee = ref('請選擇員工');
 const placeholderTextForOrderNum = ref('請選擇工單');
@@ -775,6 +772,10 @@ const inputSelectEmployee = ref(null);
 const inputSelectOrderNum = ref(null);
 
 let intervalId = null;                        // 10分鐘, 倒數計時器, for exce file 偵測
+let refreshTimerId = null                     // 11秒, for refresh materials[]
+const refreshTimerMs = ref(11 * 1000)         // 11秒
+const lastRefreshed = ref(null)
+const tableLoading = ref(false)
 
 const route = useRoute();                     // Initialize router
 
@@ -825,7 +826,7 @@ const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const currentUser = ref({});
-const componentKey = ref(0);       // key 值用於強制重新渲染
+const componentKey = ref(0);            // key 值用於強制重新渲染
 const currentProcessId = ref(0);
 
 const editDialog = ref(false);
@@ -849,13 +850,13 @@ const forklift2EndTime = ref(null);       // 堆高機運行計時結束
 const dialog_totalActiveTime = ref('00:00:00')  // 最終顯示開啟總時間
 
 //let dialog_elapsedActive = 0            // 已經累積的有效秒數（扣掉暫停）
-let dialog_pauseStart = null            // 暫停開始時間（毫秒）
+let dialog_pauseStart = null              // 暫停開始時間（毫秒）
 
 
 const dialog = ref(false);
 const dialog_order_num = ref('');
 
-const dialogs = ref([]);  // 儲存多個 dialog 狀態
+const dialogs = ref([]);              // 儲存多個 dialog 狀態
 
 const isConfirmed = ref(false);
 
@@ -879,16 +880,16 @@ const abnormalDialog_autocomplete_message = ref('');  // v-autocomplete componen
 const abnormalDialog_message = ref('');               // dialog顯示訊息
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_record = ref(null);    // 點擊鈴鐺icon的目前紀錄
+const abnormalDialog_record = ref(null);              // 點擊鈴鐺icon的目前紀錄
 
 const itemsWithIcons = [
   { text: '臨時領料', icon: 'mdi-clock-outline' },
-  { text: '堆高機搬運物料', icon: 'mdi-forklift' }
+  { text: '堆高機搬運物料', icon: 'mdi-forklift' },
+  { text: '多筆備料', icon: 'mdi-clock-check'},
 ]
 
 //=== watch ===
 setupGetBomsWatcher();
-
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
@@ -905,8 +906,9 @@ watch(bar_code, (newVal) => {
   }
 })
 
-watch(() => dialogs.value.map(d => d.dialogVisible),
-  async (newVals, oldVals =[]) => {
+watch(
+  () => dialogs.value.map(d => d.dialogVisible),
+  async (newVals, oldVals = []) => {
     for (let i = 0; i < newVals.length; i++) {
       const dlg = dialogs.value[i];
       if (!dlg) continue; // 安全防呆
@@ -918,90 +920,180 @@ watch(() => dialogs.value.map(d => d.dialogVisible),
       if (isOpenNow && !wasOpen) {
         console.log("🟢 Dialog opened");
 
-        // 設 isOpen = true
+        // 設 isOpen = true（寫回資料庫）
         try {
           await updateMaterial({
             id: dlg.material_id,
             record_name: "isOpen",
             record_data: true,
           });
+
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpenEmpId",
+            record_data: currentUser.value.empID,
+          });
+
         } catch (e) {
-          console.warn("update isOpen(true) 失敗:", e);
+          console.warn("update isOpen(true) or isOpenEmpId 失敗:", e);
         }
 
-        // targetIndex為目前table data record 的 index
-        const targetIndex = materials.value.findIndex(
-          (kk) => kk.id === dlg.material_id
-        );
-
-        // 用 Vue 的方式確保觸發響應式更新
-        materials.value[targetIndex] = {
-          ...materials.value[targetIndex],
-          isOpen: true,
-        };
+        // 在 table 中把該筆標成 isOpen=true（響應式）
+        const targetIndex = materials.value.findIndex(kk => kk.id === dlg.material_id);
+        if (targetIndex !== -1) {
+          materials.value[targetIndex] = {
+            ...materials.value[targetIndex],
+            isOpen: true,
+            isOpenEmpId: currentUser.value.empID,
+          };
+        }
 
         // 等待 DOM 渲染完成，TimerDisplay 的 ref 才能使用
         await nextTick();
 
-        // 這裡確保每個 dlg 都有自己的 useProcessTimer 實例
-
         try {
+          // 確保每個 dlg 都有自己的 useProcessTimer 實例（⚠ 要傳函式！）
           if (!dlg.proc) {
-            //dlg.proc = useProcessTimer(dlg.timerRef);
             dlg.proc = useProcessTimer(() => dlg.timerRef);
-
           }
-          // 後端建立/還原；內部會 setState(elapsed, paused)
-          //await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id /*, dlg.assemble_id?*/);
 
-          // 防止連點或重複 watch 觸發
-          if (dlg._booted) {
-            // ★ 再次打開「同一筆工單」→ 仍然要向後端取得最新狀態並還原
-            await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
-          } else {
-            dlg._booted = true;
-            await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
-          }
-          // startProcess 會自動：
-          // 1) 把後端 elapsed_time / is_paused 還原到 TimerDisplay（setState）
-          // 2) 若 is_paused=false，呼叫 resume() 繼續跑
+          // 每次打開都向後端取最新狀態並還原
+          await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
+          // startProcess 會：
+          // 1) setState(elapsed, paused)
+          // 2) 若 paused=false 會自動 resume()
 
-          //dlg.closeReason = null; // 重置
+          // 若為全新工單就強制改成暫停
+          //await enforceStartPausedIfNew(dlg);
+          /*
+          // 偵測新工單、且正在跑 → 立刻停住並回寫成暫停。
+          // === 新增, begin：對「全新工單(00:00:00)」進場強制顯示「開始」 ===
+          await nextTick(); // 先等 TimerDisplay 掛好
+
+          setTimeout(async () => {
+            const ms =
+              dlg?.timerRef?.getElapsedMs?.() ??
+              dlg?.proc?.elapsedMs?.value ??
+              0;
+
+            const running = dlg?.proc?.isPaused?.value === false;
+
+            // 只有「毫秒 = 0」且「目前正在跑」才處理；其他全部不動
+            if (ms === 0 && running) {
+              // 1) 視覺先停住（畫面顯示「開始」）
+              dlg?.timerRef?.pause?.();
+              if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
+
+              // 2) 回寫到後端（把 is_paused=true，同步成真正暫停）
+              try {
+                await dlg?.proc?.updateProcess?.(); // 你現有的 API 會帶 is_paused=true
+              } catch (e) {
+                console.warn('force-start-paused (new order) → updateProcess failed:', e);
+              }
+            }
+          }, 0);
+          // === 新增, end：
+          */
         } catch (e) {
           console.error("startProcess 失敗：", e);
         }
-      } // end if
+      }
 
       // === dialog 剛關閉 ===
       if (!isOpenNow && wasOpen) {
-        console.log("*** dialog close")
+        console.log("Dialog closed");
 
         const reason = dlg.closeReason;
 
-        if (reason === 'esc' || reason === 'outside') {
-          // ✅ ESC：流程保持「計時中」
+        if (dlg.proc.for_vue3_has_started) {  //工單已開始
           try {
-            // ✅ 僅回寫 elapsed，並維持 is_paused=false（不中斷計時）
-            await dlg.proc.updateActiveNoPause();
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "hasStarted",
+              record_data: true,
+            });
+
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "isOpenEmpId",
+              record_data: currentUser.value.empID,
+            });
           } catch (e) {
-            console.warn('ESC/Outside close → keep running update failed:', e);
+            console.warn("update hasStarted(true) or isOpenEmpId 失敗:", e);
+          }
+
+          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+          if (targetIndex2 !== -1) {
+            materials.value[targetIndex2] = {
+              ...materials.value[targetIndex2],
+              hasStarted: true,
+              isOpenEmpId: currentUser.value.empID,
+            };
           }
         } else {
-
-          // 🛑 一般關閉：照舊暫停 + 回寫
           try {
-            // 先更新目前累積毫秒（用 TimerDisplay 暴露的 getElapsedMs 或 onTick 累積的 elapsedMs）
-            dlg.timerRef.pause();             // 視覺上暫停，避免背景繼續跑
-            if (dlg.proc.isPaused)
-              dlg.proc.isPaused.value = true;
-            await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "isOpenEmpId",
+              record_data: "",
+              //record_data: currentUser.value.empID,
+            });
           } catch (e) {
-            console.error("updateProcess 失敗：", e);
+            console.warn("update isOpenEmpId 失敗:", e);
+          }
+
+          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+          if (targetIndex2 !== -1) {
+            materials.value[targetIndex2] = {
+              ...materials.value[targetIndex2],
+              isOpenEmpId: "",
+              //isOpenEmpId: currentUser.value.empID,
+            };
           }
         }
 
+        try {
+          if (reason === 'esc' || reason === 'outside') {
+            if (!dlg?.proc) return;   // ← 這裡加，避免 undefined 錯誤
 
-        // 設 isOpen = false
+            console.log("$$ esc狀態 $$")
+            // ✅ ESC / 外點：流程保持運行，不暫停
+            /*
+            if (dlg?.proc?.updateActiveNoPause) {
+              await dlg.proc.updateActiveNoPause();
+            } else {
+              console.warn('ESC/Outside close → proc not ready, skip keep-running update');
+            }
+            */
+            // 根據當下狀態決定要維持暫停還是不中斷繼續
+            if (dlg?.proc?.isPaused?.value) {
+              // ✅ 現在是暫停 → 維持暫停離開
+              await dlg.proc.updateKeepPaused();
+            } else {
+              // ✅ 現在在跑 → 不中斷離開
+              await dlg.proc.updateActiveNoPause();
+            }
+
+            dlg.dialogVisible = false;
+
+          } else {
+            console.log("$$ 確定按鍵狀態 $$")
+
+            // 🛑 一般關閉：暫停 + 回寫
+            dlg?.timerRef?.pause?.(); // 視覺上暫停
+            if (dlg.proc.isPaused) dlg.proc.isPaused.value = true;
+            if (dlg.proc.updateProcess) await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
+            if (dlg.proc.closeProcess)  await dlg.proc.closeProcess();
+
+            dialogs.value.splice(i, 1);
+          }
+        } catch (e) {
+          console.error("close-handling 失敗：", e);
+        } finally {
+          // 重置關閉原因，避免下次誤判
+          dlg.closeReason = null;
+        }
+
         try {
           await updateMaterial({
             id: dlg.material_id,
@@ -1012,35 +1104,32 @@ watch(() => dialogs.value.map(d => d.dialogVisible),
           console.warn("update isOpen(false) 失敗:", e);
         }
 
-        // targetIndex為目前table data record 的 index
-        const targetIndex = materials.value.findIndex(
-          (kk) => kk.id === dlg.material_id
-        );
+        const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+        if (targetIndex2 !== -1) {
+          materials.value[targetIndex2] = {
+            ...materials.value[targetIndex2],
+            isOpen: false,
+          };
+        }
 
-        // 用 Vue 的方式確保觸發響應式更新
-        materials.value[targetIndex] = {
-          ...materials.value[targetIndex],
-          isOpen: false,
-        };
+        // ✅ 從陣列移除該 dialog（放在 nextTick 後移除，避免索引變動干擾當前迭代）
+        //const idxToRemove = i;
+        //await nextTick();
+        //dialogs.value.splice(idxToRemove, 1);
 
-        // ✅ 從陣列移除該 dialog
-        dialogs.value.splice(i, 1);
-
-        // 清空條碼（只對當前 dlg 做處理，可視情況改）
+        // 清空條碼（只對當前 dlg）
         bar_code.value = '';
 
         // 聚焦欄位
         await nextTick();
-
-        if (isConfirmed.value && editedRecord.value.id != null) {
-          const el = document.getElementById(`receiveQtyID-${editedRecord.value.id}`);
-          el?.focus();
-        } else if (barcodeInput.value) {
-          barcodeInput.value.focus();
+        if (isConfirmed.value && editedRecord.value?.id != null) {
+          document.getElementById(`receiveQtyID-${editedRecord.value.id}`)?.focus();
+        } else {
+          barcodeInput.value?.focus();
         }
         isConfirmed.value = false; // 重置狀態
-      } // end if
-    } // end for loop
+      }
+    }
   },
   { deep: true }
 );
@@ -1080,6 +1169,32 @@ const isDialogConfirmDisabled = computed(() => {
   // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
   return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
 });
+
+const isStarted = computed(() => {
+  return (item) => {
+    const dlg = dialogs.value.find(
+      d =>
+        d.material_id === item.id &&
+        d.user_id === currentUser.value.empID
+    );
+    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
+    console.log("dlg?.proc?.for_vue3_pause_or_start_status", dlg?.proc?.for_vue3_pause_or_start_status)
+    return Boolean(dlg?.proc?.for_vue3_pause_or_start_status);
+  };
+});
+
+const ishasWorked = computed(() => {
+  return (item) => {
+    const dlg = dialogs.value.find(
+      d =>
+        d.material_id === item.id &&
+        d.user_id === currentUser.value.empID
+    );
+    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
+    return Boolean(dlg?.proc?.for_vue3_has_started);
+  };
+});
+
 
 //=== mounted ===
 onMounted(async () => {
@@ -1125,35 +1240,26 @@ onMounted(async () => {
   //history.pushState(null, null, document.URL)
   window.addEventListener('popstate', handlePopState)
 
-  //const { current } = useLocale();
-  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
-
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
 
-  userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
-
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  console.log("currentUser:", currentUser.value);
-
-  //#
   let userRaw = sessionStorage.getItem('auth_user');
-  if (!userRaw)
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
     userRaw = localStorage.getItem('loginedUser');
-
-  try {
-    const u = userRaw ? JSON.parse(userRaw) : null;
-    // 只讀，避免被誤改
-    currentUser.value = u ? Object.freeze({ ...u }) : null;
-  } catch {
-    currentUser.value = null;
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
   }
-  console.log('currentUser:', currentUser.value);
-  //#
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+
+  if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+  console.log("currentUser:", currentUser.value);
 
   // 取得每個 v-text-field 的唯一 ID
   //2025-02-13 mark the following function
@@ -1588,8 +1694,6 @@ onMounted(async () => {
         };
         await createProcess(processPayload);
 
-
-
         //紀錄該筆的forklift送料數量
         payload = {
           id: myMaterial.id,
@@ -1738,10 +1842,8 @@ onMounted(async () => {
           itemsPerPage: 0,
           seeIsOk: '0',
           lastRoutingName: 'Main',
-          empID: userData.empID,
+          empID: currentUser.value.empID,
         };
-
-        //let isAuthenticated = false;
 
         try {
           await updateSetting(payload);
@@ -1782,21 +1884,66 @@ stopFlashing();
 
 //=== created ===
 onBeforeMount(() => {
-console.log("Employer, created()...")
+  console.log("Employer, created()...")
 
-pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
-initAxios();
-initialize();
+  initAxios();
+  initialize();
+
+  startAutoRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 });
 
+onBeforeUnmount(() => {
+  stopAutoRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
+
 //=== method ===
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshTimerId = setInterval(() => {
+    // 頁籤在前景才拉，減少伺服器負擔
+    if (document.visibilityState === 'visible') {
+      fetchMaterials()
+    }
+  }, refreshTimerMs.value) // 10 秒
+}
+
+function stopAutoRefresh() {
+  if (refreshTimerId) {
+    clearInterval(refreshTimerId)
+    refreshTimerId = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // 回到前景就立刻更新一次，避免看到舊資料
+    fetchMaterials()
+  }
+}
+
+async function fetchMaterials() {
+  try {
+    tableLoading.value = true
+    await listMaterials()
+    lastRefreshed.value = new Date()
+  } catch (err) {
+    console.error('fetchMaterials error:', err)
+  } finally {
+    tableLoading.value = false
+  }
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...");
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
-    await listMaterials();
+    //await listMaterials();
+    await fetchMaterials();
 
     //await listUsers();
     await listUsers2();
@@ -1817,12 +1964,6 @@ const setTimerRef = (dlg) => {
 const getIcon = (isPaused) => {
   return isPaused ? "mdi-play" : "mdi-pause"
 }
-
-//const isDialogActive = (id, isOpen) => {
-//  //console.log("isDialogActive:", id)
-//  //return dialogs.value.some(dlg => dlg.material_id == id && isOpen)
-//  return isOpen
-//}
 
 const customFilter =  (value, query, item)  => {
   return value != null &&
@@ -2084,7 +2225,6 @@ const handleKeyDown = (event) => {
   }
 
   /*
-
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
   // 使用正規化運算式檢查是否為數字且長度不超過3
@@ -2130,60 +2270,22 @@ const toggleSelect = (item) => {
   }
 };
 
-const handleEscClose = async (dlg) => {
-  console.log("Dialog closed via ESC key, item:", editedRecord.value);
-  /*
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: editedRecord.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  */
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
+const handleEscClose = (dlg) => {
+  if (!dlg) return;                         // 防空
+  if (dlg._closing) return;                 // 防重複關閉
+  dlg._closing = true;
 
-  //dialog.value = false;
-
-  // 暫停該 dialog 的計時器並更新後端
-  //dlg.timerRef.value?.pause();
-  //await dlg.process.updateProcess();
-
-  // 關閉 dialog
-  //dlg.closeReason = 'esc';
-  await dlg.process.updateActiveNoPause();
-  dlg.dialogVisible = false;
-  //#dlg.process.stop();
+  dlg.closeReason = 'esc';
+  dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
 };
 
-const handleOutsideClick = async (dlg) => {
-  console.log("Dialog closed by clicking outside, item:", editedRecord.value);
-  /*
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: editedRecord.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  */
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
+const handleOutsideClick = (dlg) => {
+  if (!dlg) return;
+  if (dlg._closing) return;
+  dlg._closing = true;
 
-  //dialog.value = false;
-
-  // 暫停該 dialog 的計時器並更新後端
-  //dlg.timerRef.value?.pause();
-  //await dlg.process.updateProcess();
-
-  // 關閉 dialog
-  //dlg.closeReason = 'outside';
-  await dlg.process.updateActiveNoPause();
-  dlg.dialogVisible = false;
-  //#dlg.process.stop();
+  dlg.closeReason = 'outside';
+  dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
 };
 
 const editOrderNum = async (item) => {
@@ -2210,11 +2312,55 @@ const editOrderNum = async (item) => {
   editDialog.value = true;
 }
 
-const toggleExpand = async (item) => {
-  console.log("toggleExpand(),", item.order_num);
+/*
+async function enforceStartPausedIfNew(dlg) {
+  // 先等 TimerDisplay 掛好
+  await nextTick();
 
-  if (item.isOpen) {
-    showSnackbar("備料進行中...", "orange-darken-2");
+  // 取目前毫秒（優先用 TimerDisplay; 退回用 composable 的 elapsedMs）
+  const ms =
+    dlg?.timerRef?.getElapsedMs?.() ??
+    dlg?.proc?.elapsedMs?.value ??
+    0;
+
+  // 只在「全新」(0 ms) 才處理；舊工單不動
+  if (ms !== 0) return;
+
+  // 1) 視覺 & 本地狀態 → 暫停
+  dlg?.timerRef?.pause?.();
+  if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
+
+  // 2) 回寫到後端（把 is_paused=true + elapsed=0 同步上去）
+  if (dlg?.proc?.updateProcess) {
+    try {
+      await dlg.proc.updateProcess();  // 會帶 is_paused=true 與目前 elapsed
+    } catch (e) {
+      console.warn('enforceStartPausedIfNew → updateProcess 失敗：', e);
+    }
+  }
+}
+*/
+
+const toggleExpand = async (item) => {
+  console.log("toggleExpand(),item.order_num, item.isOpen:", item.order_num, item.isOpen);
+
+  //console.log("toggle==>", item.isOpen, item.hasStarted, item.isOpenEmpId, currentUser.value.empID)
+  //console.log("toggle==>", item.isOpenEmpId !="" ,!(item.isOpen || item.hasStarted), item.isOpenEmpId != currentUser.value.empID)
+
+  if (item.isTakeOk) {
+    showSnackbar("備料已完成!", "orange-darken-2");
+    return;
+  }
+
+  if (item.hasStarted && item.isOpenEmpId !="" && item.isOpenEmpId != currentUser.value.empID) {
+    let temp_msg = "員工" + item.isOpenEmpId + "備料進行中..."
+    showSnackbar(temp_msg, "orange-darken-2");
+    return;
+  }
+
+  if (item.isOpen && item.isOpenEmpId !="" && item.isOpenEmpId !="" && currentUser.value.empID != item.isOpenEmpId) {
+    let temp_msg = "員工" + item.isOpenEmpId + "準備中..."
+    showSnackbar(temp_msg, "orange-darken-2");
     return;
   }
 
@@ -2240,7 +2386,7 @@ const toggleExpand = async (item) => {
     id: item.id,
     //order_num: item.order_num,
     record_name: 'show2_ok',
-    record_data: 1                //備料中
+    record_data: 0                //未備料
   };
   await updateMaterial(payload);
 
@@ -2269,8 +2415,10 @@ const toggleExpand = async (item) => {
       dialogVisible: true,
       timerRef: null,
 
-      proc: null,     // 每個 dialog 一個 useProcessTimer 實例
-      _booted: false, // 防抖旗標，避免重複 start
+      proc: null,       // 每個 dialog 一個 useProcessTimer 實例
+
+      _closing: false,  // ESC/外點防重入
+      closeReason: null // 關閉原因（'esc' | 'outside' | 'normal' ...）
     });
 
     dialogs.value.push(dlg);
@@ -2284,8 +2432,44 @@ const toggleExpand = async (item) => {
     await dlg.proc.startProcess(material_id, process_type, user_id);
     console.log("Process ID:", dlg.proc.processId);
     currentProcessId.value = dlg.proc.processId;
+
+    // 若為全新工單就強制改成暫停
+    //await enforceStartPausedIfNew(dlg);
+    /*
+    // 偵測新工單、且正在跑 → 立刻停住並回寫成暫停。
+    // === 新增, begin：對「全新工單(00:00:00)」進場強制顯示「開始」 ===
+    await nextTick(); // 先等 TimerDisplay 掛好
+
+    setTimeout(async () => {
+      const ms =
+        dlg?.timerRef?.getElapsedMs?.() ??
+        dlg?.proc?.elapsedMs?.value ??
+        0;
+
+      const running = dlg?.proc?.isPaused?.value === false;
+
+      // 只有「毫秒 = 0」且「目前正在跑」才處理；其他全部不動
+      if (ms === 0 && running) {
+        // 1) 視覺先停住（畫面顯示「開始」）
+        dlg?.timerRef?.pause?.();
+        if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
+
+        // 2) 回寫到後端（把 is_paused=true，同步成真正暫停）
+        try {
+          await dlg?.proc?.updateProcess?.(); // 你現有的 API 會帶 is_paused=true
+        } catch (e) {
+          console.warn('force-start-paused (new order) → updateProcess failed:', e);
+        }
+      }
+    }, 0);
+    // === 新增, end：
+    */
   } else {
+    dlg._closing = false;       // 重置關閉旗標
+    dlg.closeReason = null;     // 重置關閉原因
+
     dlg.dialogVisible = true; // 只要打開就好
+
     await nextTick();
     // 可選：再同步一次（例如換人接手或後端狀態變了）
     // await dlg.proc.startProcess(material_id, process_type, user_id);
@@ -2397,13 +2581,13 @@ const updateItem2 = async (item) => {
   await updateMaterial(payload);
   item.delivery_qty = deliveryQty
 
-    payload = {
-      material_id: item.id,
-      seq: 1,
-      record_name1: 'process_work_time_qty',
-      record_data1: deliveryQty,
-    };
-    await updateProcessDataByMaterialID(payload);
+  payload = {
+    material_id: item.id,
+    seq: 1,
+    record_name1: 'process_work_time_qty',
+    record_data1: deliveryQty,
+  };
+  await updateProcessDataByMaterialID(payload);
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
 
@@ -2494,7 +2678,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   }
   // end block檢查是否缺料
 
-  // 紀錄已經按了確定鍵的狀態
+  // 紀錄前端已經按了確定鍵的狀態
   payload = {
     //order_num: my_material_orderNum,
     id: editedRecord.value.id,
@@ -2503,6 +2687,18 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   };
   await updateMaterial(payload);
   editedRecord.value.isTakeOk = true;
+
+  // 紀錄前端備料已完成
+  payload = {
+    //order_num: my_material_orderNum,
+    id: editedRecord.value.id,
+    record_name: 'hasStarted',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.hasStarted = false;
+
+  await nextTick();
 
   payload = {
     //order_num: my_material_orderNum,
@@ -2544,7 +2740,8 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   };
   await updateProcessData(payload);
 
-  await listMaterials();    //2025-02-07 mark this line
+  //await listMaterials();    //2025-02-07 mark this line
+  await fetchMaterials();
 
   if (!take_out) {                     // 該筆訂單檢料完成且缺料
     payload = {
@@ -2913,7 +3110,9 @@ const readAllExcelFun = async () => {
     if (excel_file_data.status) {
       //fileCount.value = 0;
       await deleteAssemblesWithNegativeGoodQty();
-      listMaterials();
+
+      //listMaterials();
+      await fetchMaterials();
 
       // 自動 focus, 2025-06-03
       if (barcodeInput.value) {
@@ -2947,24 +3146,37 @@ const updateModifyMaterialAndBomsFun = async () => {
 
 const modifyExcelFilesFun = async () => {
   console.log("modifyExcelFilesFun()...");
-
+  console.log("id:",selectedId.value);
   let payload = {
-    id: selectedId.value,
-    material_id: selectedOrderNum.value,
+    id: selectedId.value,                   // material table id
+    //material_id: selectedOrderNum.value,    //工單編號
   };
 
   try {
     const modify_result = await modifyExcelFiles(payload);
 
     if (modify_result.status) {
-      modify_boms.value = [...modify_result.modifyBom];
-      modify_file_name.value = modify_result.modifyFileName;
-      //console.log("modify_file_name:", modify_file_name.value);
+      console.log("modify_result.status:", modify_result.status);
+      modify_boms.value = modify_result.bom;
+      modify_file_name.value = modify_result.processedFiles;
+      console.log("modify_boms:", modify_boms.value);
+      console.log("modify_file_name:", modify_file_name.value);
+      console.log("results:", modify_result.results);
+      console.log("message:", modify_result.message);
 
       editDialogBtnDisable.value = false;
+
+      // 重新抓清單
+      await listMaterials();
+
+      // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
+      await nextTick();
+
+      showSnackbar(modify_result.message, 'green darken-1');
     } else {
       showSnackbar(modify_result.message, 'red accent-2');
     }
+
   } catch (error) {
     console.error("Error during execution:", error);
     showSnackbar("An error occurred.", 'red accent-2');

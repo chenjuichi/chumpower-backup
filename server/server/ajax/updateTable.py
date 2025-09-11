@@ -379,17 +379,18 @@ def update_modify_material_and_Boms():
   _qty = data.get("qty")
   _fileName = data.get("file_name")
   _bom_data = data.get("bom_data", [])
-  print("bom_data:", _bom_data)
+  #print("bom_data:", _bom_data)
 
   return_value = True
 
-  s = Session()
 
   update_data = {}
   if _date is not None:
       update_data["material_delivery_date"] = _date
   if _qty is not None:
       update_data["material_qty"] = _qty
+
+  s = Session()
 
   if update_data:
     rows_updated = s.query(Material).filter(Material.id == _id).update(update_data)

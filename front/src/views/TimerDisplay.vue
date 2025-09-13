@@ -8,7 +8,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted, defineComponent, defineExpose, defineProps, defineEmits } from "vue";
+import { ref, watch, onUnmounted, defineComponent, defineProps, defineEmits } from "vue";
 
 //=== component name ==
 defineComponent({

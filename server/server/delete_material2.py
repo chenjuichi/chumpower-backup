@@ -10,8 +10,9 @@ Usage:
   python delete_material.py 123 --force           # skip confirmation
 
 Notes:
-- Place this script in the same folder as your `tables.py` (or ensure it's on PYTHONPATH).
-- Deletion order respects foreign keys (children first, then parent).
+- Place this script in the same folder as your `tables.py`, or under `server/` while `tables.py` is in `server/database/`.
+- This version uses a READ session for inspection and a fresh WRITE session for deletion, to avoid
+  "A transaction is already begun on this Session." in SQLAlchemy 1.4/2.0.
 """
 
 import sys
@@ -27,24 +28,55 @@ for _p in (THIS_DIR, DB_DIR):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.exc import SQLAlchemyError
 
-# Import models & session from your project
+# Import models & session from your project, with fallbacks
 try:
+    # 1) simple import (tables.py on sys.path)
     from database.tables import (
         Session,
         Material,
         Bom,
         Assemble,
-        Product,
         Process,
-        association_material_abnormal,
     )
-except Exception as e:
-    print("❌ 無法匯入 tables.py，請確認此腳本與 tables.py 位於同一資料夾，或調整 PYTHONPATH。")
-    print(f"Import error: {e}")
-    sys.exit(2)
+    try:
+        from database.tables import Product  # optional
+    except Exception:
+        Product = None
+    try:
+        from database.tables import association_material_abnormal  # optional m2m
+    except Exception:
+        association_material_abnormal = None
+
+except Exception:
+    try:
+        # 2) package-style import: database/tables.py
+        from database.tables import (
+            Session,
+            Material,
+            Bom,
+            Assemble,
+            Process,
+        )
+        try:
+            from database.tables import Product  # optional
+        except Exception:
+            Product = None
+        try:
+            from database.tables import association_material_abnormal  # optional
+        except Exception:
+            association_material_abnormal = None
+    except Exception as e:
+        print("❌ 無法匯入 tables.py，請確認路徑：", file=sys.stderr)
+        print("   - 期待路徑：<project>/server/database/tables.py", file=sys.stderr)
+        print("   - 嘗試過的匯入：'tables' 與 'database.tables'", file=sys.stderr)
+        print("   - 當前 sys.path：", file=sys.stderr)
+        for i, pth in enumerate(sys.path):
+            print(f"     {i}: {pth}", file=sys.stderr)
+        print(f"Import error: {e}", file=sys.stderr)
+        sys.exit(2)
 
 
 def find_descendant_material_ids(session, root_id: int) -> List[int]:
@@ -68,34 +100,37 @@ def find_descendant_material_ids(session, root_id: int) -> List[int]:
     return to_visit
 
 
+def _count_table(session, table, *criterion):
+    return session.execute(
+        select(func.count()).select_from(table).where(*criterion)
+    ).scalar_one()
+
+
 def summarize_related_counts(session, material_id: int) -> dict:
-    """統計關聯資料數量（僅主線：Bom / Assemble / Product / Process / M2M 連結）。"""
-    bom_cnt = session.execute(select(Bom.id).where(Bom.material_id == material_id)).rowcount
-    # rowcount is None for SELECT on many DBs; fallback by fetching all ids
-    if bom_cnt is None:
-        bom_cnt = len(session.execute(select(Bom.id).where(Bom.material_id == material_id)).all())
+    """統計關聯資料數量（BOM / Assemble / Product / Process / M2M / copies）。"""
+    bom_cnt = _count_table(session, Bom,        Bom.material_id == material_id)
+    asm_cnt = _count_table(session, Assemble,   Assemble.material_id == material_id)
+    proc_cnt = _count_table(session, Process,   Process.material_id == material_id)
 
-    asm_cnt = session.execute(select(Assemble.id).where(Assemble.material_id == material_id)).rowcount
-    if asm_cnt is None:
-        asm_cnt = len(session.execute(select(Assemble.id).where(Assemble.material_id == material_id)).all())
+    prod_cnt = 0
+    try:
+        if Product is not None:
+            prod_cnt = _count_table(session, Product, Product.material_id == material_id)
+    except NameError:
+        prod_cnt = 0
 
-    prod_cnt = session.execute(select(Product.id).where(Product.material_id == material_id)).rowcount
-    if prod_cnt is None:
-        prod_cnt = len(session.execute(select(Product.id).where(Product.material_id == material_id)).all())
+    m2m_cnt = 0
+    try:
+        if association_material_abnormal is not None:
+            m2m_cnt = session.execute(
+                select(func.count())
+                .select_from(association_material_abnormal)
+                .where(association_material_abnormal.c.material_id == material_id)
+            ).scalar_one()
+    except NameError:
+        m2m_cnt = 0
 
-    proc_cnt = session.execute(select(Process.id).where(Process.material_id == material_id)).rowcount
-    if proc_cnt is None:
-        proc_cnt = len(session.execute(select(Process.id).where(Process.material_id == material_id)).all())
-
-    m2m_cnt = len(session.execute(
-        select(association_material_abnormal.c.material_id).where(
-            association_material_abnormal.c.material_id == material_id
-        )
-    ).all())
-
-    copies_cnt = len(session.execute(
-        select(Material.id).where(Material.is_copied_from_id == material_id)
-    ).scalars().all())
+    copies_cnt = _count_table(session, Material, Material.is_copied_from_id == material_id)
 
     return {
         "bom": bom_cnt,
@@ -113,14 +148,16 @@ def delete_one_material(session, material_id: int, *, set_children_copies_null: 
     若 set_children_copies_null=True，會把其他 Material 對此筆的 is_copied_from_id 設為 NULL（不刪它們）。
     """
     # 1) 先刪多對多連結
-    session.execute(
-        delete(association_material_abnormal).where(
-            association_material_abnormal.c.material_id == material_id
+    if association_material_abnormal is not None:
+        session.execute(
+            delete(association_material_abnormal).where(
+                association_material_abnormal.c.material_id == material_id
+            )
         )
-    )
     # 2) 刪子表
     session.execute(delete(Process).where(Process.material_id == material_id))
-    session.execute(delete(Product).where(Product.material_id == material_id))
+    if Product is not None:
+        session.execute(delete(Product).where(Product.material_id == material_id))
     session.execute(delete(Assemble).where(Assemble.material_id == material_id))
     session.execute(delete(Bom).where(Bom.material_id == material_id))
 
@@ -156,62 +193,78 @@ def main():
     )
     args = parser.parse_args()
 
-    session = Session()
-
+    # ---- Read-only session for inspection / confirmation ----
+    s_read = Session()
     try:
-        mat = session.get(Material, args.id)
+        mat = s_read.get(Material, args.id)
         if not mat:
             print(f"⚠️ 找不到 Material.id={args.id}")
-            sys.exit(1)
+            return 1
 
-        # 概況
         print(f"將處理 Material.id={args.id}, order_num={getattr(mat, 'order_num', None)}, material_num={getattr(mat, 'material_num', None)}")
-        counts = summarize_related_counts(session, args.id)
+        counts = summarize_related_counts(s_read, args.id)
         print(f"- 關聯數量: BOM={counts['bom']}, Assemble={counts['assemble']}, Product={counts['product']}, Process={counts['process']}, M2M_links={counts['abnormal_links']}, Copies(out)={counts['copies']}")
 
-        # 是否連帶刪掉複製出去的同宗資料
-        delete_id_list = [args.id]
         if args.delete_copies:
-            delete_id_list = find_descendant_material_ids(session, args.id)
-            # 由葉→根刪除，避免外鍵依賴
-            delete_id_list = list(dict.fromkeys(delete_id_list))  # 去重但保順序
-            print(f"- 將遞迴刪除以下 Material.id（由葉到根）: {delete_id_list}")
+            print("- 將遞迴刪除所有 'copied_to' 後代")
         else:
             print("- 不刪除 'copied_to' 同宗資料（若存在），會把它們的 is_copied_from_id 設為 NULL")
 
         if args.dry_run:
-            print("✅ Dry-run 模式：不進行任何刪除。")
-            session.rollback()
-            sys.exit(0)
-
-        if not args.force:
-            ans = input("確定要刪除嗎？(yes/NO): ").strip().lower()
-            if ans not in ("y", "yes"):
-                print("已取消。")
-                session.rollback()
-                sys.exit(0)
-
-        # 真正刪除
-        try:
-            # 在一個交易中處理所有目標 id
-            with session.begin():
-                if args.delete_copies:
-                    # 先刪葉子，再刪根（由列表尾端開始）
-                    for mid in reversed(delete_id_list):
-                        delete_one_material(session, mid, set_children_copies_null=False)
-                else:
-                    # 僅刪指定 id，並把其他 child copies 設為 NULL
-                    delete_one_material(session, args.id, set_children_copies_null=True)
-
-            print("🗑️ 刪除完成。")
-        except SQLAlchemyError as se:
-            session.rollback()
-            print(f"❌ 刪除失敗（已回滾）: {se}")
-            sys.exit(2)
-
+            ids = find_descendant_material_ids(s_read, args.id) if args.delete_copies else [args.id]
+            print("✅ Dry-run 模式：不進行任何刪除。將受影響的 Material.id：", list(reversed(ids)) if args.delete_copies else ids)
+            return 0
     finally:
-        session.close()
+        s_read.close()
+
+    if not args.force:
+        ans = input("確定要刪除嗎？(yes/NO): ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("已取消。")
+            return 0
+
+    # ---- Write session in a single transaction (fresh session) ----
+    try:
+        if args.delete_copies:
+            '''
+            with Session.begin() as s:
+                ids = find_descendant_material_ids(s, args.id)
+                for mid in reversed(ids):  # 由葉 → 根
+                    delete_one_material(s, mid, set_children_copies_null=False)
+            print("🗑️ 刪除完成。Deleted ids:", list(reversed(ids)))
+            '''
+
+            # 遞迴刪 copies 的版本
+            try:
+                with Session() as s:
+                    with s.begin():
+                        ids = find_descendant_material_ids(s, args.id)
+                        for mid in reversed(ids):  # 由葉 → 根
+                            delete_one_material(s, mid, set_children_copies_null=False)
+                print("🗑️ 刪除完成。Deleted ids:", list(reversed(ids)))
+            except SQLAlchemyError as se:
+                print(f"❌ 刪除失敗（已回滾）: {se}")
+
+        else:
+            '''
+            with Session.begin() as s:
+                delete_one_material(s, args.id, set_children_copies_null=True)
+            print("🗑️ 刪除完成。Deleted ids:", [args.id])
+            '''
+
+            try:
+                with Session() as s:
+                    with s.begin():
+                        delete_one_material(s, args.id, set_children_copies_null=True)
+                print("🗑️ 刪除完成。Deleted ids:", [args.id])
+            except SQLAlchemyError as se:
+                print(f"❌ 刪除失敗（已回滾）: {se}")
+
+        return 0
+    except SQLAlchemyError as se:
+        print(f"❌ 刪除失敗（已回滾）: {se}")
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

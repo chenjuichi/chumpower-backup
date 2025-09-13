@@ -84,9 +84,9 @@
           <!-- Bom 編輯對話視窗-->
           <div class="pa-4 text-center">
             <v-dialog v-model="editDialog" max-width="900">
-              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '600px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
+              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '800px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  編輯訂單
+                  工單維護編輯
                   <v-fade-transition mode="out-in">
                     <v-btn
                       style="position: relative; right: -550px;"
@@ -159,7 +159,23 @@
                     </v-col>
                   </v-row>
                   <v-row>
-                    <v-col cols="12" md="2" style="margin-top: 25px;">
+                    <v-col cols="12" md="2" style="padding-top:0px; padding-bottom:0px; margin-top: -15px;">
+                      <v-btn
+                        class="warnning_btn"
+                        variant="outlined"
+
+                        style="width:100px; min-width:100px; font-weight:700;"
+                        @click="removeMaterialsAndRelationTableFun"
+                      >
+                        <v-icon left color="red">mdi-file-remove</v-icon>
+                        <span style="color: #0D47A1;">刪除工單</span>
+                      </v-btn>
+
+                    </v-col>
+                    <v-col cols="12" md="10"></v-col>
+                  </v-row>
+                  <v-row>
+                    <v-col cols="12" md="2" style="margin-top: 15px;">
                       <v-btn
                         color="primary"
                         variant="outlined"
@@ -167,7 +183,7 @@
                         @click="modifyExcelFilesFun"
                       >
                         <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                        <span style="color: #0D47A1;">匯入BOM</span>
+                        <span style="color: #0D47A1;">匯入工單</span>
                       </v-btn>
                     </v-col>
                     <v-col cols="12" md="10">
@@ -333,19 +349,23 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-          <div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">
+          <!--<div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">-->
             <v-dialog
+              v-for="dlg in dialogs"
+              :key="dlg.material_id"
               v-model="dlg.dialogVisible"
               max-width="980px"
               @keydown.esc="handleEscClose(dlg)"
-              @click:outside="handleOutsideClick(dlg)">
-
+              @click:outside="handleOutsideClick(dlg)"
+              :eager="true"
+              >
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   備料資訊
                   <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
                   <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
                   <TimerDisplay
+                    :key="dlg.material_id"
                     :ref="setTimerRef(dlg)"
                     v-model:isPaused="dlg.proc.isPaused"
                     :show="true"
@@ -420,7 +440,7 @@
                 </v-card-text>
               </v-card>
             </v-dialog>
-          </div>
+          <!--</div>-->
 
           <!-- 備料區檢料異常備註 -->
           <div class="pa-4 text-center">
@@ -444,10 +464,12 @@
                       <v-col cols="7" class="pa-0">
                         <v-autocomplete
                           v-model="abnormalDialog_autocomplete_message"
+                          v-model:search="abnormalDialog_search"
                           :items="itemsWithIcons"
                           item-title="text"
-                          item-value="text"
+                          item-value="id"
                           density="compact"
+                          @update:menu="open => { if (open) abnormalDialog_search = '' }"
                         >
                           <template #item="{ item, props }">
                             <div v-bind="props" class="d-flex align-center px-4 py-2">
@@ -710,6 +732,7 @@ const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataBy
 const updateProcessDataByMaterialID = apiOperation('post', '/updateProcessDataByMaterialID');
 const updateBomXorReceive = apiOperation('post', '/updateBomXorReceive');
 const updateSetting = apiOperation('post', '/updateSetting');
+const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 
 //=== component name ==
 defineComponent({ name: 'MaterialListForAssem' });
@@ -875,18 +898,19 @@ const userFacets = ref(['Facet 1', 'Facet 4']);
 const test_count = ref(0);
 
 const abnormalDialogBtnDisable = ref(true);
-const abnormalDialog = ref(false);                    // dialog顯示切換開關
-const abnormalDialog_order_num = ref('');             // 訂單編號
-const abnormalDialog_autocomplete_message = ref('');  // v-autocomplete component所選擇的字串
-const abnormalDialog_message = ref('');               // dialog顯示訊息
+const abnormalDialog = ref(false);                      // dialog顯示切換開關
+const abnormalDialog_order_num = ref('');               // 訂單編號
+const abnormalDialog_autocomplete_message = ref(null);  // v-autocomplete component所選擇的字串
+const abnormalDialog_search = ref('')                   // 控制搜尋字
+const abnormalDialog_message = ref('');                 // dialog顯示訊息
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_record = ref(null);              // 點擊鈴鐺icon的目前紀錄
+const abnormalDialog_record = ref(null);                // 點擊鈴鐺icon的目前紀錄
 
 const itemsWithIcons = [
-  { text: '臨時領料', icon: 'mdi-clock-outline' },
-  { text: '堆高機搬運物料', icon: 'mdi-forklift' },
-  { text: '多筆備料', icon: 'mdi-clock-check'},
+  { id:1, text: '臨時領料', icon: 'mdi-clock-outline' },
+  { id:2, text: '堆高機搬運物料', icon: 'mdi-forklift' },
+  { id:3, text: '多筆備料', icon: 'mdi-clock-check'},
 ]
 
 //=== watch ===
@@ -1063,9 +1087,9 @@ watch(
             // 🛑 一般關閉：暫停 + 回寫
             dlg?.timerRef?.pause?.(); // 視覺上暫停
             if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
-            if (dlg.proc.updateProcess) await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
-            if (dlg.proc.closeProcess)  await dlg.proc.closeProcess();
-
+            if (dlg.proc.updateProcess) await dlg.proc.updateProcess?.();   // 把目前 elapsed + is_paused 回後端
+            if (dlg.proc.closeProcess)  await dlg.proc.closeProcess?.();
+            console.log("dialog , i:", i)
             dialogs.value.splice(i, 1);
           }
         } catch (e) {
@@ -2460,8 +2484,8 @@ const toggleExpand = async (item) => {
     dlg.dialogVisible = true; // 只要打開就好
 
     await nextTick();
-    // 可選：再同步一次（例如換人接手或後端狀態變了）
-    // await dlg.proc.startProcess(material_id, process_type, user_id);
+    // 再同步一次（例如換人接手或後端狀態變了）
+    await dlg.proc.startProcess(material_id, process_type, user_id);
   }
 };
 
@@ -2502,7 +2526,8 @@ const addAbnormalInMaterial = (item) => {
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
-  abnormalDialog_autocomplete_message.value = '';
+  abnormalDialog_autocomplete_message.value = null;
+  abnormalDialog_search.value = ''                   // 清掉舊搜尋字
   abnormalDialog_display.value = item.Incoming0_Abnormal;
   abnormalDialog.value = true;
   abnormalDialog_message.value = item.Incoming0_Abnormal_message;
@@ -2511,9 +2536,11 @@ const addAbnormalInMaterial = (item) => {
 const createAbnormalFun = async () => {
   console.log("createAbnormalFun()...");
 
-  if (abnormalDialog_autocomplete_message.value != '') {
-    let temp_str = '(' + abnormalDialog_autocomplete_message.value + ')'
-    abnormalDialog_message.value = '備料區檢料異常! '+ temp_str;
+  if (abnormalDialog_autocomplete_message.value !== null) {
+    const selected = itemsWithIcons.find(x => x.id === abnormalDialog_autocomplete_message.value)
+    const temp_str = `(${selected?.text ?? ''})`
+    //let temp_str = '(' + abnormalDialog_autocomplete_message.value + ')'
+    abnormalDialog_message.value = `備料區檢料異常! ${temp_str}`;
     let payload = {}
     try {
       console.log("abnormalDialog_record.order_num:", abnormalDialog_record.value.order_num)
@@ -2530,7 +2557,8 @@ const createAbnormalFun = async () => {
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials.value.findIndex(
-        (kk) => kk.id === item.id
+        //(kk) => kk.id === item.id
+        (kk) => kk.id === abnormalDialog_record.value.id
       );
 
       if (targetIndex !== -1) {
@@ -3133,6 +3161,23 @@ const updateModifyMaterialAndBomsFun = async () => {
   editDialog.value = false
 }
 
+const removeMaterialsAndRelationTableFun = async () => {
+  console.log("removeMaterialsAndRelationTableFun()...");
+
+  console.log("id:",selectedId.value);
+  let payload = {
+    id: selectedId.value,                   // material table id
+  };
+
+  try {
+    const status = await removeMaterialsAndRelationTable(payload);
+    console.log("status:", status)
+  } catch (error) {
+    console.error("Error during execution:", error);
+    showSnackbar("An error occurred.", 'red accent-2');
+  }
+}
+
 const modifyExcelFilesFun = async () => {
   console.log("modifyExcelFilesFun()...");
   console.log("id:",selectedId.value);
@@ -3694,6 +3739,10 @@ p {
   font-size: 36px;
   position: relative;
   left: 15px;
+}
+
+.warnning_btn {
+  color: red;
 }
 
 .control-panel {

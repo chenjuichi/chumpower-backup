@@ -15,7 +15,6 @@ from ajax.getTable import getTable
 from ajax.createTable import createTable
 from ajax.updateTable import updateTable
 from ajax.deleteTable import deleteTable
-#from ajax.excelModifyTable import excelModifyTable
 from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
 from ajax.hardware import hardware

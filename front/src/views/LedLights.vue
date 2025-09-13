@@ -44,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, defineProps, computed, onBeforeUnmount, watch, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, watch, onMounted } from 'vue'
 
 const props = defineProps({
   activeColor: String,

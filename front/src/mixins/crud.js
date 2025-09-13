@@ -274,7 +274,7 @@ export const apiOperation = (operation, path, payload) => {
             return res.data.status;
           }
 
-          if (path == '/modifyExcelFiles') {
+          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable') {
             return res.data;
           }
 

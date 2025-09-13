@@ -117,8 +117,6 @@ def fmt_hhmmss(seconds: int):
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-
-
 def seconds_to_hms_str(seconds: int) -> str:
     """將秒數轉換成 hh:mm:ss"""
     h = seconds // 3600
@@ -600,6 +598,8 @@ def start_process():
 
     material_record = s.query(Material).filter_by(id=material_id).first()
 
+
+    '''
     # 找到最後一筆紀錄
     log = (s.query(Process)
            .filter_by(material_id=material_id,
@@ -632,19 +632,81 @@ def start_process():
         s.commit()  # 需要 commit 以拿到 id
     else:
         print("step2...")
-        '''
-        # 🚩 延續紀錄
-        if log.is_pause :
-            log.is_pause = False
-            # 可以記錄 resume_time (若有欄位)
-        # 若已在計時中就不動
-        '''
+
+        ## 🚩 延續紀錄
+        #if log.is_pause :
+        #    log.is_pause = False
+        #    # 可以記錄 resume_time (若有欄位)
+        ## 若已在計時中就不動
+
         # 不做自動恢復/暫停；只在「暫停但未記起點」時補上，方便之後恢復時計算段長
         if log.is_pause and log.pause_started_at is None:
             log.pause_started_at = datetime.utcnow()
             s.commit()
+    '''
+
+    # 1) 先找「同工單(同製程)、尚未結束」的最後一筆（不帶 user 條件）
+    log = (
+        s.query(Process)
+        .filter_by(material_id=material_id, process_type=process_type)
+        .filter(Process.end_time.is_(None))
+        .order_by(Process.id.desc())
+        .first()
+    )
+
+    # 2) 若已存在未結束流程，但擁有者不是當前 user，維持「同一筆必須同一個人」規則 → 不處理
+    if log and log.user_id != user_id:
+        # 不要改動原資料，直接告知前端目前由誰計時中
+        return jsonify({
+            "success": False,
+            "message": "此工單的計時正在由其他人進行中，無法接手。",
+        }), 409
+
+    # 3) 若存在未結束流程且擁有者就是當前 user → 直接回傳該筆（不自動切換暫停/恢復狀態）
+    if log and log.user_id == user_id:
+        return jsonify({
+            "success": True,
+            "process_id": log.id,
+            "begin_time": log.begin_time,
+            "elapsed_time": int(log.elapsedActive_time or 0),
+            "is_paused": bool(log.is_pause),
+            "pause_time": int(log.pause_time or 0),
+
+            "has_started": bool(getattr(log, "has_started", True)),
+
+            "isOpen": getattr(material_record, "isOpen", None) if material_record else None,
+            "hasStarted": getattr(material_record, "hasStarted", None) if material_record else None,
+            "startStatus": getattr(material_record, "startStatus", None) if material_record else None,
+            "isOpenEmpId": getattr(material_record, "isOpenEmpId", None) if material_record else None,
+        })
+
+    # 4) 沒有未結束流程 → 新建一筆（屬於當前 user）
+    new_log = Process(
+        material_id=material_id,
+        user_id=user_id,
+        process_type=process_type,
+        begin_time=None,                # 讓前端按「開始」時再決定
+        end_time=None,
+        elapsedActive_time=0,
+        is_pause=True,                  # 進入後顯示「開始」
+        pause_time=0,
+
+        has_started=False,              # 尚未按開始
+        # pause_started_at=None,
+    )
+    s.add(new_log)
+
+    # 同步 Material 狀態（若你前端有依賴這些欄位，再保留；沒有就拿掉下面三行）
+    if material_record:
+        material_record.isOpen = True
+        material_record.isOpenEmpId = user_id
+        # material_record.hasStarted = False            # 有需要再打開
+        # material_record.startStatus = "not_started"  # 有需要再打開
+
+    s.commit()
 
     return jsonify({
+        "success": True,
         "process_id": log.id,
         "begin_time": log.begin_time,
         "elapsed_time": log.elapsedActive_time or 0,
@@ -675,26 +737,35 @@ def update_process():
     #elapsed_ms   = data.get("elapsed_ms")    # 如果你想直接帶毫秒也可以（可選）
     is_paused_in = data.get("is_paused")      #是否暫停
 
+    s = Session()
+
+    log = s.query(Process).get(process_id)
+    if not log:
+        return jsonify(success=False, message="process not found"), 404
+
     try:
         if elapsed_time is not None:
+            new_secs = int(elapsed_time)
             elapsed_sec = max(int(elapsed_time), 0)
+
+            cur_secs = int(log.elapsedActive_time or 0)
+            if new_secs < cur_secs:
+                # 不回退；直接採用目前資料庫的值
+                new_secs = cur_secs
+            log.elapsedActive_time = new_secs
+
         else:
             elapsed_sec = None
     except Exception:
         return jsonify(success=False, message="invalid elapsed_time"), 400
 
-    s = Session()
 
-    log = s.query(Process).get(process_id)
-
-    if not log:
-        return jsonify(success=False, message="process not found"), 404
-
+    # 已結束(已經按確定鍵), 不可更新
     if log.end_time is not None:
         print("step5...")
         print("log.end_time:", log.end_time)
     #    # 已經關閉就不再更新
-    #    return jsonify(success=False, message="process already closed"), 400
+        return jsonify(success=False, message="process already closed"), 400
 
     # ✅ 只更新「有效計時」，不碰 pause_time
     if elapsed_sec is not None:
@@ -715,6 +786,7 @@ def update_process():
         s.commit()
 
     # 可選：同步 is_paused（不影響 pause_time 的累加，累加只在 toggle/close 做）
+    # 2) 暫停/繼續狀態
     if is_paused_in is not None:
         log.is_pause = bool(is_paused_in)
 
@@ -839,10 +911,15 @@ def close_process():
     data = request.json
     process_id = data["process_id"]
     elapsed_time  = data.get("elapsed_time")
+
     print("process_id:", process_id)
+
     s = Session()
 
     log = s.query(Process).get(process_id)
+    if not log:
+      return jsonify(success=False, message="process not found"), 404
+
     if log and log.end_time is None:
         now = datetime.now()
 
@@ -865,11 +942,18 @@ def close_process():
                 log.pause_started_at = None
 
         # 2) 把『有效計時秒數』覆蓋進去（獨立統計，不與 pause_time 相減）
+        # 做單向遞增校正
         if elapsed_time is not None:
             try:
+                last_secs = int(elapsed_time)
                 log.elapsedActive_time = max(int(elapsed_time), 0)
             except Exception:
                 pass  # 忽略格式錯誤，保留原值
+
+            cur_secs = int(log.elapsedActive_time or 0)
+            if last_secs < cur_secs:
+                last_secs = cur_secs
+            log.elapsedActive_time = last_secs
 
         # 3) 可選：產生 HH:MM:SS 文字（若你原本就有）
         try:

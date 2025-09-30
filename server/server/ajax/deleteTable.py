@@ -54,7 +54,8 @@ def remove_user():
     })
 
 
-@deleteTable.route('/removeMaterialsAndRelationTable', methods=['POST'], endpoint='removeMaterialsAndRelationTable')
+#@deleteTable.route('/removeMaterialsAndRelationTable', methods=['POST'], endpoint='removeMaterialsAndRelationTable')
+@deleteTable.route('/removeMaterialsAndRelationTable', methods=['POST'])
 def remove_materials_and_relation_table():
     print(">>> INLINE /removeMaterialsAndRelationTable")
 

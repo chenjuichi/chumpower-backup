@@ -1010,6 +1010,7 @@ def export_to_excel_for_error():
     })
 
 
+"""
 @excelTable.route("/exportToExcelForAssembleInformation", methods=['POST'])
 def export_to_excel_for_assemble_information():
   print("exportToExcelForAssembleInformation....")
@@ -1152,6 +1153,162 @@ def export_to_excel_for_assemble_information():
     'message': current_file,
     'file_name': file_name,
   })
+"""
+
+
+@excelTable.route("/exportToExcelForAssembleInformation", methods=['POST'])
+def export_to_excel_for_assemble_information():
+    import os
+    import datetime
+    from flask import jsonify, request
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+
+    print("hello, exportToExcelForAssembleInformation....")
+
+    request_data = request.get_json(force=True) or {}
+    _blocks = request_data.get('blocks', [])
+    _name = request_data.get('name', '')
+
+    now = datetime.datetime.now()
+    today = now.strftime('%Y-%m-%d-%H%M')
+    file_name = f'組裝區在製品生產資訊查詢_{today}.xlsx'
+    export_dir = r'C:\vue\chumpower\excel_export'
+    os.makedirs(export_dir, exist_ok=True)
+    current_file = os.path.join(export_dir, file_name)
+
+    code_to_name = {
+        1 : '備料',
+        19: '等待AGV(備料區)',
+        2:  'AGV運行(備料區->組裝區)',
+        20: 'AGV運行到組裝區',
+        21: '組裝',
+        22: '檢驗',
+        23: '雷射',
+        29: '等待AGV(組裝區)',
+        3:  'AGV運行(組裝區->成品區)',
+        30: 'AGV運行到成品區',
+        31: '成品入庫',
+        5:  '堆高機運行(備料區->組裝區)',
+        6:  '堆高機運行(組裝區->成品區)',
+    }
+
+    # === 1) 安全時間轉換：吃 str/datetime/date/None，回 datetime 或 None ===
+    def to_dt(val):
+        if not val:
+            return None
+        if isinstance(val, datetime.datetime):
+            return val
+        if isinstance(val, datetime.date):
+            return datetime.datetime.combine(val, datetime.time.min)
+        if isinstance(val, str):
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M"):
+                try:
+                    return datetime.datetime.strptime(val, fmt)
+                except ValueError:
+                    continue
+        return None
+
+    # === 2) 若舊檔存在，嘗試刪除；占用時回報請關閉 ===
+    if os.path.exists(current_file):
+        try:
+            os.remove(current_file)
+        except PermissionError:
+            return jsonify({"status": False, "message": "請關閉 Excel 檔案後重試", "file_name": ""}), 200
+
+    # === 3) 建簿/表頭 ===
+    wb = Workbook()
+    ws = wb.worksheets[0]
+    ws.title = '組裝區在製品生產資訊查詢-' + _name
+    ws.sheet_properties.tabColor = '7da797'
+
+    header = ['訂單編號', '說明', '交期', '訂單數量', '現況數量', '工序', '開始時間', '結束時間']
+    ws.append(header)
+    for idx, _ in enumerate(header, start=1):
+        cell = ws.cell(row=1, column=idx)
+        cell.font = Font(name='微軟正黑體', color='FF0000', bold=True)
+        cell.alignment = Alignment(horizontal='center')
+        ws.column_dimensions[cell.column_letter].width = 16
+
+    s = Session()
+    temp_file = current_file.replace(".xlsx", "_temp.xlsx")
+
+    try:
+        for obj in _blocks:
+            order_num = obj.get('order_num', '')
+            # 先寫 Material 主列
+            ws.append([
+                order_num,
+                obj.get('comment', ''),
+                obj.get('delivery_date', ''),
+                obj.get('req_qty', ''),
+                obj.get('delivery_qty', ''),
+                '', '', ''  # 讓出工序/開始/結束欄位
+            ])
+
+            material = s.query(Material).filter(Material.order_num == order_num).first()
+
+            # 取總量（可能 None）
+            work_qty = (material.total_delivery_qty if material and getattr(material, "total_delivery_qty", None) else 0)
+
+            processes = material._process if (material and getattr(material, "_process", None)) else []
+            for process in processes:
+                ptype = getattr(process, "process_type", None)
+                status = code_to_name.get(ptype, '空白')
+
+                # === 4) 員工資訊（可能沒有）===
+                emp_id = (getattr(process, "user_id", "") or "")
+                if emp_id:
+                    user = s.query(User).filter_by(emp_id=emp_id).first()
+                    emp_short = emp_id.lstrip("0") if isinstance(emp_id, str) else str(emp_id)
+                    if user and getattr(user, "emp_name", None):
+                        status = f"{status}({emp_short}{user.emp_name})"
+
+                # === 5) 安全時間解析 + 進行中處理 ===
+                start_dt = to_dt(getattr(process, "begin_time", None))
+                end_dt = to_dt(getattr(process, "end_time", None)) if ptype != 31 else None
+
+                # 進行中：end_dt 為 None → 你可以選：A 顯示空白（這版用空白），B 用 now 當暫止
+                effective_end = end_dt if end_dt is not None else (now if start_dt else None)
+
+                # 區段分鐘（不一定要寫入；給你未來算單件工時用）
+                period_minutes = None
+                if start_dt and effective_end:
+                    td = effective_end - start_dt
+                    if td.total_seconds() >= 0:
+                        period_minutes = int(td.total_seconds() // 60)
+
+                # === 6) 輸出到 Excel（時間欄位做安全格式化）===
+                def fmt(dt):
+                    return dt.strftime("%Y-%m-%d %H:%M:%S") if isinstance(dt, datetime.datetime) else ''
+
+                ws.append([
+                    '', '', '', '', '',
+                    status,
+                    fmt(start_dt),
+                    fmt(end_dt),   # 想顯示「目前時間」就改成 fmt(effective_end)
+                ])
+
+        # === 7) 先存暫存檔再原子替換 ===
+        wb.save(temp_file)
+        os.replace(temp_file, current_file)
+
+        print("file_name:", file_name)
+        return jsonify({'status': True, 'message': current_file, 'file_name': file_name}), 200
+
+    except Exception as e:
+        s.rollback()
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except Exception:
+            pass
+        print("export_to_excel_for_assemble_information EXCEPTION:", repr(e))
+        return jsonify({'status': False, 'message': f'匯出失敗: {e}', 'file_name': ''}), 500
+    finally:
+        s.close()
+
 
 
 # 上傳.xlsx工單檔案的 API
@@ -1615,8 +1772,8 @@ def modify_excel_files():
         modify_ops, files_to_move = _collect_bom_diffs_from_modify_dir(s, material)
         if not modify_ops:
           return jsonify({
-            "status": True,
-            "message": "沒有差異或沒有可處理的檔案",
+            "status": False,
+            "message": "沒有差異或沒有可處理的檔案(請上傳修正工單)",
             "results": {"added": [], "updated": [], "removed": []},
             "bom": [b.get_dict() for b in s.query(Bom).filter(Bom.material_id == material.id).all()],
             "processedFiles": []

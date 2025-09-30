@@ -87,8 +87,7 @@ export function useProcessTimer(getTimerRef) {
     // 1) 直接就是元件實例（有 resume/pause/getElapsedMs）
     // 2) 是 Vue ref 包一層（value 才是實例）
     const inst = (typeof t?.getElapsedMs === 'function' || typeof t?.resume === 'function')
-      ? t
-      : (t?.value ?? null);
+      ? t : (t?.value ?? null);
 
     return inst || null;
   }
@@ -98,13 +97,21 @@ export function useProcessTimer(getTimerRef) {
     elapsedMs.value = Number(ms) || 0;
   }
 
+	async function restoreProcess(mId, pType, uId, aId = 0) {
+		return startProcess(mId, pType, uId, aId, { restoreOnly: true })
+	}
+
   // 進入 dialog：後端建立/還原 + 同步 TimerDisplay
-  async function startProcess(mId, pType, uId, aId=0) {
+  async function startProcess(mId, pType, uId, aId = 0, opts = {}) {
     const assemble_id = Number(aId ?? 0);
+
+		const restoreOnly = opts?.restoreOnly === true
+
     const payload = {
       material_id: mId,
       process_type: pType,
       user_id: uId,
+			restore_only: restoreOnly,
     };
     if (assemble_id != 0)
       payload.assemble_id = assemble_id;
@@ -117,6 +124,12 @@ export function useProcessTimer(getTimerRef) {
     const res  = await dialog2StartProcess(payload);
     const data = res?.data ?? res;
 
+		if (!data?.success) {
+      // 還原模式下，沒資料就靜默結束；一般模式則回 false
+      if (restoreOnly) return { success: true, restored: false, reason: 'no-active' }
+      return { success: false, message: data?.message || 'startProcess failed' }
+    }
+
     // 後端回傳建議包含：process_id, elapsed_time(秒), is_paused
     processId.value = data?.process_id ?? processId.value;
 
@@ -128,16 +141,16 @@ export function useProcessTimer(getTimerRef) {
     //const paused = !!res.is_paused;
     const pauseTotal  = Number(data?.pause_time ?? 0);   // 總暫停秒數
 
-    pauseTime.value  = Number(data?.pause_time ?? 0);
-    pauseCount.value = Number(data?.pause_count ?? 0);
+    pauseTime.value  = Math.max(0, Number(data?.pause_time ?? 0));
+    pauseCount.value = Math.max(0, Number(data?.pause_count ?? 0));
 
     //elapsed_time.value = data?.elapsed_time ?? 0
-    elapsedMs.value = (data?.elapsed_time ?? 0) * 1000;
+    elapsedMs.value = Math.max(0, (data?.elapsed_time ?? 0) * 1000);
     isPaused.value  = data?.is_paused ?? true;
     userId.value    = data?.started_user_id ?? uId;
     hasStarted.value = data?.has_started ?? false;
 
-    // 先把狀態喂進子元件
+    // 同步到 TimerDisplay, 把狀態喂進子元件
     timer()?.setState(seconds, paused);
     isPaused.value = paused;
 
@@ -145,6 +158,7 @@ export function useProcessTimer(getTimerRef) {
     _frozenElapsedOnPause = isPaused.value ? (data?.elapsed_time ?? 0) : null;
 
     // 用明確的 resume()/pause() 讓 UI 與本地 ticker 對齊
+		/*
     if (paused) {
       timer()?.pause();
       _stopLocalTicker();
@@ -154,6 +168,24 @@ export function useProcessTimer(getTimerRef) {
       _startLocalTicker();
       _startAutoUpdate();
     }
+		*/
+		if (paused) {
+			timer()?.pause();
+			_stopLocalTicker();
+			_stopAutoUpdate();
+		} else {
+			if (restoreOnly) {
+				// 還原模式：只讓 UI 動起來，不主動觸發 begin_time 寫入
+				timer()?.resume?.();    // 讓畫面開始跑
+				_startLocalTicker();    // 啟動本地 setInterval
+				// _startAutoUpdate();  // 要不要回寫 elapsed_time 看需求；如要以極小改動就保留在下面一起啟動
+			} else {
+				// 一般開始：照舊，用 nudgeResume() 走既有「寫 begin_time」的路
+				await nudgeResume();
+				_startLocalTicker();
+			}
+			_startAutoUpdate();       // 保留原本的自動回寫（最小更動）；若想完全不寫，移到上面 else 區塊
+		}
 
     console.log("🔹 後端回傳 pause_time =", pauseTotal, "秒");
 
@@ -169,11 +201,14 @@ export function useProcessTimer(getTimerRef) {
     if (isPaused.value) {
       console.log("toggleTimer() status: 開始", isPaused.value)
 
-      _frozenElapsedOnPause = null;     // ← 清掉凍結值，恢復改用 live ms
+      //_frozenElapsedOnPause = null;     // ← 清掉凍結值，恢復改用 live ms
 
       // 開始
-      timer()?.resume();
-      isPaused.value = false;
+      //timer()?.resume();						// - 2025-09-23 modify
+      //isPaused.value = false;				// -
+      _frozenElapsedOnPause = null;		// +
+    	isPaused.value = false;					// +
+			timer()?.resume?.();							// +
 
       if (!for_vue3_has_started.value) {
         for_vue3_has_started.value = true;
@@ -223,8 +258,10 @@ export function useProcessTimer(getTimerRef) {
       console.log("toggleTimer() status: 暫停", isPaused.value)
 
       // 暫停
-      timer()?.pause();
-      isPaused.value = true;
+      //timer()?.pause();						// - 2025-09-23 modify
+      //isPaused.value = true;			// -
+			isPaused.value = true;				// +
+			timer()?.pause?.();							// +
 
       for_vue3_pause_or_start_status.value =false;
       console.log("toggle pause")
@@ -476,6 +513,7 @@ function dispose() {
     toggleTimer,
     updateProcess,
     closeProcess,
+		restoreProcess,
 
     updateActiveNoPause,
     updateKeepPaused,

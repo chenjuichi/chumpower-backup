@@ -2,26 +2,89 @@ import math
 import random
 import re
 from datetime import datetime, date
-#from sqlalchemy import distinct, func, and_, not_
+
 from sqlalchemy import distinct, func, case
 from flask import Blueprint, jsonify, request, current_app
-#from sqlalchemy.sql import func
-from database.tables import User, Material, Bom, Assemble, Permission, AbnormalCause, Product, Setting, Session
 
-from flask_cors import CORS
-
-from operator import itemgetter
+from database.tables import User, UserDelegate, Material, Bom, Assemble, Permission, AbnormalCause, Process, Product, Setting, Session
 
 from dotenv import dotenv_values
 
-import pymysql
-from sqlalchemy import exc
+from sqlalchemy import func, or_
 
 listTable = Blueprint('listTable', __name__)
 #
 #from log_util import setup_logger
 #logger = setup_logger(__name__)  # 每個模組用自己的名稱
 #
+
+# ------------------------------------------------------------------
+
+
+def map_pt(row):
+    """
+    3 -> 21, 2 -> 22, 1 -> 23，其餘預設 23。
+    支援欄位名：process_step_code / process_step / step_code
+    row 可為 dict 或 ORM 物件。
+    """
+    code = get_val(row, 'process_step_code')
+    if code is None:
+        code = get_val(row, 'process_step')
+    if code is None:
+        code = get_val(row, 'step_code')
+
+    try:
+        code = int(code) if code is not None else None
+    except Exception:
+        code = None
+
+    if code == 3:
+        return 21
+    if code == 2:
+        return 22
+    if code == 1:
+        return 23
+    return 23
+
+def get_val(row, key, default=None):
+    """同時支援 dict 與 ORM 物件取值。"""
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+def active_count_map_by_material_multi(session, material_ids, process_types=(21,22,23), include_paused=True):
+    """
+    回傳格式：
+    {
+      "21": { "101": 2, "103": 1 },
+      "22": { "101": 1 },
+      "23": {}
+    }
+    include_paused: True → 只要未結束就算（包含暫停）
+                     False → 只算「正在跑」（不含暫停）
+    """
+    if not material_ids:
+        return {str(pt): {} for pt in process_types}
+
+    q = (session.query(
+            Process.material_id,
+            Process.process_type,
+            func.count(Process.id))
+         .filter(Process.material_id.in_(material_ids))
+         .filter(Process.process_type.in_(list(process_types)))
+         .filter(Process.end_time.is_(None)))
+
+    # 不要把暫停算進去 → 再加 is_paused = false 的條件
+    if not include_paused:
+        q = q.filter(or_(Process.is_pause.is_(False), Process.is_pause == 0, Process.is_pause.is_(None)))
+
+    rows = q.group_by(Process.material_id, Process.process_type).all()
+
+    result = {str(pt): {} for pt in process_types}
+    for mid, ptype, cnt in rows:
+        result[str(int(ptype))][str(int(mid))] = int(cnt)
+    return result
+
 
 # ------------------------------------------------------------------
 
@@ -734,75 +797,29 @@ def list_materials_and_assembles():
     s = Session()
 
     _results = []
+    _assemble_active_users = []
     return_value = True
     code_to_name = {
       '106': '雷射',
       '109': '組裝',
       '110': '檢驗'
     }
-    # 2025-06-12, 改順序
+
     code_to_assembleStep = {    #組裝區工作順序, 3:最優先
       '109': 3,
-      #'106': 2,
-      #'110': 1,
       '106': 1,
       '110': 2,
     }
     #       0         1        2          3             4            5           6            7           8            9           10              11           12
     str2=['未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成']
 
-    #_objects = s.query(Material).with_for_update().all()  # 使用 with_for_update() 來加鎖
     _objects = s.query(Material).all()
+
+    material_ids_all = [m.id for m in _objects]
+    #print("material_ids_all:", material_ids_all)
 
     # 初始化一個暫存字典來存放每個 order_num 下的最大 process_step_code
     max_step_code_per_order = {}
-    '''
-    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
-    for material_record in _objects:
-      for assemble_record in material_record._assemble:
-        #code = assemble_record.work_num[1:]                # 取得字串中的代碼 (去掉字串中的第一個字元)
-        code = assemble_record.process_step_code
-        step_code = code_to_assembleStep.get(code, 0)      # 取得對應的 step code, 以設定工作順序
-
-        #order_num = material_record.order_num              # 訂單編號
-        order_num_id = material_record.id                  # 該筆訂單編號的table id
-
-        ## 設定或更新該 order_num 下的最大 step code
-        #if order_num not in max_step_code_per_order:
-        #    max_step_code_per_order[order_num] = step_code
-        #else:
-        #    max_step_code_per_order[order_num] = max(max_step_code_per_order[order_num], step_code)
-
-        # 設定或更新該 order_num_id 下的最大 step code
-        if order_num_id not in max_step_code_per_order:
-            max_step_code_per_order[order_num_id] = step_code
-        else:
-            max_step_code_per_order[order_num_id] = max(max_step_code_per_order[order_num_id], step_code)
-    '''
-
-    '''
-    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
-    for material_record in _objects:
-      for assemble_record in material_record._assemble:
-        if assemble_record.input_disable:
-           continue
-        #code = assemble_record.work_num[1:]  # 取得字串中的代碼 (去掉字串中的第一個字元)
-        step_code = assemble_record.process_step_code  # 直接使用資料中的 step_code
-
-        #order_num_id = material_record.id  # 該筆訂單編號的table id
-        order_num_id = assemble_record.id  # 該筆訂單編號的table id
-
-        print(f"Processing material id={order_num_id}, assemble work_num={assemble_record.work_num}, step_code={step_code}")
-
-        # 設定或更新該 order_num_id 下的最大 step code
-        if order_num_id not in max_step_code_per_order:
-          max_step_code_per_order[order_num_id] = step_code
-          print(f"Set initial max step_code for id={order_num_id}: {step_code}")
-        else:
-          current_max = max_step_code_per_order[order_num_id]
-          max_step_code_per_order[order_num_id] = max(current_max, step_code)
-          print(f"Updated max step_code for id={order_num_id}: {current_max} -> {max_step_code_per_order[order_num_id]}")
-    '''
 
     for material_record in _objects:
       for assemble_record in material_record._assemble:
@@ -816,128 +833,56 @@ def list_materials_and_assembles():
           current_max = max_step_code_per_order[order_num_id]
           max_step_code_per_order[order_num_id] = max(current_max, step_code)
 
-    print("Final max_step_code_per_order:", max_step_code_per_order)
-
-    # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
-    #_objects = s.query(Material).all()
     #print("start:")
     index = 0
-    for material_record in _objects:
+    for material_record in _objects:  # loop m_o
       if material_record.isAssembleStationShow:
-      #if not material_record.isShow or material_record.isAssembleStationShow:
         continue
-    #  assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
+
       num = int(material_record.show2_ok)
       temp_temp_show2_ok_str = str2[num]
-    #  #assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
-    #  # 針對組裝區目前途程完成數量, 處理 show2_ok 的顯示
-    #  if num == 5 or num == 7 or num == 9:
-    #    for assemble_record in assemble_records:
-    #  my_temp_temp_show2_ok_str = []
-    #  i = 0
-    #  while i < len(assemble_records):
-    #    assemble_record = assemble_records[i]
-    #    i +=1
-      #for assemble_record in material_record._assemble:
-    #    num = int(assemble_record.show2_ok)
-    #    print("num:", assemble_record.id, num)
-    #    temp_temp_show2_ok_str = str2[num]
-        #assemble_records = material_record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
-        # 針對組裝區目前途程完成數量, 處理 show2_ok 的顯示
-    #    if (num == 5 or num == 7 or num == 9) and assemble_record.total_ask_qty_end in [1, 2, 3]:
-
-
-    #      # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
-    #      if assemble_record.total_ask_qty_end in [1, 2, 3]:
-    #        completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
-    #        date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
-    #        date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
-    #        temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
-        #print("temp_show2_ok, temp_temp_show2_ok_str:", temp_show2_ok, temp_temp_show2_ok_str)
-    #    my_temp_temp_show2_ok_str.append(temp_temp_show2_ok_str)
-    #  print("temp_temp_show2_ok_str:", temp_temp_show2_ok_str)
-
       pre_step_code=99
       sub_process_step_enable=False
-      for assemble_record in material_record._assemble:
+
+      for assemble_record in material_record._assemble:     # loop_am
         if assemble_record.input_disable: #領料已禁止輸入, 則不再顯示
            continue
 
         cleaned_comment = material_record.material_comment.strip()    # 刪除 material_comment 字串前後的空白
-
         code = assemble_record.work_num[1:]                           # 取得字串中的代碼 (去掉字串中的第一個字元)
         name = code_to_name.get(code, '')                             # 查找對應的中文名稱
-        #step_code = code_to_a
         step_code = assemble_record.process_step_code
-        #print("assemble_record.process_step_code:", assemble_record.process_step_code)
-
-        '''
-        #order_num = material_record.order_num                        # 訂單編號
-        ##order_num_id = material_record.id                             # 該筆訂單編號的table id
-        #order_num_id = assemble_record.id                             # 該筆訂單編號的table id
-
-        # 比較該筆記錄的 step_code 是否為該訂單中最先作動的工作中心工作順序編號
-        #max_step_code = max_step_code_per_order.get(order_num, 0)
-        max_step_code = max_step_code_per_order.get(order_num_id, 0)
-        step_enable = (step_code == max_step_code and material_record.whichStation==2)
-        print(assemble_record.id,":",step_enable, step_code, max_step_code, assemble_record.input_disable)
-        if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
-          continue
-        '''
         order_num_id = material_record.id                             # 該筆訂單編號的table id
         step_code = assemble_record.process_step_code
         max_step_code = max_step_code_per_order.get(order_num_id, 0)
         step_enable = (step_code == max_step_code and material_record.whichStation==2)
-        #print("pre_step_code, step_code, max_step_code, step_enable:",pre_step_code, step_code, max_step_code, step_enable)
-        # 2025-08-04 modify, 領料數 != 應領料數
         skip_condition = (not step_enable or assemble_record.input_disable)
-        #print("skip_condition:", skip_condition)
-        #print("pre_step_code, step_code, max_step_code, step_enable, skip_condition:",pre_step_code, step_code, max_step_code, step_enable, skip_condition)
+
         if skip_condition:
-            #if pre_step_code == 0 and step_code != 0 and not step_enable:
-            #print("pre_step_code == 0 and step_code != 0:", pre_step_code, step_code)
-            if pre_step_code == 0 and step_code != 0:
-                pre_step_code = step_code
-                sub_process_step_enable = True
-                pass  # 不跳過，繼續執行後續程式
-            else:
-                pre_step_code = step_code
-                #pre_step_code = 99
-                continue
-        #
-        #if step_enable==False or assemble_record.input_disable:  # 2025-06-16 add, 改順序
-        #  pre_step_code=assemble_record.process_step_code
-        #  continue
-        #
+          if pre_step_code == 0 and step_code != 0:
+            pre_step_code = step_code
+            sub_process_step_enable = True
+            pass  # 不跳過，繼續執行後續程式
+          else:
+            pre_step_code = step_code
+            continue
+
         # 缺料併單
         if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
           continue
 
-        #print("material_record.whichStation:",material_record.whichStation)                  # 如果是最大值，則啟用
-        #print("max_step_code_per_order:",max_step_code_per_order)
-        #print("step_code , max_step_code:", step_code , max_step_code, step_enable)
-
         num = int(assemble_record.show2_ok)
         temp_temp_show2_ok_str = str2[num]
-        print("kk, temp_temp_show2_ok_str, num:", temp_temp_show2_ok_str, num)
 
-        print("start num:", num)
-        print("start total_ask_qty_end:", assemble_record.id, assemble_record.total_ask_qty_end)
         if num in [5, 7, 9]:
-    #      # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
-          #if assemble_record.total_ask_qty_end in [1, 2, 3]:
-            completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
-            print("completed_qty:",completed_qty)
-            date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
-            print("date_parts:",date_parts)
-            date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
-            print("date_parts[assemble_record.total_ask_qty_end - 1]:",)
-            temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
-            print("temp_temp_show2_ok_str:",temp_temp_show2_ok_str)
-        print("assemble_record.id, num, assemble_record.total_ask_qty_end, temp_temp_show2_ok_str, step_enable:", assemble_record.id, num, assemble_record.total_ask_qty_end, temp_temp_show2_ok_str, step_enable)
+          # 如果 `total_ask_qty_end` 為 1, 2 或 3，替換 `00/00/00` 的相應部分
+          completed_qty = str(assemble_record.completed_qty)  # 將數值轉換為字串
+          date_parts = temp_temp_show2_ok_str.split('/')  # 分割 `00/00/00` 為 ['00', '00', '00']
+          date_parts[assemble_record.total_ask_qty_end - 1] = completed_qty  # 替換對應位置
+          temp_temp_show2_ok_str = '/'.join(date_parts)  # 合併回字串
 
         format_name = f"{assemble_record.work_num}({name})"
-        #num = int(material_record.show2_ok)
+
         index=index+1
         _object = {
           'index': index,
@@ -945,27 +890,22 @@ def list_materials_and_assembles():
           'order_num': material_record.order_num,                   #訂單編號
           'assemble_work': format_name,                             #工序
           'material_num': material_record.material_num,             #物料編號(成品)
-          #'assemble_process': str2[num],                           #途程目前狀況 material_record.isTakeOk & step_enable
-          #'assemble_process': '' if (num > 2 and not step_enable) else str2[num],                            #途程目前狀況 isTakeOk & step_enable
-          #'assemble_process': '' if (num > 2 and not step_enable) else temp_temp_show2_ok_str,                #途程目前狀況 isTakeOk & step_enable
           'assemble_process': '' if (num > 2 and not (step_enable or sub_process_step_enable)) else temp_temp_show2_ok_str,                #途程目前狀況 isTakeOk & step_enable
 
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
-          #'req_qty': assemble_record.meinh_qty,                                # 需求數量(作業數量)
-          #'req_qty': assemble_record.good_qty,                                 # 需求數量(作業數量)
-          'req_qty': material_record.material_qty,                              # 需求數量(作業數量)
+          'req_qty': material_record.material_qty,                    # 需求數量(作業數量)
 
-          'delivery_qty': material_record.delivery_qty,                         # 備料數量(現況數量)
-          'total_receive_qty': f"({assemble_record.total_ask_qty})",            # 已完成總數量
-          'total_receive_qty_num': assemble_record.total_ask_qty,               # 領取總數量
+          'delivery_qty': material_record.delivery_qty,               # 備料數量(現況數量)
+          'total_receive_qty': f"({assemble_record.total_ask_qty})",  # 已完成總數量
+          'total_receive_qty_num': assemble_record.total_ask_qty,     # 領取總數量
 
           'must_receive_qty': assemble_record.must_receive_qty,
+          'receive_qty': assemble_record.must_receive_qty,
           'must_receive_end_qty': assemble_record.must_receive_qty,
 
-          'receive_qty': assemble_record.ask_qty,                               #領取數量
-          'delivery_date': material_record.material_delivery_date,  #交期
-          'comment': cleaned_comment,                               #說明
+          'delivery_date': material_record.material_delivery_date,    #交期
+          'comment': cleaned_comment,                                 #說明
           'isTakeOk' : material_record.isTakeOk,
           'whichStation' : material_record.whichStation,
           'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,       # true:組裝站製程1完成
@@ -974,30 +914,47 @@ def list_materials_and_assembles():
           'currentStartTime': assemble_record.currentStartTime,
           'tooltipVisible': False,
           'input_disable': assemble_record.input_disable,
-          #'process_step_code': step_code,
           'process_step_enable': step_enable or sub_process_step_enable,
           'process_step_code': assemble_record.process_step_code,
 
           'isLackMaterial' : material_record.isLackMaterial,
 
-          #'Incomin1_gAbnormal': assemble_record.Incomin1_gAbnormal,
-          #'Incomin2_gAbnormal': assemble_record.Incomin2_gAbnormal,
           'Incoming1_Abnormal': assemble_record.Incoming1_Abnormal == '',
-          #'Incoming2_Abnormal': assemble_record.Incoming2_Abnormal == ''
 
           'is_copied_from_id': assemble_record.is_copied_from_id,
         }
-        #print(_object)
         _results.append(_object)
+      # end loop_am
+    # end loop_m_o
+
+    ###
+    counts_by_type = active_count_map_by_material_multi(s, material_ids_all,
+        process_types=(21,22,23),
+        include_paused=False  # ⇦ 若要只算“正在跑”，改成 False
+    )
+
+    for row in _results:
+      try:
+          pt  = str(map_pt(row))            # 永遠回 21/22/23（字串）
+          mid = str(get_val(row, 'id'))     # material_id
+          #row.active_user_count = counts_by_type.get(pt, {}).get(mid, 0)     # 屬性賦值
+          temp_count= counts_by_type.get(pt, {}).get(mid, 0)
+          row['active_user_count'] = temp_count   # 鍵賦值
+          _assemble_active_users.append(temp_count)
+      except Exception as e:
+          print("listMaterialsAndAssembles: skip bad row =>", e, row)
+          continue
+    ###
 
     s.close()
 
     temp_len = len(_results)
     print("listMaterialsAndAssembles, 總數: ", temp_len)
+    #print("2._results:",_results)
     if (temp_len == 0):
       return_value = False
-    # 根據 'order_num' 排序
 
+    # 根據 'order_num' 排序
     #_results = sorted(_results, key=lambda x: x['order_num'])
 
     #_results = sorted(
@@ -1007,7 +964,8 @@ def list_materials_and_assembles():
 
     return jsonify({
         'status': return_value,
-        'materials_and_assembles': _results
+        'materials_and_assembles': _results,
+        'assemble_active_users':_assemble_active_users,
     })
 
 
@@ -1255,3 +1213,87 @@ def list_assemble_informations():
         'status': return_value,
         'informations': _results
     })
+
+
+@listTable.route('/listDelegate', methods=['GET'])
+def list_delegates():
+    user_id = int(request.args.get('user_id'))
+    s = Session()
+    rows = s.query(UserDelegate).filter(UserDelegate.user_id == user_id).order_by(UserDelegate.start_date.desc(), UserDelegate.id.desc()).all()
+
+    return jsonify(success=True, delegates=[{
+        'id': r.id,
+        'user_id': r.user_id,
+        'delegate_emp_id': r.delegate_emp_id,
+        'start_date': r.start_date.isoformat(),
+        'end_date': r.end_date.isoformat() if r.end_date else None,
+        'reason': r.reason,
+    } for r in rows])
+
+
+@listTable.route('/createDelegate', methods=['POST'])
+def create_delegate():
+    data = request.json
+    user_id = int(data['user_id'])
+    delegate_emp_id = data['delegate_emp_id'].strip()
+    start_date = datetime.fromisoformat(data['start_date'].replace('Z','')) if data.get('start_date') else None
+    end_date = datetime.fromisoformat(data['end_date'].replace('Z','')) if data.get('end_date') else None
+    reason = (data.get('reason') or '').strip()
+
+    if not user_id or not delegate_emp_id or not start_date:
+        return jsonify(success=False, message='user_id / delegate_emp_id / start_date 為必填')
+
+    s = Session()
+    # 檢查重疊
+    overlap = s.query(UserDelegate).filter(
+        UserDelegate.user_id == user_id,
+        UserDelegate.start_date <= (end_date or datetime.max),
+        start_date <= func.ifnull(UserDelegate.end_date, datetime.max)  # MySQL: IFNULL
+    ).count()
+    if overlap > 0:
+        return jsonify(success=False, message='期間與既有代理重疊，請調整')
+
+    ud = UserDelegate(
+        user_id=user_id,
+        delegate_emp_id=delegate_emp_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason
+    )
+    s.add(ud)
+    s.commit()
+
+    return jsonify(success=True, id=ud.id)
+
+
+@listTable.route('/terminateActiveDelegate', methods=['POST'])
+def terminate_active_delegate():
+    data = request.json
+    user_id = int(data['user_id'])
+    end_date = datetime.fromisoformat(data['end_date'].replace('Z','')) if data.get('end_date') else datetime.now()
+
+    s = Session()
+    rows = s.query(UserDelegate).filter(
+        UserDelegate.user_id == user_id,
+        UserDelegate.start_date <= datetime.now(),
+        (UserDelegate.end_date.is_(None)) | (UserDelegate.end_date >= datetime.now())
+    ).all()
+    for r in rows:
+        r.end_date = end_date
+    s.commit()
+
+    return jsonify(success=True, affected=len(rows))
+
+
+@listTable.route('/deleteDelegate', methods=['POST'])
+def delete_delegate():
+    data = request.json
+    row_id = int(data['id'])
+    s = Session()
+    r = s.get(UserDelegate, row_id)
+    if not r:
+        return jsonify(success=False, message='not found')
+    s.delete(r)
+    s.commit()
+
+    return jsonify(success=True)

@@ -582,20 +582,28 @@ onMounted(async () => {
   //history.pushState(null, null, document.URL);
   window.addEventListener('popstate', handlePopState);
 
-  //const { current } = useLocale();
-  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
-
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
 
-  userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  console.log("currentUser:", currentUser.value);
+  if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+
   //
   observer = new MutationObserver(() => {
     const buttons = document.querySelectorAll(".v-date-picker-month__day--selected > button");

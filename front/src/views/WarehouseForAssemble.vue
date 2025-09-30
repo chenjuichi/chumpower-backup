@@ -1632,8 +1632,124 @@ return `${hours}:${minutes}:${seconds}`;
 const callAGV = async () => {
   console.log("callAGV()...")
 
+  const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+  if (selectedIds.length === 0) {
+    showSnackbar('請選擇送料的工單!', 'red accent-2');
+    return;
+  }
+  if (isCallAGV.value) {
+    showSnackbar('請不要重複按鍵!', 'red accent-2');
+    return;
+  }
+
+  isCallAGV.value = true;
+  try {
+    let successCount = 0;
+
+    for (const id of selectedIds) {
+      const rec = warehouses.value.find(kk => kk.id === id);
+      if (!rec) {
+        console.warn('找不到倉儲(warehouse)資料，id =', id);
+        continue;
+      }
+      console.log('targetItem:', rec);
+
+      // show2_ok = 12（入庫完成）
+      await updateMaterial({
+        id: rec.id,
+        record_name: 'show2_ok',
+        record_data: 12,
+      });
+
+      // show3_ok = 13（入庫完成）
+      await updateMaterial({
+        id: rec.id,
+        record_name: 'show3_ok',
+        record_data: 13,
+      });
+
+      // 當批入庫數量
+      await updateMaterial({
+        id: rec.id,
+        record_name: 'allOk_qty',
+        record_data: Number(rec.allOk_qty) || 0,
+      });
+
+      // 累計入庫總數量
+      const total_allOk_qty =
+        (Number(rec.total_allOk_qty) || 0) + (Number(rec.allOk_qty) || 0);
+      await updateMaterial({
+        id: rec.id,
+        record_name: 'total_allOk_qty',
+        record_data: total_allOk_qty,
+      });
+
+      // 完成旗標
+      await updateMaterial({
+        id: rec.id,
+        record_name: 'isAllOk',
+        record_data: true,
+      });
+
+      // 多批次處理：若應運送/備料數量（delivery_qty）仍大於累計入庫，複製剩餘
+      const delivery = Number(rec.delivery_qty) || 0;
+      const remain = delivery - total_allOk_qty;
+      if (remain > 0) {
+        await copyMaterial({
+          copy_id: rec.id,
+          total_delivery_qty: remain,
+          allOk_qty: remain,
+          show2_ok: 2,
+          shortage_note: '',
+        });
+      }
+
+      // 建立「成品入庫」流程（process_type: 31）
+      const nowStr = formatDateTime(new Date());
+      await createProcess({
+        begin_time: nowStr,
+        end_time: nowStr,
+        periodTime: '',
+        user_id: currentUser.value?.empID ?? '',
+        order_num: rec.order_num,
+        process_type: 31,
+        id: rec.id,
+      });
+
+      successCount++;
+    }
+
+    // 成功至少一筆才更新 AGV 狀態（在成品區、ready）
+    if (successCount > 0) {
+      await updateAGV({
+        id: 1,
+        status: 0, // ready
+        station: 3, // 在成品區
+      });
+      console.log('step10...');
+    } else {
+      console.warn('沒有任何記錄成功更新，略過 AGV 狀態更新');
+    }
+
+    // 插入延遲 3 秒
+    await delay(3000);
+
+    // 清理選取與歷史
+    selectedItems.value = [];
+    if (localStorage.getItem('selectedItems')) localStorage.removeItem('selectedItems');
+
+    history.value = false;
+    if (localStorage.getItem('history')) localStorage.removeItem('history');
+  } catch (err) {
+    console.error('入庫流程發生例外：', err);
+    showSnackbar('入庫流程執行失敗，請稍後再試', 'red accent-2');
+  } finally {
+    // 一定要解鎖，避免按鈕被卡住
+    isCallAGV.value = false;
+  }
+
+  /*
   let payload = {};
-  //let targetItem = {};
 
   //console.log("step1...")
   if (!isCallAGV.value) {
@@ -1725,8 +1841,6 @@ const callAGV = async () => {
       id: targetItem.id,
     };
     await createProcess(processPayload);
-
-
   });
 
   // 記錄AGV狀態資料
@@ -1749,7 +1863,7 @@ const callAGV = async () => {
   if (localStorage.getItem('history')) {
     localStorage.removeItem('history');
   }
-
+  */
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };

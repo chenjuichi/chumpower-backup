@@ -385,10 +385,10 @@ def update_modify_material_and_Boms():
 
   update_data = {}
   if _date is not None:
-      update_data["material_delivery_date"] = _date #訂單日期
+      update_data["material_delivery_date"] = _date
   if _qty is not None:
-      update_data["material_qty"] = _qty            #需求數量(訂單數量)
-      update_data["total_delivery_qty"] = _qty      #應備數量
+      update_data["material_qty"] = _qty
+
   s = Session()
 
   if update_data:
@@ -641,59 +641,6 @@ def update_assembleMustReceiveQty_by_MaterialID():
   return jsonify({
     'status': return_value
   })
-
-
-@updateTable.route("/updateMaterialFields", methods=['POST'])
-def update_material_fields():
-    data = request.get_json(silent=True) or {}
-    mid = data.get("id")
-    fields = data.get("fields") or {}
-    if not mid or not isinstance(fields, dict) or not fields:
-        return jsonify(success=False, message="id / fields 缺失"), 400
-
-    # 允許更新哪些欄位（白名單）
-    ALLOWED = {
-        "isOpen", "isOpenEmpId", "hasStarted", "startStatus",
-        # 需要的話把其他欄位加進來
-    }
-    BOOLS = {"isOpen", "hasStarted", "startStatus"}
-
-    # 過濾＋型別歸一化
-    patch = {}
-    for k, v in fields.items():
-        if k not in ALLOWED:
-            continue
-        if k in BOOLS:
-            patch[k] = bool(v)
-        else:
-            patch[k] = v if v is not None else ""
-
-    if not patch:
-        return jsonify(success=False, message="無可更新欄位"), 400
-
-    s = Session()
-    try:
-        # 行鎖避免併發踩踏
-        mat = (
-            s.query(Material)
-             .filter(Material.id == mid)
-             .with_for_update()
-             .one_or_none()
-        )
-        if not mat:
-            return jsonify(success=False, message="material not found"), 404
-
-        for k, v in patch.items():
-            setattr(mat, k, v)
-
-        s.commit()
-        return jsonify(success=True, id=mid, updated=patch)
-    except Exception as e:
-        s.rollback()
-        print("update_material_fields failed:", e)  # 或用 logger
-        return jsonify(success=False, message="internal error"), 500
-    finally:
-        s.close()
 
 
 # from material table update some data by id or orde_num

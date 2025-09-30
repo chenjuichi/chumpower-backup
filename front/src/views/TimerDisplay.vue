@@ -1,14 +1,27 @@
 <template>
+  <!--
   <span
     v-if="show"
     style="font-size:18px; margin-left:10px; margin-right:10px; color:yellow;"
   >
     {{ displayTime }}
   </span>
+  -->
+  <!--
+  <span
+    v-if="show"
+    :style="{ fontSize: sizePx, marginLeft:'10px', marginRight:'10px', color:'yellow' }"
+  >
+    {{ displayTime }}
+  </span>
+  -->
+  <span :style="{ fontSize: sizePx, marginLeft:'10px', marginRight:'10px', color:'primary' }">
+    {{ show ? displayTime : ''  }}
+  </span>
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted, defineComponent, defineProps, defineEmits } from "vue";
+import { ref, watch, computed, onMounted, onUnmounted, defineComponent, defineProps, defineEmits } from "vue";
 
 //=== component name ==
 defineComponent({
@@ -19,6 +32,7 @@ const props = defineProps({
   autoStart: { type: Boolean, default: false },
   isPaused: { type: Boolean, default: true },
   show: { type: Boolean, default: true },
+  fontSize:  { type: [Number, String], default: 18 },
 });
 //const emit = defineEmits(["update:time", "pause", "resume", "update:modelValue", 'update:isPaused']);
 const emit = defineEmits(["update:time", "pause", "resume", 'update:isPaused']);
@@ -38,6 +52,10 @@ function format(ms) {
   const s = String(totalSec % 60).padStart(2, "0");
   return `${h}:${m}:${s}`;
 }
+
+const sizePx = computed(() =>
+  typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize
+)
 
 function start() {
   if (intervalId) return;
@@ -151,6 +169,20 @@ watch(
   (val) => {
     if (val === paused.value) return;
     val ? pause() : resume();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.show,
+  (v) => {
+    if (!v) {
+      // 隱藏就暫停（保存目前累積）
+      pause();
+    } else if (!props.isPaused) {
+      // 顯示回來且目前不是暫停 → 繼續
+      resume();
+    }
   }
 );
 
@@ -160,7 +192,16 @@ onUnmounted(() => {
 
 //if (props.autoStart) start();
 // 若要一掛上就跑（且一開始不是暫停）
-if (props.autoStart && !props.isPaused) start();
+//if (props.autoStart && !props.isPaused && props.show) {
+//  start();
+//}
+onMounted(() => {
+  if (props.autoStart && !props.isPaused && props.show) {
+    // 若你的“真正開始”語意是 resume()，就用它；否則用 start()
+    //resume(); // 或改成 start();
+    start();
+  }
+})
 
 defineExpose({ start, pause, resume, reset, setElapsedTime, setState, getElapsedMs });
 </script>

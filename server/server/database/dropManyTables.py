@@ -6,13 +6,14 @@ from sqlalchemy import text, MetaData
 s = Session()
 
 def drop_table(table_name):
-    base = declarative_base()
+    #base = declarative_base()
     metadata = MetaData()
-    metadata.reflect(bind=engine)
+    metadata.reflect(bind=engine, only=[table_name])
     table = metadata.tables.get(table_name)
     if table is not None:
         print("Dropping table", table_name)
-        base.metadata.drop_all(engine, [table], checkfirst=True)
+        #base.metadata.drop_all(engine, [table], checkfirst=True)
+        table.drop(bind=engine, checkfirst=True)
     else:
         print(f"Table {table_name} does not exist. Skipping...")
 
@@ -31,8 +32,8 @@ drop_table('association_material_abnormal')
 drop_table('material')
 drop_table('abnormal_cause')
 
-drop_table('process')
 drop_table('agv')
+drop_table('user_delegate')  #代理人table
 drop_table('user')        # 員工table
 drop_table('permission')  # 權限table
 drop_table('setting')     # 部門table

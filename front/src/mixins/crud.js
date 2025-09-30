@@ -30,6 +30,7 @@ export const processes = ref([]);
 
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
+export const assembles_active_user_count = ref([]);
 
 // for getMaterialsAndAssemblesByUser
 export const materials_and_assembles_by_user = ref([]);
@@ -178,7 +179,10 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/listMaterialsAndAssembles') {
+
             materials_and_assembles.value = [...res.data.materials_and_assembles];
+            assembles_active_user_count.value = res.data.assemble_active_users;
+
           }
 
           if (path == '/listInformations') {
@@ -274,7 +278,10 @@ export const apiOperation = (operation, path, payload) => {
             return res.data.status;
           }
 
-          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable') {
+          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable' ||
+              path == 'updateMaterialFields' ||
+              path == '/getActiveCountMap') {
+                //console.log("crud:", res.data);
             return res.data;
           }
 

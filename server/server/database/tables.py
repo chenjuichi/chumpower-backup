@@ -66,6 +66,33 @@ class User(BASE):
 # ------------------------------------------------------------------
 
 
+class UserDelegate(BASE):
+    __tablename__ = 'user_delegate'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)  # 被代理的員工(user.id)
+    delegate_emp_id = Column(String(8), nullable=False)               # 代理人員工編號(8 碼，和 User.emp_id 一致)
+    start_date = Column(DateTime, nullable=False)                     # 代理開始日期
+    end_date = Column(DateTime, nullable=True)                        # 代理結束日期, NULL: 表示「持續到另行終止」
+    reason = Column(String(100), nullable=True)                       # 代理事由
+
+    user = relationship("User", backref="delegates")
+
+    create_at = Column(DateTime, server_default=func.now())
+
+    # 定義變數輸出的內容
+    def __repr__(self):
+      fields = ', '.join([f"{name}={getattr(self, name)}" for name in self.__mapper__.columns.keys()])
+      return f"<LargeTable({fields})>"
+
+    # 定義class的dict內容
+    def get_dict(self):
+      return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+
+
+# ------------------------------------------------------------------
+
+
 class Permission(BASE):  # 一對多, "一":permission, "多":user
     __tablename__ = 'permission'
 

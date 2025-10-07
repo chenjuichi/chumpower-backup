@@ -1350,6 +1350,7 @@ onMounted(async () => {
   window.addEventListener('popstate', handlePopState)
 
   console.log("current routeName:", routeName.value);
+
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
   if (!userRaw) {
@@ -1369,6 +1370,7 @@ onMounted(async () => {
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
   console.log("currentUser:", currentUser.value);
+  //
 
   // 取得每個 v-text-field 的唯一 ID
   //2025-02-13 mark the following function

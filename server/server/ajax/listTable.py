@@ -659,7 +659,7 @@ def list_wait_for_assemble():
         _objects = s.query(Material).all()
 
         # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
-        for material_record in _objects:
+        for material_record in _objects:  # loop_0
           for assemble_record in material_record._assemble:
             step_code = assemble_record.process_step_code   # 直接使用資料中的 step_code
             order_num_id = material_record.id               # 該筆訂單編號的table id
@@ -670,6 +670,7 @@ def list_wait_for_assemble():
             else:
               current_max = max_step_code_per_order[order_num_id]
               max_step_code_per_order[order_num_id] = max(current_max, step_code)
+        # end loop_0
 
         for material_record in _objects:  # loop_1
 
@@ -689,7 +690,7 @@ def list_wait_for_assemble():
           # end loop_2_a
 
           pre_step_code = 99
-          for begin_assemble_record in assemble_records:  # loop_2_a
+          for begin_assemble_record in assemble_records:  # loop_2_b
             if begin_assemble_record.input_disable:
               continue
 
@@ -712,7 +713,6 @@ def list_wait_for_assemble():
 
             begin_count += 1
           # end loop_2_b
-
         # end loop_1
     except Exception:
         #s.rollback()

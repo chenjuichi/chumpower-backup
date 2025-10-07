@@ -66,7 +66,6 @@
             <v-divider class="mx-4" inset vertical></v-divider>
 
             <!--客製化 員工選單-->
-            <!--<div style="position:relative; width:160px; margin-right:5px;">-->
             <div style="position:relative; width:160px; right: 5px;">
               <v-text-field
                 v-model="selectedEmployee"
@@ -209,7 +208,6 @@
               <!-- 僅在滑鼠移入或者正在排序的情況下顯示圖標 -->
               <v-icon v-if="sortBy.includes('order_num') && isHovering" style="margin-left: 2px;">
                 {{ sortDesc[sortBy.indexOf('order_num')] ? 'mdi-arrow-down' : 'mdi-arrow-up' }}
-                <!--{{ sortDesc[0] === null ? 'mdi-minus' : (sortDesc[0] ? 'mdi-arrow-down' : 'mdi-arrow-up') }}-->
               </v-icon>
             </div>
           </div>
@@ -423,17 +421,39 @@
 
       <template v-slot:item.action="{ item }">
         <div class="action-cell">
+          <!--計時器-->
+          <span style="color:#4000ff; width:88px; font-variant-numeric:tabular-nums;">
+            <TimerDisplay
+              :fontSize="16"
+              :autoStart="false"
+              :show="true"
+              :ref="el => setTimerEl(item, el)"
 
-          <!-- 自訂 暫停/重啟 按鍵欄位-->
+              :initialMs="getInitialMs(item)"
+
+              :isPaused="isPausedOf(item)"
+
+              @update:isPaused="val => setPausedOf(item, val)"
+
+              @update:time="ms => onTickOf(item, ms)"
+
+              class="me-2"
+              style="min-width:88px; display:inline-block;"
+            />
+          </span>
+
+          <!-- 自訂 暫停/開始 按鍵欄位-->
           <v-btn
             size="small"
             density="comfortable"
             variant="tonal"
             :disabled="reachTarget(item)"
+            :style="{ background: isRowPaused(item) ? '#4CAF50' : '#FFEB3B', color: isRowPaused(item) ? '#fff' : '#000' }"
+
             @click="onPauseToggle(item)"
             style="font-size:13px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
           >
-            {{ useRowTimer(item, currentUser.empID).isPaused.value ? '重啟' : '暫停' }}
+            {{ pauseLabel(item) }}
           </v-btn>
 
           <!-- 自訂 '結束' 按鍵欄位 -->
@@ -442,7 +462,7 @@
             density="comfortable"
             class="mr-2"
             variant="tonal"
-            :disabled="isButtonDisabled(item)"
+            :disabled="isButtonDisabled(item) || isRowPaused(item)"
             @click="updateItem(item)"
             color="indigo-darken-4"
             style="
@@ -486,9 +506,12 @@
   </template>
 
 <script setup>
-import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+//import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount } from 'vue';
+import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onDeactivated } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 
-import { useProcessTimer } from "../mixins/useProcessTimer.js";
+import TimerDisplay from "./TimerDisplayBegin.vue";
+import { useProcessTimer } from "../mixins/useProcessTimerBegin.js";
 
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
@@ -502,10 +525,9 @@ const router = useRouter();
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-//import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 import { materials_and_assembles_by_user }  from '../mixins/crud.js';
 import { currentAGV }  from '../mixins/crud.js';
-//import { desserts }  from '../mixins/crud.js';
+
 import { desserts2 }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
 
@@ -520,6 +542,8 @@ const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAs
 const copyNewAssemble = apiOperation('post', '/copyNewAssemble');
 const updateAssembleMustReceiveQtyByAssembleID = apiOperation('post', '/updateAssembleMustReceiveQtyByAssembleID');
 const getMaterialsAndAssemblesByUser = apiOperation('post', '/getMaterialsAndAssemblesByUser');
+const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+const getEndOkByMaterialIdAndStepCode  = apiOperation('post', '/getEndOkByMaterialIdAndStepCode');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
@@ -527,8 +551,6 @@ const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
 const getAGV = apiOperation('post', '/getAGV');
 const updateAssembleProcessStep  = apiOperation('post', '/updateAssembleProcessStep');
-
-//const getMaterial = apiOperation('post', '/getMaterial');
 
 //=== component name ==
 defineComponent({
@@ -581,24 +603,24 @@ const footerOptions = [
 ];
 
 const headers = [
-  { title: '  ', sortable: false, key: 'index', width: 0, class: 'hidden-column' },
+  { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
   { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
   { title: '物料編號', sortable: false, key: 'material_num', width:180 },
-  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
-  { title: '領取數量', sortable: false, key: 'total_ask_qty', width:80 },
-  { title: '應完成數量', sortable: false, key: 'must_receive_end_qty', width:100 },       // 2025-06-13 add, 改順序
-  { title: '完成數量', sortable: false, key: 'receive_qty', width:80 },
-  { title: '異常數量', sortable: false, key: 'abnormal_qty', width:80 },             // 2025-06-13 add, 改順序
+  { title: '領取數量', sortable: false, key: 'total_ask_qty', width:70 },
+  { title: '應完成數量', sortable: false, key: 'must_receive_end_qty', width:70 },       // 2025-06-13 add, 改順序
+  { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
+  { title: '異常數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
   //{ title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '交期', sortable: false, key: 'delivery_date', width:110 },
-  { title: '', sortable: false, key: 'action', width:260 },
+  { title: '交期', sortable: false, key: 'delivery_date', width:100 },
+  { title: '', sortable: false, key: 'action', width:300 },
 ];
 
-const userId = 'user_chumpower';
+const app_user_id = 'user_chumpower';
 const clientAppName = 'PickReportForAssembleEnd';
 
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, app_user_id, clientAppName);
 
 // 排序欄位及方向（需為陣列）
 const sortBy = ref(['order_num'])
@@ -636,7 +658,7 @@ const forklift2StartTime = ref(null);       // 堆高機運行計時開始
 const forklift2EndTime = ref(null);         // 堆高機運行計時結束
 
 const pagination = reactive({
-  itemsPerPage: 5, // 預設值, rows/per page
+  itemsPerPage: 5,                          // 預設值, rows/per page
   page: 1,
 });
 
@@ -644,22 +666,25 @@ const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-const panelX = ref(830);          // led顯示面板x位置, 值越大, 越往右
-const panelY = ref(11);           // led顯示面板y位置, 值越大, 越往下
-const activeColor = ref('green')  // 預設亮綠燈, 區域閒置
-const panel_flag = ref(false)     // 允許拖曳的開關
+const panelX = ref(830);                      // led顯示面板x位置, 值越大, 越往右
+const panelY = ref(11);                       // led顯示面板y位置, 值越大, 越往下
+const activeColor = ref('green')              // 預設亮綠燈, 區域閒置
+const panel_flag = ref(false)                 // 允許拖曳的開關
 
 // 獲取元件引用
-const draggablePanel = ref(null)
-const sendButton = ref(null)
+const draggablePanel = ref(null);
+const sendButton = ref(null);
 
 const screenSizeInInches = ref(null);
 
-const qtyInput = ref({})
-const timerMap = new Map()
+const qtyInput = ref({});
+
+//== timerDisplay用 ==
+const timerMap = new Map();
+
+let __disposedAll = false;
 
 // === watch ===
-
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
   console.log("watch(), newItems:", newItems)
@@ -676,6 +701,8 @@ watch(bar_code, (newVal) => {
 })
 
 //=== computed ===
+const userId = computed(() => currentUser.value.empID ?? '')
+
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
 }));
@@ -724,7 +751,6 @@ onMounted(async () => {
   const heightInPx = screen.height;
 
   // 實驗推估：假設密度為 96 DPI（一般桌機）
-  //const dpiEstimate = 96 * dpi;
   const dpiEstimate = 96 * dpi;
 
   const widthInInches = widthInPx / dpiEstimate;
@@ -749,7 +775,6 @@ onMounted(async () => {
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
   if (!userRaw) {
-    // 只在第一次開分頁時，從 localStorage 複製一份
     userRaw = localStorage.getItem('loginedUser');
     if (userRaw) {
       sessionStorage.setItem('auth_user', userRaw);
@@ -775,7 +800,7 @@ onMounted(async () => {
   });
 
   intervalIdForLed = setInterval(() => {
-    isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
+    isVisible.value = !isVisible.value;       // 每秒切換顯示狀態
   }, 500);
 
   isBlinking.value = materials_and_assembles_by_user.value.length == 0 || materials_and_assembles_by_user.value.every(item => !item.isAssembleStation1TakeOk && !item.isAssembleStation2TakeOk && !item.isAssembleStation3TakeOk);
@@ -1837,11 +1862,15 @@ onMounted(async () => {
 });
 
 //=== unmounted ===
-onUnmounted(() => {   // 清除計時器（當元件卸載時）
+//onUnmounted(() => {   // 清除計時器（當元件卸載時）
   //window.removeEventListener('popstate', handlePopState)
 
   //clearInterval(intervalId);
-});
+//});
+
+onBeforeRouteLeave(() => { disposeAllTimersOnce(); });
+onUnmounted(() => { disposeAllTimersOnce(); });
+onDeactivated(() => { disposeAllTimersOnce(); });
 
 //=== created ===
 onBeforeMount(() => {
@@ -1854,23 +1883,131 @@ onBeforeMount(() => {
 });
 
 //=== method ===
-function useRowTimer(row, uid) {
-  const key = `${row.id}:${uid}`
+
+//== timerDisplay用 ==
+function disposeAllTimersOnce() {
+  if (__disposedAll) return;
+  __disposedAll = true;
+
+  try {
+    for (const t of timerMap.values()) {
+      try { t?.dispose?.(); } catch (_e) {}
+    }
+  } finally {
+    timerMap.clear();
+  }
+
+  // 若不存在 pollId 變數，下面不會有副作用；存在就清掉
+  try {
+    if (typeof pollId !== 'undefined' && pollId) {
+      clearInterval(pollId);
+      // @ts-ignore
+      pollId = null;
+    }
+  } catch (_e) {}
+}
+
+const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
+
+const getT = (row) => useRowTimer(row, userId.value)
+
+const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
+
+function isRowPaused(row) {
+  return !!useRowTimer(row, currentUser.value.empID).isPaused.value
+}
+
+function pauseLabel(row) {
+  return isRowPaused(row) ? '開始' : '暫停'
+}
+
+function getInitialMs(row) {
+  const t = useRowTimer(row, userId.value)
+  return Number(t?.elapsedMs?.value ?? 0)
+}
+
+async function ensureRestored(row) {
+  const t = useRowTimer(row, currentUser.value.empID)
+  // 21/22/23 的對應你已有邏輯，照舊取出 pType
+  //const pType = row.process_step_code === 3 ? 21 : row.process_step_code === 2 ? 22 : 23
+  const pType = processTypeOf(row)
+  // 只做還原，不重置 begin_time
+  await t.restoreProcess(row.id, pType, userId.value, row.assemble_id || 0)
+  return t
+}
+
+// 依 row.process_step_code → process_type
+function processTypeOf(row) {
+  const step = Number(row.process_step_code ?? 0)
+  if (step === 3) return 21  // 組裝
+  if (step === 2) return 22  // 檢驗
+  if (step === 1) return 23  // 雷射（依你的實際對照）
+  return 21                  // 預設給 21，避免落空
+}
+
+function makeStub() {
+  const isPaused = ref(true)
+  return {
+    isPaused,
+    timerRef: { value: null },
+    onTick: () => {},
+    startProcess: async () => {},
+    toggleTimer: async () => {},
+    processId: ref(null),
+  }
+}
+
+function setTimerEl(row, el) {
+  if (!row || !row.id) {
+    return
+  }
+  const t = getT(row);
+  if (t)
+    t.timerRef.value = el || null;
+}
+
+const setPausedOf = (row, v) => {
+  const t = getT(row);
+
+  //透過雙重否定，強制把任何輸入轉成純布林（truthy → true，falsy → false）
+  //例如 1/"yes" 會變 true，0/""/null/undefined 會變 false
+  //如果 t 存在且有 isPaused 這個 ref，就把它的值設成布林化後的 v
+  if (t?.isPaused)
+    t.isPaused.value = !!v
+}
+
+// 轉接 onTick（避免直接把函式呼叫結果當 handler）
+const onTickOf = (row, ms) => {
+  const t = getT(row)
+  t?.onTick?.(ms)
+}
+
+function useRowTimer(row, uId) {
+  // 🔐 防呆：row 或 id 不存在，回 stub
+  if (!row || !row.id) {
+    return makeStub()
+  }
+
+  const key = keyOf(row, uId)
   if (!timerMap.has(key)) {
     const timerRef = ref(null)
-    const t = useProcessTimer(() => timerRef.value)
+    const t = useProcessTimer(() => timerRef.value)     // hook
+    // 這裡 t 內通常有：isPaused(ref)、elapsedMs(ref)、processId(ref)、onTick(fn)...
     timerMap.set(key, { ...t, timerRef })
   }
   return timerMap.get(key)
 }
+//===
 
 function reachTarget(row) {
   return Number(row.total_ask_qty_end || 0) >= Number(row.must_receive_end_qty || 0)
 }
 
 async function ensureStarted(row) {
-  const t = useRowTimer(row, currentUser.value.empID)
+  const t = useRowTimer(row, userId.value)
   if (!t.processId.value) {
+    const pType = processTypeOf(row)
+    /*
     let temp_process_type=0
     if (row.process_step_code == 3 )
       temp_process_type=21
@@ -1881,6 +2018,8 @@ async function ensureStarted(row) {
     console.log("row.id, temp_process_type, currentUser.value.empID, row.assemble_id:",row.id, temp_process_type, currentUser.value.empID, row.assemble_id)
 
     await t.startProcess(row.id, temp_process_type, currentUser.value.empID, row.assemble_id)
+    */
+    await t.startProcess(row.id, pType, userId.value, row.assemble_id)
   }
   return t
 }
@@ -1925,11 +2064,19 @@ const initialize = async () => {
       //history: history.value,
     };
     await getMaterialsAndAssemblesByUser(payload);
+    await getCountMaterialsAndAssemblesByUser(payload);
 
     // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
     materials_and_assembles_by_user.value.forEach(item => {
       item.pickEnd = [];
     });
+
+    //== timerDisplay用 ==
+    // 把正確的時間 & 暫停狀態直接推到 <TimerDisplay />
+    for (const row of materials_and_assembles_by_user.value) {
+      await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
+    }
+    //===
 
     await listUsers2();
 
@@ -2666,7 +2813,7 @@ const updateItem2 = async (item) => {
 };
 
 const updateItem = async (item) => {
-  console.log("PickReportForAssembleEnd, updateItem(),", item);
+  console.log("PickReportForAssembleEnd, updateItem(), 按結束鍵", item);
 
   item.receive_qty = Number(item.receive_qty || 0);
 
@@ -2697,6 +2844,7 @@ const updateItem = async (item) => {
   // 1.更新記錄, 完成數量
   let current_completed_qty= Number(item.receive_qty);    //完成數量
   console.log("current:", current_completed_qty, current_assemble_id)
+
   let payload = {
     //assemble_id: item.assemble_id,
     assemble_id: current_assemble_id,
@@ -2710,6 +2858,7 @@ const updateItem = async (item) => {
   let current_total_completed_qty=Number(item.total_receive_qty_num);   //已完成總數量
   let total = current_total_completed_qty + current_completed_qty;
   item.total_receive_qty_num = total;
+
   item.total_receive_qty ='(' + total.toString().trim() + ')';
 
   // 記錄當前完成總數量
@@ -2786,196 +2935,114 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
+  payload = {
+    material_id: current_material_id,
+    process_step_code: item.process_step_code,
+    ask_qty: item.must_receive_end_qty,
+  };
+  let ret = await getEndOkByMaterialIdAndStepCode(payload);
+  console.log("ret:", ret, ret.data)
+
+  //if (!ret.data.end_assemble_ok)
+  //  return
+
   // 5. 更新組裝區目前途程紀錄, 不能再輸入
   payload = {
-    //assemble_id: item.assemble_id,
-    //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
     assemble_id: current_assemble_id,
     record_name: 'input_end_disable',
     record_data: true,
   };
   await updateAssemble(payload);
 
-  // 顯示目前途程欄位狀態, disable完成數量欄位
-  //item.input_end_disable = true;
+  await listWaitForAssemble();
 
-    //2025-02-08 mark the following function
-    //payload = {
-    //  id: item.id,
-    //  record_name: 'isShow',
-    //  record_data: true
-    //};
-    //await updateMaterial(payload);
-  //}   // 2025-06-18 mark, 改順序
-
-  //const total = Number(item.receive_qty) + Number(item.total_receive_qty_num);
-  //let temp = Number(item.req_qty)
-  //console.log("step3...")
-  //console.log("total == temp ?", total, temp)
-  //if (total == temp) {    //, 2025-06-18 add, 改順序
-  //  console.log("step4...")
-  //  // 記錄當前紀錄, 不能再輸入
-  //  payload = {
-  //    assemble_id: item.assemble_id,
-  //    record_name: 'input_end_disable',
-  //    record_data: true,
-  //  };
-  //  await updateAssemble(payload);
-
-    await listWaitForAssemble();
-
-    //if (targetItem) {
-    //  targetItem.input_end_disable = true;
-    //}
-    if (targetIndex !== -1) {
-      // 用 Vue 的方式確保觸發響應式更新
-      materials_and_assembles_by_user.value[targetIndex] = {
-        ...materials_and_assembles_by_user.value[targetIndex],
-        input_end_disable: true,
-      };
-    }
-    //item.input_end_disable = true;
-    //待查
-    payload = {
-      //assemble_id: item.assemble_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
-
-      record_name: 'isAssembleStationShow',
-      record_data: true,
+  if (targetIndex !== -1) {
+    // 用 Vue 的方式確保觸發響應式更新
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      input_end_disable: true,
     };
-    await updateAssemble(payload);
-    //
-    //if (targetItem) {
-    //  targetItem.isShow = true;
-    //}
-    if (targetIndex !== -1) {
-      // 用 Vue 的方式確保觸發響應式更新
-      materials_and_assembles_by_user.value[targetIndex] = {
-        ...materials_and_assembles_by_user.value[targetIndex],
-        isShow: true,
-      };
-    }
-    //item.isShow = true;
+  }
 
-    // 記錄當前完工生產結束時間
-    let formattedStartTime = item.currentStartTime  //領料生產報工開始時間
-    let endTime = new Date();                                                         // 記錄當前結束時間
-    let formattedEndTime = formatDateTime(endTime); //完工生產報工結束時間
-    periodTime.value = calculatePeriodTimeStr(formattedStartTime, formattedEndTime);  // 計算時間間隔
-    payload = {
-      //assemble_id: item.assemble_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
+  //待查
+  // 完成組裝區目前製程(組裝 或 檢驗 或 雷射), 且是最後製程
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'isAssembleStationShow',
+    record_data: true,
+  };
+  await updateAssemble(payload);
 
-      record_name: 'currentEndTime',
-      record_data: formattedEndTime,
+  if (targetIndex !== -1) {
+    // 用 Vue 的方式確保觸發響應式更新
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      isShow: true,
     };
-    await updateAssemble(payload);
+  }
 
-    let temp_no = 0;
-    if (item.assemble_work.includes('109')) {             //組裝 開始/結束
-      //temp_no = 23
-      temp_no = 21
-    } else if (item.assemble_work.includes('106')) {      //雷射 開始/結束
-      //temp_no = 22
-      temp_no = 23
-    } else if (item.assemble_work.includes('110')) {      //檢驗 開始/結束
-      //temp_no = 21
-      temp_no = 22
-    }
-    let processPayload = {
-      begin_time: formattedStartTime,
-      end_time: formattedEndTime,
-      periodTime: periodTime,
-      user_id: currentUser.value.empID,
-      order_num: item.order_num,
-      process_type: temp_no,
-      //id: item.id,
-      //id: materials_and_assembles_by_user.value[targetIndex].id,
-      id: current_material_id,
+  // 記錄當前完工生產結束時間
+  let formattedStartTime = item.currentStartTime  //領料生產報工開始時間
+  let endTime = new Date();                                                         // 記錄當前結束時間
+  let formattedEndTime = formatDateTime(endTime); //完工生產報工結束時間
+  periodTime.value = calculatePeriodTimeStr(formattedStartTime, formattedEndTime);  // 計算時間間隔
+  payload = {
+    assemble_id: current_assemble_id,
 
-      process_work_time_qty: current_completed_qty,
-      normal_work_time: materials_and_assembles_by_user.value[targetIndex].is_copied_from_id == null ? true : false,
-    };
-    await createProcess(processPayload);
+    record_name: 'currentEndTime',
+    record_data: formattedEndTime,
+  };
+  await updateAssemble(payload);
 
-    // 記錄當前紀錄, 目前途程結束
-    payload = {
-      //assemble_id: item.assemble_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
-      record_name: 'process_step_code',
-      record_data: 0,
-    };
-    await updateAssemble(payload);
+  // 記錄當前紀錄, 目前途程結束
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'process_step_code',
+    record_data: 0,
+  };
+  await updateAssemble(payload);
 
-    // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
-    payload = {
-      //id: item.id,
-      //asm_id: item.assemble_id,
-      //id: materials_and_assembles_by_user.value[targetIndex].id,
-      id: current_material_id,
-      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-      assemble_id: current_assemble_id,
-    };
-    //await updateAssembleProcessStep(payload);
-    let response = await updateAssembleProcessStep(payload);
+  // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
+  payload = {
+    id: current_material_id,
+    assemble_id: current_assemble_id,
+  };
+  let response = await updateAssembleProcessStep(payload);
 
-    //if (response ) {
-    if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
-      console.log("take ok...")
-      /*
-      // 記錄當前工單最終途程的完成總數量
-      payload = {
-        //assemble_id: item.assemble_id,
-        //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-        assemble_id: current_assemble_id,
-        record_name: 'total_completed_qty',
-        record_data: current_completed_qty,
-      };
-      await updateAssemble(payload);
-      */
-      //if (targetItem) {
-      //  targetItem.isTakeOk = true;
-      //}
-      if (targetIndex !== -1) {
-        // 用 Vue 的方式確保觸發響應式更新
-        materials_and_assembles_by_user.value[targetIndex] = {
-          ...materials_and_assembles_by_user.value[targetIndex],
-          isTakeOk: true,
-        };
-      }
-      //item.isTakeOk = true
-    }
+  if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
+    console.log("take ok...")
     /*
-    } else {
-      // 記錄當前工單非最終途程的完成總數量
-      payload = {
-        //assemble_id: item.assemble_id,
-        //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
-        assemble_id: current_assemble_id,
-        record_name: 'total_completed_qty',
-        record_data: 0,
-      };
-      await updateAssemble(payload);
-    }
+    // 記錄當前工單最終途程的完成總數量
+    payload = {
+      //assemble_id: item.assemble_id,
+      //assemble_id: materials_and_assembles_by_user.value[targetIndex].assemble_id,
+      assemble_id: current_assemble_id,
+      record_name: 'total_completed_qty',
+      record_data: current_completed_qty,
+    };
+    await updateAssemble(payload);
     */
-  //}     , 2025-06-18 mark, 改順序
+    //if (targetItem) {
+    //  targetItem.isTakeOk = true;
+    //}
+    if (targetIndex !== -1) {
+      // 用 Vue 的方式確保觸發響應式更新
+      materials_and_assembles_by_user.value[targetIndex] = {
+        ...materials_and_assembles_by_user.value[targetIndex],
+        isTakeOk: true,
+      };
+    }
+  }
+
   console.log("step5...");
 
-  // 紀錄組裝去下一製程的應領取數量, 2025-06-17 add, 改順序
+  // 紀錄組裝去下一製程的應領取數量
   payload = {
     assemble_id: item.id,
     must_receive_qty: 'must_receive_end_qty',
     completed_qty: current_completed_qty,
   };
   await updateAssembleMustReceiveQtyByAssembleID(payload);
-
-  //payload = {
-  //  user_id: currentUser.value.empID,
-  //};
-  //await getMaterialsAndAssemblesByUser(payload);
 
   //待待
   window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
@@ -3180,6 +3247,14 @@ const updateAbnormal = async (item) => {
     user_id: currentUser.value.empID,
   };
   await getMaterialsAndAssemblesByUser(payload);
+  await getCountMaterialsAndAssemblesByUser(payload);
+
+  //== timerDisplay用 ==
+  // 把正確的時間 & 暫停狀態直接推到 <TimerDisplay />
+  for (const row of materials_and_assembles_by_user.value) {
+    await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
+  }
+  //===
 };
 // end updateAbnormal()
 
@@ -3383,18 +3458,13 @@ const removelocalStorage = () => {
   border-radius: 0 0 20px 20px;
 }
 
-//.action-cell {
-//  padding-left: 2px;
-//  padding-right: 2px;
-//  width: 164px;
-//}
 
 .action-cell {
   display: flex;
   align-items: center;
   gap: 6px;             // 按鈕間距
   white-space: nowrap;  // 禁止換行
-  width: 164px;         // 寬度（可視需要調整）
+  width: 300px;         // 寬度（可視需要調整）
   padding: 0 2px;
 }
 
@@ -3406,7 +3476,7 @@ const removelocalStorage = () => {
 .action-cell .v-btn .v-icon {
   margin-inline-start: 4px;     // icon 與文字保留一點距離
 }
-
+/*
 :deep(.custom-table th:nth-child(9)),
 :deep(.custom-table td:nth-child(9)) {
   padding-left: 4px !important;
@@ -3414,18 +3484,65 @@ const removelocalStorage = () => {
   //margin-left:  0px !important;
   margin-right:  5px !important;
 }
+*/
+:deep(.custom-table th:nth-child(5)),
+:deep(.custom-table td:nth-child(5)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.custom-table th:nth-child(6)),
+:deep(.custom-table td:nth-child(6)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
 
 :deep(.custom-table th:nth-child(7)),
 :deep(.custom-table td:nth-child(7)) {
-  padding-left: 4px !important;
-  padding-right: 4px !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 :deep(.custom-table th:nth-child(8)),
 :deep(.custom-table td:nth-child(8)) {
-  padding-left: 4px !important;
-  padding-right: 4px !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
+
+:deep(.custom-table td:nth-child(9)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.custom-table th:nth-child(9)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.custom-table td:nth-child(10)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.custom-table th:nth-child(10)) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:deep(.custom-table td:nth-child(11)) {
+  padding-left: 0 !important;
+  //padding-right: 0 !important;
+}
+
+:deep(.custom-table th:nth-child(11)) {
+  padding-left: 0 !important;
+  //padding-right: 0 !important;
+}
+
+:deep(.custom-table th:nth-child(10) div) {
+  justify-content: center;
+}
+
 
 /*
 .custom-table th,

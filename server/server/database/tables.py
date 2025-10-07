@@ -31,6 +31,7 @@ class User(BASE):
   password = Column(String(255))                          #預設值 a12345
   perm_id = Column(Integer, ForeignKey('permission.id'))  # 一對多(多)
   setting_id = Column(Integer, ForeignKey('setting.id'))  # 一對多(多)
+  is_user_delegate = Column(Boolean, default=False)       # false: 目前不須代理人
   isRemoved = Column(Boolean, default=True)               # true: 資料還存在, false:資料已刪除
   isOnline = Column(Boolean, default=False)               # false: user不在線上(logout)
   last_login_ip = Column(String(100), nullable=True)      # 紀錄登入IP
@@ -45,8 +46,8 @@ class User(BASE):
 
   # 定義變數輸出的內容
   def __repr__(self):
-    return "id={}, emp_id={}, emp_name={}, dep_name={}, password={}, perm_id={}, setting_id={}, isRemoved={}, isOnline={}".format(
-    self.id, self.emp_id, self.emp_name, self.dep_name, self.password, self.perm_id, self.setting_id, self.isRemoved, self.isOnline)
+    return "id={}, emp_id={}, emp_name={}, dep_name={}, password={}, perm_id={}, setting_id={}, is_user_delegate={}, isRemoved={}, isOnline={}".format(
+    self.id, self.emp_id, self.emp_name, self.dep_name, self.password, self.perm_id, self.setting_id, self.is_user_delegate, self.isRemoved, self.isOnline)
 
   # 定義class的dict內容
   def get_dict(self):
@@ -58,6 +59,7 @@ class User(BASE):
       'password': self.password,
       'perm_id': self.perm_id,
       'setting_id': self.setting_id,
+      'is_user_delegate': self.is_user_delegate,
       'isRemoved': self.isRemoved,
       'isOnline': self.isOnline,
     }
@@ -550,13 +552,14 @@ class Process(BASE):
     __tablename__ = 'process'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    material_id = Column(Integer, ForeignKey('material.id'))        #material table id
+    material_id = Column(Integer, ForeignKey('material.id'))          #material table id
     #assemble_id = Column(Integer, default=0)                        #0:備料
-    has_started = Column(Boolean, nullable=False, default=False)    # 標記「這筆工單是否已經按過開始」
+    has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
     #work_num =  Column(String(20))                                  #工作中心 # 2025-08-22 mark
-    user_id = Column(String(20), nullable=False)                    #員工編號
-    begin_time = Column(String(30))                                 #開始時間
-    end_time = Column(String(30))                                   #結束時間
+    user_id = Column(String(20), nullable=False)                      #員工編號
+    user_delegate_id = Column(String(20), default='')                             #代理人員工編號
+    begin_time = Column(String(30))                                   #開始時間
+    end_time = Column(String(30))                                     #結束時間
     period_time =  Column(String(30))
     #pause_time =  Column(String(30), default="00:00:00")                # 總共暫停時間
     #elapsedActive_time =  Column(String(30), default="00:00:00")        # 總計時時間
@@ -589,9 +592,10 @@ class Process(BASE):
                                                                   # 5: '堆高機運行(備料區->組裝區)',
                                                                   # 6: '堆高機運行(組裝區->成品區)',
 
-    #process_status = Column(Integer, default=0)                   # material bom_agv_status
+    #process_status = Column(Integer, default=0)                 # material bom_agv_status
     process_work_time_qty = Column(Integer, default=0)            # 報工數量
     normal_work_time = Column(Boolean, default=True)              # true:正常工時, false:異常整修工時
+    abnormal_cause_message = Column(String(30), default='')                   # 異常原因訊息
     create_at = Column(DateTime, server_default=func.now())
 
     # 定義變數輸出的內容

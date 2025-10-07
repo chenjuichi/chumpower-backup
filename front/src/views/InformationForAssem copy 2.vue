@@ -10,73 +10,219 @@
     </template>
   </v-snackbar>
 
-  <!--<v-row align="center" justify="center" v-if="currentUser.perm >= 1">-->
+  <v-row>
+    <v-col cols="6" class="d-flex justify-center align-center pb-0">
+      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">組裝區在製品生產資訊</span>
+    </v-col>
+    <v-col cols="2" class="d-flex justify-end align-center pb-0">
+      <v-btn
+        @click="toggleHistory"
+        :active="history"
+        color="#c39898"
+        variant="outlined"
+
+      >
+        <v-icon left color="#664343">mdi-history</v-icon>
+        歷史紀錄
+      </v-btn>
+    </v-col>
+    <v-col cols="4" class="d-flex justify-start align-center pb-0">
+      <v-text-field
+        v-model="search"
+        label="搜尋"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        hide-details
+        single-line
+
+        density="compact"
+      />
+    </v-col>
+  </v-row>
+
+  <v-row
+    class="mt-0 mb-0 row-hidden"
+    style="min-height: 48px; height: 48px; flex-wrap: nowrap; position:relative; top:25px; left:5px;"
+  >
+    <!--日期範圍-->
+    <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
+      <Transition name="slide">
+        <div v-if="showFields" style="min-width:290px; width:290px;">
+          <!--<v-dialog v-model="pick_date_dialog" width="auto">-->
+          <v-dialog
+            v-model="pick_date_dialog"
+            max-width="900"
+            persistent
+            scrollable
+            transition="dialog-transition"
+          >
+            <template #activator="{ props }">
+              <v-text-field
+                v-bind="props"
+                label="日期範圍"
+                v-model="formattedDateRange"
+
+                readonly
+                variant="underlined"
+                density="compact"
+                style="margin-top:20px;"
+                placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+                prepend-icon="mdi-calendar-check"
+                clearable
+                @click="pick_date_dialog = true"
+                @click:clear="clearDates"
+              />
+            </template>
+
+            <v-card class="date-card">
+              <v-card-text>
+                <VueDatePicker
+                  v-model="dpRange"
+                  v-model:internal-model-value="dpInternal"
+                  range
+                  :inline="true"
+                  :enable-time-picker="false"
+                  locale="zh-TW"
+                  :multi-calendars="1"
+                  :teleport="false"
+                  :month-change-on-scroll="false"
+
+
+                />
+              </v-card-text>
+              <v-card-actions class="justify-end">
+                <v-btn variant="text" color="grey" @click="onCancel">取消</v-btn>
+                <v-btn variant="flat" color="primary" @click="onConfirm">確定</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
+        </div>
+      </Transition>
+    </v-col>
+
+    <!--工單範圍-->
+    <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0">
+      <Transition name="slide">
+        <div style="min-width:290px; width:290px;">
+          <v-text-field
+            v-if="showFields"
+            label="工單範圍"
+            variant="outlined"
+            v-model="creditCardNumber"
+            maxlength="25"
+            inputmode="numeric"
+            density="compact"
+            prepend-icon="mdi-archive-check-outline"
+            placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
+            @input="formatCreditCard"
+            style="margin-top:20px; min-width:290px; width:290px;"
+          />
+        </div>
+      </Transition>
+    </v-col>
+
+    <!--Excel按鍵-->
+    <v-col cols="4" class="d-flex justify-start align-center pt-0 pb-0">
+      <div class="flip_btn">
+        <v-btn
+          color="white"
+          style="min-width: 90px; max-height: 34px; border-radius: 6px; border-width:1.5px; border-color:#64B5F6;"
+          class="side default-side primary thin mt-1 mx-auto"
+          :disable="isInformationEmpty"
+          @mouseenter="showFields = true"
+        >
+          <v-icon left color="green" style="font-weight:700;">mdi-microsoft-excel</v-icon>
+          <span style="color:black; font-weight:600;">Excel</span>
+        </v-btn>
+        <div class="side hover-side">
+          <v-btn color="primary" style="position:relative; right:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="showFields = false">
+            <v-icon left size="24px">mdi-close-circle-outline</v-icon>
+            取消
+          </v-btn>
+          <v-btn color="primary" style="position:relative; left:3px; width:60px;" class="mt-n1 mr-15 mx-auto" @click="exportToExcelFun">
+            <v-icon left size="24px">mdi-check-circle-outline</v-icon>
+            確定
+          </v-btn>
+        </div>
+      </div>
+    </v-col>
+  </v-row>
+
   <v-data-table
     :headers="headers"
-    :items="informations"
+    :items="filteredInformations"
     :row-props="getRowProps"
     :search="search"
-    fixed-header
-    items-per-page="5"
+    :custom-filter="customFilter"
     item-value="order_num"
-    :items-length="informations.length"
-    v-model:page="pagination.page"
     class="outer custom-header"
     :style="tableStyle"
-    :footer-props="{'prev-icon': 'mdi-chevron-left', 'next-icon': 'mdi-chevron-right',}"
+    style="min-height: 420px; height: auto;"
+    :items-per-page-options="footerOptions"
+    items-per-page="5"
+    v-model:page="pagination.page"
   >
     <template v-slot:top>
-      <v-card style="min-height:60px;">
-        <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; padding:16px;">
-          <span style="position:relative; top:-10px;">組裝區在製品生產資訊</span>
-          <v-spacer />
+      <v-card style="min-height:100px; overflow:visible; position:relative; top: -20px;">
+        <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; ">
           <v-row style="margin-left:3vw;">
-            <v-col cols="12" md="6">
-              <div style="display: flex; justify-content: center; gap: 50px;font-size: 20px; color:blue">
-                <span style="flex:1; text-align:right; font-size: 16px; position:relative; left:2vw; top: 2px;">{{ todayDate }}</span>
-                <span style="flex:1; text-align:left;">工單數</span>
-                <span style="flex:1; text-align:center;">已備料數</span>
-                <span style="flex:1; text-align:center;">已組裝數</span>
-                <span style="flex:1; text-align:center;">已入庫數</span>
+            <v-col cols="9">
+              <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                  <span style="font-size: 16px;">{{ todayDate }}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                  <span>工單數</span>
+                  <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                  <span>備料送出</span>
+                  <v-progress-circular
+                    :model-value="progress_value2"
+                    :rotate="360"
+                    :size="70"
+                    :width="8"
+                    color="primary"
+                  >
+                    {{ prepare_count }}
+                  </v-progress-circular>
+                </div>
+
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                  <span>組裝送出</span>
+                  <v-progress-circular
+                    :model-value="progress_value3"
+                    :rotate="360"
+                    :size="70"
+                    :width="8"
+                    color="red"
+                  >
+                    {{ assemble_count }}
+                  </v-progress-circular>
+                </div>
+
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                  <span>入庫登記</span>
+                  <v-progress-circular
+                    :model-value="progress_value4"
+                    :rotate="360"
+                    :size="70"
+                    :width="8"
+                    color="pink"
+                  >
+                    {{ warehouse_count }}
+                  </v-progress-circular>
+                </div>
               </div>
-              <div style="display: flex; justify-content: center; gap: 50px; font-size: 20px;">
-                <span style="flex:1; text-align:right; font-size: 16px; position:relative; left:3vw;">&nbsp;&nbsp;</span>
-                <span style="flex: 1; text-align: left;">hello1</span>
-                <span style="flex: 1; text-align: center;">hello2</span>
-                <span style="flex: 1; text-align: center;">hello3</span>
-                <span style="flex: 1; text-align: center;">hello4</span>
-              </div>
             </v-col>
-            <v-col cols="12" md="2">
-              <v-btn
-                @click="toggleHistory"
-                :active="history"
-                color="#c39898"
-                variant="outlined"
-                style="position:relative; right:-4vw; top:-1px; min-height:20px; height:34px;"
-              >
-                <v-icon left color="#664343">mdi-history</v-icon>
-                歷史紀錄
-              </v-btn>
-            </v-col>
-            <v-col cols="12" md="4" >
-              <v-text-field
-                v-model="search"
-                label="Search"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                single-line
-                style="position:relative; right:8vw; top:4px; min-height: 10px; height: 10px;"
-                density="compact"
-              />
-            </v-col>
+            <v-col cols="3" />
           </v-row>
           <div class="pa-4 text-center">
-            <v-dialog v-model="dialog" max-width="960px">
+            <v-dialog v-model="process_dialog" max-width="1280px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  裝配紀錄
+                  裝配報工紀錄 -
+                  <span style="font-size: 20px;">{{ current_order_num }}</span>
                   <v-fade-transition mode="out-in">
                     <v-btn
                       style="position: relative; right: -550px;"
@@ -96,10 +242,11 @@
                   <v-table class="inner" density="compact" fixed-header>
                     <thead style="color: black;">
                       <tr>
-                        <th class="text-left">備料/裝配</th>
-                        <th class="text-left">開始時間</th>
-                        <th class="text-left">結束時間</th>
-                        <th class="text-left">領料數量</th>
+                        <th class="text-left"></th>
+                        <th class="text-left" style="width:300px; padding-left:0px; padding-right:8px;">備料/組裝</th>
+                        <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
+                        <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
+                        <th class="text-left">數量</th>
                         <th class="text-left">實際耗時(分)</th>
                         <th class="text-left">實際工時(分)</th>
                         <th class="text-left">單件標工(分)</th>
@@ -109,29 +256,25 @@
 
                     <tbody>
                       <tr
-                        v-for="(detail_item, index) in informationDetails"
-                        :key="bom_item.seq_num"
+                        v-for="(process_item, index) in processes"
+                        :key="process_item.seq_num"
                         :style="{
                           backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
                         }"
                       >
-                        <td>{{ bom_item.seq_num }}</td>
-                        <td>
-                          <div>
-                            <div>{{ bom_item.material_num }}</div>
-                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                          </div>
+                        <td>{{ process_item.seq_num }}</td>
+                        <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
+                          {{ process_item.process_type }}
+                          <span style="color:red">{{ process_item.normal_type }}</span>
                         </td>
-                        <td>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                        </td>
-                        <td>
-                          <div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                          </div>
-                        </td>
-                        <td><v-checkbox-btn v-model="bom_item.receive" /></td>
+                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
+                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
+                        <!--<td>{{ process_item.total_delivery_qty }}</td>-->
+                        <td>{{ process_item.process_work_time_qty }}</td>
+                        <td>{{ process_item.period_time }}</td>
+                        <td>{{ process_item.work_time }}</td>
+                        <td>{{ process_item.single_std_time }}</td>
+                        <td>{{ process_item.user_comment }}</td>
                       </tr>
                     </tbody>
                   </v-table>
@@ -157,7 +300,7 @@
       <div
         style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
       >
-        組裝/雷射/檢驗
+        組裝/檢驗/雷射
       </div>
     </template>
 
@@ -170,6 +313,7 @@
       </div>
     </template>
 
+    <!-- 自訂 '現況進度' 欄位 -->
     <template v-slot:item.show1_ok="{ item }">
       <div>
         <div style="font-weight:600;">{{ item.show1_ok }}</div>
@@ -177,8 +321,9 @@
       </div>
     </template>
 
+    <!-- 自訂 '現況備註' 欄位 -->
     <template v-slot:item.show3_ok="{ item }">
-      <div style="font-weight:600;">{{ item.show3_ok }}</div>
+      <div style="font-weight:600; text-align:left;">{{ item.show3_ok }}</div>
     </template>
 
     <template v-slot:item.req_qty="{ item }">
@@ -218,9 +363,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount ,nextTick } from 'vue';
 
-import { useRoute } from 'vue-router'; // Import useRouter
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrBefore);             //啟用 plugin
+
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
+import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
 
@@ -229,44 +381,75 @@ import { myMixin } from '../mixins/common.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
+import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
 
-import { apiOperation, setupGetBomsWatcher}  from '../mixins/crud.js';
+import { setupGetBomsWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
+import { apiOperationB } from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listInformations = apiOperation('get', '/listInformations');
+const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
+
 const getBoms = apiOperation('post', '/getBoms');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-const createProcess = apiOperation('post', '/createProcess');
-//const getMaterial = apiOperation('post', '/getMaterial');
+//const createProcess = apiOperation('post', '/createProcess');
+const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
+
+const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+
+const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
 //=== component name ==
-defineComponent({
-  name: 'MaterialListForAssem'
-});
+defineComponent({ name: 'InformationForAssem' });
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-let intervalId = null;              // 10分鐘, 倒數計時器
-const route = useRoute(); // Initialize router
+let intervalId = null;                    // 10秒, 倒數計時器
+let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
+const route = useRoute();                 // Initialize router
+
+const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
+const pick_date_dialog = ref(false);      // 控制 v-pick-date Dialog 顯示
+const selectedRange = ref([])             // 最終選定日期範圍
+const tempRange = ref([])
+//const dpRange = ref([])         // 選單中暫存日期範圍
+//const dpRange = ref<(Date|undefined)[]>([])
+const dpRange = ref(null)
+//const dpRangeTmp = ref(null)
+const dpInternal = ref(null)
+const formattedDateRange = ref('')   // 綁給 <v-text-field>
+const fmt = d => dayjs(d).format('YYYY-MM-DD')
+
+const fromDateStart = ref("");
+const fromDateValStart = ref([]);
+
+const creditCardNumber = ref("");
+const orderNumRange = ref(["", ""]);      // 用來儲存第一組與第二組的數字
 
 const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
 const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
+
+const footerOptions = [
+  { value: 5, title: '5' },
+  //{ value: 10, title: '10' },
+  //{ value: -1, title: '全部' }
+];
+
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
-  { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:150 },
+  { title: '現況進度', sortable: false, key: 'show1_ok', width:150 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:170 },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
@@ -276,39 +459,143 @@ const headers = [
 
 //const localIp = 'localhost';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
-const userId = 'user_chumpower';
+//const userId = 'user_chumpower';
 // 初始化Socket連接
 //const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-//const { socket, setupSocketConnection } = useSocketio(serverIp, userId);
 //const localIP = ref('');
 const from_agv_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv=ref('');
+
 const search = ref('');
+
 const history = ref(false);
 const currentUser = ref({});
-const permDialog = ref(false);
-//const rightDialog = ref(false);
+
+const current_order_num = ref('');
+
 //const showExplore = ref(false);
 //const showVirtualTable = ref(false);
 
 const currentStartTime = ref(null);  // 記錄開始時間
 
-const dialog = ref(false);
+const process_dialog = ref(false);
 
 const pagination = reactive({
   itemsPerPage: 5, // 預設值, rows/per page
   page: 1,
 });
 
+const wakeLock = ref(null);           // 用於存儲 Wake Lock 物件
+const isWakeLockActive = ref(false);  // 是否啟用螢幕鎖定
+
+const selectedFile = ref(null); 						                // 儲存已選擇檔案的名稱
+const topPath = ref('C:\\vue\\chumpower\\excel_export'); 	  // 初始路徑
+const downloadFilePath = ref('');
+const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
+
 //=== watch ===
-watch(currentUser, (newUser) => {
-  if (newUser.perm < 1) {
-    permDialog.value = true;
+setupGetBomsWatcher();
+
+watch(tempRange, (newVal) => {
+  console.log('目前選取型別與狀態：',
+    newVal.map(d => ({
+      value: d,
+      type: typeof d,
+      isDate: d instanceof Date
+    }))
+  );
+  console.log('✅ 是否為 Date：', newVal.map(d => d instanceof Date));
+})
+
+watch(pick_date_dialog, (isOpen) => {
+  if (isOpen) {
+    /*
+    // seed VueDatePicker range from already chosen selectedRange
+    if (selectedRange.value.length >= 2) {
+      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
+      dpRange.value = [sorted[0], sorted[sorted.length - 1]]
+    } else if (selectedRange.value.length === 1) {
+      dpRange.value = [selectedRange.value[0]]
+    } else {
+      dpRange.value = []
+    }
+    */
+
+    /*
+    if (selectedRange.value.length >= 2) {
+      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
+      tempRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
+    } else {
+      tempRange.value = [...selectedRange.value]
+    }
+    */
   }
+})
+
+
+
+// sync from VueDatePicker to our internal tempRange/selectedRange representation
+/*
+watch(dpRange, (val) => {
+  if (!val || val.length === 0) return
+  const [start, end] = val
+  if (start && end) {
+    const days = []
+    let cur = dayjs(start)
+    const e = dayjs(end)
+    while (cur.isBefore(e) || cur.isSame(e, 'day')) {
+      days.push(cur.toDate())
+      cur = cur.add(1, 'day')
+    }
+    tempRange.value = days
+  } else if (start) {
+    tempRange.value = [start]
+  }
+})
+*/
+
+/*
+watch(dpRange, (val) => {
+  dpRangeTmp.value = Array.isArray(val) ? val.slice() : val
+}, { deep: true })
+*/
+watch([dpInternal, dpRange], () => {
+  const src = dpInternal.value ?? dpRange.value
+  if (!src || !Array.isArray(src) || !src[0]) {
+    // 尚未選到任何一天就不覆寫（保持原文字）
+    return
+  }
+  const [start, end] = src
+  formattedDateRange.value = end ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+}, { deep: true })
+
+
+watch(
+  () => informations.value || [],
+  (newVal) => {
+    console.log("Updated informations...", newVal);
+  },
+  { deep: true }
+);
+
+watch(fromDateValStart, (val) => {
+  console.log("watch(), fromDateValStart:", fromDateValStart.value)
+
+  if (!val || val.length === 0) {
+    fromDateStart.value = [];
+  } else {
+    fromDateStart.value = val.map((date) => formatDate3(date));
+  }
+  console.log("watch: fromDateStart.value:", fromDateStart.value);
 });
 
-setupGetBomsWatcher();
+watch(selectedFile, (newVal) => {
+  if (newVal) {
+    console.log("📥 selectedFile 更新，現在下載檔案:", newVal);
+    downloadFileFun();
+  }
+});
 
 //=== computed ===
 const tableStyle = computed(() => ({
@@ -332,6 +619,37 @@ const routeName = computed(() => route.name);
 
 const dialogWidth = computed(() => (screenWidth.value > 1200 ? '1400px' : '80vw'));
 
+order_count, prepare_count, assemble_count, warehouse_count
+const progress_value1 = computed(() => order_count.value);
+const progress_value2 = computed(() => order_count.value !=0 ? (prepare_count.value / order_count.value)* 100 : 0 );
+const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.value / order_count.value)* 100 : 0 );
+const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
+
+// 顯示格式：yyyy-mm-dd ~ yyyy-mm-dd
+/*
+const formattedDateRange = computed(() => {
+  const list = selectedRange.value
+  if (list.length === 0) return ''
+  const sorted = [...list].sort((a, b) => new Date(a) - new Date(b))
+  const start = dayjs(sorted[0]).format('YYYY-MM-DD')
+  const end = dayjs(sorted[sorted.length - 1]).format('YYYY-MM-DD')
+  return start === end ? start : `${start} ~ ${end}`
+})
+*/
+const isInformationEmpty = computed(() => {
+  return informations.value.length === 0;
+});
+
+// 計算屬性 - 過濾符合條件的資訊
+const filteredInformations = computed(() => {
+  return informations.value
+  .filter(item => {
+    const isWithinDateRange = checkDateInRange(item.delivery_date);
+    const isWithinOrderRange = checkOrderInRange(item.order_num);
+    return isWithinDateRange && isWithinOrderRange;
+  });
+});
+
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
@@ -350,17 +668,34 @@ onMounted(async () => {
   currentUser.value = user ? JSON.parse(user) : null;
   console.log("currentUser:", currentUser.value);
 
+  //#
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw)
+    userRaw = localStorage.getItem('loginedUser');
+
+  try {
+    const u = userRaw ? JSON.parse(userRaw) : null;
+    // 只讀，避免被誤改
+    currentUser.value = u ? Object.freeze({ ...u }) : null;
+  } catch {
+    currentUser.value = null;
+  }
+  console.log('currentUser:', currentUser.value);
+  //#
+
   //fileCount.value = countExcelFiles();
   //console.log("fileCount:", fileCount.value);
 
-
-  intervalId = setInterval(listInformations, 10 * 1000);  // 每 10秒鐘調用一次 API
+  intervalId = setInterval(listInformationsFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+  intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 1000);  // 每 5秒鐘調用一次 API
 
   //window.addEventListener('resize', () => {
   //  screenWidth.value = window.innerWidth;
   //});
   window.addEventListener('resize', updateScreenWidth);
   updateScreenWidth(); // 確保初始時執行一次
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   /*
   console.log('取得本機ip...');
@@ -442,6 +777,8 @@ onMounted(async () => {
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   clearInterval(intervalId);
 
+  clearInterval(intervalIdForProgressCircle);
+
   window.removeEventListener('resize', updateScreenWidth);
 });
 
@@ -455,17 +792,176 @@ onBeforeMount(() => {
   initialize();
 });
 
+onBeforeUnmount(() => {
+  // 卸載時釋放鎖定
+  releaseWakeLock();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
+
 //=== method ===
-const initialize = () => {
-  console.log("initialize()...")
+const initialize = async () => {
+  try {
+    console.log("initialize()...")
 
-  listInformations();
+    await listInformations();
+
+    await listWorkingOrderStatus();
+  } catch (error) {
+    console.error("Error during initialize():", error);
+  }
 };
 
-const toggleHistory = () => {
+// 檢查 item.delivery_date 是否落在 fromDateValStart 範圍內
+const checkDateInRange = (date) => {
+  if (!fromDateValStart.value.length) return true; // 沒選日期 -> 全部顯示
+
+  const formattedDates = fromDateValStart.value.map(d => formatDate3(d));
+  const minDate = formattedDates[0];
+  const maxDate = formattedDates[formattedDates.length - 1];
+
+  return date >= minDate && date <= maxDate;
+};
+
+// 檢查 item.order_num 是否落在 orderNumRange 內
+const checkOrderInRange = (orderNum) => {
+  if (!orderNumRange.value[0] && !orderNumRange.value[1]) return true; // 沒輸入範圍 -> 全部顯示
+
+  const minOrder = orderNumRange.value[0];
+  const maxOrder = orderNumRange.value[1] || minOrder; // 若只輸入一組，則上下限相同
+  return orderNum >= minOrder && orderNum <= maxOrder;
+};
+
+
+const exportToExcelFun = async () => {
+  console.log('InformationForAssem.vue, exportToExcelFun()...');
+
+  //const obj = {
+  //  order_num: '訂單編號',
+  //  comment: '說明',
+  //  delivery_date: '交期',
+  //  req_qty: '訂單數量',
+  //  delivery_qty: '現況數量',
+  //};
+
+  // 先取得 data table 內的 filteredInformations
+  let filteredData = filteredInformations.value;
+  console.log("1. filteredData: ", filteredData);
+
+  // 再手動應用 customFilter()
+  if (search.value) {
+    filteredData = filteredData.filter(item => customFilter(search.value, item));
+  }
+  console.log("2. filteredData: ", filteredData);
+
+  // 確保欄位名稱與 obj 一致
+  let updatedData = filteredData.map(item => ({
+    order_num: item.order_num ?? '',
+    comment: item.comment ?? '',
+    delivery_date: item.delivery_date ?? '',
+    req_qty: item.req_qty ?? '',
+    delivery_qty: item.delivery_qty ?? '',
+
+  }));
+  console.log("3. updatedData: ", updatedData);
+
+  //let object_Desserts = [obj, ...updatedData];
+  //console.log("4. object_Desserts: ", object_Desserts);
+
+  let payload = {
+    blocks: updatedData,
+    //blocks: object_Desserts,
+    //count: object_Desserts.length,
+    name: currentUser.value.name,
+  };
+
+  try {
+    const export_file_data = await exportToExcelForAssembleInformation(payload);
+    console.log("export_file_dat:", export_file_data);
+
+    if (export_file_data.status) {
+      selectedFile.value = export_file_data.file_name;
+      downloadFilePath.value = export_file_data.message;
+      console.log("✅ 更新後的 selectedFile:", selectedFile.value); // 確保它不是 null
+
+      //let temp_message = `庫存記錄(${export_file_data.message})轉檔完成!`;
+      let temp_message = '轉檔完成!';
+      showSnackbar(temp_message, '#008184');
+    } else {
+      showSnackbar(excel_file_data.message, 'red accent-2');
+    }
+  } catch (error) {
+    console.error("Error during execution:", error);
+    showSnackbar("存檔錯誤!", 'red accent-2');
+  }
+  showFields.value = false;
+};
+
+const downloadFileFun = async () => {
+	console.log("downloadFileFun()...", downloadFilePath.value)
+
+	const payload = {
+    filepath: downloadFilePath.value,
+	};
+
+	try {
+		const response = await downloadFile(payload);
+
+		console.log("response:", response);                   // 檢查是否為 Blob
+		console.log("Response headers:", response.headers);   // 檢查headers
+
+		selectedFileName.value = null;
+
+		if (response.data instanceof Blob) {
+			const fileName = response.headers['X-File-Name'] || response.headers['x-file-name'] || `${selectedFile.value}`;
+      console.log('下載的檔案名稱:', fileName);
+
+			// 建立下載鏈接並觸發下載
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      //link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+			return true; 													// 成功下載
+    }
+  } catch (error) {
+    showSnackbar('下載檔案錯誤！', 'red accent-2');
+    console.error('下載檔案錯誤:', error);
+  }
+};
+
+const listInformationsFun = async () => {
+  await listInformations();
+};
+
+const listWorkingOrderStatusFun = async () => {
+  await listWorkingOrderStatus();
+};
+
+const customFilter = (value, search, item) => {
+  //const customFilter = (search, item) => {
+    if (!search) return true;
+  search = search.toLowerCase();
+
+  return Object.values(item).some(val =>
+    String(val).toLowerCase().includes(search)
+  );
+};
+
+const toggleHistory = async () => {
   history.value = !history.value;
-  //getWarehouseForAssembleByHistoryFun();
+  await getInformationsByHistoryFun();
 };
+
+const getInformationsByHistoryFun = async () => {
+  let payload = {
+    history_flag: history.value,
+  };
+  await getInformationsByHistory(payload);
+}
 
 // 監聽視窗變化
 const updateScreenWidth = () => {
@@ -483,7 +979,6 @@ const getRowProps = (item, index) => {
   };
 };
 
-
 const getStatusStyle = (status) =>{
   const colorMap = {
     0: '#ff4000',
@@ -498,6 +993,44 @@ const getStatusStyle = (status) =>{
     fontSize: '12px',
   };
 };
+
+// 請求螢幕鎖定
+const requestWakeLock = async () => {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock.value = await navigator.wakeLock.request("screen");
+      isWakeLockActive.value = true;
+      console.log("✅ 螢幕鎖定成功");
+
+      // 監聽鎖定被釋放的情況
+      wakeLock.value.addEventListener("release", () => {
+        isWakeLockActive.value = false;
+        console.log("⚠️ 螢幕鎖定已解除");
+      });
+    } else {
+      console.warn("❌ 你的瀏覽器不支援 Wake Lock API");
+    }
+  } catch (err) {
+    console.error("❌ 無法鎖定螢幕:", err);
+  }
+};
+
+// 釋放螢幕鎖定
+const releaseWakeLock = async () => {
+  if (wakeLock.value) {
+    await wakeLock.value.release();
+    wakeLock.value = null;
+    isWakeLockActive.value = false;
+    console.log("🔓 螢幕鎖定已釋放");
+  }
+};
+
+// 當網頁可見性變化時，確保鎖定不會被打斷
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible" && isWakeLockActive.value) {
+    requestWakeLock();
+  }
+};
 /*
 const getServerIP = async () => {   // 定義一個異步函數來請求socket伺服器 IP
   try {
@@ -509,34 +1042,22 @@ const getServerIP = async () => {   // 定義一個異步函數來請求socket�
   }
 };
 */
-const toggleExpand = (item) => {
+const toggleExpand = async (item) => {
   console.log("toggleExpand(),", item.order_num);
 
+  current_order_num.value = item.order_num;
   let payload = {
-    //order_num: item.order_num,
-    id: item.id,
-  };
-  getBoms(payload);
-
-  // 記錄當前開始時間
-  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("Start time:", currentStartTime.value);
-
-  payload = {
     order_num: item.order_num,
-    record_name: 'show2_ok',
-    record_data: 1                //備料中
   };
-  updateMaterial(payload).then(data => {
-    !data && showSnackbar(data.message, 'red accent-2');
-  });
+  await getProcessesByOrderNum(payload);
+  console.log("processes:", processes.value);
 
-  dialog.value = true;
+  process_dialog.value = true;
 };
 
 const updateItem = async () => {              //編輯 bom, material及process後端table資料
-  console.log("updateItem(),", boms.value);
-
+  console.log("updateItem()...");
+  /*
   let my_material_orderNum = boms.value[0].order_num;
 
   let endTime = new Date();                                               // 記錄當前結束時間
@@ -611,8 +1132,8 @@ const updateItem = async () => {              //編輯 bom, material及process�
 
     listMaterials();
   }
-
-  dialog.value = false;
+  */
+  process_dialog.value = false;
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
@@ -722,6 +1243,113 @@ const getLocalIP = async () => {
   }
 };
 */
+const formatDate3 = (date) => {
+
+  if (!date) return null;
+  const localDate = new Date(date);
+  localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset()); // 修正時區
+  //return localDate.toISOString().split("T")[0]; // yyyy-mm-dd
+  const isoDate = localDate.toISOString().split("T")[0]; // yyyy-mm-dd
+
+  const [year, month, day] = isoDate.split("-");
+  //console.log("formatDate3: ", `${year}-${month}-${day}`)
+  return `${year}-${month}-${day}`;
+};
+
+const formatCreditCard = () => {
+  // 移除所有 "-"，確保格式統一
+  let realNumber = creditCardNumber.value.replace(/-/g, "");
+
+  // 只保留最多 24 位數 (兩組 12 位數)
+  realNumber = realNumber.slice(0, 24);
+
+  // 每 12 位數加上 "-"
+  let dashedNumber = realNumber.match(/.{1,12}/g);
+  creditCardNumber.value = dashedNumber ? dashedNumber.join("-") : realNumber;
+
+  // 儲存第一組與第二組數字
+  orderNumRange.value = dashedNumber || ["", ""];
+};
+
+//const clearDates = () => {
+//  selectedRange.value = []
+//  tempRange.value = []
+//}
+
+function generateInclusiveDates(start, end) {
+  const s = dayjs(start), e = dayjs(end)
+  const arr = []
+  let cur = s
+  while (cur.isBefore(e, 'day') || cur.isSame(e, 'day')) {
+    arr.push(cur.toDate())
+    cur = cur.add(1, 'day')
+  }
+  return arr
+}
+
+/*
+const onPick = (val) => {
+  // val 可能是 null / [Date] / [Date,Date]
+  //dpRange.value = val
+  dpRangeTmp.value = Array.isArray(val) ? val.slice() : val
+  console.log("dpRangeTmp.value:", dpRangeTmp.value)
+}
+
+const onInternal = (val) => {
+  if (Array.isArray(val)) dpRangeTmp.value = val.slice()
+  else dpRangeTmp.value = val ? [val] : null
+
+  console.log("dpRangeTmp.value:",dpRangeTmp.value)
+}
+*/
+
+const onConfirm = async () => {
+  await nextTick()
+  pick_date_dialog.value = false
+}
+
+const onCancel = () => {
+  pick_date_dialog.value = false
+}
+
+const clearDates = () => {
+  dpRange.value = null
+  dpInternal.value = null
+  formattedDateRange.value = ''
+}
+
+/*
+// 點「確定」按鈕
+const onConfirm = () => {
+  //const rawDates = tempRange.value.map(d => dayjs(d))
+  const base = (dpRange && dpRange.value && dpRange.value.length) ? dpRange.value : tempRange.value
+  const rawDates = base.map(d => dayjs(d))
+
+  if (rawDates.length === 1) {
+    selectedRange.value = [rawDates[0].toDate()]
+  } else if (rawDates.length >= 2) {
+    const sorted = rawDates.sort((a, b) => a.unix() - b.unix())
+    selectedRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
+  }
+  pick_date_dialog.value = false
+}
+
+// 點「取消」按鈕
+const onCancel = () => {
+  console.log('❌ 取消選擇');
+
+  if (selectedRange.value.length >= 1) {
+    const [start, end] = selectedRange.value.length === 1
+      ? [selectedRange.value[0], selectedRange.value[0]]
+      : [selectedRange.value[0], selectedRange.value[1]]
+
+    tempRange.value = generateDateRange(start, end)
+  } else {
+    tempRange.value = []
+  }
+  pick_date_dialog.value = false
+}
+*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -806,9 +1434,9 @@ const showSnackbar = (message, color) => {
   max-height: 320px;
 }
 
-:deep(.v-data-table-footer__items-per-page) {
-  display: none;
-}
+//:deep(.v-data-table-footer__items-per-page) {
+//  display: none;
+//}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -848,10 +1476,10 @@ const showSnackbar = (message, color) => {
   border-radius: 5px !important;
 }
 
-:deep(.v-card .v-data-table-footer) {
-  padding-top: 0px;
-  padding-bottom: 0px;
-}
+//:deep(.v-card .v-data-table-footer) {
+//  padding-top: 0px;
+//  padding-bottom: 0px;
+//}
 
 :deep(.v-card .v-data-table) {
   border-radius: 8px;
@@ -859,66 +1487,68 @@ const showSnackbar = (message, color) => {
 }
 
 :deep(.v-card .v-data-table thead th) {
-  background-color: white; /* 確保標題背景與卡片一致 */
-  z-index: 2; /* 提高z-index以確保標題在其他內容之上 */
+  background-color: white;  // 確保標題背景與卡片一致
+  z-index: 2;                 // 提高z-index以確保標題在其他內容之上
 }
 
 .sticky-title {
-position: sticky;
-top: 0px;
-background-color: white;
-z-index: 10;
-//padding-top: 10px;
-//padding-bottom: 10px;
+  position: sticky;
+  top: 0px;
+  background-color: white;
+  z-index: 10;
+  //padding-top: 10px;
+  //padding-bottom: 10px;
 }
 
 .v-table.inner thead.sticky-thead tr.inner_header th {
-position: sticky;
-top: 0px;
-background-color: white;
-z-index: 9;
+  position: sticky;
+  top: 0px;
+  background-color: white;
+  z-index: 9;
 }
 
-.table-container {
-position: relative; /* 讓 sticky 定位相對於這個元素 */
-max-height: 440px; /* 設定合適的高度來產生滾動條 */
-overflow-y: auto; /* 允許垂直滾動 */
-}
+//.table-container {
+//  position: relative; /* 讓 sticky 定位相對於這個元素 */
+//  max-height: 440px; /* 設定合適的高度來產生滾動條 */
+//  overflow-y: auto; /* 允許垂直滾動 */
+//}
 
 .red-text {
-color: red;
+  color: red;
 }
 
-:deep(.v-input__control) {
-//min-height: 36px;
-//height: 36px;
-left: 150px;
-position: relative;
-width: 250px;
-}
+//:deep(.v-input__control) {
+//left: 150px;
+//position: relative;
+//width: 250px;
+//}
 
 :deep(.v-field__field) {
   min-height : 20px;
   height: 34px;
 }
 
-:deep(.v-data-table-footer__info) {
-min-height : 30px;
-height: 40px;
+:deep(.v-progress-circular__content) {
+  font-size: 25px;
 }
 
+//:deep(.v-data-table-footer__info) {
+//min-height : 30px;
+//height: 40px;
+//}
+
 .custom-header theader th {
-background-color: #85aef2; /* 自訂背景顏色 */
+  background-color: #85aef2; /* 自訂背景顏色 */
 }
 
 .blinking {
-animation: blink-animation 1s steps(5, start) infinite;
+  animation: blink-animation 1s steps(5, start) infinite;
 }
 
 @keyframes blink-animation {
-to {
-  visibility: hidden;
-}
+  to {
+    visibility: hidden;
+  }
 }
 
 // 預設 left: 180px
@@ -943,4 +1573,95 @@ to {
     left: 220px;
   }
 }
+
+//===
+
+.slide-enter-from
+{
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+}
+
+//===過場特效
+
+.flip_btn {
+  position: relative;
+  top: -5px;
+  left: 30px;
+  height: 20px;
+  width: 130px;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease-in-out;
+  transform: translateZ(-20px);
+}
+
+.flip_btn:hover {
+  transform: rotateX(-90deg) translateY(20px);
+}
+
+.side {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 130px;
+  //width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.default-side {
+  transform: translateZ(20px);
+}
+
+.hover-side {
+  transform: rotateX(90deg) translateZ(20px);
+}
+
+//=====
+
+.date-card {
+  min-height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.date-card .v-card-text{
+  flex: 1;
+  overflow: visible;      // 不要在卡片內容區出現垂直捲軸
+}
+
+// 置中外層容器（inline 模式也會有）
+:deep(.dp__outer_menu_wrap){
+  display: flex;
+  justify-content: center;
+  width: auto;              // 讓寬度隨內容
+  margin: 0 auto;
+}
+
+:deep(.dp__main.dp__theme_light.dp__flex_display){
+  width: auto !important;
+  max-width: none !important;   /* 若之前有 720px 的規則，這裡直接蓋掉 */
+  display: flex;
+  justify-content: center;
+  /* 不要垂直 scrollbar */
+  overflow-y: hidden;
+}
+
+// 放大或縮小格子，控制整體寬度與高度
+:deep(.dp__calendar){
+  --dp-cell-size: 32px;    // 34~40 之間調整；越小越窄
+  --dp-font-size: 13px;
+}
+
+// 只保留星期列＋日期格子，隱藏標題/月份導覽/內建按鈕列
+:deep(.dp__selection_preview),
+:deep(.dp__top),
+:deep(.dp__month_year_row),
+:deep(.dp__action_row){
+  display: none;
+}
+
+
 </style>

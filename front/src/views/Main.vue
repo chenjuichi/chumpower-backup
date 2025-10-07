@@ -105,8 +105,11 @@ const handlePopState = () => {
   //window.history.pushState(history.state, '', document.URL)
 
   // 重新 push 一次，但保留原狀態
-  window.history.pushState({ ...history.state }, '', document.URL);
+  //window.history.pushState({ ...history.state }, '', document.URL);
 
+  // 保留 router 的 state，並對 null 做保底
+  const state = (history.state ?? {});
+  window.history.pushState(state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')

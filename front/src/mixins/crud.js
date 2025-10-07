@@ -203,7 +203,7 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/listWaitForAssemble') {
             begin_count.value = res.data.begin_count;
-            end_count.value = res.data.end_count;
+            //end_count.value = res.data.end_count;
           }
 
           if (path == '/listWorkingOrderStatus') {
@@ -453,6 +453,18 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/getMaterialsAndAssemblesByUser') {
             //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
             materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
+          }
+
+          if (path == '/getCountMaterialsAndAssemblesByUser') {
+            end_count.value = res.data.end_count;
+          }
+
+          if (path == '/getCountMaterialsAndAssemblesByUser2') {
+            return res.data;
+          }
+
+          if (path == '/getEndOkByMaterialIdAndStepCode') {
+            return res.data;
           }
 
       //    if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||

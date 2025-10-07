@@ -187,10 +187,30 @@ const checkDataForSaveButton = computed(() => {
 onMounted(async () => {
   console.log("changePassword.vue, mounted()...");
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  console.log("currentUser:", currentUser.value);
+  //let user = localStorage.getItem("loginedUser");
+  //currentUser.value = user ? JSON.parse(user) : null;
+  //console.log("currentUser:", currentUser.value);
 
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+
+  if (currentUser.value) {
+    //currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    //currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+  console.log("currentUser:", currentUser.value);
+  //
 });
 
 //=== method ===

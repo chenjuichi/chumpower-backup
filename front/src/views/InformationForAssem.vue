@@ -47,46 +47,53 @@
     <!--日期範圍-->
     <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
       <Transition name="slide">
-        <div v-if="showFields" style="min-width:290px; width:290px;">
-          <v-dialog v-model="pick_date_dialog" width="auto">
+        <div v-if="showFields" style="min-width:290px;">
+          <v-menu
+            v-model="menuOpen"
+            :close-on-content-click="false"
+            location="bottom start"
+            origin="top start"
+            :offset="[0, 8]"
+            :width="480"
+            :min-width="480"
+            transition="fade-transition"
+            :open-on-focus="false"
+            :open-on-hover="false"
+          >
             <template #activator="{ props }">
               <v-text-field
                 v-bind="props"
                 label="日期範圍"
                 v-model="formattedDateRange"
-                :value="formattedDateRange"
                 readonly
                 variant="underlined"
                 density="compact"
                 style="margin-top:20px;"
                 placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
                 prepend-icon="mdi-calendar-check"
+                class="dateicon"
                 clearable
-                @click="pick_date_dialog = true"
+                @click="menuOpen = true"
                 @click:clear="clearDates"
               />
             </template>
+              <div class="dp-stretch">
+              <VueDatePicker
+                :key="menuKey"
+                :start-date="today"
+                v-model="dpRange2"
+                :enable-time-picker="false"
+                range
+                :inline="true"
 
-            <v-card>
-              <v-card-text>
-                <v-locale-provider locale="zhHant">
-                  <v-date-picker
-                    v-model="tempRange"
-                    multiple
-                    hide-actions
-                    hide-header
-                    title="選擇日期範圍"
-
-                    :allowed-dates="() => true"
-                  />
-                </v-locale-provider>
-              </v-card-text>
-              <v-card-actions class="justify-end">
-                <v-btn variant="text" color="grey" @click="onCancel">取消</v-btn>
-                <v-btn variant="flat" color="primary" @click="onConfirm">確定</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-dialog>
+                :auto-apply="true"
+                locale="zh-TW"
+                week-num-name=""
+                :week-numbers="false"
+                :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+              />
+              </div>
+          </v-menu>
         </div>
       </Transition>
     </v-col>
@@ -103,6 +110,7 @@
             maxlength="25"
             inputmode="numeric"
             density="compact"
+            class="papericon"
             prepend-icon="mdi-archive-check-outline"
             placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
             @input="formatCreditCard"
@@ -360,11 +368,12 @@ import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 dayjs.extend(isSameOrBefore);             //啟用 plugin
 
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
 import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
-
-//import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
@@ -407,9 +416,17 @@ let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
 const route = useRoute();                 // Initialize router
 
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
-const pick_date_dialog = ref(false);      // 控制 v-pick-date Dialog 顯示
+const menuOpen = ref(false)
+const today = new Date()
+const menuKey = ref(0)
+
 const selectedRange = ref([])             // 最終選定日期範圍
-const tempRange = ref([])                 // 選單中暫存日期範圍
+//const tempRange = ref([])                 // 選單中暫存日期範圍
+
+const dpRange = ref(null)        // 外部值（清空用 null，不要 []）
+const dpRange2 = ref(null)        // 外部值（清空用 null，不要 []）
+const dpInternal = ref(null)     // 內部值：選取當下就會更新
+const formattedDateRange = ref('')// 綁給 <v-text-field>
 
 const fromDateStart = ref("");
 const fromDateValStart = ref([]);
@@ -478,6 +495,21 @@ const selectedFileName = ref('');						                // 用於追蹤目前選�
 //=== watch ===
 setupGetBomsWatcher();
 
+watch(menuOpen, (open) => {
+  // 只有在尚未選到任何日期時才重掛，避免覆蓋使用者已選的月份
+  if (open && !dpRange2.value?.[0] && !dpRange2.value?.[1]) {
+    menuKey.value++           // 變更 key 觸發重掛
+  }
+})
+
+// 兩個日期都選到時，回填並關閉 menu
+watch(dpRange2, ([start, end]) => {
+  if (start && end) {
+    formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+    menuOpen.value = false
+  }
+})
+/*
 watch(tempRange, (newVal) => {
   console.log('目前選取型別與狀態：',
     newVal.map(d => ({
@@ -488,17 +520,7 @@ watch(tempRange, (newVal) => {
   );
   console.log('✅ 是否為 Date：', newVal.map(d => d instanceof Date));
 })
-
-watch(pick_date_dialog, (isOpen) => {
-  if (isOpen) {
-    if (selectedRange.value.length >= 2) {
-      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
-      tempRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
-    } else {
-      tempRange.value = [...selectedRange.value]
-    }
-  }
-})
+*/
 
 watch(
   () => informations.value || [],
@@ -525,6 +547,13 @@ watch(selectedFile, (newVal) => {
     downloadFileFun();
   }
 });
+
+watch([dpInternal, dpRange], () => {
+  const src = dpInternal.value ?? dpRange.value
+  if (!src || !Array.isArray(src) || !src[0]) return
+  const [start, end] = src
+  formattedDateRange.value = end ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+}, { deep: true })
 
 //=== computed ===
 const tableStyle = computed(() => ({
@@ -555,6 +584,7 @@ const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.v
 const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
 
 // 顯示格式：yyyy-mm-dd ~ yyyy-mm-dd
+/*
 const formattedDateRange = computed(() => {
   const list = selectedRange.value
   if (list.length === 0) return ''
@@ -563,7 +593,7 @@ const formattedDateRange = computed(() => {
   const end = dayjs(sorted[sorted.length - 1]).format('YYYY-MM-DD')
   return start === end ? start : `${start} ~ ${end}`
 })
-
+*/
 const isInformationEmpty = computed(() => {
   return informations.value.length === 0;
 });
@@ -727,6 +757,14 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+const fmt = (d) => {
+  if (!d) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...")
@@ -1200,38 +1238,10 @@ const formatCreditCard = () => {
   orderNumRange.value = dashedNumber || ["", ""];
 };
 
-
 const clearDates = () => {
-  selectedRange.value = []
-  tempRange.value = []
-}
-
-// 點「確定」按鈕
-const onConfirm = () => {
-  const rawDates = tempRange.value.map(d => dayjs(d))
-  if (rawDates.length === 1) {
-    selectedRange.value = [rawDates[0].toDate()]
-  } else if (rawDates.length >= 2) {
-    const sorted = rawDates.sort((a, b) => a.unix() - b.unix())
-    selectedRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
-  }
-  pick_date_dialog.value = false
-}
-
-// 點「取消」按鈕
-const onCancel = () => {
-  console.log('❌ 取消選擇');
-
-  if (selectedRange.value.length >= 1) {
-    const [start, end] = selectedRange.value.length === 1
-      ? [selectedRange.value[0], selectedRange.value[0]]
-      : [selectedRange.value[0], selectedRange.value[1]]
-
-    tempRange.value = generateDateRange(start, end)
-  } else {
-    tempRange.value = []
-  }
-  pick_date_dialog.value = false
+  dpRange2.value = [null, null]
+  formattedDateRange.value = ''
+  menuOpen.value = false  // 面板關掉
 }
 
 const showSnackbar = (message, color) => {
@@ -1503,4 +1513,62 @@ const showSnackbar = (message, color) => {
   transform: rotateX(90deg) translateZ(20px);
 }
 
+
+:deep(.dp__calendar_header .dp__calendar_header_item) {
+  font-size: 0.8em;
+}
+
+// ------- 沒有週數欄（共 7 欄）：一～五綠，六日紅 -------
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(-n+5)) {
+  background: #2e7d32; color: #fff;
+}
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(6)),
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(7)) {
+  background: #c62828; color: #fff;
+}
+
+// ------- 有週數欄（第 1 欄是週數）：星期從第 2～8 欄 -------
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(n+2):nth-child(-n+6)) {
+
+  background: #2e7d32; color: #fff;   // 第 2～6 欄 = 一～五 → 綠
+}
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(7)),
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(8)) {
+
+  background: #c62828; color: #fff;   // 第 7、8 欄 = 六、日 → 紅
+}
+
+// 如果週數欄（W）有開啟，不要上色它
+:deep(.dp-colored .dp__calendar_header_item_week) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+:deep(.dp__month_year_select) {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+:deep(.dateicon > .v-input__prepend .v-icon) {
+  color: #F48FB1 !important;
+}
+
+:deep(.papericon > .v-input__prepend .v-icon) {
+  color: #90CAF9 !important;
+}
+
+// 讓 DatePicker 撐滿 v-menu 設定的寬度
+:deep(.dp-stretch .dp__main) {
+  width: 100%;
+}
+
+:deep(.dp__outer_menu_wrap) {
+  width: 140%;
+}
 </style>

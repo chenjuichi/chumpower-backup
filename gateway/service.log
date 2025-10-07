@@ -583,3 +583,23 @@
 連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
 連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
 連線時間: Tue Sep 30 2025 21:14:52 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Wed Oct 01 2025 09:11:49 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Thu Oct 02 2025 09:40:09 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Fri Oct 03 2025 10:19:02 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.111:6600, mode: false, RUN_MODE: false
+連線時間: Fri Oct 03 2025 21:11:27 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.0.12:6600, mode: false, RUN_MODE: false
+連線時間: Sat Oct 04 2025 19:23:00 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.0.12:6600, mode: false, RUN_MODE: false
+連線時間: Tue Oct 07 2025 09:26:03 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.168.80:6600, mode: false, RUN_MODE: false
+連線時間: Tue Oct 07 2025 10:34:45 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.111:6600, mode: false, RUN_MODE: false

@@ -379,12 +379,15 @@ import eventBus from '../mixins/enentBus.js';
 import { myMixin } from '../mixins/common.js';
 
 import { begin_count, end_count }  from '../mixins/crud.js';
+//import { begin_count }  from '../mixins/crud.js';
 
 import { apiOperation, }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
+const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+//const getCountMaterialsAndAssemblesByUser2 = apiOperation('post', '/getCountMaterialsAndAssemblesByUser2');
 const updateSetting = apiOperation('post', '/updateSetting');
 
 //=== component name ==
@@ -445,6 +448,10 @@ const countdown = ref({
 const router = useRouter(); // Initialize router
 //const route = useRoute(); // Initialize router
 
+//const end_count = ref(0);
+//let alive = true;
+//const controller = new AbortController()
+
 //=== mounted ===
 onMounted(() => {
   console.log("nav, mounted():",props.navLinks);
@@ -498,6 +505,9 @@ onBeforeUnmount(() => {
 onUnmounted(() => {
   //enableBackButton();
   clearInterval(intervalId);    // 清除計時器（當元件卸載時）
+
+  //alive = false
+  //controller.abort()            // 中斷尚未完成的請求
 });
 
 //=== created ===
@@ -513,9 +523,28 @@ onBeforeMount(() => {
       localNavLinks.value = temp_navLinks;
   }
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
-  console.log("nav.vue, created(), current user:", currentUser.value);
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  /*
+  if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+  console.log("currentUser:", currentUser.value);
+  */
+  //
+
   //
   if (currentUser.value) {
     let default_routingPriv = initialSelection.join(',');
@@ -532,11 +561,13 @@ onBeforeMount(() => {
     console.log("localNavLinks:", localNavLinks.value);
   }
   //
+
   initAxios();
   initialize();
 });
 
 //=== computed ===
+const userId = computed(() => currentUser.value.empID ?? '')
 
 //=== watch ===
 watch(localShowFooter, (newValue) => {
@@ -552,7 +583,7 @@ const initialize = async () => {
     console.log("initialize()...");
 
     await listWaitForAssembleFun();
-    //console.log("begin_count, end_count:", begin_count, end_count);
+    console.log("begin_count, end_count:", begin_count, end_count);
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -560,7 +591,34 @@ const initialize = async () => {
 
 const listWaitForAssembleFun = async () => {
   await listWaitForAssemble();
+
+  let payload = {
+    user_id: currentUser.value.empID,
+  };
+  await getCountMaterialsAndAssemblesByUser(payload);
+  //await fetchEndCount();
 }
+
+/*
+const fetchEndCount = async () => {
+  try {
+    let payload = {
+      user_id: userId.value,
+    };
+    let data  = await getCountMaterialsAndAssemblesByUser2(payload);
+
+    if (!alive) return       // 元件已卸載就不要再 set state
+    end_count.value = Number(data?.end_count ?? 0)
+
+    // 若這個值會影響到有 Transition 的顯示/隱藏，等 DOM 穩定再動
+    await nextTick()
+  } catch (err) {
+    if (!alive) return
+    // 失敗時給安全值，避免 null/undefined 讓模板渲染出問題
+    end_count.value = 0
+  }
+}
+*/
 
 const onHover = (index) => {
   hoveredItems[index] = true;

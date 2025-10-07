@@ -504,7 +504,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount } from 'vue';
+//import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount } from 'vue';
+import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, onDeactivated } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 
 import TimerDisplay from "./TimerDisplayBegin.vue";
 import { useProcessTimer } from "../mixins/useProcessTimerBegin.js";
@@ -544,6 +546,8 @@ const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const getBoms = apiOperation('post', '/getBoms');
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
+const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleBegin' });
@@ -666,6 +670,8 @@ let pollId = null;                                  // 每 10 秒輪詢
 const refreshPollIdTimerMs = ref(10 * 1000);        // 10秒
 
 const timerMap = new Map();
+
+let __disposedAll = false;
 
 const PROCESS_TYPES = ['21', '22', '23']
 const countsByType = ref({ '21': {}, '22': {}, '23': {} })
@@ -951,7 +957,14 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 
   console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
   //+++
+
+  disposeAllTimersOnce();
 });
+
+// 在各種離開情境下都要收尾
+onBeforeRouteLeave(() => { disposeAllTimersOnce(); });
+
+onDeactivated(() => { disposeAllTimersOnce(); });
 
 //=== created ===
 onBeforeMount(() => {
@@ -970,15 +983,15 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
-// 粒度選擇：如果後端已把 Process.assemble_id 落實，改成 'assemble' 更精準
 const KEY = 'material' // 'material' 或 'assemble'
-const keyOf = (row, userId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${userId}`
+
+//const keyOf = (row, userId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${userId}`
+const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
 const rowOf = (it) => it?.raw ?? it
 
 const getT = (row) => useRowTimer(row, userId.value)
 
-//const setTimerEl = (row) => (el) => { getT(row).timerRef.value = el }
 function setTimerEl(row, el) {
   console.log("setTimerEl(), row:", row);
 
@@ -989,6 +1002,31 @@ function setTimerEl(row, el) {
   const t = getT(row);
   if (t)
     t.timerRef.value = el || null;
+}
+
+// ---- 收尾清理（Begin 專用：含輪詢計時器）----
+
+function disposeAllTimersOnce() {
+  if (__disposedAll) return;
+  __disposedAll = true;
+
+  try {
+    // 1) 逐一釋放每列的 useProcessTimer 實例
+    for (const t of timerMap.values()) {
+      try { t?.dispose?.(); } catch (_e) {}
+    }
+  } finally {
+    timerMap.clear();
+  }
+
+  // 2) 清掉頁面用的輪詢（Begin.vue 有使用）
+  try {
+    if (typeof pollId !== 'undefined' && pollId) {
+      clearInterval(pollId);
+      // @ts-ignore
+      pollId = null;
+    }
+  } catch (_e) {}
 }
 
 /*
@@ -1129,6 +1167,11 @@ async function refreshActiveCounts() {
   }
 
   await listMaterialsAndAssembles();
+
+  let payload = {
+    user_id: currentUser.value.empID,
+  };
+  await getCountMaterialsAndAssemblesByUser(payload);
 }
 
 /*

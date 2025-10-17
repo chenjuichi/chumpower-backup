@@ -416,7 +416,7 @@ class Assemble(BASE):
     Incoming1_Abnormal = Column(String(30), default='')           #組裝區來料異常, 正常:''
     must_receive_qty = Column(Integer, default=0)                 #應領取數量, 2025-06-16 add, 改順序
 
-    ask_qty = Column(Integer, default=0)                          #領取數量
+    ask_qty = Column(Integer, default=0)                          #組裝區領取數量
     total_ask_qty = Column(Integer, default=0)                    #領取(完成)數量總數
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
 

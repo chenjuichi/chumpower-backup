@@ -14,7 +14,8 @@
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
 
-  <!--items-per-page-text="每頁的資料筆數"-->
+  <ConfirmDialog ref="confirmRef" />
+
   <v-data-table
     :headers="headers"
     :items="materials_and_assembles"
@@ -245,21 +246,29 @@
 
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
-    <!--
-      <div>
-        <div>{{ item.order_num }}</div>
-        <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-      </div>
-    -->
       <div>
         <div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
           {{ item.order_num }}&nbsp;&nbsp;
           <span style="color:red; font-weight:700; font-size:12px;">缺料</span>
         </div>
         <div style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;" v-else>
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
           {{ item.order_num }}
         </div>
-        <div style="color: #a6a6a6; font-size:12px; margin-right: 40px;">{{ item.assemble_work }}</div>
+        <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>
       </div>
     </template>
 
@@ -488,10 +497,12 @@
           style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
           :disabled="isButtonDisabled(item)"
           @click="onStart(item)"
+          prepend-icon = "mdi-play"
           color="indigo-darken-4"
         >
+          <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
           開 始
-          <v-icon color="indigo-darken-4" end>mdi-open-in-new</v-icon>
+          <!--<v-icon color="indigo-darken-4" end>mdi-open-in-new</v-icon>-->
         </v-btn>
       </v-badge>
     </template>
@@ -510,6 +521,7 @@ import { onBeforeRouteLeave } from 'vue-router';
 
 import TimerDisplay from "./TimerDisplayBegin.vue";
 import { useProcessTimer } from "../mixins/useProcessTimerBegin.js";
+import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
 
@@ -547,7 +559,7 @@ const getBoms = apiOperation('post', '/getBoms');
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
 const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
-
+const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleBegin' });
@@ -559,6 +571,11 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+// 刪除對話框相關
+const deleteTitle = ref('刪除工單');
+const deleteMessage = ref('此操作將刪除相關資料(BOM/Assemble/Process)，確定？');
+const confirmRef = ref(null);
+
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
 const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
 const hoveredItemIndexForReqQty = ref(null);
@@ -599,7 +616,7 @@ const footerOptions = [
 const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
-  { title: '訂單編號', sortable: true, key: 'order_num', width:160 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:180 },
   { title: '物料編號', sortable: false, key: 'material_num', width:180},
   { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
   { title: '備料數量', sortable: false, key: 'delivery_qty', width:80 },
@@ -822,7 +839,7 @@ onMounted(async () => {
     localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
-  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+  console.log("currentUser:", currentUser.value.empID);
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
@@ -985,12 +1002,9 @@ onBeforeUnmount(() => {
 //=== method ===
 const KEY = 'material' // 'material' 或 'assemble'
 
-//const keyOf = (row, userId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${userId}`
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
-const rowOf = (it) => it?.raw ?? it
-
-const getT = (row) => useRowTimer(row, userId.value)
+const getT = (row) => useRowTimer(row, currentUser.value.empID)
 
 function setTimerEl(row, el) {
   console.log("setTimerEl(), row:", row);
@@ -1005,7 +1019,6 @@ function setTimerEl(row, el) {
 }
 
 // ---- 收尾清理（Begin 專用：含輪詢計時器）----
-
 function disposeAllTimersOnce() {
   if (__disposedAll) return;
   __disposedAll = true;
@@ -1029,21 +1042,12 @@ function disposeAllTimersOnce() {
   } catch (_e) {}
 }
 
-/*
-function setTimerEl(row, el) {
-  console.log("setTimerEl(), row:", row);
-
-  const key = `${row.id}-${processTypeOf(row)}-${userId.value}`
-  timerRefs.set(key, el || null)
-}
-*/
-
 // 下面這三個轉接器, 可避免在模板裡出現「函式呼叫＋屬性賦值」，VS Code 會比較乾淨
 
 // 取得／設定 isPaused（避免在模板裡對函式呼叫結果賦值）
 //const isPausedOf = (row) => getT(row).isPaused
 const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
-//const setPausedOf = (row, v) => { getT(row).isPaused = v }
+
 const setPausedOf = (row, v) => {
   const t = getT(row);
 
@@ -1052,8 +1056,8 @@ const setPausedOf = (row, v) => {
   //如果 t 存在且有 isPaused 這個 ref，就把它的值設成布林化後的 v
   if (t?.isPaused) t.isPaused.value = !!v
 }
+
 // 轉接 onTick（避免直接把函式呼叫結果當 handler）
-//const onTickOf = (row, payload) => { getT(row).onTick(payload) }
 const onTickOf = (row, ms) => {
   const t = getT(row)
   t?.onTick?.(ms)
@@ -1078,31 +1082,9 @@ function idOf(row) {
   return row.id;
   //return KEY === 'assemble' ? (row.assemble_id ?? null) : (row.id ?? row.material_id ?? null)
 }
-/*
+
 async function restoreAllMyTimers() {
-  if (!materials_and_assembles.value.length) return
-  const uid = userId.value
-
-  const jobs = materials_and_assembles.value.map(async (row) => {
-    try {
-      const t = getT(row)
-
-      const pType = processTypeOf(row);
-
-      // 叫 hook 去「只做還原、不新建」，拿回 processId / isPaused / 已累積秒數
-      await t.restoreProcess(row.id, pType, uid, row.assemble_id, { restoreOnly: true });
-      // 把目前秒數丟進 <TimerDisplay>（讓它立刻顯示正確值）
-      onTickOf(row, t.elapsedMs.value || 0)
-    } catch (e) {
-      console.warn('restore fail', row.id, e)
-    }
-  })
-
-  await Promise.all(jobs)
-}
-*/
-async function restoreAllMyTimers() {
-  const me = userId.value      // 你用的登入人員代號
+  const me = currentUser.value.empID      // 你用的登入人員代號
   const rows = materials_and_assembles.value || []
   for (const row of rows) {
     const t = getT(row)
@@ -1174,83 +1156,8 @@ async function refreshActiveCounts() {
   await getCountMaterialsAndAssemblesByUser(payload);
 }
 
-/*
-async function refreshActiveCounts() {
-  const rows = materials_and_assembles.value || []
-  if (!rows.length) return
-
-  const groups = { '21': [], '22': [], '23': [] }
-  for (const row of materials_and_assembles.value) {
-    //const pt = row.process_step_code === 3 ? 21
-    //          : row.process_step_code === 2 ? 22
-    //          : 23
-    //groups[String(pt)].push(row.id) // material_id
-
-    const pt = String(processTypeOf(row))
-    if (row.id != null) groups[pt].push(Number(row.id))
-  }
-
-  let payload = {
-    key: 'material',
-    groups: groups,     // { '21': [ids...], '22': [ids...], '23': [ids...] }
-  }
-
-  let res = await getActiveCountMap(payload);
-  console.log("data: ", res);
-
-  //const countsByType = res.counts || {};
-  //for (const row of rows) {
-  //  const pt = String(processTypeOf(row));
-  //  const id = String(idOf(row));
-  //  row.active_user_count = Number(countsByType[pt]?.[id] || 0);
-  //}
-  console.log("res.counts: ", res.counts);
-
-  if (res.counts) {
-    activeMap['21'] = res.counts['21'] || {}
-    activeMap['22'] = res.counts['22'] || {}
-    activeMap['23'] = res.counts['23'] || {}
-  } else {
-    activeMap['21'] = {}
-    activeMap['22'] = {}
-    activeMap['23'] = {}
-  }
-}
-*/
-
-/*
-async function refreshActiveCounts() {
-  try {
-    // 把同一批資料依「每列對應的 process_type」分組
-    const groups = materials_and_assembles.value.reduce((acc, row) => {
-      const pt = String(processTypeOf(row))     // 21/22/23 → '21'/'22'/'23'
-      if (!acc[pt]) acc[pt] = []
-      acc[pt].push(row.id)                      // 你這邊用的是 material_id
-      return acc
-    }, {})
-
-    // 沒資料就略過
-    const hasAny = Object.values(groups).some(arr => (arr?.length || 0) > 0)
-    if (!hasAny) return
-
-    const payload = { key: 'material', groups }
-    const res = await getActiveCountMap(payload)
-    const data = res?.data ?? res
-    if (!data?.counts) return
-
-    // 套回到每列(row)的 active_user_count（某個 pt 的人數）
-    materials_and_assembles.value.forEach((row) => {
-      const ptKey = String(processTypeOf(row))
-      const cntMap = data.counts?.[ptKey] || {}
-      row.active_user_count = Number(cntMap?.[String(row.id)] ?? 0)
-    })
-  } catch (e) {
-    console.error('refreshActiveCounts error:', e)
-  }
-}
-*/
 async function restoreMyTimers() {
-  const uid = userId.value
+  const uid = currentUser.value.empID
   if (!uid) return
   for (const row of materials_and_assembles.value || []) {
     const t = getT(row)
@@ -1312,64 +1219,21 @@ function useRowTimer(row, currentUserId) {
   if (!timerMap.has(key)) {
     const timerRef = ref(null)
     const t = useProcessTimer(() => timerRef.value)     // hook
-    // 這裡 t 內通常有：isPaused(ref)、elapsedMs(ref)、processId(ref)、onTick(fn)...
+    // t 內有：isPaused(ref)、elapsedMs(ref)、processId(ref)、onTick(fn)...
+
+    // 收斂清理方法（清掉本地 ticker / 狀態）
+    t.dispose = () => {
+      try { t._stopLocalTicker?.() } catch (e) {}
+      try { t.onTick = () => {} } catch (e) {}
+      // 如有 setInterval / requestAnimationFrame 也在 hook 內清
+    }
+
     timerMap.set(key, { ...t, timerRef })
   }
   return timerMap.get(key)
 }
 
 // 這筆是否有人在開工（顯示綠點）
-//function hasAnyoneStarted(row) {
-//  return Number(row.active_user_count || 0) > 0
-//}
-/*
-function hasAnyoneStarted(rowLike) {
-  const row = rowLike?.raw ?? rowLike        // 兼容 slot 傳進來的是 { raw } 或直接 row
-  if (!row.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  let yy=(activeMap[pt]?.[id] ?? 0) > 0
-  console.log("yy:",activeMap[pt]?.[id] ?? 0, activeMap[pt]?.[id], yy);
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
-/*
-function hasAnyoneStarted(rowLike) {
-  console.log("hasAnyoneStarted...")
-  const row = rowLike?.raw ?? rowLike
-  const t = getT(row)             // 你的 useRowTimer 對應的 timer 物件
-  let yyz=!!t?.processId?.value
-  console.log("@@@ yyz:",row.id, t?.processId?.value, yyz);
-  return !!t?.processId?.value    // 有自己的進行中流程就亮
-}
-*/
-
-/*
-function hasAnyoneStarted(rowLike) {
-  const row = rowLike?.raw ?? rowLike
-  if (!row?.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  // activeMap 是後端回的累計人數；若你在後端用 include_paused=false，就不會把暫停算進去
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
-/*
-function hasAnyoneStarted(row) {
-  console.log("hasAnyoneStarted...")
-
-  if (!row?.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  let yyz=activeMap[pt]?.[id] ?? 0
-  console.log("@@@ yyz:",id, (activeMap[pt]?.[id] ?? 0) > 0);
-
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
 function hasAnyoneStarted(row) {
   const t = getT(row) // 你的 useRowTimer 物件
   const idx = materials_and_assembles.value.findIndex(item => item.index === row.index);
@@ -1421,7 +1285,6 @@ function badgeProps(row) {
   };
 }
 
-
 function reachTarget(row) {
   return Number(row.total_ask_qty_end || 0) >= Number(row.must_receive_end_qty || 0)
 }
@@ -1448,13 +1311,7 @@ async function onStart(row) {
   }
 
   console.log("t.processId.value:", t.processId.value, t)
-  //console.log("t.userId.value, userId.value:", t.userId.value, userId.value, t.userId.value==userId.value)
 
-  // 同一人不能對自己已開工的紀錄重複開始
-  //if (t.processId?.value) {
-  //    showSnackbar("已經領料了...", "orange-darken-2");
-  //  return;
-  //}
   if (t.processId?.value && t.hasStarted?.value && !t.isPaused?.value) {
     showSnackbar("已經領料了...", "orange-darken-2")
     return
@@ -1464,7 +1321,7 @@ async function onStart(row) {
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
-    await t.startProcess(row.id, processTypeOf(row), userId.value, row.assemble_id)
+    await t.startProcess(row.id, processTypeOf(row), currentUser.value.empID, row.assemble_id)
   }
   // 2) 立刻做一次 “恢復”（unpause, 以觸發後端寫入 begin_time
   console.log("t.isPaused:", t.isPaused.value)
@@ -1502,6 +1359,53 @@ const handleMaterialUpdate = async ()  => {
 
   // 再抓「有人開工」的綠點數（不只自己）
   await refreshActiveCounts();
+}
+
+async function onDelete(item) {
+  const ok = await confirmRef.value.open({
+    title: deleteTitle.value,
+    message: deleteMessage.value,
+    okText: '確定',
+    cancelText: '取消',
+  })
+  if (ok) {
+    removeMaterialsAndRelationTableFun(item.id);
+  }
+}
+
+
+const removeMaterialsAndRelationTableFun = async (id) => {
+  console.log("removeMaterialsAndRelationTableFun()...");
+
+  console.log("id:", id);
+
+  let ok = false;
+  try {
+    const result = await removeMaterialsAndRelationTable({id: id});
+    // crud.js 直接回傳 res.data，後端 jsonify(True) 會得到布林 true
+    ok = result === true;
+    console.log("remove result:", result);
+  } catch (err) {
+    console.error("DELETE API failed:", err?.response?.status, err?.response?.data, err?.message);
+    showSnackbar("刪除 API 失敗", 'red accent-2');
+    return;
+  }
+
+  if (!ok) {
+    showSnackbar("找不到目標或已被刪除。", 'red accent-2');
+    return;
+  }
+
+  try {
+    editDialog.value = false;
+    await listMaterialsAndAssembles();
+    //await nextTick();
+    showSnackbar("刪除工單完成!", 'green darken-1');
+  } catch (err) {
+    console.error("REFRESH failed:", err?.response?.status, err?.response?.data, err?.message);
+    //showSnackbar("刪除成功，但刷新列表失敗。請稍後重試。", 'red accent-2');
+    showSnackbar("刪除工單完成!", 'green darken-1');
+  }
 }
 
 const initialize = async () => {
@@ -1656,12 +1560,7 @@ const handlePopState = () => {
 }
 
 const isButtonDisabled = (item) => {
-  //console.log("item.whichStation:",item.whichStation, item.whichStation != 2);
-  //console.log("item.input_disable:",item.input_disable);
-  //console.log("!item.process_step_enable:",!item.process_step_enable);
-  //console.log("OR return value:",(item.whichStation != 2 || item.input_disable) || !item.process_step_enable);
   return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable || item.isLackMaterial ==0;
-  //return (item.whichStation != 2 || item.input_disable) || item.process_step_enable==0;
 };
 
 const isGifDisabled = (item) => {
@@ -1744,19 +1643,13 @@ const createAbnormalFun = async () => {
     let payload = {}
 
     try {
-      //payload = {
-      //  assemble_id: item.assemble_id,
-      //  cause_message: ['備料區來料數量不對'],
-      //  cause_user: currentUser.value.empID,
-      //};
-      //await updateAssembleAlarmMessage(payload);
-
       payload = {
         assemble_id: abnormalDialog_record.value.assemble_id,
         record_name: 'Incoming1_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateAssemble(payload);
+
       abnormalDialog_record.value.Incoming1_Abnormal=false;
 
       // targetIndex為目前table data record 的 index
@@ -2019,15 +1912,7 @@ const formatDateTime = (date) => {
   const ss = String(date.getSeconds()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
-/*
-const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
-  const hours = String(time.getHours()).padStart(2, '0');
-  const minutes = String(time.getMinutes()).padStart(2, '0');
-  const seconds = String(time.getSeconds()).padStart(2, '0');
 
-  return `${hours}:${minutes}:${seconds}`;
-};
-*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -2070,22 +1955,9 @@ const handleGifClick = async (item, index) => {
   hoveredItemIndex.value = index;
   isTableVisible.value = true;    // 設置表格可見
 
-  //boms.value = [];
-  let payload = {
-    //order_num: item.order_num,
-    id: item.id,
-  };
-  await getBoms(payload);
+  await getBoms({id: item.id});
   console.log('Current hovered item index:', hoveredItemIndex.value);
-  //reactiveBoms = reactive({ data: [...boms.value] });
-  //reactiveBoms = ref([...boms.value]);
-  console.log("bom[]:", boms.value)
-  //console.log("reactiveBoms:", reactiveBoms)
-  //currentBoms.value = [...boms.value];
-  //console.log("currentBoms[]:", currentBoms.value)
-  //console.log("currentBoms.rec:", currentBoms.value[0].receive)
-  //console.log("Raw currentBoms:", toRaw(currentBoms.value));
-  //await nextTick();
+  //console.log("bom[]:", boms.value)
 };
 
 // 滑鼠移入表格時，保持表格顯示

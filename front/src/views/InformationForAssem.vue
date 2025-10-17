@@ -242,7 +242,7 @@
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left" style="width:300px; padding-left:0px; padding-right:8px;">備料/組裝</th>
+                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
                         <th class="text-left">數量</th>

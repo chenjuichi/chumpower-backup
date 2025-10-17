@@ -132,6 +132,7 @@ export const apiOperation = (operation, path, payload) => {
     // 將是：/api/path,  沒有附加任何查詢參數，因為 params 是一個空物件
     //POST ：參數通常作為請求體的一部分發送。例如，axios.post('/api/path', { key: 'value' }) ,
     //      會將 { key: 'value' } 作為請求發送。
+    /*
     const options = {
       ...(operation === 'get' ? { params: payload } : payload),
       //...(path === '/saveFile' || path === '/downloadFile' ? { responseType: 'blob' } : {}),  // 新增 responseType
@@ -140,6 +141,12 @@ export const apiOperation = (operation, path, payload) => {
     };
 
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
+    */
+    // 2025-10-14 modify
+    const request =
+      operation === 'get'
+        ? axios.get(path, { params: payload, timeout: 10000 })
+        : axios.post(path, payload, { timeout: 10000 });
 
     return request
       .then((res) => {
@@ -281,7 +288,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable' ||
               path == 'updateMaterialFields' ||
               path == '/getActiveCountMap') {
-                //console.log("crud:", res.data);
+            //console.log(path, "crud:", res.data);
             return res.data;
           }
 
@@ -500,6 +507,13 @@ export const apiOperation = (operation, path, payload) => {
       .catch((error) => {
         // 處理錯誤情況，並顯示 Snackbar 提示
         console.error(error);
+        console.error("API error:", {
+          status: error?.response?.status,
+          data: error?.response?.data,
+          message: error?.message,
+          url: path,
+          op: operation,
+        });
         showSnackbar('錯誤! API 連線問題或伺服器未上線...', 'red accent-2');
         throw error; // 把錯誤繼續傳遞
       });

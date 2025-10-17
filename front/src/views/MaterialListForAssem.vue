@@ -363,7 +363,7 @@
                 'fontSize': '14px',
                 'display': 'inline-block',
                 'min-width': '120px',
-                'visibility': (!isVisible && isCallForklift) ? 'visible' : 'hidden',
+                'visibility': isCallForklift ? 'visible' : 'hidden',
               }"
             >
               堆高機送料中
@@ -420,7 +420,13 @@
                   :autoStart="false"
                   @update:time="dlg.proc.onTick"
                 />
-                <v-btn @click="dlg.proc.toggleTimer()" :prepend-icon = "getIcon(dlg.proc.isPaused)">
+                <v-btn
+                  @click="dlg.proc.toggleTimer()"
+                  :disabled="isAllReceiveIsFalse"
+                  :prepend-icon = "getIcon(dlg.proc.isPaused)"
+                  :style="{ background: dlg.proc.isPaused ? '#4CAF50' : '#FFEB3B', color: dlg.proc.isPaused ? '#fff' : '#000' }"
+                >
+                  <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
                   {{ dlg.proc.isPaused ? "開始" : "暫停" }}
                 </v-btn>
 
@@ -584,17 +590,12 @@
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
-
         <v-icon
-          style="transition: opacity 0.3s ease, visibility 0.3s ease;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden',
-                    pointerEvents: !item.isTakeOk && !item.hasStarted ? 'auto' : 'none'
-                  }"
-          @click="!item.isTakeOk && !item.hasStarted && editOrderNum(item)"
+          style="color: blue;"
+          @click="editOrderNum(item)"
           small
-          class="mr-2"
         >
-          mdi-pencil
+          mdi-pencil-outline
         </v-icon>
 
         <!--備料完成(缺料)-->
@@ -725,8 +726,6 @@
     <template #no-data>
       <strong><span style="color: red;">目前沒有資料</span></strong>
     </template>
-
-    <!--<ConfirmDialog ref="confirmRef" />-->
   </v-data-table>
 </div>
 </template>
@@ -821,10 +820,10 @@ const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AG
 
 const editDialogBtnDisable = ref(true);
 
-const isVisible = ref(true);                  // 設定初始狀態為顯示
-const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
+//const isVisible = ref(true);                  // 設定初始狀態為顯示
+//const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
 
-let intervalIdForLed = null;
+//let intervalIdForLed = null;
 
 const background = ref('#ffff00');
 const isCallAGV = ref(false);                 // 確認是否已經呼叫了callAGV(), true:已經按鍵了, 不能重複按鍵
@@ -896,10 +895,10 @@ const selectedItems = ref([]);      // 儲存選擇的項目 (基於 id)
 const selectedOrderNums = ref([]);  // 儲存選擇的項目 (基於 orderNum)
 const inputValueForItems = ref([]); // 儲存輸入的值
 
-const userId = 'user_chumpower';
+const app_user_id = 'user_chumpower';
 const clientAppName = 'MaterialListForAssem';
 // 初始化Socket連接
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, app_user_id, clientAppName);
 
 const delivery_qty_alarm = ref('');
 
@@ -1279,6 +1278,12 @@ const isDialogConfirmDisabled = computed(() => {
   return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
 });
 
+const isAllReceiveIsFalse = computed(() => {
+  // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
+  return boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+});
+
+
 const isStarted = computed(() => {
   return (item) => {
     const dlg = dialogs.value.find(
@@ -1387,9 +1392,9 @@ onMounted(async () => {
   intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
 
   // 設定紅黃綠燈閃爍週期
-  intervalIdForLed = setInterval(() => {
-    isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
-  }, 500);
+  //intervalIdForLed = setInterval(() => {
+  //  isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
+  //}, 500);
 
   isBlinking.value = selectedItems.value.length == 0 ? true:false;
 
@@ -1848,9 +1853,9 @@ onMounted(async () => {
       activeColor.value='DarkOrange';   //物料送達組裝區
 
       // 插入延遲 3 秒
-      await delay(3000);
+      //await delay(3000);
 
-      isFlashLed.value = false;     //黃綠燈熄滅
+      //isFlashLed.value = false;     //黃綠燈熄滅
 
       selectedItems.value = [];
       if (localStorage.getItem('selectedItems')) {
@@ -2246,7 +2251,7 @@ onMounted(async () => {
 
         // UI 狀態
         background.value = '#ffff00';
-        isFlashLed.value = true;
+        //isFlashLed.value = true;
         activeColor.value = 'blue'; // 機器人進站
       } else {
         console.warn('沒有任何流程寫入成功，略過 AGV 狀態更新與 UI 變更');
@@ -2355,7 +2360,7 @@ clearInterval(intervalId);
 //clearInterval(intervalIdForLed);
 //dialog_stopTimer();
 
-stopFlashing();
+//stopFlashing();
 });
 
 //=== created ===
@@ -2659,7 +2664,7 @@ const updateEmployeeFieldFromSelect = () => {
   // 確保 placeholder 保持靜態文字
   placeholderTextForEmployee.value = "請選擇員工";
 };
-
+/*
 // 啟動閃爍效果
 const startFlashing = () => {
   console.log("startFlashing()...")
@@ -2669,15 +2674,15 @@ const startFlashing = () => {
     isVisible.value = !isVisible.value; // 每秒切換顯示狀態
   }, 500);
 }
-
+*/
 // 停止閃爍效果
-const stopFlashing = () => {
-  console.log("stopFlashing()...")
-
-  clearInterval(intervalIdForLed);
-  isVisible.value = true;               // 重設為顯示
-  isFlashLed.value = false;
-}
+//const stopFlashing = () => {
+//  console.log("stopFlashing()...")
+//
+//  clearInterval(intervalIdForLed);
+//  isVisible.value = true;               // 重設為顯示
+//  isFlashLed.value = false;
+//}
 
 const setActive = (value) => {
   toggle_exclusive.value = value;       // 設置當前活動按鈕
@@ -3406,7 +3411,8 @@ const callForklift = async () => {
 
       // 2-1. 建立「forklift 到組裝區」流程
       await createProcess({
-        user_id: currentUser.value?.empID ?? '',
+        //user_id: currentUser.value?.empID ?? '',
+        user_id: selectedEmployee.value,
         process_type: 5, // forklift到組裝區
         id: m.id,
       });
@@ -3475,6 +3481,8 @@ const callForklift = async () => {
     showSnackbar('堆高機流程執行失敗，請稍後再試', 'red accent-2');
   } finally {
     // 無論成功或失敗都解鎖，避免卡住無法再按
+    await delay(3000);
+
     isCallForklift.value = false;
   }
 

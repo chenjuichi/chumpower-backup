@@ -587,6 +587,7 @@ def update_assemble_must_receive_qty_by_assemble_id():
       record.must_receive_qty = target.completed_qty
 
     s.commit()
+
     print("更新完成")
 
     return jsonify({

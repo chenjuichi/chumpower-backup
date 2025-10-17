@@ -1,4 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
+
+import { getRouteKeyByRoute, tryAcquireRouteLock, startHeartbeat, releaseRouteLock } from '../mixins/routeTabLock.js';
+
 import Home from '../views/HomeView.vue'
 import About from '../views/AboutView.vue'
 
@@ -37,6 +40,9 @@ import Main from '../views/Main.vue';
 import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面
 
 import UploadXlsFile from '../views/UploadXlsFile.vue';   // 404 Not Found 頁面
+
+// 要上鎖的路由（不允許同時多分頁開）
+const LOCKED_ROUTE_NAMES = new Set(['G01']);
 
 const routes = [
   { path: '/', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
@@ -138,6 +144,37 @@ router.beforeEach((to, from, next) => {
     console.log("routine step 2... 跳轉到 LoginRegister 頁面");
     return next({ name: 'LoginRegister' });
   }
+
+
+  // ✅ 登出：Main → LoginRegister 時，強制使用 slide-right（舊頁往右滑出）
+  if (from.name === 'Main' && to.name === 'LoginRegister') {
+    to.meta.transitionName = 'slide-right2';
+  } else {
+    // 你的既有邏輯（深度決定左右）
+    const toDepth = to.path.split('/').length;
+    const fromDepth = from.path.split('/').length;
+    to.meta.transitionName = toDepth < fromDepth ? 'slide-right' : 'slide-left';
+  }
+
+  // === 要上鎖的路由（不允許同時多分頁開
+  /*
+  if (LOCKED_ROUTE_NAMES.has(to.name)) {
+    const key = getRouteKeyByRoute(to);
+    if (!tryAcquireRouteLock(key)) {
+      // 發現另一個分頁已持有鎖 → 導回一個安全頁，並帶提示
+      return next({ name: 'Main', query: { dup: '1', from: to.name } });
+    }
+    // 拿到鎖就啟動心跳
+    startHeartbeat(key);
+  }
+
+  // 離開被鎖定頁面時，釋放鎖（避免殘留）
+  if (LOCKED_ROUTE_NAMES.has(from.name)) {
+    releaseRouteLock(getRouteKeyByRoute(from));
+  }
+  */
+  // ===
+
   //} else {
     next();   // 正常跳轉到目標頁面
   //}

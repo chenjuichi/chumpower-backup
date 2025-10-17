@@ -788,7 +788,7 @@ def list_Warehouse_For_assemble():
       'warehouse_for_assemble': _results
     })
 
-
+"""
 # list all materials and assemble data
 @listTable.route("/listMaterialsAndAssembles", methods=['GET'])
 def list_materials_and_assembles():
@@ -799,6 +799,7 @@ def list_materials_and_assembles():
     _results = []
     _assemble_active_users = []
     return_value = True
+
     code_to_name = {
       '106': '雷射',
       '109': '組裝',
@@ -964,9 +965,185 @@ def list_materials_and_assembles():
 
     return jsonify({
         'status': return_value,
-        'materials_and_assembles': _results,
-        'assemble_active_users':_assemble_active_users,
+        'materials_and_assembles': _results or [],
+        'assemble_active_users':_assemble_active_users or [],
     })
+"""
+
+# list all materials and assemble data
+@listTable.route("/listMaterialsAndAssembles", methods=['GET'])
+def list_materials_and_assembles():
+    print("listMaterialsAndAssembles....")
+    s = Session()
+    _results = []
+    _assemble_active_users = []
+    return_value = True
+
+    def safe_str(v, default=''):
+        try:
+            return '' if v is None else str(v)
+        except Exception:
+            return default
+
+    def safe_status_str(num, base_str, completed_qty, pos):
+        """
+        只在 num ∈ {5,7,9} 且 pos ∈ {1,2,3} 時，安全替換 '00/00/00' 的其中一段。
+        """
+        try:
+            if num in (5, 7, 9) and pos in (1, 2, 3):
+                parts = (base_str or '00/00/00').split('/')
+                if len(parts) == 3:
+                    parts[pos - 1] = safe_str(completed_qty, '00')
+                    return '/'.join(parts)
+        except Exception:
+            pass
+        return base_str or '00/00/00'
+
+    try:
+        _objects = s.query(Material).all()
+        material_ids_all = [m.id for m in _objects]
+
+        # 每個 material 的最大 step_code
+        max_step_code_per_order = {}
+        for material_record in _objects:
+            for assemble_record in material_record._assemble:
+                step_code = assemble_record.process_step_code
+                order_num_id = material_record.id
+                cur = max_step_code_per_order.get(order_num_id)
+                max_step_code_per_order[order_num_id] = step_code if cur is None else max(cur, step_code)
+
+        code_to_name = {'106': '雷射', '109': '組裝', '110': '檢驗'}
+        str2 = ['未備料','備料中','備料完成','等待組裝作業','組裝進行中','00/00/00','檢驗進行中','00/00/00','雷射進行中','00/00/00','等待入庫作業','入庫進行中','入庫完成']
+
+        index = 0
+        for material_record in _objects:
+            if material_record.isAssembleStationShow:
+                continue
+
+            pre_step_code = 99
+            sub_process_step_enable = False
+
+            for assemble_record in material_record._assemble:
+                if getattr(assemble_record, 'input_disable', False):
+                    continue
+
+                # ---- 安全取值區 ----
+                cleaned_comment = safe_str(material_record.material_comment).strip()
+                work_num = safe_str(assemble_record.work_num)     # 可能為 ''（避免 None）
+                code = work_num[1:] if len(work_num) >= 2 else work_num
+                name = code_to_name.get(code, '')
+
+                step_code = assemble_record.process_step_code
+                order_num_id = material_record.id
+                max_step_code = max_step_code_per_order.get(order_num_id, 0)
+                step_enable = (step_code == max_step_code and material_record.whichStation == 2)
+
+                skip_condition = (not step_enable or assemble_record.input_disable)
+                if skip_condition:
+                    if pre_step_code == 0 and step_code != 0:
+                        pre_step_code = step_code
+                        sub_process_step_enable = True
+                        # 不 continue
+                    else:
+                        pre_step_code = step_code
+                        continue
+
+                # 缺料併單排除
+                if material_record.isLackMaterial == 0 and material_record.is_copied_from_id and material_record.is_copied_from_id > 0:
+                    continue
+
+                num = int(getattr(assemble_record, 'show2_ok', 0) or 0)
+                base = str2[num] if 0 <= num < len(str2) else '00/00/00'
+                total_ask_end = getattr(assemble_record, 'total_ask_qty_end', None)
+                completed_qty = getattr(assemble_record, 'completed_qty', 0)
+                temp_temp_show2_ok_str = safe_status_str(num, base, completed_qty, total_ask_end)
+
+                format_name = f"{work_num}({name})" if name else work_num
+
+                index += 1
+                _object = {
+                    'index': index,
+                    'id': material_record.id,
+                    'order_num': material_record.order_num,
+                    'assemble_work': format_name,
+                    'material_num': material_record.material_num,
+                    'assemble_process': '' if (num > 2 and not (step_enable or sub_process_step_enable)) else temp_temp_show2_ok_str,
+
+                    'assemble_process_num': num,
+                    'assemble_id': assemble_record.id,
+                    'req_qty': material_record.material_qty,
+
+                    'delivery_qty': material_record.delivery_qty,
+                    'total_receive_qty': f"({getattr(assemble_record, 'total_ask_qty', 0)})",
+                    'total_receive_qty_num': getattr(assemble_record, 'total_ask_qty', 0),
+
+                    'must_receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    'receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_qty', 0),
+
+                    'delivery_date': material_record.material_delivery_date,
+                    'comment': cleaned_comment,
+                    'isTakeOk': material_record.isTakeOk,
+                    'whichStation': material_record.whichStation,
+                    'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,
+                    'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,
+                    'isAssembleStation3TakeOk': material_record.isAssembleStation3TakeOk,
+                    'currentStartTime': getattr(assemble_record, 'currentStartTime', None),
+                    'tooltipVisible': False,
+                    'input_disable': getattr(assemble_record, 'input_disable', False),
+                    'process_step_enable': bool(step_enable or sub_process_step_enable),
+                    'process_step_code': step_code,
+
+                    'isLackMaterial': material_record.isLackMaterial,
+                    'Incoming1_Abnormal': getattr(assemble_record, 'Incoming1_Abnormal', '') == '',
+                    'is_copied_from_id': getattr(assemble_record, 'is_copied_from_id', None),
+                }
+                _results.append(_object)
+
+        # 只有在前面的 _results 成功建好後，才去算使用中人數
+        from sqlalchemy import or_ as _or
+        counts_by_type = active_count_map_by_material_multi(
+            s,
+            material_ids=material_ids_all,
+            process_types=(21, 22, 23),
+            include_paused=False
+        )
+
+        # 安全讀值的 map_pt / get_val 已在檔案上方定義
+        for row in _results:
+            try:
+                pt = str(map_pt(row))                  # '21'/'22'/'23'
+                mid = str(get_val(row, 'id'))         # material_id
+                temp_count = counts_by_type.get(pt, {}).get(mid, 0)
+                row['active_user_count'] = temp_count
+                _assemble_active_users.append(temp_count)
+            except Exception as e:
+                print("listMaterialsAndAssembles: skip bad row =>", e, row)
+                continue
+
+        s.close()
+
+        return jsonify({
+            'status': bool(_results),
+            'materials_and_assembles': _results or [],
+            'assemble_active_users': _assemble_active_users or [],
+        })
+
+    except Exception as e:
+        # 任何資料不乾淨都不讓它 500；記 log + 回傳空清單，避免前端炸掉
+        import traceback
+        print("listMaterialsAndAssembles ERROR:", repr(e))
+        traceback.print_exc()
+        try:
+            current_app.logger.exception("listMaterialsAndAssembles failed")
+        except Exception:
+            pass
+        s.close()
+        return jsonify({
+            'status': False,
+            'materials_and_assembles': [],
+            'assemble_active_users': [],
+        }), 200
 
 
 # list all materials for information list

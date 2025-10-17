@@ -40,7 +40,8 @@
               <router-link
                 :to="localNavLinks[2].isEnabled ? localNavLinks[2].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[2].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
                 style="display:none;"
               >
                 {{ localNavLinks[2].text }}
@@ -49,7 +50,8 @@
               <router-link
                 :to="localNavLinks[3].isEnabled ? localNavLinks[3].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[3].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
               {{ localNavLinks[3].text }}
               </router-link>
@@ -85,8 +87,8 @@
               <router-link
                 :to="localNavLinks[6].isEnabled ? localNavLinks[6].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[6].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
 
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[6].text }}
               </router-link>
@@ -94,7 +96,8 @@
               <router-link
                 :to="localNavLinks[7].isEnabled ? localNavLinks[7].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[7].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[7].text }}
               </router-link>
@@ -120,27 +123,30 @@
               <router-link
                 :to="localNavLinks[9].isEnabled ? localNavLinks[9].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[9].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[9].text }}
-
                 <v-badge color="info" :content="begin_count" inline v-show="begin_count != 0"  />
               </router-link>
+
               <!--menu 11-->
               <router-link
                 :to="localNavLinks[10].isEnabled ? localNavLinks[10].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', { 'disabled-linkk': !localNavLinks[10].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[10].text }}
-
                 <v-badge color="info" :content="end_count" inline v-show="end_count != 0" />
               </router-link>
+
               <!--menu 12-->
               <router-link
                 :to="localNavLinks[11].isEnabled ? localNavLinks[11].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[11].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[11].text }}
               </router-link>
@@ -166,7 +172,8 @@
               <router-link
                 :to="localNavLinks[13].isEnabled ? localNavLinks[13].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[13].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
               {{ localNavLinks[13].text }}
               </router-link>
@@ -213,7 +220,8 @@
               <router-link
                 :to="localNavLinks[17].isEnabled ? localNavLinks[17].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[17].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[17].text }}
               </router-link>
@@ -221,7 +229,8 @@
               <router-link
                 :to="localNavLinks[18].isEnabled ? localNavLinks[18].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[18].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[18].text }}
               </router-link>
@@ -229,7 +238,8 @@
               <router-link
                 :to="localNavLinks[19].isEnabled ? localNavLinks[19].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[19].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[19].text }}
               </router-link>
@@ -255,7 +265,8 @@
               <router-link
                 :to="localNavLinks[21].isEnabled ? localNavLinks[21].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[21].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[21].text }}
               </router-link>
@@ -263,7 +274,8 @@
               <router-link
                 :to="localNavLinks[22].isEnabled ? localNavLinks[22].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[22].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[22].text }}
               </router-link>
@@ -271,7 +283,8 @@
               <router-link
                 :to="localNavLinks[23].isEnabled ? localNavLinks[23].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[23].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[23].text }}
               </router-link>
@@ -279,7 +292,8 @@
               <router-link
                 :to="localNavLinks[24].isEnabled ? localNavLinks[24].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[24].isEnabled}]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[24].text }}
               </router-link>
@@ -287,7 +301,8 @@
               <router-link
                 :to="localNavLinks[25].isEnabled ? localNavLinks[25].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[25].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[25].text }}
               </router-link>
@@ -296,7 +311,8 @@
               <router-link
                 :to="localNavLinks[26].isEnabled ? localNavLinks[26].to : '#'"
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[26].isEnabled }]"
-                @click.prevent="!openMenuItem && $event.stopPropagation()"
+
+                @click="closeDropdown()"
               >
                 {{ localNavLinks[26].text }}
               </router-link>
@@ -360,6 +376,7 @@
   <ChangePassword :dialog="openDialog" @update:dialog="updateDialog" />
   <BrowseDirectory :pdf="openPdfDialog" @update:pdf="updatePdfDialog" />
 </template>
+
 
 <script setup>
 import { ref, reactive, watch, watchEffect, computed, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
@@ -764,6 +781,10 @@ const allowBackspaceInInputs = (event) => {
   }
 };
 //
+
+const closeDropdown = () => {
+  Object.keys(hoveredItems).forEach(k => (hoveredItems[k] = false));
+};
 </script>
 
 <style lang="scss" scoped>

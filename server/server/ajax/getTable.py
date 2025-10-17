@@ -515,6 +515,24 @@ def active_count_map_by_material_multi(session, material_ids, process_types=(21,
     return result
 """
 
+
+def end_ok_flag(s, material_id: int, process_step_code: int) -> bool:
+    """
+    等價於 getEndOkByMaterialIdAndStepCode 的 True/False 判斷，
+    直接在伺服器內部呼叫，不走 HTTP。
+    """
+    row = (
+        s.query(Assemble)
+         .filter(Assemble.material_id == material_id)
+         .filter(Assemble.process_step_code == process_step_code)
+         .first()
+    )
+    if not row:
+        return False
+
+    return True
+
+
 # ------------------------------------------------------------------
 
 
@@ -1181,13 +1199,22 @@ def update_process():
     new_secs   = int(data.get("elapsed_time", 0) or 0)
 
     s = Session()
+
     #log = s.query(Process).get(process_id)
+    # 確保結果「最多只會有一筆」,
+    # 回傳值:
+    # 有一筆資料 → 回傳那筆物件
+    # 沒有資料 → 回傳 None
+    # 異常:
+    # 超過一筆 → 丟 MultipleResultsFound 例外
     q = s.query(Process).filter_by(id=process_id).with_for_update()   # 鎖定該行後再更新, 避免 pause_started_at/pause_time 在同一瞬間被兩支 API 互相覆寫
     log = q.one_or_none()
 
     if not log:
+        print("error, process not found!")
         return jsonify(success=False, message="process not found"), 404
     if log.end_time is not None:
+        print("error, process already closed!")
         return jsonify(success=False, message="process already closed"), 400
 
     cur = int(log.elapsedActive_time or 0)
@@ -2924,10 +2951,8 @@ def get_materials_and_assembles_by_user():
 
     _results = []
     return_value = True
-    code_to_name = {'106':'雷射', '109':'組裝', '110':'檢驗'}
-
-    code_to_assembleStep = {    #組裝區工作順序, 3:最優先
-      '109': 3, '106': 1, '110': 2, }
+    code_to_name = {'106':'雷射', '109':'組裝', '110':'檢驗'}    # 組裝區工作代號
+    code_to_assembleStep = { '109': 3, '106': 1, '110': 2, }    # 組裝區工作順序, 3:最優先
 
     #       0         1       2            3              4            5           6            7           8            9           10             11            12
     str2=['未備料', '備料中', '備料完成',   '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中',  '入庫完成']
@@ -2935,25 +2960,26 @@ def get_materials_and_assembles_by_user():
     _objects = s.query(Material).all()
     material_ids_all = [m.id for m in _objects]
 
+    # 1) 只撈「該使用者、且 has_started=True」的未結束 Process 名單/計數
     counts_by_type = active_count_map_by_material_multi(
         s, material_ids_all,
         process_types=(21, 22, 23),
-        include_paused=False,
+        include_paused=False,           # 是否把暫停算在「未結束」內，False:不包括
         # only_user_id=None            # ← 全員
-        only_user_id=_user_id,         # ← 只算該使用者本人（看你要哪種）
-        has_started=True,              # 只找 has_started=True
+        only_user_id=_user_id,          # ← 只算該使用者本人（看你要哪種）
+        has_started=True,               # 只找 has_started=True
     )
 
+    # 查「誰」正在該料號/該製程上有未結束(進行中或暫停中)的流程, 並將結果依「製程別(21/22/23) → 料號ID」分組，回傳每一組底下的使用者ID清單。
     user_ids_by_type = active_user_ids_by_material_multi(
         s, material_ids_all,
         process_types=(21, 22, 23),
         include_paused=True,
         # only_user_id=None,           # 全員名單
-        only_user_id=_user_id,         # 僅該使用者的名單
+        only_user_id=_user_id,          # 僅該使用者的名單
         as_string=False,                # 建議回 list
-        has_started=True,              # 只找 has_started=True
+        has_started=True,               # 只找 has_started=True
     )
-
 
     # 初始化一個 set 來追蹤已處理的 (order_num_id, format_name)
     processed_records = set()
@@ -3029,25 +3055,27 @@ def get_materials_and_assembles_by_user():
         _object = {
           'index': index,                                   #agv送料序號
           'id': material_record.id,                         #訂單編號
-          'order_num': material_record.order_num,           #訂單編號
+          'order_num': material_record.order_num,           ## 訂單編號
+          'material_num': material_record.material_num,     ## 物料編號
+          'req_qty': material_record.material_qty,          ## 組裝區需求數量(訂單數量)
+          'ask_qty': assemble_record.ask_qty,         ## 組裝區領取數量
+
           'assemble_work': format_name,                     #工序
-          'material_num': material_record.material_num,     #物料編號
           'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
           'assemble_process_num': num,
           'assemble_id': assemble_record.id,
-          'req_qty': material_record.material_qty,                                      ## 組裝區需求數量(作業數量)
-          'total_ask_qty': assemble_record.ask_qty,                                     ## 組裝區領取數量
           'total_ask_qty_end': assemble_record.total_ask_qty_end,
           'process_step_code': assemble_record.process_step_code,
 
-          'total_receive_qty_num': assemble_record.total_ask_qty,                       # 領取總數量
-          'total_receive_qty': f"({assemble_record.total_completed_qty})",              # 已完成總數量
-          'total_receive_qty_num': assemble_record.total_completed_qty,
+          #'total_receive_qty_num': assemble_record.total_ask_qty,                       # 領取總數量
+          'total_receive_qty': f"({assemble_record.total_completed_qty})",
+          'total_receive_qty_num': assemble_record.total_completed_qty,     ## 組裝區完成數量的總數
 
-          'must_receive_end_qty': assemble_record.ask_qty,                              ## 組裝區應完成數量
-          'abnormal_qty': assemble_record.abnormal_qty,                                 ## 組裝區異常數量
+          'must_receive_end_qty': assemble_record.ask_qty,                  ## 組裝區應完成數量
+          'abnormal_qty': assemble_record.abnormal_qty,                     ## 組裝區異常數量
 
-          'receive_qty': assemble_record.completed_qty,                                 ## 組裝區完成數量
+          #'receive_qty': assemble_record.completed_qty,                     ## 組裝區完成數量
+          'receive_qty': 0,                                                 ## 組裝區完成數量
           'delivery_date': material_record.material_delivery_date,                      # 交期
           'delivery_qty': material_record.delivery_qty,                                 # 現況數量
           'abnormal_qty': assemble_record.isAssembleFirstAlarm_qty if code == '109' else assemble_record.abnormal_qty,
@@ -3089,8 +3117,27 @@ def get_materials_and_assembles_by_user():
       # end loop_a_rec
     # end loop_m_rec
 
-    s.close()
+    ###
+    # 2) 加上 end_ok 的過濾
+    filtered_results = []
+    for row in _results:  # 假設 results 是你前面已經算好的 list[dict]
+        ptype = map_pt_from_step_code(int(row['process_step_code']))  # 21/22/23
+        mid   = str(row['id'])
 
+        # 該製程/料的使用者名單（list），挑出是否包含 _user_id
+        ulist = pick_user_list(user_ids_by_type, ptype, mid)
+        if _user_id not in ulist:
+            continue  # 不是該 user 的「已開始」紀錄 → 略過
+
+        # 3) 再套 end_ok 條件（必須 True 才留下）
+        if not end_ok_flag(s, material_id=row['id'], process_step_code=int(row['process_step_code'])):
+            continue
+
+        filtered_results.append(row)
+    ###
+
+    s.close()
+    """
     filtered_results = []
     for row in _results:
         try:
@@ -3103,7 +3150,7 @@ def get_materials_and_assembles_by_user():
         except Exception as e:
             print('getMaterialsAndAssemblesByUser: skip row due to error =>', e, row)
             continue
-
+    """
     # 只回傳符合該 user 的 rows
     _results = filtered_results
 
@@ -3219,6 +3266,8 @@ def active_count_map():
 
 @getTable.route("/getEndOkByMaterialIdAndStepCode", methods=['POST'])
 def get_end_ok_by_material_id_and_step_code():
+    print("getEndOkByMaterialIdAndStepCode()...")
+
     """
     需求：
       針對相同工單(相同 material_id, process_step_code, ask_qty)，計算：
@@ -3249,85 +3298,76 @@ def get_end_ok_by_material_id_and_step_code():
         }
       }
     """
-    try:
-        payload = request.get_json(silent=True) or {}
+    payload = request.get_json()
 
-        material_id = payload.get("material_id")
-        process_step_code = payload.get("process_step_code")
-        ask_qty = payload.get("ask_qty")
+    material_id = payload.get("material_id")
+    process_step_code = payload.get("process_step_code")
+    ask_qty = payload.get("ask_qty")
 
-        # 基本參數檢查
-        missing = []
-        if material_id is None: missing.append("material_id")
-        if process_step_code is None: missing.append("process_step_code")
-        if ask_qty is None: missing.append("ask_qty")
+    # 基本參數檢查
+    missing = []
+    if material_id is None: missing.append("material_id")
+    if process_step_code is None: missing.append("process_step_code")
+    if ask_qty is None: missing.append("ask_qty")
 
-        if missing:
-            return jsonify({
-                "status": False,
-                "message": f"缺少必要參數：{', '.join(missing)}"
-            }), 400
+    if missing:
+      return jsonify({
+        "status": False,
+        "message": f"缺少必要參數：{', '.join(missing)}",
+        "data": {},
+      })
 
-        # 型別與合理值檢查
-        try:
-            material_id = int(material_id)
-            process_step_code = int(process_step_code)
-            ask_qty = int(ask_qty)
-        except (TypeError, ValueError):
-            return jsonify({
-                "status": False,
-                "message": "參數型別錯誤，material_id/process_step_code/ask_qty 必須為整數"
-            }), 400
+    material_id = int(material_id)
+    process_step_code = int(process_step_code)
+    ask_qty = int(ask_qty)
 
-        s = Session()
+    s = Session()
 
-        # 以相同 material_id、process_step_code、ask_qty 篩選
-        q = (
-            s.query(
-                func.coalesce(func.sum(Assemble.completed_qty), 0),
-                func.coalesce(func.sum(Assemble.abnormal_qty), 0),
-                func.count(Assemble.id)
-            )
-            .filter(Assemble.material_id == material_id)
-            .filter(Assemble.process_step_code == process_step_code)
-            .filter(Assemble.ask_qty == ask_qty)
-        )
+    # 以相同 material_id、process_step_code、ask_qty 篩選
+    q = (s
+      .query(
+        func.coalesce(func.sum(Assemble.completed_qty), 0),
+        func.coalesce(func.sum(Assemble.abnormal_qty), 0),
+        func.count(Assemble.id))
+      .filter(Assemble.material_id == material_id)
+      .filter(Assemble.process_step_code == process_step_code)
+      .filter(Assemble.ask_qty == ask_qty)
+    )
 
-        t1_sum, t2_sum, row_count = q.one()  # 會回傳 (sum_completed, sum_abnormal, count)
+    t1_sum, t2_sum, row_count = q.one()   # 回傳 (sum_completed, sum_abnormal, count)
 
-        # 保底轉 int
-        t1 = int(t1_sum or 0)
-        t2 = int(t2_sum or 0)
-        t3 = int(ask_qty)
+    t1 = int(t1_sum or 0)
+    t2 = int(t2_sum or 0)
+    t3 = int(ask_qty)
 
-        threshold = t3 - t2
-        end_ok = t1 >= threshold
+    threshold = t3 - t2
+    end_ok = t1 >= threshold
 
-        s.close()
+    s.close()
 
-        return jsonify({
-            "status": True,
-            "message": "計算成功",
-            "data": {
-                "material_id": material_id,
-                "process_step_code": process_step_code,
-                "ask_qty": t3,
-                "t1_total_completed_qty": t1,
-                "t2_total_abnormal_qty": t2,
-                "t3_should_complete_qty": t3,
-                "threshold": threshold,
-                "end_assemble_ok": end_ok,
-                "matched_rows": int(row_count or 0)
-            }
-        })
+    print("material_id", material_id)
+    print("process_step_code", process_step_code)
+    print("ask_qty", t3)
+    print( "t1_total_completed_qty", t1)
+    print("t2_total_abnormal_qty", t2)
+    print("t3_should_complete_qty", t3)
+    print("threshold", threshold)
+    print("end_assemble_ok", end_ok)
+    print("matched_rows", int(row_count or 0))
 
-    except Exception as e:
-        # 若上面有 s = Session() 後出錯，可補一個保險關閉
-        try:
-            s.close()
-        except:
-            pass
-        return jsonify({
-            "status": False,
-            "message": f"getEndOkByMaterialIdAndStepCode 發生例外: {repr(e)}"
-        }), 500
+    return jsonify({
+      "status": True,
+      "message": "計算成功",
+      "data": {
+        "material_id": material_id,
+        "process_step_code": process_step_code,
+        "ask_qty": t3,
+        "t1_total_completed_qty": t1,
+        "t2_total_abnormal_qty": t2,
+        "t3_should_complete_qty": t3,
+        "threshold": threshold,
+        "end_assemble_ok": end_ok,
+        "matched_rows": int(row_count or 0),
+      }
+    })
+

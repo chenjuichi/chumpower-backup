@@ -311,43 +311,50 @@ export function useProcessTimer(getTimerRef) {
 	async function updateProcess() {
 		if (!processId.value) return;
 
-		const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
+		try {
+			const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
 
-		const secs = isPaused.value && _frozenElapsedOnPause != null ? _frozenElapsedOnPause : Math.floor(ms / 1000);
+			const secs = isPaused.value && _frozenElapsedOnPause != null ? _frozenElapsedOnPause : Math.floor(ms / 1000);
 
-		const res = await dialog2UpdateProcess({
-			process_id: processId.value,
-			elapsed_time: secs,
-			//is_paused: isPaused.value,		// ⚠️ 不要再送 is_paused；避免另一個視窗「把暫停寫回去變成開始」
-		});
+			const res = await dialog2UpdateProcess({
+				process_id: processId.value,
+				elapsed_time: secs,
+				//is_paused: isPaused.value,		// ⚠️ 不要再送 is_paused；避免另一個視窗「把暫停寫回去變成開始」
+			});
 
-		const data = res?.data ?? res;
+			const data = res?.data ?? res;
 
-		// 後端可能回傳校正後的 elapsed_time（秒）
-		if (data?.elapsed_time != null) {
-			elapsedMs.value = Number(data.elapsed_time) * 1000;
-		}
-
-		// is_paused/pause_time 只是回報，用得到就存下
-		//if (typeof data?.is_paused === 'boolean') {
-		//	isPaused.value = data.is_paused;
-		//}
-		// ★ 伺服器是唯一真相：偵測到 is_paused 變化就同步 UI 與本地 ticker
-		if (typeof data?.is_paused === 'boolean' && data.is_paused !== isPaused.value) {
-			isPaused.value = data.is_paused;
-			if (isPaused.value) {
-				// 變成暫停：凍結秒數、停畫面與本地計時
-				_frozenElapsedOnPause = Math.floor((timer()?.getElapsedMs?.() ?? elapsedMs.value) / 1000);
-				timer()?.pause?.();
-				_stopLocalTicker();
-				_stopAutoUpdate();
-			} else {
-				// 變成開始：清凍結、喚醒畫面、重啟本地計時與回寫
-				_frozenElapsedOnPause = null;
-				await nudgeResume();
-				_startLocalTicker();
-				_startAutoUpdate();
+			// 後端可能回傳校正後的 elapsed_time（秒）
+			if (data?.elapsed_time != null) {
+				elapsedMs.value = Number(data.elapsed_time) * 1000;
 			}
+
+			// is_paused/pause_time 只是回報，用得到就存下
+			//if (typeof data?.is_paused === 'boolean') {
+			//	isPaused.value = data.is_paused;
+			//}
+			// ★ 伺服器是唯一真相：偵測到 is_paused 變化就同步 UI 與本地 ticker
+			if (typeof data?.is_paused === 'boolean' && data.is_paused !== isPaused.value) {
+				isPaused.value = data.is_paused;
+				if (isPaused.value) {
+					// 變成暫停：凍結秒數、停畫面與本地計時
+					_frozenElapsedOnPause = Math.floor((timer()?.getElapsedMs?.() ?? elapsedMs.value) / 1000);
+					timer()?.pause?.();
+					_stopLocalTicker();
+					_stopAutoUpdate();
+				} else {
+					// 變成開始：清凍結、喚醒畫面、重啟本地計時與回寫
+					_frozenElapsedOnPause = null;
+					await nudgeResume();
+					_startLocalTicker();
+					_startAutoUpdate();
+				}
+			}
+		} catch (err) {
+			// 400 大多是「process 已關」或「payload 不合法」
+			// 直接停掉自動回寫，避免繼續打錯
+			_stopAutoUpdate();
+			console.warn('[updateProcess] stop auto update due to error', err);
 		}
 
 		const pauseTotal = Number(data?.pause_time ?? 0);
@@ -450,8 +457,6 @@ export function useProcessTimer(getTimerRef) {
 		setTimeout(() => { forceResume(); }, 0);
 	}
 
-	// 結束（關閉 dialog 時用）
-	//async function closeProcess() {
 	async function closeProcess(extra = {}) {
 		if (!processId.value) return { success: false, message: 'no process' };
 
@@ -506,11 +511,11 @@ export function useProcessTimer(getTimerRef) {
 	}
 
 	// 👉 新增：釋放資源
-function dispose() {
-	try { timer()?.pause?.(); } catch (e) {}
-	_stopLocalTicker();
-	_stopAutoUpdate();
-}
+	function dispose() {
+		try { timer()?.pause?.(); } catch (e) {}
+		_stopLocalTicker();
+		_stopAutoUpdate();
+	}
 
 	return {
 		// 狀態

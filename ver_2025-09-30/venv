@@ -1,0 +1,6 @@
+home = C:\Users\CHEN JUI CHI\AppData\Local\Programs\Python\Python312
+include-system-site-packages = false
+version = 3.12.4
+executable = C:\Users\CHEN JUI CHI\AppData\Local\Programs\Python\Python312\python.exe
+command = C:\Users\CHEN JUI CHI\AppData\Local\Programs\Python\Python312\python.exe -m venv C:\vue\chumpower\venv
+

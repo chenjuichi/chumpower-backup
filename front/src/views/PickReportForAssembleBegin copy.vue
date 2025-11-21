@@ -1005,7 +1005,7 @@ async function refreshActiveCounts() {
     key: KEY,
     groups: Object.fromEntries(Object.entries(groups).map(([pt, set]) => [pt, Array.from(set)])),
   }
-  print("groups:", Object.fromEntries(Object.entries(groups).map(([pt, set]) => [pt, Array.from(set)])))
+  console.log("groups:", Object.fromEntries(Object.entries(groups).map(([pt, set]) => [pt, Array.from(set)])))
   try {
     await getActiveCountMap(payload);
     //console.log("data:", data);

@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "dgSpecHash": "uLEJPLdvYqM=",
+  "success": true,
+  "projectFilePath": "C:\\chumpower-backup\\gateway\\SocketIOServer.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\9.0.4\\microsoft.bcl.asyncinterfaces.9.0.4.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\microsoft.netframework.referenceassemblies\\1.0.3\\microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\microsoft.netframework.referenceassemblies.net48\\1.0.3\\microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\socket.io-client\\0.8.2\\socket.io-client.0.8.2.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\socketio.core\\3.1.2\\socketio.core.3.1.2.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\socketio.serializer.core\\3.1.2\\socketio.serializer.core.3.1.2.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\socketio.serializer.systemtextjson\\3.1.2\\socketio.serializer.systemtextjson.3.1.2.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\socketioclient\\3.1.2\\socketioclient.3.1.2.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.buffers\\4.5.1\\system.buffers.4.5.1.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.io.pipelines\\9.0.4\\system.io.pipelines.9.0.4.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.memory\\4.5.5\\system.memory.4.5.5.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.numerics.vectors\\4.5.0\\system.numerics.vectors.4.5.0.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\6.0.0\\system.runtime.compilerservices.unsafe.6.0.0.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.text.encodings.web\\9.0.4\\system.text.encodings.web.9.0.4.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.text.json\\9.0.4\\system.text.json.9.0.4.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.threading.tasks.extensions\\4.5.4\\system.threading.tasks.extensions.4.5.4.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\system.valuetuple\\4.5.0\\system.valuetuple.4.5.0.nupkg.sha512",
+    "C:\\Users\\CHEN JUI CHI\\.nuget\\packages\\websocketsharp\\1.0.3-rc11\\websocketsharp.1.0.3-rc11.nupkg.sha512"
+  ],
+  "logs": []
+}

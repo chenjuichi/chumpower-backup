@@ -1,0 +1,14 @@
+C:\vue\chumpower\console2\testsocketioserver\bin\Debug\net8.0\TestSocketIOServer.exe
+C:\vue\chumpower\console2\testsocketioserver\bin\Debug\net8.0\TestSocketIOServer.deps.json
+C:\vue\chumpower\console2\testsocketioserver\bin\Debug\net8.0\TestSocketIOServer.runtimeconfig.json
+C:\vue\chumpower\console2\testsocketioserver\bin\Debug\net8.0\TestSocketIOServer.dll
+C:\vue\chumpower\console2\testsocketioserver\bin\Debug\net8.0\TestSocketIOServer.pdb
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.GeneratedMSBuildEditorConfig.editorconfig
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.AssemblyInfoInputs.cache
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.AssemblyInfo.cs
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.csproj.CoreCompileInputs.cache
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.dll
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\refint\TestSocketIOServer.dll
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.pdb
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\TestSocketIOServer.genruntimeconfig.cache
+C:\vue\chumpower\console2\testsocketioserver\obj\Debug\net8.0\ref\TestSocketIOServer.dll

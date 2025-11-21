@@ -20,7 +20,6 @@
         :active="history"
         color="#c39898"
         variant="outlined"
-
       >
         <v-icon left color="#664343">mdi-history</v-icon>
         歷史紀錄
@@ -144,8 +143,75 @@
           </v-btn>
         </div>
       </div>
+
+      <!-- 在線員工按鍵 -->
+    <!--
+      <v-btn
+        class="ml-4 mt-1"
+        color="indigo-darken-4"
+        variant="outlined"
+        style="
+        position: relative;
+        left: 50px;
+        top: 5px;
+        min-width: 110px; max-height: 34px; border-radius: 6px;"
+        prepend-icon="mdi-account-details-outline"
+        @click="onClickOnlineUsers"
+        :disable="1==1"
+      >
+        在線員工
+      </v-btn>
+    -->
     </v-col>
   </v-row>
+
+  <!-- 在線員工 dialog -->
+  <v-dialog v-model="onlineDialog" max-width="700px">
+    <v-card>
+      <v-card-title class="d-flex justify-space-between align-center">
+        <span class="text-h6">在線員工</span>
+        <v-btn icon="mdi-close" variant="text" @click="onlineDialog = false" />
+      </v-card-title>
+
+      <v-card-text>
+        <v-data-table
+          :headers="onlineHeaders"
+          :items="filteredOnlineUsers"
+          density="compact"
+          class="elevation-1"
+        >
+          <!-- Dept 欄位的 header 換成 combobox -->
+          <template #header.department="{ header }">
+            <div class="d-flex align-center">
+              <span class="mr-2">{{ header.title }}</span>
+              <v-combobox
+                v-model="selectedDeptForOnline"
+                :items="deptOptionsForOnline"
+                density="compact"
+                hide-details
+                variant="underlined"
+                style="max-width: 150px;"
+              />
+            </div>
+          </template>
+
+          <!-- onLine 欄位，依值套不同背景色 -->
+          <template #item.online="{ item }">
+            <div
+              class="text-center pa-1"
+              :style="getOnlineCellStyle(item.online)"
+            >
+              {{ item.online }}
+            </div>
+          </template>
+        </v-data-table>
+      </v-card-text>
+
+      <v-card-actions class="justify-end">
+        <v-btn color="primary" @click="onlineDialog = false">關閉</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-data-table
     :headers="headers"
@@ -168,14 +234,16 @@
             <v-col cols="9">
               <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span style="font-size: 16px;">{{ todayDate }}</span>
+                  <span style="font-size: 16px;">~ 至 {{ twoWeeksAgoDate }}</span>
+                  <!--<span style="font-size: 16px;">{{ todayDate }} 至 {{ twoWeeksAgoDate }}</span>-->
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span>工單數</span>
                   <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>備料送出</span>
+                  <!--<span>備料送出</span>-->
+                  <span>備料準備</span>
                   <v-progress-circular
                     :model-value="progress_value2"
                     :rotate="360"
@@ -217,7 +285,7 @@
             <v-col cols="3" />
           </v-row>
           <div class="pa-4 text-center">
-            <v-dialog v-model="process_dialog" max-width="1280px">
+            <v-dialog v-model="process_dialog" min-width="1260px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配報工紀錄 -
@@ -245,11 +313,21 @@
                         <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
-                        <th class="text-left">數量</th>
-                        <th class="text-left">實際耗時(分)</th>
-                        <th class="text-left">實際工時(分)</th>
-                        <th class="text-left">單件標工(分)</th>
-                        <th class="text-left">人員註記</th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">數量</th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          實際耗時
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          <div style="line-height: 1.2; text-align: left;">
+                          實際工時<br />(分/PCS)
+                          </div>
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          <div style="line-height: 1.2; text-align: left;">
+                          單件標工<br />(分/PCS)
+                          </div>
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">人員註記</th>
                       </tr>
                     </thead>
 
@@ -273,7 +351,7 @@
                         <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
-                        <td>{{ process_item.user_comment }}</td>
+                        <td style="font-size:12px; font-weight: 600;">{{ process_item.user_comment }}</td>
                       </tr>
                     </tbody>
                   </v-table>
@@ -289,10 +367,13 @@
     <template v-slot:header.show1_ok = "{ column }">
       <div
         style="line-height: 1;
-        margin: 0; padding: 0;
+        margin: 0;
+        padding: 0;
+        padding-left: 18px;
         display: flex;
         cursor: pointer;
-        position: relative; left: 8px;"
+        position: relative;
+        left: 8px;"
       >
         <span>{{ column.title }}</span>
       </div>
@@ -438,6 +519,22 @@ const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
 const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
 
+const formatDate = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}/${m}/${d}`
+}
+
+const getTwoWeeksAgoFromString = (dateStr) => {
+  const [y, m, d] = dateStr.split('/').map(Number)
+  const base = new Date(y, m - 1, d)
+  base.setDate(base.getDate() + 12)
+  return formatDate(base)
+}
+
+const twoWeeksAgoDate = ref(getTwoWeeksAgoFromString(todayDate.value))
+
 const footerOptions = [
   { value: 5, title: '5' },
   //{ value: 10, title: '10' },
@@ -453,6 +550,13 @@ const headers = [
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '', sortable: false, key: 'action' },
+];
+
+const onlineHeaders = [
+  { title: '  ', sortable: false, key: 'id', width: '2px' },
+  { title: 'Name', key: 'name' },
+  { title: 'Dept', key: 'department' },
+  { title: 'onLine', key: 'online', align: 'end' },
 ];
 
 //const localIp = 'localhost';
@@ -755,6 +859,73 @@ onBeforeUnmount(() => {
   releaseWakeLock();
   document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
+
+// 在線員工 dialog 相關
+const onlineDialog = ref(false)
+
+// 所有員工（或有 onLine 狀態的員工）
+const allOnlineUsers = ref([])
+
+// 部門下拉選單 + 目前選取的部門
+const selectedDeptForOnline = ref('全部')
+const deptOptionsForOnline = ref(['全部'])
+
+// 根據部門篩選的列表，給 v-data-table 用
+const filteredOnlineUsers = computed(() => {
+  if (selectedDeptForOnline.value === '全部') {
+    return allOnlineUsers.value
+  }
+  return allOnlineUsers.value.filter(
+    u => u.department === selectedDeptForOnline.value
+  )
+})
+
+// onLine 欄位背景顏色：0=淡綠, 1=淡紅, 2=淡黃
+const getOnlineCellStyle = (status) => {
+  const v = Number(status)
+  if (v === 0) {
+    return { backgroundColor: '#d5f5e3' }  // 淡綠
+  }
+  if (v === 1) {
+    return { backgroundColor: '#f5b7b1' }  // 淡紅
+  }
+  if (v === 2) {
+    return { backgroundColor: '#fcf3cf' }  // 淡黃
+  }
+  return {}
+}
+
+const onClickOnlineUsers = async () => {
+  onlineDialog.value = true
+  /*
+  try {
+    // 這裡假設後端有一支 API 回傳：
+    // [{ emp_id, emp_name, dep_name, online }, ...]
+    // 你可以先用 /listUsers，再擴充回傳 online 狀態。
+    const response = await axios.get('/listUsers')
+
+    if (response.data && response.data.users) {
+      const rows = response.data.users
+
+      allOnlineUsers.value = rows.map((u, idx) => ({
+        id: idx + 1,
+        name: u.emp_name,
+        department: u.dep_name,
+        // 這裡的 online 先預留，等你後端決定 0/1/2 的規則
+        online: u.online ?? 0,
+      }))
+
+      const depts = Array.from(
+        new Set(allOnlineUsers.value.map(u => u.department).filter(Boolean))
+      )
+      deptOptionsForOnline.value = ['全部', ...depts]
+    }
+  } catch (err) {
+    console.error('載入在線員工失敗:', err)
+  }
+  */
+}
+
 
 //=== method ===
 const fmt = (d) => {

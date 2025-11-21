@@ -8,6 +8,8 @@ warnings.filterwarnings("ignore", message=".*SQLALCHEMY_SILENCE_UBER_WARNING.*")
 
 from datetime import datetime, UTC
 
+from datetime import datetime as dt
+
 from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, func, ForeignKey, create_engine
 from sqlalchemy import text
 #from sqlalchemy.orm import relationship, backref, sessionmaker
@@ -214,7 +216,7 @@ class Material(BASE):
     isAssembleAlarmRpt = Column(Boolean, default=False)             # false:未填報異常原因,
     isAssembleStation1TakeOk = Column(Boolean, default=False)       # true:組裝站製程1完成,
     isAssembleStation2TakeOk = Column(Boolean, default=False)       # true:組裝站製程2完成, 即完成生產報工中, 按結束鍵
-    isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:組裝站製程3必須顯示(異常)
+    isAssembleStation3TakeOk = Column(Boolean, default=False)       # true:
     isAssembleStationShow = Column(Boolean, default=False)          # true:完成生產報工(press結束按鍵), 且是最後1個製成, 且已經call AGV, disable
     station1_Qty = Column(Integer)
     station2_Qty = Column(Integer)
@@ -236,8 +238,8 @@ class Material(BASE):
     must_allOk_qty = Column(Integer, default=0)                     # (成品）應入庫數量, 2025-06-24 add
 
     total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
-    isLackMaterial = Column(Integer, default=99)                    # 0:缺料且檢料完成(還沒拆單), 1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
-    isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單), 1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
+    isLackMaterial = Column(Integer, default=99)                    # 0:缺料且檢料完成(還沒拆單),  1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
+    isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單),       1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
     # 加工線
     sd_time_B100=Column(String(30))
     sd_time_B102=Column(String(30))
@@ -420,8 +422,8 @@ class Assemble(BASE):
     total_ask_qty = Column(Integer, default=0)                    #領取(完成)數量總數
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
 
-    must_receive_end_qty = Column(Integer, default=0)             #應完成數量, 2025-06-17 add, 改順序
-    abnormal_qty = Column(Integer, default=0)                     #異常數量, 2025-06-17 add, 改順序
+    must_receive_end_qty = Column(Integer, default=0)             #應完成數量
+    abnormal_qty = Column(Integer, default=0)                     #異常數量
 
     user_id = Column(String(8))                                   #工序作業員工工號(領料)
     writer_id = Column(String(8))                                 #工序異常資料填寫員工編號
@@ -451,8 +453,11 @@ class Assemble(BASE):
     input_abnormal_disable = Column(Boolean, default=False)       #異常數量達上限, 禁止再輸入, 2025-06-17 add, 改順序
 
     isAssembleStationShow = Column(Boolean, default=False)        # true:完成生產報工(最後途程的結束鍵按下), 且是最後1個製成, 且已經call AGV, disable,
+    isWarehouseStationShow = Column(Boolean, default=False)       # true:進入 倉儲
+
     alarm_enable = Column(Boolean, default=True)                  # false: 在途程中按了異常鍵->異常, true: 在途程中取消了異常鍵(或沒有按異常鍵)->沒有異常
-    alarm_message = Column(String(100), default='')
+    #alarm_message = Column(String(100), default='')
+    alarm_message = Column(String(250), default='', nullable=False)
 
     isAssembleFirstAlarm = Column(Boolean, default=True)          # false:組裝途程第1工序按了異常鍵->異常,
     isAssembleFirstAlarm_message = Column(String(100), default='')
@@ -510,6 +515,7 @@ class Product(BASE):
 
     id = Column(Integer, primary_key=True, autoincrement=True)    #
     material_id = Column(Integer, ForeignKey('material.id'))      #material table id
+    process_id = Column(Integer)                                  #process table id
     #material_num = Column(String(20), nullable=False)             #料號
     #material_comment = Column(String(70), nullable=False)         #料號說明
     #seq_num = Column(String(20), nullable=False)                  #序號
@@ -517,15 +523,15 @@ class Product(BASE):
     #process_step_code = Column(Integer, default=0)                #工作中心的工作順序編號, 3:最先作動, 0:作動完畢
     delivery_qty = Column(Integer, default=0)                     #備料完成數量
     assemble_qty = Column(Integer, default=0)                     #組裝完成數量
-    allOk_qty = Column(Integer, default=0)                        # (成品）確認完成數量
+    allOk_qty = Column(Integer, default=0)                        #成品入庫數量
 
     #ask_qty = Column(Integer, default=0)                          #領取數量(移入到站數量)
     #total_ask_qty = Column(Integer, default=0)                    #已領取(完成)總數量
     #ask_qty_end = Column(Integer, default=0)                      #結束數量(到站確認數量)
     #total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量
     #user_id = Column(String(8))                                   #員工編號(領料)
-    good_qty = Column(Integer, default=0)                         #交付確認良品數量
-    non_good_qty = Column(Integer, default=0)                     #廢品數量
+    good_qty = Column(Integer, default=0)                         #成品良品數量
+    non_good_qty = Column(Integer, default=0)                     #成品廢品數量
     reason = Column(String(50))                                   #差異原因
     confirm_comment = Column(String(70))                          #確認內文
     #is_product_ok = Column(Boolean, default=False)                # true: 目前到站途程為成品站, false: 不是
@@ -553,7 +559,7 @@ class Process(BASE):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     material_id = Column(Integer, ForeignKey('material.id'))          #material table id
-    #assemble_id = Column(Integer, default=0)                        #0:備料
+    assemble_id = Column(Integer, default=0)                          #assemble table id, 0:備料
     has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
     #work_num =  Column(String(20))                                  #工作中心 # 2025-08-22 mark
     user_id = Column(String(20), nullable=False)                      #員工編號
@@ -572,7 +578,7 @@ class Process(BASE):
 
     process_type = Column(Integer, default=1)                     # 1:備料區,
                                                                   # 2:組裝區(含20, 21, 22, 23)
-                                                                  # 20:AGV運行到組裝區
+                                                                   # 20:AGV運行到組裝區
                                                                   # 21:在第1途程, 組裝
                                                                   # 22:在第2途程, 檢驗
                                                                   # 23:在第3途程, 雷射
@@ -592,9 +598,23 @@ class Process(BASE):
                                                                   # 5: '堆高機運行(備料區->組裝區)',
                                                                   # 6: '堆高機運行(組裝區->成品區)',
 
-    #process_status = Column(Integer, default=0)                 # material bom_agv_status
-    process_work_time_qty = Column(Integer, default=0)            # 報工數量
-    normal_work_time = Column(Boolean, default=True)              # true:正常工時, false:異常整修工時
+    #process_status = Column(Integer, default=0)                   # material bom_agv_status
+    process_work_time_qty = Column(Integer, default=0)            # 報工數量(成品, 到庫數量)
+    must_allOk_qty = Column(Integer, default=0)                   # 成品, 應入庫數量
+    allOk_qty = Column(Integer, default=0)                        # 成品, 入庫數量
+    isAllOk = Column(Boolean, default=False)                      # true: 已入庫
+    #normal_work_time = Column(Integer, default=1)                 # true:正常工時, false:異常整修工時
+    normal_work_time = Column(Integer, default=1)                 # 最後1筆工序(1:yes, 0:no), 正常工序(1:正常工時, 0:異常整修工時)
+                                                                  #bit0: 正常工序(1:正常工時, 0:異常整修工時)
+                                                                  #bit1: 最後1筆工序(1:yes, 0:no)
+                                                                  #bit2: 已入庫(1:yes, 0:no)
+
+                                                                  #bit2, bit1, bit0
+                                                                  #0     0     1    =1 (default), 正常工時
+                                                                  #0     1     1    =3, 正常工時, 且是最後工序
+                                                                  #0     0     0    =0, 異常工時
+                                                                  #0     1     0    =2, 異常工時, 且是最後工序
+                                                                  #1     x     x    >=4
     abnormal_cause_message = Column(String(30), default='')                   # 異常原因訊息
     create_at = Column(DateTime, server_default=func.now())
 

@@ -1,6 +1,7 @@
 import os
 import time
 import datetime
+from datetime import datetime as dt
 import shutil
 import pytz
 
@@ -13,12 +14,19 @@ from sqlalchemy import distinct
 from sqlalchemy import inspect
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import and_
 
 from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 
-from operator import itemgetter, attrgetter   # 2023-08-27  add
+from operator import itemgetter, attrgetter
+
+from .assemble_update_utils import (
+    ALLOWED_FIELDS, FIELD_SCHEMAS,
+    coerce_by_schema, serialize_assemble, now_str
+)
 
 updateTable = Blueprint('updateTable', __name__)
 
@@ -27,6 +35,28 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 # ------------------------------------------------------------------
+
+
+def normalize_cause_message_list(cause_message_list):
+    # 如果是 list → 保持不變
+    if isinstance(cause_message_list, list):
+        return cause_message_list
+
+    # 如果是字串 → 轉為 list（以「、」或「,」或空白分隔都支援）
+    if isinstance(cause_message_list, str):
+        # 先去除空白
+        cause_message_list = cause_message_list.strip()
+        # 判斷分隔符號
+        if "、" in cause_message_list:
+            return [s.strip() for s in cause_message_list.split("、") if s.strip()]
+        elif "," in cause_message_list:
+            return [s.strip() for s in cause_message_list.split(",") if s.strip()]
+        else:
+            # 若沒分隔符號，就視為單一項
+            return [cause_message_list]
+
+    # 其他型態（例如 None 或數字）→ 回傳空 list
+    return []
 
 
 # 生成唯一檔案名稱的函式
@@ -38,6 +68,72 @@ def get_unique_filename(target_dir, filename, chip):
       unique_filename = f"{base}_{chip}_{counter}{ext}"  # 為檔名新增後綴
       counter += 1
     return unique_filename
+
+
+def normalize_create_at(raw):
+    """
+    把前端丟來的 create_at 正常化成 datetime 物件：
+    - 若本來就是 datetime → 直接回傳
+    - 若是 timestamp(int/float) → 轉成 datetime
+    - 若是字串 → 嘗試用幾種格式解析（含 'Tue, 18 Nov 2025 13:11:52 GMT'）
+    """
+    if raw is None:
+        return None
+
+    # 已經是 datetime.datetime，就直接用
+    if isinstance(raw, dt):
+        return raw
+
+    # 若是 timestamp（秒或毫秒）
+    if isinstance(raw, (int, float)):
+        ts = raw / 1000.0 if raw > 10**10 else raw
+        return dt.fromtimestamp(ts)
+
+    # 若是字串
+    if isinstance(raw, str):
+        txt = raw.strip()
+        if not txt:
+            return None
+
+        # 1) 先試 RFC 1123 / HTTP Date 格式: "Tue, 18 Nov 2025 13:11:52 GMT"
+        try:
+            # 注意：這個格式完全符合你 log 看到的字串
+            return dt.strptime(txt, "%a, %d %b %Y %H:%M:%S GMT")
+        except ValueError:
+            pass
+
+        # 2) 再試 ISO 格式（2025-11-18T13:11:52 或 2025-11-18 13:11:52）
+        try:
+            return dt.fromisoformat(txt.replace('Z', ''))
+        except ValueError:
+            pass
+
+        # 3) 其它常見格式（看你 DB 實際有沒有用到）
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+        ):
+            try:
+                return dt.strptime(txt, fmt)
+            except ValueError:
+                continue
+
+        # 4) 有小數秒的情況：2025-11-18 13:11:52.123456
+        try:
+            base, _, _ = txt.partition(".")
+            return dt.strptime(base, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            pass
+
+        raise ValueError(f"無法解析 create_at 字串格式: {txt}")
+
+    # 其它型態不支援
+    raise TypeError(f"不支援的 create_at 型態: {type(raw)}")
+
+
+# ------------------------------------------------------------------
 
 
 # update user's password from user table
@@ -314,21 +410,45 @@ def update_assemble_process_step():
 
   assemble_record = s.query(Assemble).filter_by(id=assemble_id, material_id=material_id).first()
 
+  target_create_at = normalize_create_at(assemble_record.create_at)
+
   if not assemble_record:
     return jsonify({"error": f"Assemble with id {assemble_id} and material_id {material_id} not found"}), 404
 
+  #assemble_records = material_record._assemble
+  #assemble_records = s.query(Assemble).filter_by(material_id=material_id).all()
+  assemble_records = (
+    s.query(Assemble)
+      .filter(
+        and_(
+          Assemble.material_id == material_id,
+          Assemble.create_at == target_create_at
+        )
+      )
+      .all()
+  )
 
-  assemble_records = material_record._assemble
+
 
   #if not assemble_records:
   #  return jsonify({"message": f"No assemble records linked to material_id {material_id}"}), 200
 
   # 檢查 process_step_code 是否全部為 0
-  all_process_step_zero = all(record.process_step_code == 0 for record in assemble_records)
+  #all_process_step_zero = all(record.process_step_code == 0 for record in assemble_records)
+
+
+  # 只看 is_copied_from_id 與當前 assemble_record 相同的那一組
+  same_group = [r for r in assemble_records
+                if r.is_copied_from_id == assemble_record.is_copied_from_id]
+                #if r.update_time == assemble_record.update_time]
+
+  # 如果同組至少有一筆，判斷是否全部都是 step=0
+  #all_process_step_zero = bool(same_group) and all(r.process_step_code == 0 for r in same_group)
+  all_process_step_zero = bool(assemble_records) and all(r.process_step_code == 0 for r in assemble_records)
 
   # 如果條件滿足，更新 material 表
   if all_process_step_zero:
-    print("updateAssembleProcessStep , all_process_step_zero")
+    print("updateAssembleProcessStep , all_process_step_zero", all_process_step_zero)
 
     material_record.isAssembleStation3TakeOk = True
     assemble_record.isAssembleStationShow = True
@@ -357,7 +477,8 @@ def update_assemble_process_step():
           next_record.show2_ok = 7
           next_record.total_ask_qty_end = 2
 
-        next_record.completed_qty = assemble_record.completed_qty
+        #next_record.completed_qty = assemble_record.completed_qty
+        next_record.completed_qty = 0
         print(f"更新 assemble id={next_record.id} 的 show2_ok 為 5")
 
     return_value = False
@@ -644,6 +765,78 @@ def update_assembleMustReceiveQty_by_MaterialID():
   })
 
 
+@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
+def update_assembleMustReceiveQty_by_materialID_and_date():
+    print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
+
+    request_data = request.get_json()
+    print("request_data", request_data)
+
+    _material_id   = request_data.get('material_id')
+    _raw_create_at = request_data.get('create_at')
+    _record_name   = request_data['record_name']
+    _record_data   = request_data['record_data']
+
+    print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+    print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
+
+    return_value = True
+    s = Session()
+
+    try:
+        # 1) 檢查欄位是否合法
+        valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
+        if _record_name not in valid_columns:
+            return_value = False
+            raise ValueError(f"'{_record_name}' 不是 Assemble 表中的合法欄位")
+
+        # 2) 正常化 create_at
+        if _raw_create_at is None:
+            return_value = False
+            raise ValueError("缺少 create_at 參數")
+
+        target_create_at = normalize_create_at(_raw_create_at)
+        print("normalized create_at:", target_create_at, "type:", type(target_create_at))
+
+        # 3) 查出同 material_id + 同 create_at 的那一批資料
+        assemble_records = (
+            s.query(Assemble)
+             .filter(
+                and_(
+                    Assemble.material_id == _material_id,
+                    Assemble.create_at == target_create_at
+                )
+             )
+             .all()
+        )
+
+        if not assemble_records:
+            return_value = False
+            raise ValueError(
+                f"No Assemble records found for material_id={_material_id} and create_at={_raw_create_at}"
+            )
+
+        updated_ids = []
+        for record in assemble_records:
+            setattr(record, _record_name, _record_data)
+            updated_ids.append(record.id)
+
+        print("updated assemble ids:", updated_ids)
+
+        s.commit()
+
+    except Exception as e:
+        s.rollback()
+        print("update_assembleMustReceiveQty_by_materialID_and_date error:", e)
+        raise
+    finally:
+        s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+
+
 @updateTable.route("/updateMaterialFields", methods=['POST'])
 def update_material_fields():
     data = request.get_json(silent=True) or {}
@@ -925,7 +1118,7 @@ def update_agv():
     'status': True
   })
 
-
+"""
 @updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
 def update_assemble_alarm_message():
   print("updateAssembleAlarmMessage....")
@@ -939,43 +1132,14 @@ def update_assemble_alarm_message():
   cause_user = data.get("cause_user")
   print("cause_user:",cause_user)
 
-
-  if not assemble_id or not isinstance(cause_message_list, list):
-    return jsonify({"status": False, "message": "Missing or invalid data"}), 400
-
   s = Session()
 
   try:
     # 取得 Assemble 資料
     assemble_record = s.query(Assemble).get(assemble_id)
-    if not assemble_record:
-      return jsonify({"status": False, "message": "Assemble record not found"}), 404
-
-    # 取得所有異常資料
-    _alarm_objects = s.query(AbnormalCause).all()
-    _alarm_objects_dict = {item.message.strip(): item.id for item in _alarm_objects}
-
-    # 比對字串，取得對應的 ID
-    cause_id_list = []
-    '''
-    for msg in cause_message_list:
-      msg_stripped = msg.strip()
-      if msg_stripped in _alarm_objects_dict:
-        cause_id_list.append(str(_alarm_objects_dict[msg_stripped]))
-    '''
-    for msg in cause_message_list:
-        # 取出括號前的異常名稱（例：'散爪(M01002)' → '散爪'）
-        msg_stripped = msg.split('(')[0].strip()
-        if msg_stripped in _alarm_objects_dict:
-            cause_id_list.append(str(_alarm_objects_dict[msg_stripped]))
-
-
-    # 將 ID 列表轉為逗號分隔字串
-    new_alarm_id = ", ".join(cause_id_list)
-    print("new_alarm_id:", new_alarm_id)
 
     # 儲存進資料庫
-    assemble_record.alarm_message = new_alarm_id
+    assemble_record.alarm_message = cause_message_list
     assemble_record.writer_id = cause_user
     assemble_record.write_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
     s.commit()
@@ -988,6 +1152,100 @@ def update_assemble_alarm_message():
 
   finally:
     s.close()
+"""
+
+
+@updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
+def update_assemble_alarm_message():
+    print("updateAssembleAlarmMessage....")
+
+    data = request.get_json()
+
+    assemble_id = data.get("assemble_id")
+    print("assemble_id:", assemble_id)
+    cause_message_list = data.get("cause_message")  # 前端預期傳 list 或字串
+    print("cause_message_list:", cause_message_list)
+    cause_user = data.get("cause_user")
+    print("cause_user:", cause_user)
+
+    s = Session()
+
+    try:
+        # 1) 先抓本尊那筆 assemble
+        assemble_record = s.query(Assemble).get(assemble_id)
+        pre_assemble_record = s.query(Assemble).get(assemble_id-1)
+        if not assemble_record or not pre_assemble_record:
+            s.close()
+            return jsonify({"status": False, "message": "Assemble record not found"}), 404
+
+        # 2) 把 cause_message_list 轉成要存進 String(250) 的字串
+        #    - 若是 list: 用 "、" 接起來
+        #    - 若是字串: 直接用
+        #    - 其他型態: 強制轉字串
+        if isinstance(cause_message_list, list):
+            alarm_message_str = "、".join(str(x).strip() for x in cause_message_list if str(x).strip())
+        elif isinstance(cause_message_list, str):
+            alarm_message_str = cause_message_list.strip()
+        else:
+            alarm_message_str = str(cause_message_list or "").strip()
+
+        now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+        # 3) 更新本尊那筆
+        assemble_record.alarm_message = alarm_message_str
+        #assemble_record.alarm_message = ''
+        assemble_record.writer_id = cause_user
+        assemble_record.write_date = now_str
+        assemble_record.isAssembleFirstAlarm = True
+        assemble_record.alarm_enable = False
+
+        # 4) 同步到所有「從這筆複製出去」的資料
+        #    透過 model 上設定的 backref: copied_to
+        #    copied_to = 所有 is_copied_from_id = assemble_record.id 的子筆數
+        for child in assemble_record.copied_to:
+          print("child.id:", child.id)
+          # 只更新 user_id 有值的子筆數
+          if child.user_id and str(child.user_id).strip() != "":
+              child.alarm_message = alarm_message_str
+              child.writer_id = cause_user
+              child.write_date = now_str
+              child.isAssembleFirstAlarm = False
+              child.alarm_enable = False
+
+        for child in pre_assemble_record.copied_to:
+          print("child.id:", child.id)
+          # 只更新 user_id 有值的子筆數
+          if child.user_id and str(child.user_id).strip() != "":
+              child.alarm_message = alarm_message_str
+              child.writer_id = cause_user
+              child.write_date = now_str
+              child.isAssembleFirstAlarm = False
+              child.alarm_enable = False
+
+        # 如果沒有用 backref，也可以用下面這種查詢方式 (擇一即可)
+        # children = (
+        #     s.query(Assemble)
+        #      .filter(Assemble.is_copied_from_id == assemble_id)
+        #      .all()
+        # )
+        # for child in children:
+        #     child.alarm_message = alarm_message_str
+        #     child.writer_id = cause_user
+        #     child.write_date = now_str
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": "Alarm message updated successfully"
+        })
+
+    except Exception as e:
+        s.rollback()
+        return jsonify({"status": False, "message": str(e)}), 500
+
+    finally:
+        s.close()
 
 
 @updateTable.route("/updateBomXorReceive", methods=["POST"])
@@ -1046,4 +1304,174 @@ def update_bom_xor_receive():
       'status': True,
       'message': "Updated successfully."
     })
+
+
+def _to_int_or_none(v):
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise ValueError("必須是整數或空字串/Null")
+
+@updateTable.route("/updateProduct", methods=["POST"])
+def update_product():
+    s = Session()
+    try:
+        data = request.get_json(silent=True) or {}
+        items = data.get("items", [])
+        if not isinstance(items, list) or len(items) == 0:
+            return jsonify({"ok": False, "error": "items 必須為非空陣列"}), 400
+
+        # 取出所有 material_id
+        try:
+            mids = [int(it["material_id"]) for it in items if "material_id" in it]
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"ok": False, "error": "每筆必須含 material_id（整數）"}), 400
+
+        # 檢查 material 是否存在
+        exist_mid = set(x[0] for x in s.query(Material.id).filter(Material.id.in_(mids)).all())
+        not_found = [mid for mid in mids if mid not in exist_mid]
+        if not_found:
+            return jsonify({"ok": False, "error": f"找不到 material_id: {not_found}"}), 400
+
+        # 先抓現有的 Product（假設一個 material_id 對應一筆 Product）
+        exist_products = s.query(Product).filter(Product.material_id.in_(mids)).all()
+        by_mid = {p.material_id: p for p in exist_products}
+
+        # 處理每筆
+        for it in items:
+            mid = int(it["material_id"])
+            p = by_mid.get(mid)
+            if p is None:
+                p = Product(
+                    material_id   = mid,
+                    delivery_qty  = 0,
+                    assemble_qty  = 0,
+                    allOk_qty     = 0,
+                    good_qty      = 0,
+                    non_good_qty  = 0,
+                    reason        = None,
+                    confirm_comment = None,
+                )
+                s.add(p)
+                by_mid[mid] = p
+
+            # ---- 1) 累加欄位 ----
+            for f in ("allOk_qty", "good_qty", "non_good_qty"):
+                if f in it:
+                    inc = _to_int_or_none(it.get(f))
+                    if inc is not None:
+                        setattr(p, f, (getattr(p, f) or 0) + inc)
+
+            # ---- 2) 直接覆寫欄位（有帶才動）----
+            if "delivery_qty" in it:
+                v = _to_int_or_none(it.get("delivery_qty"))
+                if v is not None:
+                    p.delivery_qty = v
+
+            if "assemble_qty" in it:
+                v = _to_int_or_none(it.get("assemble_qty"))
+                if v is not None:
+                    p.assemble_qty = v
+
+            if "reason" in it:
+                # 字串允許清空；要清空就傳 ""；不帶就不動
+                rv = it.get("reason")
+                p.reason = ("" if rv == "" else (str(rv) if rv is not None else p.reason))
+
+            if "confirm_comment" in it:
+                cv = it.get("confirm_comment")
+                p.confirm_comment = ("" if cv == "" else (str(cv) if cv is not None else p.confirm_comment))
+
+        s.commit()
+
+        # 組回傳
+        out = []
+        for mid, p in by_mid.items():
+            if mid in exist_mid:  # 只回這次有動到的 mids
+                out.append({
+                    "id": getattr(p, "id", None),
+                    "material_id": p.material_id,
+                    "delivery_qty": p.delivery_qty,
+                    "assemble_qty": p.assemble_qty,
+                    "allOk_qty": p.allOk_qty,
+                    "good_qty": p.good_qty,
+                    "non_good_qty": p.non_good_qty,
+                    "reason": p.reason,
+                    "confirm_comment": p.confirm_comment,
+                })
+        return jsonify({"ok": True, "updated": len(out), "items": out}), 200
+
+    except ValueError as e:
+        s.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except SQLAlchemyError as e:
+        s.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception as e:
+        s.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        s.close()
+
+
+@updateTable.route("/updateAssembleTableData", methods=["POST"])
+def update_assemble_table_data():
+    s = Session()
+    try:
+        data = request.get_json(force=True) or {}
+        assemble_id = data.get("assemble_id")
+        if not assemble_id:
+            return jsonify({"status": False, "message": "assemble_id 為必填"}), 400
+
+        patch = data.get("patch")
+        if patch is None:
+            patch = {k: v for k, v in data.items() if k != "assemble_id"}
+        if not isinstance(patch, dict) or not patch:
+            return jsonify({"status": False, "message": "沒有可更新欄位"}), 400
+
+        obj = s.query(Assemble).get(int(assemble_id))
+        if not obj:
+            return jsonify({"status": False, "message": f"Assemble id={assemble_id} 不存在"}), 404
+
+        before = serialize_assemble(obj)
+
+        updated, ignored = [], []
+        for k, v in patch.items():
+            if k not in ALLOWED_FIELDS:
+                ignored.append(k); continue
+            setattr(obj, k, coerce_by_schema(k, v))
+            updated.append(k)
+
+        # 統一由後端覆寫 update_time
+        obj.update_time = now_str()
+        if "update_time" not in updated:
+            updated.append("update_time")
+
+        # 可選：驗證 is_copied_from_id
+        if "is_copied_from_id" in updated and obj.is_copied_from_id:
+            exists = s.query(Assemble.id).filter(Assemble.id == obj.is_copied_from_id).first()
+            if not exists:
+                obj.is_copied_from_id = None
+                updated.remove("is_copied_from_id")
+                ignored.append("is_copied_from_id(不存在的來源 id)")
+
+        s.commit(); s.refresh(obj)
+        after = serialize_assemble(obj)
+
+        return jsonify({
+            "status": True, "id": obj.id,
+            "updated": sorted(updated), "ignored_fields": ignored,
+            "before": before, "after": after
+        }), 200
+
+    except SQLAlchemyError as e:
+        s.rollback()
+        return jsonify({"status": False, "message": f"資料庫錯誤: {str(e)}"}), 500
+    except Exception as e:
+        s.rollback()
+        return jsonify({"status": False, "message": f"伺服器錯誤: {str(e)}"}), 500
+    finally:
+        s.close()
 

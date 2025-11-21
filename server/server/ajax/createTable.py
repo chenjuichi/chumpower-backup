@@ -2,10 +2,13 @@ import math
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func
+#from sqlalchemy import func
 from database.tables import User, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
-from sqlalchemy import or_
+#from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
+
+from datetime import datetime, timezone
 
 import pymysql
 from sqlalchemy import exc
@@ -17,6 +20,19 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 # ------------------------------------------------------------------
+
+
+def _normalize_int(value, default=0):
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+# ------------------------------------------------------------------
+
 
 # create user data and perm.id=4 into table
 @createTable.route("/register", methods=['POST'])
@@ -68,7 +84,7 @@ def register():
 
 # create user data and perm.id=4 into table
 @createTable.route("/createUser", methods=['POST'])
-def createUser():
+def create_user():
     print("createUser....")
 
     request_data = request.get_json()
@@ -387,6 +403,12 @@ def create_process():
 
   s.add(new_process)
   print("step4...")
+
+  s.flush()  # ← 立刻送出 INSERT 並回填自增 id（未提交交易）
+
+  new_process_id = new_process.id  # ← 這裡就拿得到主鍵 id
+  print("new_process_id:", new_process_id)
+
   s.commit()
   print("step5...")
 
@@ -394,6 +416,7 @@ def create_process():
 
   return jsonify({
     'status': True,
+    'process_id': new_process_id
   })
 
 
@@ -467,6 +490,130 @@ def copy_assemble():
   })
 
 
+@createTable.route("/copyAssembleForDifference", methods=['POST'])
+def copy_assemble_for_difference():
+  print("copyAssembleForDifference....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _must_qty = request_data.get('must_receive_qty')
+  _pre_must_qty = request_data.get('pre_must_receive_qty')
+
+  print("_copy_id, _must_qty", _copy_id, _must_qty)
+
+  return_value = True
+  s = Session()
+
+  # 根據 copy_id 尋找現有的 Material 資料
+  #exist = s.query(Assemble).filter_by(id = _copy_id).first()
+
+
+  # 1. 取得原始 assemble 記錄
+  source_assemble = s.query(Assemble).get(_copy_id)
+
+  """
+  # 2. 找出符合複製條件的所有 assemble 記錄
+  matching_assembles = s.query(Assemble).filter(
+      Assemble.material_id == source_assemble.material_id,
+      Assemble.must_receive_qty == source_assemble.must_receive_qty,
+      #Assemble.process_step_code <= source_assemble.process_step_code
+  ).all()
+  """
+  k = _copy_id
+  h = k + 1
+  m = k + 2  # 若之後也要用，可以一起放進 IN
+
+  ids = [k, h]            # 只要 k、h
+  matching_assembles = (
+    s.query(Assemble)
+     .filter(
+        Assemble.material_id == source_assemble.material_id,
+        Assemble.update_time == source_assemble.update_time,
+        Assemble.id.in_(ids)          # 「包含 k 或 h」
+     )
+     .order_by(Assemble.id.asc())
+     .all()
+  )
+  print("matching_assembles:",matching_assembles)
+
+  # 2-1. 先更新這些舊紀錄的 must_receive_end_qty = pre_must_receive_qty
+  #      （如果 pre_must_receive_qty 有帶進來）
+  if _pre_must_qty is not None:
+    try:
+      pre_must_val = int(_pre_must_qty)
+    except (TypeError, ValueError):
+      pre_must_val = 0
+
+    for rec in matching_assembles:
+      print(f"update old rec(id={rec.id}) must_receive_end_qty ->", pre_must_val)
+      rec.must_receive_end_qty = pre_must_val
+
+  # 3. 複製這些記錄（排除 id）並新增到 DB
+  new_ids = []
+  for record in matching_assembles:
+    #abnormal_field=False
+    if record.work_num == 'B109':
+      process_step_code =3
+      ok2=3
+      ok3=3
+    if record.work_num == 'B110':
+      process_step_code =2
+      ok2=5
+      ok3=5
+    if record.work_num == 'B106':
+      process_step_code =1
+      ok2=7
+      ok3=7
+    else:
+      # 如果不是這三種工作中心，就略過，不新增
+      print("skip record.id =", record.id, "work_num =", record.work_num)
+      continue
+
+    abnormal_field=False
+
+    new_record = Assemble(
+      material_id=record.material_id,
+      material_num=record.material_num,
+      material_comment=record.material_comment,
+      seq_num=record.seq_num,
+      work_num=record.work_num,
+      process_step_code=process_step_code,
+      must_receive_qty = _must_qty,     #應領取數量
+      must_receive_end_qty=_must_qty,
+      input_disable =False,
+      input_end_disable =False,
+      input_abnormal_disable = abnormal_field,
+      completed_qty = 0,                    #完成數量
+      total_completed_qty = 0,
+      ask_qty=0,
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      is_copied_from_id=record.id,
+      show2_ok=ok2,
+      show3_ok=ok3,
+    )
+    s.add(new_record)
+    s.flush()  # 先 flush 以取得新 ID
+    new_ids.append(new_record.id)
+  # end for loop
+
+  try:
+    s.commit()
+    print("Process data create successfully.")
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return_message = '錯誤! 資料新增複製沒有成功...'
+    return_value = False
+
+  s.close()
+
+  return jsonify({
+    'assemble_data': new_ids,
+  })
+
+
 # copy assemble data table
 @createTable.route("/copyNewAssemble", methods=['POST'])
 def copy_new_assemble():
@@ -489,12 +636,47 @@ def copy_new_assemble():
   # 1. 取得原始 assemble 記錄
   source_assemble = s.query(Assemble).get(_copy_id)
 
-  # 2. 找出符合複製條件的所有 assemble 記錄
-  matching_assembles = s.query(Assemble).filter(
-      Assemble.material_id == source_assemble.material_id,
-      Assemble.must_receive_qty == source_assemble.must_receive_qty,
-      #Assemble.process_step_code <= source_assemble.process_step_code
-  ).all()
+  matching_assembles = []
+  """
+  bb = source_assemble
+  while True:
+      aa = s.get(Assemble, bb.id + 1)  # 下一筆（相鄰 id）
+      if not aa:
+          break
+      if (aa.material_id == source_assemble.material_id) and (aa.update_time == source_assemble.update_time):
+        matching_assembles.append(aa)
+        bb = aa   # 往下一筆繼續找
+      else:
+        break
+  """
+
+  """
+    # 2. 找出符合複製條件的所有 assemble 記錄
+    matching_assembles = s.query(Assemble).filter(
+        Assemble.material_id == source_assemble.material_id,
+        Assemble.must_receive_qty == source_assemble.must_receive_qty,
+        #Assemble.process_step_code <= source_assemble.process_step_code
+    ).all()
+  """
+
+
+  k = _copy_id
+  h = k - 1
+  m = k + 1  # 若之後也要用，可以一起放進 IN
+
+  ids = [k, h, m]            # 只要 k、h
+  matching_assembles = (
+    s.query(Assemble)
+     .filter(
+        Assemble.material_id == source_assemble.material_id,
+        #Assemble.is_copied_from_id == source_assemble.update_time,
+        Assemble.id.in_(ids)          # 「包含 k 或 h」
+     )
+     #.order_by(Assemble.id.asc())
+     .all()
+  )
+
+  print("matching_assembles:",matching_assembles)
 
   # 3. 複製這些記錄（排除 id）並新增到 DB
   new_ids = []
@@ -502,7 +684,6 @@ def copy_new_assemble():
     abnormal_field=False
     if record.work_num == 'B109':
       process_step_code =3
-      #abnormal_field=True            # 2025-07-31 mark
     if record.work_num == 'B110':
       process_step_code =2
     if record.work_num == 'B106':
@@ -515,15 +696,23 @@ def copy_new_assemble():
       seq_num=record.seq_num,
       work_num=record.work_num,
       process_step_code=process_step_code,
-      must_receive_qty = _must_qty,     #應領取數量
+      isAssembleStationShow=False,
+      must_receive_qty = _must_qty,         #應領取數量
+      must_receive_end_qty = _must_qty,     #應完成數量
       input_disable =False,
       input_end_disable =False,
+
+      alarm_enable=False,
+      isAssembleFirstAlarm=False,
+
       input_abnormal_disable = abnormal_field,
       completed_qty = 0,                    #完成數量
       total_completed_qty = 0,
       ask_qty=0,
       update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=record.id,
+      show2_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
+      show3_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID
@@ -840,3 +1029,229 @@ def create_stockout_grids():
         'status': return_value,
     })
 '''
+
+
+@createTable.route("/createProduct", methods=["POST"])
+def create_product():
+    """
+    支援：
+    1) 單筆：JSON 直接是一個物件
+    2) 多筆：{"items": [ {...}, {...} ]}
+    欄位（每筆 item）：
+      - material_id (必填, int, 必須存在於 material)
+      - delivery_qty (選填, int, default 0)
+      - assemble_qty (選填, int, default 0)
+      - allOk_qty (選填, int, default 0)
+      - good_qty (選填, int, default 0)
+      - non_good_qty (選填, int, default 0)
+      - reason (選填, str)
+      - confirm_comment (選填, str)
+    批次語意：任何一筆驗證錯誤 → 整批 rollback。
+    回傳：{ status, created, items: [ {id, material_id, ...} ] }
+    """
+    s = Session()
+    try:
+        #payload = request.get_json(silent=True) or {}
+        payload = request.get_json()
+
+        # 兼容兩種型態：物件 or {items: [..]}
+        raw_items = payload.get("items", None)
+        if raw_items is None:
+            # 當作單筆物件
+            raw_items = [payload]
+
+        # 基本型態檢查
+        if not isinstance(raw_items, list) or len(raw_items) == 0:
+            return jsonify({"status": False, "error": "payload 應為物件或 {items: [...]}，且不可為空"}), 400
+
+        # 先做前置驗證（material 存在性），有任何錯誤→直接 400
+        errors = []
+        material_ids = [it.get("material_id") for it in raw_items]
+        # 必須都是 int
+        try:
+            material_ids_int = [int(mid) for mid in material_ids]
+        except (TypeError, ValueError):
+            return jsonify({"status": False, "error": "material_id 必須是整數"}), 400
+
+        # 查詢存在的 materials
+        exist_mid_set = set([m.id for m in s.query(Material.id).filter(Material.id.in_(material_ids_int)).all()])
+        for idx, it in enumerate(raw_items):
+            mid = it.get("material_id")
+            if mid is None:
+                errors.append({"index": idx, "error": "material_id 為必填"})
+                continue
+            if int(mid) not in exist_mid_set:
+                errors.append({"index": idx, "error": f"material_id {mid} 不存在"})
+
+        if errors:
+            return jsonify({"status": False, "errors": errors}), 400
+
+        # 通過驗證 → 建立資料
+        created_rows = []
+        for it in raw_items:
+            p = Product(
+                material_id      = int(it.get("material_id")),
+                delivery_qty     = _normalize_int(it.get("delivery_qty"), 0),
+                assemble_qty     = _normalize_int(it.get("assemble_qty"), 0),
+                allOk_qty        = _normalize_int(it.get("allOk_qty"), 0),
+                good_qty         = _normalize_int(it.get("good_qty"), 0),
+                non_good_qty     = _normalize_int(it.get("non_good_qty"), 0),
+                reason           = (it.get("reason") or None),
+                confirm_comment  = (it.get("confirm_comment") or None),
+            )
+            s.add(p)
+            created_rows.append(p)
+
+        s.commit()
+
+        # 組回傳（expire_on_commit=False，id 可直接讀）
+        items = []
+        for p in created_rows:
+            items.append({
+                "id": p.id,
+                "material_id": p.material_id,
+                "delivery_qty": p.delivery_qty,
+                "assemble_qty": p.assemble_qty,
+                "allOk_qty": p.allOk_qty,
+                "good_qty": p.good_qty,
+                "non_good_qty": p.non_good_qty,
+                "reason": p.reason,
+                "confirm_comment": p.confirm_comment,
+                "create_at": getattr(p, "create_at", None).isoformat() if getattr(p, "create_at", None) else None,
+            })
+
+        return jsonify({
+           "status": True,
+           "created": len(items),
+           "items": items
+        })
+        #}) , 201
+
+    except SQLAlchemyError as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    except Exception as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    finally:
+        s.close()
+
+
+def _int_or_error(value, name):
+    try:
+        iv = int(value)
+        if iv < 0:
+            raise ValueError
+        return iv
+    except Exception:
+        raise ValueError(f"{name} 必須是非負整數")
+
+@createTable.route("/copyNewIdAssemble", methods=['POST'])
+def copy_new_id_assemble():
+    """
+    POST JSON:
+    {
+        "copy_assemble_id": 123,
+        "copy_assemble_must_receive_qty": 10,
+        "copy_assemble_process_step_code": 21
+    }
+    """
+    payload = request.get_json(silent=True) or {}
+    #payload = request.get_json()
+
+    try:
+        src_id = _int_or_error(payload.get("copy_assemble_id"), "copy_assemble_id")
+        new_must_qty = _int_or_error(payload.get("copy_assemble_must_receive_qty"), "copy_assemble_must_receive_qty")
+        new_step_code = _int_or_error(payload.get("copy_assemble_process_step_code"), "copy_assemble_process_step_code")
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    s = Session()
+    try:
+        # 1) 讀來源
+        src: Assemble | None = s.query(Assemble).filter(Assemble.id == src_id).one_or_none()
+        if not src:
+            return jsonify({"ok": False, "error": f"來源 assemble id {src_id} 不存在"}), 404
+
+        # 2) 建立新物件：先將來源轉 dict，再挑欄位
+        #    只複製普通欄位；不帶入主鍵 id / 自動時間 / 關聯 backref
+        #    下列欄位名稱以你的 tables.py 為準
+        clone_fields = {
+            "material_id": src.material_id,
+            "material_num": src.material_num,
+            "material_comment": src.material_comment,
+            "seq_num": src.seq_num,
+            "work_num": src.work_num,
+
+            # 保留原本數值（你有需要可改成重置 0）
+            "Incoming1_Abnormal": src.Incoming1_Abnormal,
+            #"ask_qty": 0,
+            #"total_ask_qty": 0,
+            #"total_ask_qty_end": 0,
+            #"abnormal_qty": 0,
+            "user_id": '',
+            "writer_id": src.writer_id,
+            "write_date": src.write_date,
+            "good_qty": src.good_qty,
+            "total_good_qty": src.total_good_qty,
+            "non_good_qty": src.non_good_qty,
+            "meinh_qty": src.meinh_qty,
+            #"completed_qty": 0,
+            "total_completed_qty": src.total_completed_qty,
+            "reason": src.reason,
+            "confirm_comment": src.confirm_comment,
+            "is_assemble_ok": src.is_assemble_ok,
+            #"currentStartTime": src.currentStartTime,
+            #"currentEndTime": src.currentEndTime,
+            #"input_disable": src.input_disable,
+            #"input_end_disable": src.input_end_disable,
+            "input_abnormal_disable": src.input_abnormal_disable,
+            "isAssembleStationShow": src.isAssembleStationShow,
+            "isWarehouseStationShow": getattr(src, "isWarehouseStationShow", False),
+            "alarm_enable": src.alarm_enable,
+            "alarm_message": src.alarm_message,
+            "isAssembleFirstAlarm": src.isAssembleFirstAlarm,
+            "isAssembleFirstAlarm_message": src.isAssembleFirstAlarm_message,
+            "isAssembleFirstAlarm_qty": src.isAssembleFirstAlarm_qty,
+            "whichStation": src.whichStation,
+            "show1_ok": src.show1_ok,
+            "show2_ok": 3 if (src.work_num=='109') else (5 if (src.work_num=='110') else 7),
+            "show3_ok": 3 if (src.work_num=='109') else (5 if (src.work_num=='110') else 7),
+
+            # 會在下方覆寫的新值
+            # "process_step_code": src.process_step_code,
+            # "must_receive_qty": src.must_receive_qty,
+            # "must_receive_end_qty": src.must_receive_end_qty,
+
+            # 溯源
+            "is_copied_from_id": src.id,
+
+            # 時間戳（若你有 middleware 統一寫入可拿掉）
+            #"update_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        # 3) 覆寫需求欄位
+        clone_fields["process_step_code"] = new_step_code
+        clone_fields["must_receive_qty"] = new_must_qty
+        clone_fields["must_receive_end_qty"] = new_must_qty
+
+        # 4) 生成並寫入
+        new_rec = Assemble(**clone_fields)
+        s.add(new_rec)
+        s.commit()
+
+        # 5) 取新 id 與內容
+        new_id = new_rec.id
+        # expire_on_commit=False 已設定，直接可取
+        return jsonify({
+            "ok": True,
+            "new_assemble_id": new_id,
+            "data": new_rec.get_dict()
+        #}), 201
+        })
+
+    except Exception as e:
+        s.rollback()
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        s.close()

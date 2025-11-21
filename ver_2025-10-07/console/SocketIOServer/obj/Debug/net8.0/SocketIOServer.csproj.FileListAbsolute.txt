@@ -1,0 +1,5 @@
+C:\vue\chumpower\console\socketioserver\obj\Debug\net8.0\SocketIOServer.GeneratedMSBuildEditorConfig.editorconfig
+C:\vue\chumpower\console\socketioserver\obj\Debug\net8.0\SocketIOServer.AssemblyInfoInputs.cache
+C:\vue\chumpower\console\socketioserver\obj\Debug\net8.0\SocketIOServer.AssemblyInfo.cs
+C:\vue\chumpower\console\socketioserver\obj\Debug\net8.0\SocketIOServer.csproj.CoreCompileInputs.cache
+C:\vue\chumpower\console\socketioserver\obj\Debug\net8.0\SocketIOServer.csproj.AssemblyReference.cache

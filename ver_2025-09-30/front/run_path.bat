@@ -1,0 +1,1 @@
+path=C:\Users\CHEN JUI CHI\AppData\Roaming\nvm\v20.14.0;%PATH%

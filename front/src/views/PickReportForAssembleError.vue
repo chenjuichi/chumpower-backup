@@ -31,8 +31,6 @@
               組裝區異常填報
             </v-col>
 
-            <!--<v-col cols="12" md="2" class="pb-1" />-->
-
             <!-- 歷史紀錄按鍵 -->
             <v-col cols="12" md="2" class="pb-6">
               <v-btn
@@ -262,7 +260,20 @@
         color:black;
         font-weight:600;
       ">
-        現況<br />數量
+        應完成<br />數量
+      </div>
+    </template>
+
+    <!-- 客製化 '異常數量' (alarm_qty) 欄位表頭 -->
+    <template v-slot:header.alarm_qty="{ column }">
+      <div style="text-align:center;
+        white-space:normal;
+        line-height:1.2;
+        font-size: 14px;
+        color:black;
+        font-weight:600;
+      ">
+        異常<br />數量
       </div>
     </template>
 
@@ -309,41 +320,139 @@
         </div>
     </template>
 
+  <!--
+    <template v-slot:item.comment="{ item }">
+      <v-tooltip
+        location="right"
+        :offset="[0, 350]"
+
+
+
+        class="tooltip-wide"
+      >
+        <template #activator="{ props }">
+          <span
+            class="ellipsis-cell"
+            v-bind="props"
+          >
+            {{ item.comment || '' }}
+          </span>
+        </template>
+        <div class="tooltip-content">
+          {{ item.comment || '' }}
+        </div>
+      </v-tooltip>
+    </template>
+  -->
+
     <!-- 自訂 '說明' 欄位 -->
     <template v-slot:item.comment="{ item }">
-      <div>
-        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-      </div>
+      <v-hover v-slot="{ isHovering, props }">
+        <div class="comment-cell inline-tooltip-anchor" v-bind="props">
+          <span class="ellipsis-cell">
+            {{ item.comment || '' }}
+          </span>
+          <div
+            v-show="isHovering && (item.comment.length > 0)"
+            class="inline-tooltip"
+            role="tooltip"
+          >
+            {{ item.comment || '' }}
+          </div>
+        </div>
+      </v-hover>
     </template>
 
     <!-- 自訂 '異常原因填寫' 欄位 -->
-    <!--當使用者在 combobox 裡打字時，觸發 onSearchUpdate 方法-->
-    <!--當 combobox 的選單打開或關閉時，觸發 onMenuUpdate 方法-->
-    <!--當使用者選擇（或輸入）新值時，觸發 onValueUpdate 方法，並 item 當參數傳進去-->
     <template v-slot:item.cause_message="{ item }">
-      <v-combobox
-        v-model="item.cause_message"
-        :items="abnormal_causes_msg"
-        chips
-        multiple
 
-        class="custom-combobox"
-        @update:search="onSearchUpdate"
-
-        @update:menu="(isOpen) => onMenuUpdate(isOpen, item)"
-        :ref="el => setComboboxRef(el, item.order_num)"
-      >
-        <template v-slot:selection="{ item }">
-          <v-chip>{{ item.raw }}</v-chip>
-        </template>
-      </v-combobox>
+      <div class="d-flex align-center">
+        <v-icon
+          style="color:blue; cursor: pointer; "
+          size="18"
+          @click="editCauseMessage(item)"
+          title="編輯異常原因"
+        >
+          mdi-pencil-outline
+        </v-icon>
+        <v-text-field
+          v-model.trim="item.cause_message"
+          variant="underlined"
+          density="compact"
+          hide-details
+          readonly
+        />
+      </div>
     </template>
 
     <template #no-data>
       <strong><span style="color: red;">目前沒有資料</span></strong>
     </template>
   </v-data-table>
+
+  <v-dialog v-model="causeDlg.open" max-width="560">
+    <v-card>
+      <v-card-title class="text-h6 font-weight-bold">
+        編輯異常原因
+      </v-card-title>
+      <v-card-text class="d-flex flex-column ga-3">
+        <div style="display: flex;">
+          <div style="position: relative; top: 15px;">異常原因</div>
+          <v-text-field
+            v-model.trim="causeDlg.form.msg"
+            clearable
+            @click:clear="clearMsg()"
+            density="comfortable"
+            variant="underlined"
+            hide-details
+            color="primary"
+            class="cause_dlg_field"
+            style="position: relative; left: 10px;  width: 410px;"
+          />
+        </div>
+        <div style="display: flex;">
+          <v-text-field
+            v-model.number="causeDlg.form.qty"
+            type="number"
+            min="0"
+            :max="causeDlg.form.max_qty"
+            label="數量"
+
+            variant="outlined"
+            hide-details
+            class="cause_dlg_text"
+            style="min-width:0;"
+          />
+
+          <v-combobox
+            v-model="causeDlg.form.err_msg"
+            :items="abnormal_causes_msg"
+            hide-details
+            class="cause_dlg_combo"
+            style="min-width:0;"
+          />
+        </div>
+
+        <div class="mt-1">
+          <span
+            @click="appendPreviewToMsg"
+            style="cursor:pointer; user-select:none; color:#1A237E"
+            title="點一下把預覽內容加入訊息"
+          >
+          <v-icon color="blue">
+            mdi-mouse-left-click-outline
+          </v-icon>
+          預覽選取：<strong>{{ composedMsg }}</strong>
+          </span>
+        </div>
+      </v-card-text>
+
+      <v-card-actions class="justify-end">
+        <v-btn variant="text" @click="closeCauseDlg()">取消</v-btn>
+        <v-btn color="primary" @click="confirmCauseMsg()">確定</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </div>
 </template>
 
@@ -393,7 +502,7 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-let intervalId = null;              // 10秒鐘, 倒數計時器
+//# let intervalId = null;              // 10秒鐘, 倒數計時器
 
 let observer = null;
 
@@ -406,16 +515,30 @@ const comboboxRefs = ref({});
 
 const route = useRoute(); // Initialize router
 
+const causeDlg = reactive({
+  open: false,
+  target: null, // 當前正在編輯的 item
+  form: {
+    msg: '',
+    qty: null,       // number | null
+    //err_msg: []      // string[] 或 string（v-combobox multiple → 會是陣列）
+    err_msg: ''
+  }
+})
+
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:110 },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:110 },
   { title: '現況備註', sortable: false, key: 'show3_ok', width:110 },
   { title: '交期', sortable: false, key: 'delivery_date', width:90 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:40 },
-  { title: '現況數量', sortable: false, key: 'delivery_qty', width:40 },
+  { title: '應完成數量', sortable: false, key: 'delivery_qty', width:60 },
+  { title: '異常數量', sortable: false, key: 'alarm_qty', width:40 },
   { title: '點檢人員', sortable: false, key: 'user', width:120 },
-  { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
-  { title: '異常原因', sortable: false, key: 'cause_message' },
+  //{ title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:120 },
+
+  { title: '異常原因', sortable: false, key: 'cause_message', width:280 },
   //{ title: '異常原因填寫', sortable: false, key: 'cause_message' },
 ];
 
@@ -425,6 +548,8 @@ const comboboxRef = ref(null);
 const searchText = ref("");
 
 const search = ref('');
+
+const editedIndex = ref(-1);
 
 const currentUser = ref({});
 const componentKey = ref(0)             // key值用於強制重新渲染
@@ -467,6 +592,16 @@ const downloadFilePath = ref('');
 const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
 
 //=== watch ===
+watch(
+  () => [causeDlg.form.qty, causeDlg.form.err_msg],
+  () => {
+    if (!causeDlg.form.msg) {
+      causeDlg.form.msg = composedMsg.value
+    }
+  },
+  { deep: true }
+)
+
 watch(
   () => informations_for_assemble_error.value || [],
   (newVal) => {
@@ -523,6 +658,32 @@ watch(bar_code, (newVal) => {
 })
 
 //=== computed ===
+/**
+ * 組合規則：
+ * - 若 qty > 0 且有 err_msg（可複選）：msg = `${qty}x${err_msg.join('、')}`
+ * - 若只有 err_msg：msg = err_msg.join('、')
+ * - 若只有 qty：msg = `${qty}x`
+ * - 若都沒有：msg = ''（保留使用者在 msg 欄位內手動輸入）
+ *
+ * 實作上：我們僅作「預覽」，真正寫入 form.msg 的動作在 watch 內自動同步，
+ * 但若使用者手動改 msg，我們也保留（只要他有輸入，就以手動為主）。
+ */
+const composedMsg = computed(() => {
+  const qty = Number(causeDlg.form.qty)
+  const arr = Array.isArray(causeDlg.form.err_msg)
+    ? causeDlg.form.err_msg
+    : (causeDlg.form.err_msg ? [causeDlg.form.err_msg] : [])
+
+  const arr2 = arr.filter(Boolean)
+  const result = arr2.map(s => s.replace(/\(.*\)/, ''))
+  const errPart = result.filter(Boolean).join('、')
+
+  if (qty > 0 && errPart) return `${qty}x${errPart}`
+  if (qty > 0) return `${qty}x`
+  if (errPart) return errPart
+  return ''
+})
+
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0'
 }));
@@ -627,7 +788,7 @@ onMounted(async () => {
 
   //setTimeout(moveWin, 600);
 
-  intervalId = setInterval(getSchedulesForAssembleErrorFun, 30 * 1000);  // 每 10秒鐘調用一次 API
+  //# intervalId = setInterval(getSchedulesForAssembleErrorFun, 30 * 1000);  // 每 10秒鐘調用一次 API
 
   /*
   requestAnimationFrame(() => {
@@ -655,7 +816,7 @@ onUpdated(() => {
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   window.removeEventListener('popstate', handlePopState)
 
-  clearInterval(intervalId);
+//#  clearInterval(intervalId);
 
 //  // 在組件卸載前停止監聽
 //  if (observer) {
@@ -681,6 +842,78 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+function toStr(v) {
+  // 先處理 null/undefined
+  if (v == null) return ''
+  // 若本來就是字串
+  if (typeof v === 'string') return v
+  // 其它型別（包含數字、物件、陣列）統一轉字串
+  return String(v)
+}
+
+function appendPreviewToMsg () {
+  const add = toStr(composedMsg.value).trim()
+  //const add = (composedMsg.value || '').trim()
+  if (!add) return
+
+  const cur = toStr(causeDlg.form.msg || '').trim()
+
+  console.log("composedMsg , causeDlg.form.msg:", composedMsg.value, causeDlg.form.msg)
+
+  // 清掉兩邊多餘的頓號
+  const clean = s => s.replace(/^、+|、+$/g, '')
+
+  const pieces = []
+  if (cur) pieces.push(clean(cur))
+  if (add) pieces.push(clean(add))
+
+  causeDlg.form.msg = pieces.join('、')
+}
+
+function editCauseMessage (item) {
+  console.log("editCauseMessage(), item:", item);
+
+  editedIndex.value = filteredInformations.value.findIndex(kk => kk.index === item.index);
+  console.log("editedIndex:", editedIndex.value);
+
+  causeDlg.target = item
+  causeDlg.open = true
+
+  // 初始值：
+  causeDlg.form.msg = item.cause_message;
+  causeDlg.form.qty = null;
+  causeDlg.form.max_qty=item.alarm_qty;
+  causeDlg.form.err_msg = '';
+}
+
+function clearMsg () {
+  causeDlg.form.msg = ''
+  // 清空時，同步把 qty/err_msg 也清掉，避免又被 watch 填回
+  causeDlg.form.qty = null
+  causeDlg.form.err_msg = []
+}
+
+function closeCauseDlg () {
+  causeDlg.open = false
+  causeDlg.target = null
+}
+
+function confirmCauseMsg () {
+  if (!causeDlg.target) return
+
+  // 最終以 msg 欄位為準；若 msg 為空則塞入 composedMsg（允許空字串也通過）
+  const finalMsg = causeDlg.form.msg !== '' ? causeDlg.form.msg : composedMsg.value
+
+  // 寫回資料列欄位
+  causeDlg.target.cause_message = finalMsg
+  console.log("causeDlg.target.cause_message:", causeDlg.target.cause_message);
+
+  const copyItem = JSON.parse(JSON.stringify(filteredInformations.value[editedIndex.value]));
+  onValueUpdate(copyItem);
+
+  closeCauseDlg();
+}
+
 const initialize = async () => {
   console.log("PickReportForAssembleError, initialize()...");
 
@@ -1777,4 +2010,130 @@ const showSnackbar = (message, color) => {
 .hover-side {
   transform: rotateX(90deg) translateZ(20px);
 }
+
+:deep(.cause_dlg_text > .v-input__control) {
+  position: relative;
+  left: -10px;
+  max-width: 200px;
+  padding: 10px;
+}
+
+:deep(.cause_dlg_combo > .v-input__control) {
+  position: relative;
+  left: 20px;
+  min-width: 300px;
+  padding: 10px;
+}
+
+:deep(.cause_dlg_text input[type="number"] ) {
+  position: relative;
+  top: -10px;
+}
+
+.tight-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:deep(.v-table__wrapper > table > tbody td:last-child  input[type="text"]) {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/*
+.ellipsis-cell {
+  max-width: 120px;
+  display: inline-block;     // 讓 ellipsis 生效
+  overflow: hidden;
+  text-overflow: ellipsis;   // 顯示 abcdef...
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.tooltip-wide {
+  max-width: 70vw;           // 需要更寬可調大，或改 600px/800px 固定值
+}
+
+.tooltip-content {
+  //max-width: 520px;          // 避免太寬，可調整
+  white-space: pre-wrap;     // 保留換行
+  word-break: break-word;    // 或 break-all 視覺差異
+  overflow-wrap: anywhere;
+}
+*/
+
+// 讓表格滾動容器允許子元素浮出來顯示（必要時）
+:deep(.v-table__wrapper) { overflow: auto; }
+
+// 該欄位 cell 的容器：成為定位錨點
+.comment-cell.inline-tooltip-anchor {
+  position: relative;
+  display: inline-block;
+  max-width: 240px;      // 與 headers 寬度一致
+  overflow: visible;     // 讓 tooltip 可浮出
+  vertical-align: bottom;
+}
+
+// 單行省略顯示
+.ellipsis-cell {
+  display: inline-block;
+  max-width: 240px;      // 與 headers 寬度一致
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 行內 tooltip（長在格子裡，不會飄）
+.inline-tooltip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);     // 往上 8px 的間距，可調整
+  max-width: min(70vw, 800px);  // 盡量寬一點，避免再被截斷
+  padding: 8px 10px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  background: #212121;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  z-index: 12;                // 蓋過列背景
+  white-space: pre-wrap;      // 保留換行
+  word-break: break-word;     // 長字可斷
+  overflow-wrap: anywhere;
+}
+
+// 小三角形（可要可不要）
+.inline-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 100%;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #212121 transparent transparent transparent;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td:last-child > div > .v-icon) {
+  position: relative;
+  left: 80px;
+}
+
+:deep(.v-table__wrapper > table > tbody > tr > td:last-child div.v-input__control) {
+  position: relative;
+  left: 80px;
+}
+
+:deep(.v-card .cause_dlg_field .v-input__control) {
+  position: relative;
+  left: -5px;
+  width: 460px;
+}
+
+:deep(.v-table__wrapper > table > thead > tr > th:nth-child(8)) > div > span {
+  position: relative;
+  left: 30px;
+}
+
 </style>

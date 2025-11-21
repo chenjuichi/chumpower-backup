@@ -186,14 +186,16 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/listMaterialsAndAssembles') {
-
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
-
           }
 
           if (path == '/listInformations') {
             informations.value = [...res.data.informations];
+          }
+
+          if (path == '/listProducts') {
+            return res.data
           }
 
           if (path == '/listAbnormalCauses') {
@@ -276,13 +278,35 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
               path == '/updateProcessData' ||
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
+              path == '/updateAssembleMustReceiveQtyByMaterialIDAndDate' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
-              path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+              //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+              path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
               path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2' ||
               path == 'updateBomXorReceive') {
             //console.log("res.data:", res.data);
             return res.data.status;
+          }
+
+          if (path == '/updateAssembleTableData') {
+            return res.data;
+          }
+
+          if (path == '/createProcess') {
+            return res.data;
+          }
+
+          if (path == '/createProduct') {
+            return res.data
+          }
+
+          if (path == 'getCountsByAssembleIdsBegin') {
+            return res.data
+          }
+
+          if (path == '/updateProduct') {
+            return res.data
           }
 
           if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable' ||
@@ -294,8 +318,8 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
-              path == '/dialog2StartProcess' || path == '/dialog2UpdateProcess' || path == '/dialog2ToggleProcess' || path == '/dialog2CloseProcess') {
-            //console.log("res.data:", res.data);
+              path == '/dialog2StartProcess'      || path == '/dialog2UpdateProcess'      || path == '/dialog2ToggleProcess'      || path == '/dialog2CloseProcess' ||
+              path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin') {
             return res.data;
           }
           /*
@@ -452,10 +476,17 @@ export const apiOperation = (operation, path, payload) => {
             assemble_copy_ids.value = res.data.assemble_data;
           }
 
+          if (path == '/copyAssembleForDifference') {
+            return res.data;
+          }
+
           if (path == '/copyNewAssemble') {
             assemble_new_copy_ids.value = res.data.assemble_data;
           }
 
+          if (path == '/copyNewIdAssemble') {
+            return res.data;
+          }
 
           if (path == '/getMaterialsAndAssemblesByUser') {
             //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
@@ -466,6 +497,10 @@ export const apiOperation = (operation, path, payload) => {
             end_count.value = res.data.end_count;
           }
 
+          if (path == '/getMaterialsAndAssemblesAndTime') {
+            return res.data;
+          }
+
           if (path == '/getCountMaterialsAndAssemblesByUser2') {
             return res.data;
           }
@@ -473,6 +508,12 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/getEndOkByMaterialIdAndStepCode') {
             return res.data;
           }
+
+          if (path == '/getMaterialsAndAssembles') {
+            materials_and_assembles.value = [...res.data.materials_and_assembles];
+            assembles_active_user_count.value = res.data.assemble_active_users;
+          }
+
 
       //    if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
       //        path == '/updateAGV') {

@@ -50,10 +50,10 @@
       <template v-slot:item.data-table-select="{ internalItem }">
         <v-checkbox-btn
           :model-value="isSelected(internalItem)"
-          :disabled="!internalItem.raw.isShow || internalItem.raw.receive_qty == 0"
+          :disabled="(!internalItem.raw.isAssembleStationShow || internalItem.raw.receive_qty == 0) && warehouse_in_all_pass=='待完工'"
           color="primary"
           @update:model-value="toggleSelect(internalItem)"
-          :class="{ 'blue-text': internalItem.raw.isShow}"
+          :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
         />
       </template>
 
@@ -64,8 +64,25 @@
             class="d-flex align-center pe-2"
             style="font-weight:700;"
           >
+            <div style="display: flex; flex-direction: column;">
+            <div>
             組裝區完成生產報工
-            <v-divider class="mx-4" inset vertical></v-divider>
+            </div>
+                        <!--客製化 模式switch按鍵-->
+
+            <v-switch
+              v-model="warehouse_in_all_pass"
+              color="indigo"
+              :label="`模式: ${warehouse_in_all_pass}`"
+              false-value="待完工"
+              true-value="待入庫"
+              hide-details
+
+            />
+              </div>
+
+            <v-divider class="mx-2" inset vertical></v-divider>
+
 
             <!--客製化 員工選單-->
             <div style="position:relative; width:160px; right: 5px;">
@@ -192,6 +209,16 @@
                 class="align-center"
                 density="compact"
               />
+            <!--
+            <v-switch
+              v-model="warehouse_in_all_pass"
+              color="indigo"
+              :label="`模式: ${warehouse_in_all_pass}`"
+              false-value="待完工"
+              true-value="待入庫"
+              hide-details
+            ></v-switch>
+            -->
             </div>
           </v-card-title>
         </v-card>
@@ -232,7 +259,7 @@
         </div>
       </template>
 
-      <!-- 客製化 '領取數量' (ask_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <!-- 客製化 '領取數量' (ask_qty) 欄位的表頭 -->
       <template v-slot:header.ask_qty="{ column }">
         <div style="text-align: center;">
           <div>領取</div>
@@ -248,8 +275,8 @@
         </div>
       </template>
 
-      <!-- 客製化 '已完成總數' (total_receive_qty_num) 欄位的表頭 -->
-      <template v-slot:header.total_receive_qty_num="{ column }">
+      <!-- 客製化 '已完成總數' (total_completed_qty_num) 欄位的表頭 -->
+      <template v-slot:header.total_completed_qty_num="{ column }">
         <div style="text-align: center;">
           <div>已完成</div>
           <div>總數量</div>
@@ -264,7 +291,7 @@
         </div>
       </template>
 
-      <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+      <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 -->
       <template v-slot:header.abnormal_qty="{ column }">
         <div style="text-align: center;">
           <div>異常</div>
@@ -280,17 +307,24 @@
       <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
       <template v-slot:item.order_num="{ item }">
         <div style="display: flex; align-items: center;">
-          <div style="color: red; margin-right: 2px;" v-if="item.isTakeOk && item.isShow && item.isLackMaterial != 99">
+          <!--檢料完成(缺料)-->
+          <!--<div style="color: red; margin-right: 2px;" v-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial != 99">-->
+          <div style="color: red; margin-right: 2px;" v-if="item.isAssembleStationShow && item.isLackMaterial != 99">
             <div>
               {{ item.order_num }}&nbsp;&nbsp;
               <span style="font-weight: 700; font-size: 16px;">缺料</span>
             </div>
             <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-          </div> <!--檢料完成-->
-          <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isShow && item.isLackMaterial == 99">
+          </div>
+
+          <!--檢料完成-->
+          <!--<div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial == 99">-->
+          <div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStationShow && item.isLackMaterial == 99">
             <div>{{ item.order_num }}</div>
             <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-          </div> <!--檢料完成-->
+          </div>
+
+          <!--檢料還未完成-->
           <div style="margin-right: 20px;" v-else>
             <div>{{ item.order_num }}</div>
             <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
@@ -432,24 +466,42 @@
       <template v-slot:item.action="{ item }">
         <div class="action-cell">
           <!--計時器-->
-          <span style="color:#4000ff; width:88px; font-variant-numeric:tabular-nums;">
+          <span v-if="!item.isShowLastTime"
+            style="color:#4000ff; width:88px; font-variant-numeric:tabular-nums;"
+          >
             <TimerDisplay
               :fontSize="16"
               :autoStart="false"
               :show="true"
+
               :ref="el => setTimerEl(item, el)"
 
               :initialMs="getInitialMs(item)"
 
               :isPaused="isPausedOf(item)"
 
+              :displayMs="closedDisplayMs(item)"
+
               @update:isPaused="val => setPausedOf(item, val)"
 
-              @update:time="ms => onTickOf(item, ms)"
+              @update:time="ms => onTickOf(makeKey(item), item, ms)"
 
               class="me-2"
               style="min-width:88px; display:inline-block;"
             />
+          </span>
+          <span v-else
+            class="me-2"
+            style="
+              color:#4000ff;
+              width:88px;
+              min-width:88px;
+              font-size: 16px;
+              font-variant-numeric:tabular-nums;
+              display:inline-block;
+              text-align: right;"
+          >
+            {{ item.last_time }}
           </span>
 
           <!-- 自訂 暫停/開始 按鍵欄位-->
@@ -459,7 +511,7 @@
             variant="tonal"
             :prepend-icon = "getIcon(isRowPaused(item))"
 
-            :disabled="reachTarget(item)"
+            :disabled="item.isAssembleStationShow"
             :style="{ background: isRowPaused(item) ? '#4CAF50' : '#FFEB3B', color: isRowPaused(item) ? '#fff' : '#000' }"
 
             @click="onPauseToggle(item)"
@@ -470,12 +522,13 @@
           </v-btn>
 
           <!-- 自訂 '結束' 按鍵欄位 -->
+            <!--:disabled="Boolean(isButtonDisabled(item) || isRowPaused(item))"-->
           <v-btn
             size="small"
             density="comfortable"
             class="mr-2"
             variant="tonal"
-            :disabled="isButtonDisabled(item) || isRowPaused(item)"
+            :disabled="item.input_end_disable"
             @click="onClickEnd(item)"
             color="indigo-darken-4"
             style="
@@ -495,9 +548,10 @@
             density="comfortable"
             variant="tonal"
 
-            @click="updateAbnormal(item)"
+            @click="onClickAbnormal(item)"
             style="padding: 0 5px !important;"
             :style="getBtnStyle(item)"
+            :disabled="item.input_abnormal_disable"
           >
             異 常
             <v-icon start :style="getBtnStyle(item)">mdi-alert-circle-outline</v-icon>
@@ -545,11 +599,14 @@ const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 const listUsers2 = apiOperation('get', '/listUsers2');
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
-const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
+const updateAssembleMustReceiveQtyByMaterialIDAndDate = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDate');
 const copyNewAssemble = apiOperation('post', '/copyNewAssemble');
+const copyAssembleForDifference = apiOperation('post', '/copyAssembleForDifference');
+const copyNewIdAssemble = apiOperation('post', '/copyNewIdAssemble');
 const updateAssembleMustReceiveQtyByAssembleID = apiOperation('post', '/updateAssembleMustReceiveQtyByAssembleID');
 const getMaterialsAndAssemblesByUser = apiOperation('post', '/getMaterialsAndAssemblesByUser');
 const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+const getMaterialsAndAssemblesAndTime = apiOperation('post', '/getMaterialsAndAssemblesAndTime');
 //const getEndOkByMaterialIdAndStepCode  = apiOperation('post', '/getEndOkByMaterialIdAndStepCode');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
@@ -558,6 +615,9 @@ const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
 const getAGV = apiOperation('post', '/getAGV');
 const updateAssembleProcessStep  = apiOperation('post', '/updateAssembleProcessStep');
+const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
+const updateProcessData = apiOperation('post', '/updateProcessData');
+const updateAssembleTableData = apiOperation('post', '/updateAssembleTableData');
 
 //=== component name ==
 defineComponent({
@@ -571,12 +631,12 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-// 刪除對話框相關
+// 結束已領料工單對話框相關
 const endTitle = ref('結束已領料工單');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
-const transport_message = ref('備料自動送出')
+const transport_message = ref('組裝完成自動送出')
 
 const history = ref(false);               // 設定歷史紀錄為不顯示
 
@@ -621,8 +681,8 @@ const headers = [
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
   { title: '領取數量', sortable: false, key: 'ask_qty', width:70 },
-  { title: '應完成數量', sortable: false, key: 'must_receive_end_qty', width:70 },       // 2025-06-13 add, 改順序
-  { title: '已完成總數量', sortable: false, key: 'total_receive_qty_num', width:70 },
+  { title: '應完成總數量', sortable: false, key: 'must_receive_end_qty', width:70 },       // 2025-06-13 add, 改順序
+  { title: '已完成總數量', sortable: false, key: 'total_completed_qty_num', width:70 },
   { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
   { title: '異常數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
   //{ title: '說明', align: 'start', sortable: false, key: 'comment' },
@@ -643,7 +703,7 @@ const receive_qty_alarm = ref('');
 const abnormal_qty_alarm = ref('');
 
 //const from_agv_input_order_num = ref('');
-const isBlinking = ref(false);          // 控制按鍵閃爍
+//2025-10-20m, const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const selectedEmployee = ref(null);
@@ -679,6 +739,8 @@ const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
+const warehouse_in_all_pass=ref('待完工');
+
 const panelX = ref(830);                      // led顯示面板x位置, 值越大, 越往右
 const panelY = ref(11);                       // led顯示面板y位置, 值越大, 越往下
 const activeColor = ref('green')              // 預設亮綠燈, 區域閒置
@@ -694,11 +756,14 @@ const qtyInput = ref({});
 
 //== timerDisplay用 ==
 const timerMap = new Map();
+const timerRefMap = new Map()
+const lastTickMsMap = reactive(new Map())  // key: item.id, value: 畫面最後一次 @update:time 的毫秒數
+const frozenMsMap   = reactive(new Map())  // key: item.id, value: 按結束時要凍結顯示的毫秒數
+
 let __disposedAll = false;
 const lastKeys = ref(new Set())
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
-
 const makeKey = (row) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${currentUser.value.empID}`
 
 // === watch ===
@@ -749,14 +814,6 @@ const formattedDesserts = computed(() =>
 );
 
 const c_isBlinking = computed(() => selectedItems.value.length === 0);
-
-//const c_enableDialogBtn = computed(() => {
-//return (item) => {
-//  let temp = item.isTakeOk && !item.isShow;
-//  console.log("c_enableDialogBtn() item.isTakeOk, !item.isShow, temp, !temp:", item.isTakeOk, !item.isShow, temp, !temp)
-//  return temp;
-//};
-//});
 
 const todayStr = computed(() => {
   const today = new Date()
@@ -835,7 +892,7 @@ onMounted(async () => {
   //  isVisible.value = !isVisible.value;       // 每秒切換顯示狀態
   //}, 500);
 
-  isBlinking.value = materials_and_assembles_by_user.value.length == 0 || materials_and_assembles_by_user.value.every(item => !item.isAssembleStation1TakeOk && !item.isAssembleStation2TakeOk && !item.isAssembleStation3TakeOk);
+  //2025-10-20m, isBlinking.value = materials_and_assembles_by_user.value.length == 0 || materials_and_assembles_by_user.value.every(item => !item.isAssembleStation1TakeOk && !item.isAssembleStation2TakeOk && !item.isAssembleStation3TakeOk);
 
   // 從 localStorage 中恢復 selectedItems
   let savedItems = localStorage.getItem('selectedItems');
@@ -1027,7 +1084,7 @@ onMounted(async () => {
           await updateAssemble({
             assemble_id: assembleId,
             record_name: 'show3_ok',
-            record_data: 10,
+            record_data: 10,        // 10: agv 移動至成品區中
           });
           successCount++;
         } catch (e) {
@@ -1103,9 +1160,9 @@ onMounted(async () => {
 
       // 記錄 agv 在站與站之間運行結束時間
       agv2EndTime.value = new Date();
-      console.log('AGV end time:', agv2EndTime.value);
+      //console.log('AGV end time:', agv2EndTime.value);
 
-      // 時間安全計算：確保 end >= start
+      // 確保時間 end >= start
       const startDate = new Date(agv2StartTime.value || Date.now());
       const endDate   = new Date(agv2EndTime.value   || Date.now());
       const startMs   = +startDate;
@@ -1138,8 +1195,8 @@ onMounted(async () => {
         console.log('targetItem:', rec);
 
         const current_material_id = rec.id;
-        const current_assemble_id = rec.assemble_id ?? rec.id;
-
+        const current_assemble_id = rec.assemble_id
+        console.log("VVV station3_agv_end step1... VVV")
         try {
           // Material：成品站/等待入庫/等待組裝中/目標途程=成品站
           await updateMaterialRecord({
@@ -1159,15 +1216,20 @@ onMounted(async () => {
             record_name2: 'show2_ok',
             record_data2: 10,
             record_name3: 'show3_ok',
-            record_data3: 3,
+            record_data3: 3,            // 等待組裝中
           });
 
           // 將組裝站顯示關閉（用你現有的 API 名稱）
-          await updateAssembleMustReceiveQtyByMaterialID({
+          await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
+
+            create_at: rec.create_at,
+
             record_name: 'isAssembleStationShow',
             record_data: false,
           });
+
+          console.log("VVV station3_agv_end step1-1... VVV")
 
           // must_allOk_qty = 收料數（數值化）
           await updateMaterial({
@@ -1191,6 +1253,8 @@ onMounted(async () => {
         const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
         if (!rec) continue;
         console.log('targetItem:', rec);
+
+        console.log("VVV station3_agv_end step2... VVV")
 
         try {
           // 2-1. 建立「組裝區 → 成品區」運行流程
@@ -1230,7 +1294,7 @@ onMounted(async () => {
             record_name: 'isAssembleStationShow',
             record_data: true,
           });
-          console.log('步驟2-4...');
+          console.log('VVV 步驟2-4...');
 
           step2Success++;
         } catch (e) {
@@ -1240,6 +1304,9 @@ onMounted(async () => {
 
       // === 步驟3：更新 AGV 狀態（僅在前面有成功時做） ===
       if (step1Success > 0 || step2Success > 0) {
+
+        console.log("VVV station3_agv_end step3... VVV")
+
         try {
           await updateAGV({
             id: 1,
@@ -1311,7 +1378,7 @@ onMounted(async () => {
           record_name: 'isAssembleStationShow',
           record_data: false,
         };
-        await updateAssembleMustReceiveQtyByMaterialID(payload);
+        await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
 
         payload = {
           id: current_material_id,
@@ -1469,12 +1536,15 @@ onMounted(async () => {
             record_name2: 'show2_ok',
             record_data2: 10,
             record_name3: 'show3_ok',
-            record_data3: 3,
+            record_data3: 3,            // 等待組裝中
           });
 
           // 關閉組裝站顯示
-          await updateAssembleMustReceiveQtyByMaterialID({
+          await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
+
+            create_at: rec.create_at,
+
             record_name: 'isAssembleStationShow',
             record_data: false,
           });
@@ -1616,7 +1686,7 @@ onMounted(async () => {
           record_name: 'isAssembleStationShow',
           record_data: false,
         };
-        await updateAssembleMustReceiveQtyByMaterialID(payload);
+        await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
 
         payload = {
           id: current_material_id,
@@ -1917,6 +1987,79 @@ onBeforeMount(() => {
 //=== method ===
 
 //== timerDisplay用 ==
+
+function onTimeUpdate(key, row, ms) {
+  console.log('%c[TD] tick', 'color:#6A1B9A', key, ms)  // ← 應該會一直印
+  lastTickMsMap.set(key, Number(ms) || 0)
+}
+
+// === B) 刷新後『從資料列』判斷是否已結束，計算要顯示的毫秒 ===
+// 依你的資料欄位取用：常見有 end_time / isClosed / elapsedActive_time 等
+function isRowClosed(item) {
+  return !!(item?.end_time || item?.process_end_time || item?.isClosed === true)
+}
+
+// 從資料列取「最後的有效秒數」轉毫秒（依你的欄位擇一）
+// 優先順序：elapsed_ms(毫秒) > *_ms 欄位 > *_time(秒)*1000 > 沒有就 0
+function finalMsFromRow(item) {
+  const candidates = [
+    item?.elapsed_ms,
+    item?.elapsedActive_time_ms,
+    item?.elapsed_time_ms,
+    (item?.elapsedActive_time ?? item?.elapsed_time) * 1000,
+  ]
+  for (const v of candidates) {
+    const n = Number(v)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return null
+}
+
+// 4) 從 localStorage 還原（刷新後用）
+function pickMsFromLocalStorage(row) {
+  const keys = []
+  if (row?.process_id) {
+    keys.push(`cp:lastClosedMs:pid:${row.process_id}`)
+  }
+  const asm = row?.assemble_id ?? 0
+  const psc = row?.process_step_code ?? row?.process_type
+  if (row?.id && psc != null) {
+    keys.push(`cp:lastClosedMs:mat:${row.id}:pt:${psc}:asm:${asm}`)
+  }
+  for (const k of keys) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+      const obj = JSON.parse(raw)
+      if (obj && Number.isFinite(Number(obj.ms))) return Number(obj.ms)
+    } catch {}
+  }
+  return null
+}
+
+// 5) 給 <TimerDisplay :displayMs="closedDisplayMs(item)">
+function closedDisplayMs(item) {
+  // 同頁剛結束的即時凍結
+  if (frozenMsMap.has(item.id)) return frozenMsMap.get(item.id)
+
+  // 刷新後：若 row 已結束 -> 優先用 row 的最終秒數
+  if (isRowClosed(item)) {
+    const msRow = finalMsFromRow(item)
+    if (msRow != null) return msRow
+
+    // row 沒帶值 -> 從 localStorage 撈
+    const msCache = pickMsFromLocalStorage(item)
+    if (msCache != null) return msCache
+  }
+  // 其他（未結束）-> 不凍結
+  return null
+}
+
+
+function frozenMsOf(item) {
+  return frozenMsMap.has(item.id) ? frozenMsMap.get(item.id) : null
+}
+
 function disposeAllTimersOnce() {
   if (__disposedAll) return;
   __disposedAll = true;
@@ -1943,13 +2086,9 @@ const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
 
 const getT = (row) => useRowTimer(row, currentUser.value.empID)
 
-//const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
-//
-//const makeKey = (row) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${userId}`
-//function makeKey(row, uid) {
-//  // 原本 keyOf 的邏輯或你現在的 key 組法
-//  return `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uid}`
-//}
+function getTByKey(key) {
+   return timerMap.get(key) ?? makeStub()
+}
 
 function isRowPaused(row) {
   return !!useRowTimer(row, currentUser.value.empID).isPaused.value
@@ -1966,6 +2105,7 @@ function getInitialMs(row) {
 
 async function ensureRestored(row) {
   const t = useRowTimer(row, currentUser.value.empID)
+  if (!t) return
   // 21/22/23 的對應你已有邏輯，照舊取出 pType
   //const pType = row.process_step_code === 3 ? 21 : row.process_step_code === 2 ? 22 : 23
   const pType = processTypeOf(row)
@@ -1977,10 +2117,10 @@ async function ensureRestored(row) {
 // 依 row.process_step_code → process_type
 function processTypeOf(row) {
   const step = Number(row.process_step_code ?? 0)
-  if (step === 3) return 21  // 組裝
-  if (step === 2) return 22  // 檢驗
-  if (step === 1) return 23  // 雷射（依你的實際對照）
-  return 21                  // 預設給 21，避免落空
+  const work = row.assemble_work
+  if (step === 3 || (step === 0 && work.includes('B109'))) return 21  // 組裝
+  if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
+  if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
 }
 
 function makeStub() {
@@ -1997,6 +2137,7 @@ function makeStub() {
 
 function setTimerEl(row, el) {
   if (!row || !row.id) {
+    console.warn('setTimerEl(): row undefined', row)
     return
   }
   const t = getT(row);
@@ -2015,8 +2156,13 @@ const setPausedOf = (row, v) => {
 }
 
 // 轉接 onTick（避免直接把函式呼叫結果當 handler）
-const onTickOf = (row, ms) => {
-  const t = getT(row)
+const onTickOf = (key, row, ms) => {
+  console.log("onTickOf..")
+  //lastTickMsMap.set(row.id, Number(ms) || 0)
+  lastTickMsMap.set(key, Number(ms) || 0)
+
+  //const t = getT(row)
+  const t = getTByKey(key)
   t?.onTick?.(ms)
 }
 
@@ -2083,11 +2229,11 @@ async function ensureStarted(row) {
 }
 
 async function onPauseToggle(row) {
-  if (reachTarget(row)) return
+  //if (reachTarget(row)) return
   const t = await ensureStarted(row)
   await t.toggleTimer()
 }
-
+/*
 async function endTimer(row) {
   if (reachTarget(row)) return
   const q = Number(qtyInput.value[row.id] || 0)
@@ -2095,7 +2241,7 @@ async function endTimer(row) {
     alert('請先輸入完成數量（receive_qty > 0）')
     return
   }
-  const t = await ensureStarted(row)  // c. 必須已開始
+  const t = await ensureStarted(row)  // 必須已開始
   const res = await t.closeProcess({ receive_qty: q, assemble_id: row.id }) // 透過 hook
 
   if (!res?.success) {
@@ -2108,7 +2254,7 @@ async function endTimer(row) {
   // 達標 → Begin / End 的按鈕皆會因 reachTarget(row) 被鎖
   qtyInput.value[row.id] = 0
 }
-
+*/
 const initialize = async () => {
   try {
     console.log("initialize()...");
@@ -2130,6 +2276,8 @@ const initialize = async () => {
     });
 
     //== timerDisplay用 ==
+    await nextTick()
+
     // 把正確的時間 & 暫停狀態直接推到 <TimerDisplay />
     for (const row of materials_and_assembles_by_user.value) {
       await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
@@ -2226,9 +2374,12 @@ const handlePopState = () => {
 }
 
 const isButtonDisabled = (item) => {
-  let temp_TF =(item.whichStation != 2 || item.input_end_disable) || item.process_step_code==0;
+  //let temp_TF =(item.whichStation != 2 || item.input_end_disable) || item.process_step_code;
+  //let temp_TF =(item.whichStation != 2 || item.input_end_disable);
+  let temp_TF = item.input_end_disable;
   //let temp_TF =(item.whichStation != 2 || item.input_end_disable) || !item.process_step_enable;
-  console.log("temp_TF:", item.whichStation, item.input_end_disable, !item.process_step_enable, "TF:", temp_TF)
+  //console.log("temp_TF:", item.input_end_disable, "TF:", temp_TF)
+  //console.log("temp_TF:", item.assemble_id,  temp_TF)
   return temp_TF;
 };
 
@@ -2240,7 +2391,9 @@ const checkReceiveQty = (item) => {
   //const total = Number(item.receive_qty)+Number(item.abnormal_qty)
   const total = Number(item.receive_qty) || 0;    //完成數量
   const temp = Number(item.must_receive_end_qty)  //應完成數量
-  if (total > temp) {
+  const diff = Number(item.abnormal_qty)
+  const tmp = temp - diff
+  if (total > tmp) {
     //console.log("total, temp, step1...");
     receive_qty_alarm.value = '完成數量錯誤!';
     item.tooltipVisible = true;     // 顯示 Tooltip
@@ -2492,7 +2645,7 @@ const callForklift = async () => {
         record_name2: 'show2_ok',
         record_data2: 10,
         record_name3: 'show3_ok',
-        record_data3: 3
+        record_data3: 3               // 等待組裝中
       });
 
       // 堆高機搬運標記（第二段）
@@ -2503,8 +2656,11 @@ const callForklift = async () => {
       });
 
       // 關閉組裝站顯示
-      await updateAssembleMustReceiveQtyByMaterialID({
+      await updateAssembleMustReceiveQtyByMaterialIDAndDate({
         material_id: mid,
+
+        create_at: rec.create_at,
+
         record_name: 'isAssembleStationShow',
         record_data: false
       });
@@ -2632,7 +2788,7 @@ const callForklift = async () => {
       record_name: 'isAssembleStationShow',
       record_data: false,
     };
-    await updateAssembleMustReceiveQtyByMaterialID(payload);
+    await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
 
     payload = {
       id: current_material_id,
@@ -2778,13 +2934,13 @@ const callAGV = async () => {
         await updateMaterial({
           id: e.id,
           record_name: 'show3_ok',
-          record_data: 1,
+          record_data: 1,             // 等待 AGV
         });
 
         await updateAssemble({
           assemble_id: e.assemble_id,
           record_name: 'show3_ok',
-          record_data: 1,
+          record_data: 1,             // 等待 AGV
         });
       } catch (err) {
         console.error(`更新等待 AGV 狀態失敗，material_id=${e.id}, assemble_id=${e.assemble_id}`, err);
@@ -2873,6 +3029,7 @@ const updateItem2 = async (item) => {
   }
 };
 
+
 const onClickEnd = async (item) => {
   console.log("PickReportForAssembleEnd, onClickEnd(), 按結束鍵", item);
 
@@ -2892,39 +3049,48 @@ const onClickEnd = async (item) => {
 
   const q = Number(item.receive_qty || 0);
 
-  const ok = await confirmRef.value.open({
+  if (!(await confirmRef.value.open({
     title: endTitle.value,
     message: endMessage.value,
     okText: '確定',
     cancelText: '取消',
-  })
+  }))) return
 
-  if (ok) {
-    // 確保有開始過（若沒開始會自動 start）
-    const t = await ensureStarted(item)
+  let test_alarm_message = item.alarm_message
 
-    // 關閉本次流程（hook 需要 assemble_id）
-    await t.closeProcess({ receive_qty: q, assemble_id: item.assemble_id });
-    /*
-    const res = await t.closeProcess({ receive_qty: q, assemble_id: item.assemble_id })
-    if (!res?.success) {
-      alert(res?.message || '關閉失敗')
-      return
-    }
-    */
-  }
+  // 先凍結畫面要停住的毫秒值（優先用最後 tick；沒有就用初始）
+  const k = makeKey(item)
+  const lastMs = lastTickMsMap.get(k) ?? getInitialMs(item) ?? 0
+  frozenMsMap.set(k, lastMs)
 
-  // targetIndex, 為目前table data record 的 index
+  const t = await ensureStarted(item)         // 確保有開始過（若沒開始會自動 start）
+  console.log("t.processId.value:",t.processId.value)
+
+  let myProcessId=t.processId?.value ?? null
+  await t.closeProcess({
+    receive_qty: q,
+    alarm_enable: item.alarm_enable,
+    isAssembleFirstAlarm: item.isAssembleFirstAlarm,
+
+    alarm_message: test_alarm_message,
+    assemble_id: item.assemble_id,
+    elapsed_ms: lastMs
+  });
+
+  t.dispose()  // 再停止一切計時/回寫（避免之後還有 /dialog2UpdateProcessBegin）
+  //#
+
+  // 取得目前table data record 的 index, targetIndex
   const targetIndex = materials_and_assembles_by_user.value.findIndex(
     (kk) => kk.assemble_id === item.assemble_id
   );
-  console.log("targetIndex assemble_id:", targetIndex)
 
   // //組裝區途程完成(按結束定鍵) && AGV還沒送出
-  //enableDialogBtn.value = item.isTakeOk && !item.isShow;
+  //enableDialogBtn.value = item.isAssembleStation3TakeOk && !item.isAssembleStationShow;
 
   let current_assemble_id=materials_and_assembles_by_user.value[targetIndex].assemble_id
   let current_material_id=materials_and_assembles_by_user.value[targetIndex].id
+  let current_code=materials_and_assembles_by_user.value[targetIndex].code
 
   // 1-1.更新記錄, 完成數量
   let current_completed_qty= Number(item.receive_qty);    //組裝區完成數量
@@ -2938,11 +3104,11 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
-  let current_total_completed_qty=Number(item.total_receive_qty_num);   //組裝區完成數量的總數(已完成總數量)
+  let current_total_completed_qty=Number(item.total_completed_qty_num);   //組裝區完成數量的總數(已完成總數量)
   let total = current_total_completed_qty + current_completed_qty;
-  item.total_receive_qty_num = total;
+  item.total_completed_qty_num = total;
 
-  item.total_receive_qty ='(' + total.toString().trim() + ')';
+  item.total_completed_qty ='(' + total.toString().trim() + ')';
 
   // 1-2.記錄當前已完成總數量
   payload = {
@@ -2951,6 +3117,24 @@ const onClickEnd = async (item) => {
     record_data: total,
   };
   await updateAssemble(payload);
+
+  // 新增完成數量與完成數量不同時, 新紀錄的應領取數量
+  let d0 = Number(item.must_receive_end_qty)
+  let d1 = Number(item.receive_qty)
+  let d2 = 0
+  if (item.input_abnormal_disable)
+    d2 = Number(item.abnormal_qty)
+  let difference = d0 - d1 - d2
+  if (difference != 0) {
+    console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
+    payload = {
+      copy_id: current_assemble_id,
+      pre_must_receive_qty: d1,
+      must_receive_qty: difference,
+      d1: d1,
+    }
+    await copyAssembleForDifference(payload);
+  }
 
   // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
   let temp_qty=1  //組裝
@@ -3006,16 +3190,22 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
-  //await listWaitForAssemble();
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'input_abnormal_disable',
+    record_data: true,
+  };
+  await updateAssemble(payload);
 
   if (targetIndex !== -1) {
     // 用 Vue 的方式確保觸發響應式更新
     materials_and_assembles_by_user.value[targetIndex] = {
       ...materials_and_assembles_by_user.value[targetIndex],
       input_end_disable: true,
+      input_abnormal_disable: true,
     };
   }
-
+  /*
   //待查
   // 完成組裝區目前製程(組裝 或 檢驗 或 雷射), 且是最後製程
   payload = {
@@ -3029,9 +3219,10 @@ const onClickEnd = async (item) => {
     // 用 Vue 的方式確保觸發響應式更新
     materials_and_assembles_by_user.value[targetIndex] = {
       ...materials_and_assembles_by_user.value[targetIndex],
-      isShow: true,
+      isAssembleStationShow: true,
     };
   }
+  */
   // 待待
   //await listWaitForAssemble();
 
@@ -3056,11 +3247,13 @@ const onClickEnd = async (item) => {
   await updateAssemble(payload);
 
   // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
-  payload = {
-    id: current_material_id,
-    assemble_id: current_assemble_id,
-  };
-  let response = await updateAssembleProcessStep(payload);
+  //payload = {
+  //  id: current_material_id,
+  //  assemble_id: current_assemble_id,
+  //};
+  let response = await updateAssembleProcessStep({id: current_material_id, assemble_id: current_assemble_id});
+  console.log("確認是否為最後工序或只有1個工序...")
+  console.log("response || item.assemble_count == 1", response, item.assemble_count)
 
   if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
     console.log("take ok...")
@@ -3076,119 +3269,333 @@ const onClickEnd = async (item) => {
     await updateAssemble(payload);
     */
     //if (targetItem) {
-    //  targetItem.isTakeOk = true;
+    //  targetItem.isAssembleStation3TakeOk = true;
     //}
+    //if (targetIndex !== -1) {
+    //  // 用 Vue 的方式確保觸發響應式更新
+    //  materials_and_assembles_by_user.value[targetIndex] = {
+    //    ...materials_and_assembles_by_user.value[targetIndex],
+    //    isAssembleStation3TakeOk: true,
+    //  };
+    //}
+    console.log("step5-0...");
+    /*
+    payload = {
+      mid: current_material_id,
+      code: current_code,
+      user_id: currentUser.value.empID,
+    };
+    const tdata = await getMaterialsAndAssemblesAndTime(payload)
+    console.log("last_time:",tdata)
+
+    // 完成組裝區目前製程(組裝 或 檢驗 或 雷射), 且是最後製程
+    payload = {
+      assemble_id: current_assemble_id,
+      record_name: 'isAssembleStationShow',
+      record_data: true,
+    };
+    await updateAssemble(payload);
+
+    payload = {
+      assemble_id: current_assemble_id,
+      record_name: 'isShowLastTime',
+      record_data: true,
+    };
+    await updateAssemble(payload);
+
+    payload = {
+      assemble_id: current_assemble_id,
+      record_name: 'LastTime',
+      record_data: tdata.last_time,
+    };
+    await updateAssemble(payload);
+    */
+
     if (targetIndex !== -1) {
       // 用 Vue 的方式確保觸發響應式更新
       materials_and_assembles_by_user.value[targetIndex] = {
         ...materials_and_assembles_by_user.value[targetIndex],
-        isTakeOk: true,
+        isAssembleStationShow: true,
+        //isShowLastTime: true,
+        //LastTime: last_time,
       };
     }
+
+    console.log("step5-1...");
+
+    // 紀錄組裝去下一製程的應領取數量
+    //payload = {
+    //  //assemble_id: item.id,
+    //  assemble_id: current_assemble_id,
+    //  must_receive_qty: 'must_receive_end_qty',
+    //  completed_qty: current_completed_qty,
+    //};
+    //await updateAssembleMustReceiveQtyByAssembleID(payload);
+
+    payload = {
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 3,
+    };
+    await updateProcessData(payload);
+
+  } else {
+    console.log("step5-2...");
+
+    // 紀錄組裝去下一製程的應領取數量
+    //payload = {
+    //  //assemble_id: item.id,
+    //  assemble_id: current_assemble_id,
+    //  must_receive_qty: 'must_receive_end_qty',
+    //  completed_qty: current_completed_qty,
+    //  //completed_qty: 0,
+    //};
+    //await updateAssembleMustReceiveQtyByAssembleID(payload);
+
+    payload = {
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 1,
+    };
+
+    await updateProcessData(payload);
   }
-
-  console.log("step5...");
-
-  // 紀錄組裝去下一製程的應領取數量
-  payload = {
-    //assemble_id: item.id,
-    assemble_id: current_assemble_id,
-    must_receive_qty: 'must_receive_end_qty',
-    completed_qty: current_completed_qty,
-  };
-  await updateAssembleMustReceiveQtyByAssembleID(payload);
 
   //待待
   window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
-const updateAbnormal = async (item) => {
-  console.log("updateAbnormal(),", item);
+/*
+const onClickEnd = async (item) => {
+  console.log("PickReportForAssembleEnd, onClickEnd(), 按結束鍵", item);
 
-  item.abnormal_qty = Number(item.abnormal_qty) || 0;
+  item.receive_qty = Number(item.receive_qty || 0);
 
-  /*
-  // 檢查是否輸入了空白或 0
+  // 檢查完成數量欄位是否為空白或輸入了0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
-    receive_qty_alarm.value = '領取數量不可為空白或0!'
+    receive_qty_alarm.value = '完成數量不可為空白或0!'
     item.tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
       item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
-      item.receive_qty = '';        // 清空輸入欄位
+      item.receive_qty = '';        // 清空完成數量欄位
     }, 2000);
     console.error('領取數量不可為空白或0!');
     return;
   }
-  */
 
-  let payload = {};
-  if (item.process_step_code == 3 || item.code === '109') {  //組裝
-  //if (item.input_abnormal_disable) {   //input_abnormal_disable=false:最後製成
-    console.log("組裝異常程序...")
+  const q = Number(item.receive_qty || 0);
 
-    let temp_isAssembleFirstAlarm = !item.isAssembleFirstAlarm;
+  if (!(await confirmRef.value.open({
+    title: endTitle.value,
+    message: endMessage.value,
+    okText: '確定',
+    cancelText: '取消',
+  }))) return
 
-    const targetIndex_0 = materials_and_assembles_by_user.value.findIndex(
-      (kk) => kk.assemble_id === item.assemble_id
-    );
-    //const current_material_id_0 = materials_and_assembles_by_user.value[targetIndex_0].id;
-    const current_assemble_id_0 = materials_and_assembles_by_user.value[targetIndex_0].assemble_id
+  const test_alarm_message = '異常: 異常工時!'
+  if (item.alarm_enable)
+    test_alarm_message = ''
+  console.log("alarm_enable, test_alarm_message:", item.alarm_enable, test_alarm_message)
 
-    //顯示按鍵之後的值(顏色)
-    if (targetIndex_0 !== -1) {
+  test_alarm_enable = item.alarm_enable | item.isAssembleFirstAlarm
+
+
+  // 先凍結畫面要停住的毫秒值（優先用最後 tick；沒有就用初始）
+  const k = makeKey(item)
+  const lastMs = lastTickMsMap.get(k) ?? getInitialMs(item) ?? 0
+  frozenMsMap.set(k, lastMs)
+
+  const t = await ensureStarted(item)         // 確保有開始過（若沒開始會自動 start）
+  let myProcessId=t.processId?.value ?? null
+  await t.closeProcess({ receive_qty: q, alarm_enable: test_alarm_enable, alarm_message: test_alarm_message, assemble_id: item.assemble_id, elapsed_ms: lastMs });
+
+  t.dispose()  // 再停止一切計時/回寫（避免之後還有 /dialog2UpdateProcessBegin）
+  //#
+
+  let payload = {}
+
+  // 取得目前table data record 的 index, targetIndex
+  const targetIndex = materials_and_assembles_by_user.value.findIndex(
+    (kk) => kk.assemble_id === item.assemble_id
+  );
+
+  let current_assemble_id=materials_and_assembles_by_user.value[targetIndex].assemble_id
+  let current_material_id=materials_and_assembles_by_user.value[targetIndex].id
+
+  // 新增完成數量與完成數量不同時, 新紀錄的應領取數量
+  let d0 = Number(item.must_receive_end_qty)
+  let d1 = Number(item.receive_qty)
+  let d2 = Number(item.abnormal_qty)
+  let difference = d0 - d1 - d2
+  if (difference != 0) {
+    console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
+    payload = {
+      copy_id: current_assemble_id,
+      must_receive_qty: difference,
+    }
+    await copyAssembleForDifference(payload);
+  }
+
+  let current_completed_qty= Number(item.receive_qty);                    //組裝區完成數量
+  let current_total_completed_qty=Number(item.total_completed_qty_num);   //組裝區完成數量的總數(已完成總數量)
+  let total = current_total_completed_qty + current_completed_qty;
+  item.total_completed_qty_num = total;
+
+  item.total_completed_qty ='(' + total.toString().trim() + ')';
+
+  // 完成數量顯示順序(格式: 組裝/檢驗/雷射)
+  let temp_qty=1  //組裝
+  if (item.process_step_code == 2 )
+    temp_qty=2    //檢驗
+  if (item.process_step_code == 1 )
+    temp_qty=3    //雷射
+
+  // 取得組裝區目前途程的show2_ok/show3_ok訊息類型(結束)
+  checkInputStr(item.assemble_work);
+
+  // 更新組裝區目前途程的show2_ok狀態顯示訊息類型(結束)
+  payload = {
+    id: current_material_id,
+    record_name: 'show2_ok',
+    record_data: outputStatus.value.step2
+  };
+  await updateMaterial(payload);
+
+  // 更新組裝區目前途程的show3_ok狀態顯示訊息類型(結束)
+  payload = {
+    id: current_material_id,
+    record_name: 'show3_ok',
+    record_data: outputStatus.value.step2
+  };
+  await updateMaterial(payload);
+
+  payload = {
+    assemble_id: current_assemble_id,
+
+    completed_qty: current_completed_qty,   // 完成數量
+    total_completed_qty: total,             // 已完成總數量
+
+    total_ask_qty_end: temp_qty,            // 完成數量顯示順序(格式: 組裝/檢驗/雷射)
+    show2_ok: outputStatus.value.step2,     // 組裝區目前途程的show2_ok狀態顯示訊息類型(結束)
+    show3_ok: outputStatus.value.step2,     // 組裝區目前途程的show3_ok狀態顯示訊息類型(結束)
+
+    input_end_disable: true,                // 完成欄位, 不能再輸入
+    input_abnormal_disable: true,           // 異常欄位, 不能再輸入
+
+    process_step_code: 0,                   // 紀錄目前途程結束
+  }
+  await updateAssembleTableData(payload);
+
+  if (targetIndex !== -1) {
+    // 用 Vue 的方式確保觸發響應式更新
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      completed_qty: current_completed_qty,   // 完成數量
+      total_completed_qty: total,             // 已完成總數量
+
+      total_ask_qty_end: temp_qty,            // 完成數量顯示順序(格式: 組裝/檢驗/雷射)
+      show2_ok: outputStatus.value.step2,     // 組裝區目前途程的show2_ok狀態顯示訊息類型(結束)
+      show3_ok: outputStatus.value.step2,     // 組裝區目前途程的show3_ok狀態顯示訊息類型(結束)
+
+      input_end_disable: true,                // 完成欄位, 不能再輸入
+      input_abnormal_disable: true,           // 異常欄位, 不能再輸入
+
+      process_step_code: 0,                   // 紀錄目前途程結束
+    };
+  }
+
+  // 待待
+  //await listWaitForAssemble();
+
+  // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
+  let response = await updateAssembleProcessStep({id: current_material_id, assemble_id: current_assemble_id});
+  console.log("確認是否為最後工序或只有1個工序...")
+  console.log("response || item.assemble_count == 1", response, item.assemble_count)
+
+  if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
+    console.log("take ok...")
+
+    console.log("step5-0...");
+
+    // 完成組裝區目前製程(組裝 或 檢驗 或 雷射), 且是最後製程
+    payload = {
+      assemble_id: current_assemble_id,
+      record_name: 'isAssembleStationShow',
+      record_data: true,
+    };
+    await updateAssemble(payload);
+
+    if (targetIndex !== -1) {
       // 用 Vue 的方式確保觸發響應式更新
-      materials_and_assembles_by_user.value[targetIndex_0] = {
-        ...materials_and_assembles_by_user.value[targetIndex_0],
-        isAssembleFirstAlarm: temp_isAssembleFirstAlarm,
+      materials_and_assembles_by_user.value[targetIndex] = {
+        ...materials_and_assembles_by_user.value[targetIndex],
+        isAssembleStationShow: true,
       };
     }
 
+    console.log("step5-1...");
+
+    // 紀錄組裝去下一製程的應領取數量
     payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'isAssembleFirstAlarm',
-      record_data: temp_isAssembleFirstAlarm,
+      //assemble_id: item.id,
+      assemble_id: current_assemble_id,
+      must_receive_qty: 'must_receive_end_qty',
+      completed_qty: current_completed_qty,
+    };
+    await updateAssembleMustReceiveQtyByAssembleID(payload);
+
+    payload = {
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 3,
+    };
+    await updateProcessData(payload);
+  } else {
+    console.log("step5-2...");
+
+    payload = {
+      assemble_id: current_assemble_id,
+      record_name: 'isAssembleStationShow',
+      record_data: false,
     };
     await updateAssemble(payload);
 
+    if (targetIndex !== -1) {
+      // 用 Vue 的方式確保觸發響應式更新
+      materials_and_assembles_by_user.value[targetIndex] = {
+        ...materials_and_assembles_by_user.value[targetIndex],
+        isAssembleStationShow: false,
+      };
+    }
+
+    // 紀錄組裝去下一製程的應領取數量
     payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'isAssembleFirstAlarm_qty',
-      record_data: item.isAssembleFirstAlarm_qty,
+      //assemble_id: item.id,
+      assemble_id: current_assemble_id,
+      must_receive_qty: 'must_receive_end_qty',
+      completed_qty: current_completed_qty,
+      //completed_qty: 0,
     };
-    await updateAssemble(payload);
+    await updateAssembleMustReceiveQtyByAssembleID(payload);
 
     payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'isAssembleFirstAlarm_qty',
-      record_data: item.isAssembleFirstAlarm_qty,
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 1,
     };
-    await updateAssemble(payload);
+    await updateProcessData(payload);
 
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'abnormal_qty',
-      record_data: 0,
-    };
-    await updateAssemble(payload);
-
-
-    /*
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'writer_id',
-      record_data: currentUser.value.empID,
-    };
-    await updateAssemble(payload);
-
-    payload = {
-      assemble_id: current_assemble_id_0,
-      record_name: 'write_date',
-      record_data: todayStr.value,
-    };
-    await updateAssemble(payload);
-    */
-    return;
+    ////待待
+    //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   }
+
+  //待待
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+};
+*/
+
+const onClickAbnormal = async (item) => {
+  console.log("onClickAbnormal(), 組裝異常資料:", item);
 
   // 檢查異常欄位是否輸入了空白或 0
   if (!item.abnormal_qty || Number(item.abnormal_qty) === 0) {
@@ -3207,106 +3614,250 @@ const updateAbnormal = async (item) => {
   const targetIndex = materials_and_assembles_by_user.value.findIndex(
     (kk) => kk.assemble_id === item.assemble_id
   );
-  console.log("targetIndex:", targetIndex)
 
   let current_assemble_id=materials_and_assembles_by_user.value[targetIndex].assemble_id
   let current_material_id=materials_and_assembles_by_user.value[targetIndex].id
 
-  //按鍵之前
-  let temp_alarm_enable = item.alarm_enable;
+  //let temp_alarm_enable = item.alarm_enable;    //按鍵之前
+  //temp_alarm_enable = !temp_alarm_enable        //按鍵之後
 
-  //按鍵之後
-  temp_alarm_enable = !temp_alarm_enable
-
-  // 記錄組裝區當前紀錄, 按鍵之後的值
-  payload = {
-    //assemble_id: item.assemble_id,
-    assemble_id: current_assemble_id,
-    record_name: 'alarm_enable',
-    record_data: temp_alarm_enable,
-  };
-  await updateAssemble(payload);
+  // 更新紀錄, false: 按了異常鍵->異常
+  //let payload = {
+  //  //assemble_id: item.assemble_id,
+  //  assemble_id: current_assemble_id,
+  //  record_name: 'alarm_enable',
+  //  record_data: false,
+  //};
+  //await updateAssemble(payload);
 
   //顯示按鍵之後的值(顏色)
-  if (targetIndex !== -1) {
-    // 用 Vue 的方式確保觸發響應式更新
-    materials_and_assembles_by_user.value[targetIndex] = {
-      ...materials_and_assembles_by_user.value[targetIndex],
-      alarm_enable: temp_alarm_enable,
-    };
-  }
+  //if (targetIndex !== -1) {
+  //  // 用 Vue 的方式確保觸發響應式更新
+  //  materials_and_assembles_by_user.value[targetIndex] = {
+  //    ...materials_and_assembles_by_user.value[targetIndex],
+  //    alarm_enable: false,
+  //  };
+  //}
 
-  // 記錄訂單當前紀錄, 異常狀況(false:異常, true:正常)
-  //let temp_isAssembleAlarm = item.isAssembleAlarm;
-  //console.log("a.temp_isAssembleAlarm:", temp_isAssembleAlarm)
-  //temp_isAssembleAlarm = temp_isAssembleAlarm | temp_alarm_enable;
-  //console.log("b.temp_isAssembleAlarm, temp_alarm_enable:", temp_isAssembleAlarm, temp_alarm_enable)
-  payload = {
+  // 更新紀錄, 訂單當前組裝狀況(false:異常, true:正常)
+  let payload = {
     //id: item.id,
     id: current_material_id,
     record_name: 'isAssembleAlarm',
-    record_data: temp_alarm_enable
+    record_data: false
   };
   await updateMaterial(payload);
 
-  //處理異常....
+  let temp_abnormal_qty = Number(item.abnormal_qty) || 0;
+  let temp_diff = Number(item.must_receive_end_qty) - Number(item.abnormal_qty);
+  console.log("temp_abnormal_qty, temp_diff:", temp_abnormal_qty, temp_diff)
 
   // 1.更新記錄, 異常數量
+  //payload = {
+  //  assemble_id: current_assemble_id,
+  //  record_name: 'abnormal_qty',
+  //  record_data: temp_abnormal_qty,
+  //};
+  //await updateAssemble(payload);
+
   payload = {
     assemble_id: current_assemble_id,
-    record_name: 'abnormal_qty',
-    record_data: Number(item.abnormal_qty),
-  };
-  await updateAssemble(payload);
-  /*
-  // 1-1. 更新記錄, 應完成數量
-  payload = {
-    assemble_id: current_assemble_id,
-    record_name: 'must_receive_end_qty',
-    record_data: item.must_receive_end_qty - item.abnormal_qty,
-  };
-  await updateAssemble(payload);
-  */
 
-  // 2. 更新組裝區目前途程異常欄位, 不能再輸入
-  payload = {
-    assemble_id: current_assemble_id,
-    record_name: 'input_abnormal_disable',
-    record_data: true,
-  };
-  await updateAssemble(payload);
-
-  await listWaitForAssemble();
-
-  if (targetIndex !== -1) {
-    // 用 Vue 的方式確保觸發響應式更新
-    materials_and_assembles_by_user.value[targetIndex] = {
-      ...materials_and_assembles_by_user.value[targetIndex],
-      input_abnormal_disable: true,
-    };
+    abnormal_qty: temp_abnormal_qty,    // 異常數量
+    alarm_enable: false,                // 當前組裝狀況(false:異常, true:正常)
+    isAssembleFirstAlarm: true,
+    input_abnormal_disable: true,       // 異常欄位, 不能再輸入
+    must_receive_end_qty: temp_diff,    // 應完成成總數量
+    //alarm_message: '手動覆寫訊息'
   }
+  await updateAssembleTableData(payload);
+
+  payload = {
+    assemble_id: current_assemble_id - 1,
+    record_name: 'must_receive_end_qty',
+    record_data: temp_diff,
+  };
+  await updateAssemble(payload);
+
+  //await listWaitForAssemble();
 
   // 3. 新增異常組裝製程的應領取數量
   payload = {
     copy_id: current_assemble_id,
-    must_receive_qty: Number(item.abnormal_qty),
+    must_receive_qty: temp_abnormal_qty,
   }
   await copyNewAssemble(payload);
 
-  payload = {
-    user_id: currentUser.value.empID,
-  };
-  await getMaterialsAndAssemblesByUser(payload);
-  await getCountMaterialsAndAssemblesByUser(payload);
+  // 2. 更新組裝區目前途程異常欄位, 不能再輸入
+  //payload = {
+  //  assemble_id: current_assemble_id,
+  //  record_name: 'input_abnormal_disable',
+  //  record_data: true,
+  //};
+  //await updateAssemble(payload);
+
+  //payload = {
+  //  assemble_id: current_assemble_id,
+  //  record_name: 'alarm_enable',
+  //  record_data: false,           // 異常
+  //};
+  //await updateAssemble(payload);
+
+  //payload = {
+  //  assemble_id: current_assemble_id,
+  //  record_name: 'must_receive_end_qty',
+  //  record_data: temp_diff,
+  //};
+  //await updateAssemble(payload);
+
+  if (targetIndex !== -1) {
+    // 用 Vue 的方式確保觸發響應式更新
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      input_abnormal_disable: true,         // 異常欄位, 不能再輸入
+      alarm_enable: false,                  // 當前組裝狀況(false:異常, true:正常)
+      must_receive_end_qty: temp_diff,      // 應完成成總數量
+      abnormal_qty: temp_abnormal_qty,      // 異常數量
+    };
+  }
+
+  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
+  await getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
 
   //== timerDisplay用 ==
+  await nextTick();
   // 把正確的時間 & 暫停狀態直接推到 <TimerDisplay />
   for (const row of materials_and_assembles_by_user.value) {
     await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
   }
-  //===
+  //==
 };
-// end updateAbnormal()
+// end onClickAbnormal()
+
+/*
+let abnormalBusy = false
+
+const onClickAbnormal = async (rawItem) => {
+  if (abnormalBusy) return
+  abnormalBusy = true
+
+  // 先做快照，避免中途 reactive 變動
+  const item = { ...rawItem }
+
+  try {
+    console.log("onClickAbnormal(), 組裝異常資料:", item)
+
+    // ===== 1) 基本驗證 =====
+    const parsedQty = Number(item.abnormal_qty)
+    if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
+      abnormal_qty_alarm.value = '異常數量不可為空白或 0！'
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => { rawItem.abnormal_tooltipVisible = false; rawItem.abnormal_qty = '' }, 2000)
+      console.error('異常數量不可為空白或 0！')
+      return
+    }
+
+    // 取 assemble/material 的識別
+    const list = materials_and_assembles_by_user.value || []
+    const targetIndex = list.findIndex(kk => kk.assemble_id === item.assemble_id)
+
+    // 安全取得 id（targetIndex=-1 也能跑）
+    const current_assemble_id = targetIndex !== -1
+      ? list[targetIndex].assemble_id
+      : (item.assemble_id ?? item.id)
+    const current_material_id = targetIndex !== -1
+      ? list[targetIndex].id
+      : (item.id ?? item.material_id)
+
+    if (!current_assemble_id || !current_material_id) {
+      abnormal_qty_alarm.value = '系統資料不完整（缺少組裝/訂單識別），請重整後再試。'
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+      console.error('缺少 assemble_id 或 material_id')
+      return
+    }
+
+    // ===== 2) 夾限 & 計算新值 =====
+    const remain = Number(item.must_receive_end_qty) || 0
+    if (remain <= 0) {
+      abnormal_qty_alarm.value = '目前無可扣減的應結數量。'
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+      return
+    }
+
+    const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
+    const newRemain = Math.max(0, remain - abnormalQty)
+    if (abnormalQty !== parsedQty) {
+      abnormal_qty_alarm.value = `異常數量自動調整為 ${abnormalQty}（不可超過剩餘 ${remain}）。`
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+    }
+
+    // ===== 3) UI 樂觀更新（一次到位，避免前後不一致）=====
+    const optimisticRow = {
+      ...(targetIndex !== -1 ? list[targetIndex] : rawItem),
+      alarm_enable: false,                 // 異常 → 鈴鐺關
+      input_abnormal_disable: true,       // 異常欄位唯讀
+      abnormal_qty: abnormalQty,          // 顯示夾限後數量
+      must_receive_end_qty: newRemain,    // 扣掉異常數量
+    }
+    if (targetIndex !== -1) {
+      materials_and_assembles_by_user.value[targetIndex] = optimisticRow
+    } else {
+      Object.assign(rawItem, optimisticRow)
+    }
+
+    // ===== 4) 後端更新（盡量併發）=====
+    // A. 先把 alarm 與 material 狀態落地（你的語意：true=正常、false=異常）
+    await Promise.all([
+      updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: false }),
+      updateMaterial({ id: current_material_id, record_name: 'isAssembleAlarm', record_data: false }),
+    ])
+
+    // B. 寫入異常數量 / 鎖住異常欄位 / 更新剩餘
+    await Promise.all([
+      updateAssemble({ assemble_id: current_assemble_id, record_name: 'abnormal_qty', record_data: abnormalQty }),
+      updateAssemble({ assemble_id: current_assemble_id, record_name: 'input_abnormal_disable', record_data: true }),
+      updateAssemble({ assemble_id: current_assemble_id, record_name: 'must_receive_end_qty', record_data: newRemain }),
+    ])
+
+    // C. 產生異常返工/補料單位的「新組裝」應領取數
+    await copyNewAssemble({
+      copy_id: current_assemble_id,
+      must_receive_qty: abnormalQty,
+    })
+
+    // ===== 5) 重新拉資料（避免與後端飄移）=====
+    await Promise.all([
+      getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+      getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+    ])
+
+    // ===== 6) == TimerDisplay 用 ==（你補的段落）=====
+    await nextTick()
+    for (const row of materials_and_assembles_by_user.value) {
+      await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
+    }
+
+  } catch (err) {
+    console.error('onClickAbnormal 發生錯誤：', err)
+    // 簡單回滾策略：重新拉資料覆蓋本地樂觀更新
+    await Promise.all([
+      getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+      getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+    ])
+    abnormal_qty_alarm.value = '提交異常失敗，請稍後再試或聯絡系統管理員。'
+    rawItem.abnormal_tooltipVisible = true
+    setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+
+  } finally {
+    // 清空輸入避免殘值
+    rawItem.abnormal_qty = ''
+    abnormalBusy = false
+  }
+}
+*/
 
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
@@ -3320,6 +3871,7 @@ const checkInputStr = (inputStr) => {
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
+  console.log("outputStatus:", outputStatus.value);
 };
 
 // 計算兩個時間字串的差值，返回格式化的時間差
@@ -3425,7 +3977,6 @@ const checkAbnormalField = (focused, item) => {
     }
   }
 };
-
 
 const toggleSort = (key) => {
   let nn = sortBy.value.indexOf(key)
@@ -3639,6 +4190,11 @@ const removelocalStorage = () => {
   padding-right: 0 !important;
 }
 
+:deep(.v-table__wrapper > table > thead th:first-child > span) {
+  position: relative;
+  left: 5px;
+}
+
 :deep(.v-table__wrapper > table > thead th:nth-child(2)) {
   padding-left: 0 !important;
   padding-right: 0 !important;
@@ -3658,5 +4214,8 @@ const removelocalStorage = () => {
   left: 15px;
 }
 
+:deep(.v-switch .v-label) {
+  font-weight: 600;
+}
 </style>
 

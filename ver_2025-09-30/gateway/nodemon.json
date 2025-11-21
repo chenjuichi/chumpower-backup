@@ -1,0 +1,5 @@
+{
+"//comment 1": "restartable: false：這會使 nodemon 不再允許重新啟動程序。",
+"//comment 2": "watch: []：不監聽任何文件變化，nodemon 將不會自動重啟。"
+
+}

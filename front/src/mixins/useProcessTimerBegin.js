@@ -1,19 +1,23 @@
-import { ref, nextTick } from "vue";
+import { ref, nextTick, watch } from "vue";
 
 import { apiOperation } from './crud.js';
 
 import { materials }  from './crud.js';
 
 // 封裝各 API
-const dialog2StartProcess = apiOperation('post', '/dialog2StartProcess');
-const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcess');
-const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcess');
-const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcess');
+const dialog2StartProcess = apiOperation('post', '/dialog2StartProcessBegin');
+const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcessBegin');
+const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcessBegin');
+const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcessBegin');
 
 const updateMaterial = apiOperation('post', '/updateMaterial');
 
+let _uiStarted = false;   // 🔹避免重複 start() 造成多組 interval
+
+// 允許的時間誤差（毫秒）：超過這個才把前端時間校正成後端
+const DRIFT_THRESHOLD_MS = 3000;   // 3 秒，可調整成 2000〜5000
+
 export function useProcessTimer(getTimerRef) {
-//export function useProcessTimer(timerRef) {
 	// 後端資料
 	const processId = ref(null);
 
@@ -27,26 +31,27 @@ export function useProcessTimer(getTimerRef) {
 
 	let _frozenElapsedOnPause = null;
 
-	const pauseTime = ref(0);   // 後端回報的總暫停秒數（可顯示用）
-	const pauseCount= ref(0);   // 後端回報的暫停次數（可顯示用）
-	/*
-	const for_vue3_has_started =ref(false)
-	const for_vue3_pause_or_start_status =ref(false)
-	*/
+	let _updater = null  					// setInterval 的 handle
+	const isClosed = ref(false)  	// 關閉後標記
+	const displaySecs = ref(0)    // 只負責 UI 顯示，不做清零
+	const elapsedSecs = ref(0)    // 內部運算/回寫用
+
+	const pauseTime = ref(0);   	// 後端回報的總暫停秒數（可顯示用）
+	const pauseCount= ref(0);   	// 後端回報的暫停次數（可顯示用）
+
 	const materialId  = ref(0);
 	const processType = ref(0);
 	const userId      = ref(null);
 	const assembleId  = ref(0);
 
-	//const elapsedMs = ref(0);
-	//const isPaused = ref(true);
 	const hasStarted = ref(false);
 
 	function _startAutoUpdate() {
 		_stopAutoUpdate();
 		_autoUpd = setInterval(() => {
 			// 不中斷：只要有 process 且沒暫停，就定期回寫
-			if (processId.value && !isPaused.value) {
+			//if (processId.value && !isPaused.value) {
+			if (processId.value) {
 				updateProcess().catch(() => {});
 			}
 		}, 5000); // 每 5 秒回寫一次；可依需要調整
@@ -58,7 +63,17 @@ export function useProcessTimer(getTimerRef) {
 	}
 
 	function _startLocalTicker() {
+		// 2025-11-20 修正：若畫面上已有 TimerDisplay，改由 TimerDisplay 自己的 setInterval 負責計時，
+		// 這裡就不要再開一個本地 ticker，避免「一秒跳兩秒」的現象。
+		// （當沒有 TimerDisplay 存在時，才用本地 ticker 來維持 elapsedMs。）
+
 		_stopLocalTicker();
+
+		if (timer()) {
+			// 有可用的 TimerDisplay，交給它的 @update:time 來驅動 elapsedMs
+			return;
+		}
+
 		_lastTs = Date.now();
 		_ticker = setInterval(() => {
 			const now = Date.now();
@@ -104,6 +119,8 @@ export function useProcessTimer(getTimerRef) {
 
 	// 進入 dialog：後端建立/還原 + 同步 TimerDisplay
 	async function startProcess(mId, pType, uId, aId = 0, opts = {}) {
+		console.log("startProcess()...")
+
 		const assemble_id = Number(aId ?? 0);
 
 		const restoreOnly = opts?.restoreOnly === true
@@ -130,9 +147,11 @@ export function useProcessTimer(getTimerRef) {
 			if (restoreOnly) return { success: true, restored: false, reason: 'no-active' }
 			return { success: false, message: data?.message || 'startProcess failed' }
 		}
+		console.log("1. processId.value, :", processId.value, data?.process_id)
 
 		// 後端回傳建議包含：process_id, elapsed_time(秒), is_paused
 		processId.value = data?.process_id ?? processId.value;
+		console.log("2. processId.value, :", processId.value, data?.process_id)
 
 		// 還原 TimerDisplay（秒 → ms）
 		//const seconds   = Number(res.elapsed_time || 0);
@@ -177,6 +196,7 @@ export function useProcessTimer(getTimerRef) {
 		} else {
 			if (restoreOnly) {
 				// 還原模式：只讓 UI 動起來，不主動觸發 begin_time 寫入
+				// 還原模式（restoreOnly）：頁面重整或換頁回來時
 				timer()?.resume?.();    // 讓畫面開始跑
 				_startLocalTicker();    // 啟動本地 setInterval
 				// _startAutoUpdate();  // 要不要回寫 elapsed_time 看需求；如要以極小改動就保留在下面一起啟動
@@ -311,29 +331,62 @@ export function useProcessTimer(getTimerRef) {
 	async function updateProcess() {
 		if (!processId.value) return;
 
+		if (isClosed.value) return;		// ✅ 關閉後不再回寫
+
 		try {
 			const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
 
-			const secs = isPaused.value && _frozenElapsedOnPause != null ? _frozenElapsedOnPause : Math.floor(ms / 1000);
+			const secs = isPaused.value && _frozenElapsedOnPause != null
+				? _frozenElapsedOnPause
+				: Math.floor(ms / 1000);
 
 			const res = await dialog2UpdateProcess({
 				process_id: processId.value,
 				elapsed_time: secs,
-				//is_paused: isPaused.value,		// ⚠️ 不要再送 is_paused；避免另一個視窗「把暫停寫回去變成開始」
 			});
 
 			const data = res?.data ?? res;
 
-			// 後端可能回傳校正後的 elapsed_time（秒）
-			if (data?.elapsed_time != null) {
-				elapsedMs.value = Number(data.elapsed_time) * 1000;
-			}
+  // === 新增：伺服器校正 elapsed_time（只在差距很大時才套用） ===
+  const srvSecsRaw = data?.elapsed_time;
+  const srvSecs = Number(srvSecsRaw);
+  if (Number.isFinite(srvSecs)) {
+    const srvMs   = srvSecs * 1000;
+    const localMs = timer()?.getElapsedMs?.() ?? elapsedMs.value;
+    const diff    = Math.abs(srvMs - localMs);
+
+    if (diff > DRIFT_THRESHOLD_MS) {
+      // 差距超過 N 秒 → 視為「別台電腦/別個視窗」已經更新過，跟著校正
+      console.log(
+        `[updateProcess] drift detected, local=${localMs}ms, server=${srvMs}ms, diff=${diff}ms → apply server value`
+      );
+
+      elapsedMs.value = srvMs;
+
+      // 若 TimerDisplay 有提供 setState，就一起調整畫面時間
+      const t = timer();
+      if (t?.setState) {
+        t.setState(srvSecs, isPaused.value);
+      }
+
+      // 如果目前是暫停狀態，順便更新凍結值
+      if (isPaused.value) {
+        _frozenElapsedOnPause = srvSecs;
+      }
+    }
+  }
+
+
+			// 2025-11-20 mark// 後端可能回傳校正後的 elapsed_time（秒）
+			// 2025-11-20 mark if (data?.elapsed_time != null) {
+			// 2025-11-20 mark	elapsedMs.value = Number(data.elapsed_time) * 1000;
+			// 2025-11-20 mark}
 
 			// is_paused/pause_time 只是回報，用得到就存下
 			//if (typeof data?.is_paused === 'boolean') {
 			//	isPaused.value = data.is_paused;
 			//}
-			// ★ 伺服器是唯一真相：偵測到 is_paused 變化就同步 UI 與本地 ticker
+			// 伺服器是唯一真相：偵測到 is_paused 變化就同步 UI 與本地 ticker
 			if (typeof data?.is_paused === 'boolean' && data.is_paused !== isPaused.value) {
 				isPaused.value = data.is_paused;
 				if (isPaused.value) {
@@ -350,6 +403,10 @@ export function useProcessTimer(getTimerRef) {
 					_startAutoUpdate();
 				}
 			}
+
+			pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+			pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
+
 		} catch (err) {
 			// 400 大多是「process 已關」或「payload 不合法」
 			// 直接停掉自動回寫，避免繼續打錯
@@ -357,11 +414,11 @@ export function useProcessTimer(getTimerRef) {
 			console.warn('[updateProcess] stop auto update due to error', err);
 		}
 
-		const pauseTotal = Number(data?.pause_time ?? 0);
-		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
+		//const pauseTotal = Number(data?.pause_time ?? 0);
+		//console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
-		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
-		pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
+		//pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
+		//pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
 	}
 
 	// ESC/外點關閉時使用 —— 維持「計時中」
@@ -442,29 +499,53 @@ export function useProcessTimer(getTimerRef) {
 	async function forceResume() {
 		const t = timer();
 		if (!t) return;
-		// 先喚醒一次
-		t.resume?.();
-		// 若元件需要 start() 才真正跑，補打一槍
-		if (t.start && (t.isRunning === false || typeof t.isRunning === 'undefined')) {
-			t.start?.();
+
+		// 第一次才呼叫 start()，之後只呼叫 resume()
+		if (!_uiStarted && typeof t.start === 'function') {
+			_uiStarted = true;
+			t.start();
 		}
+
+		// resume 讓畫面繼續跑（若已經在跑，TimerDisplay 內部會自己忽略）
+		t.resume?.();
+
+		// 2025-1120 mark // 若元件需要 start() 才真正跑，補打一槍
+		// 2025-1120 mark if (t.start && (t.isRunning === false || typeof t.isRunning === 'undefined')) {
+		// 2025-1120 mark 	t.start?.();
+		// 2025-1120 mark }
 	}
 
 	async function nudgeResume() {
 		// 有些元件第一次 resume 還沒掛到 raf，用 nextTick/微延遲再喚一次
 		await nextTick();
 		await forceResume();
-		setTimeout(() => { forceResume(); }, 0);
+
+		// 避免同一時刻啟動兩個以上 interval
+		// 2025-1120 mark setTimeout(() => { forceResume(); }, 0);
 	}
 
 	async function closeProcess(extra = {}) {
 		if (!processId.value) return { success: false, message: 'no process' };
+		console.log("closeProcess(), processId.value...", processId.value)
 
-		_frozenElapsedOnPause = null;  // 這筆作業收掉，清乾淨
+		//displaySecs.value = elapsedSecs.value	// 先把顯示秒數定格在最後值，並標記已關閉
+		//isClosed.value = true;								// 標記已關閉，切斷殘留 interval / 誤觸
 
-		//const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
-		const live = timer()?.getElapsedMs?.();
-		const ms = (live ?? elapsedMs.value ?? 0);
+		// ---- 1) 取得本次要結算的「最後毫秒」 -----------------------------------
+  		// 外部傳入(頁面已凍結的毫秒)優先；再退回計時元件的 live；再退回本地狀態
+		// ✅ 以「欲結束的最終毫秒」凍結顯示（優先用外部傳入的 elapsed_ms）
+		const live = timer()?.getElapsedMs?.();                  // 計時元件當前毫秒（若有）
+		const extMs = Number.isFinite(Number(extra?.elapsed_ms)) // 外部傳入毫秒（PickReport 先算好）
+								? Number(extra.elapsed_ms)
+								: null;
+		// 以 extMs 為最高優先，其次 live，再其次本地 elapsedMs
+  		const ms = extMs ?? (live ?? elapsedMs.value ?? 0);
+
+		// ---- 2) 凍結 UI 與本地狀態（不要清為 0）
+		//displaySecs.value = ms;          	// 「顯示用」最後值（凍結 UI）
+		displaySecs.value = Math.floor(ms / 1000);  // ✅ 顯示用為「秒」
+  		isClosed.value = true;           	// 標記已關閉（切斷殘留 interval / 誤觸）
+		_frozenElapsedOnPause = null;  		// 這筆作業收掉，清乾淨
 
 		// 先停本地 ticker + 自動回寫
 		_stopLocalTicker();
@@ -474,9 +555,38 @@ export function useProcessTimer(getTimerRef) {
 		timer()?.pause();
 		isPaused.value = true;
 
-		console.log("processId:", processId)
-		console.log("processId.value:", processId.value)
+		//console.log("processId:", processId)
+		//console.log("processId.value:", processId.value)
 
+		// ---- 3) 記錄快取（刷新後也能還原最後時間；可選，但建議保留） ----------
+		try {
+			const pid = processId.value;
+			const mat = (typeof materialId?.value !== 'undefined') ? materialId.value
+								: (typeof extra?.material_id !== 'undefined') ? extra.material_id
+								: null;
+			const pty = (typeof processType?.value !== 'undefined') ? processType.value
+								: (typeof extra?.process_type !== 'undefined') ? extra.process_type
+								: (typeof extra?.process_step_code !== 'undefined') ? extra.process_step_code
+								: null;
+			const asm = (typeof assembleId?.value !== 'undefined') ? (assembleId.value ?? 0)
+								: (typeof extra?.assemble_id !== 'undefined') ? (extra.assemble_id ?? 0)
+								: 0;
+
+			const rec = JSON.stringify({
+				ms: Number(ms) || 0,
+				at: Date.now(),
+				uid: (typeof userId?.value !== 'undefined') ? (userId.value ?? null) : null,
+			});
+
+			if (pid) localStorage.setItem(`cp:lastClosedMs:pid:${pid}`, rec);
+			if (mat && pty != null) {
+				localStorage.setItem(`cp:lastClosedMs:mat:${mat}:pt:${pty}:asm:${asm}`, rec);
+			}
+		} catch (e) {
+			console.warn('save lastClosedMs failed', e);
+		}
+
+		// ---- 4) 組 payload 並通知後端關閉（冪等、安全）
 		// 通知後端關閉
 		const payload = {
 			// 先展開 extra
@@ -486,23 +596,35 @@ export function useProcessTimer(getTimerRef) {
 			elapsed_time: Math.floor(ms / 1000),
 		}
 		const res = await dialog2CloseProcess(payload)
-		//const res = await dialog2CloseProcess({
-		//  process_id: processId.value,
-		//  elapsed_time: Math.floor(ms / 1000),
-		//});
 		const data = res?.data ?? res;
 
 		// 視覺重置（可選）
-		timer()?.reset();
-		processId.value = null;
-		elapsedMs.value = 0;
+		//timer()?.reset();					// ⚠️ 不要 reset / 清零，否則畫面會回 00:00:00
 
+		//elapsedMs.value = 0;			// ⚠️ 不要 reset / 清零，否則畫面會回 00:00:00
+
+		// ---- 5) 更新暫停統計；不要 reset/清零（否則畫面會回 00:00:00）
 		const pauseTotal = Number(data?.pause_time ?? 0);
 		console.log("🔸 累計暫停時間:", pauseTotal, "秒");
 
 		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
 		pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
 
+		// 若確定這個 hook 之後不再使用，就把 processId 置空
+  		processId.value = null;
+
+		// 在成功關閉、寫完後，加上這一行將 UI 狀態重設
+  		_uiStarted = false;
+
+		return {
+			success:  (data?.success !== false),
+			elapsed_time: Number.isFinite(Number(data?.elapsed_time))
+                    ? Number(data.elapsed_time)
+                    : Math.floor(ms / 1000),
+			//elapsed_time: Number(data?.elapsed_time ?? Math.floor(ms / 1000)),
+			//pause_time: Number(data?.pause_time ?? 0)
+			pause_time: pauseTotal
+		};
 		//return {
 		//	processId, isPaused, elapsedMs, pauseTime, pauseCount,
 		//	onTick,
@@ -516,6 +638,10 @@ export function useProcessTimer(getTimerRef) {
 		_stopLocalTicker();
 		_stopAutoUpdate();
 	}
+
+	watch(elapsedSecs, (v) => {
+		if (!isClosed.value) displaySecs.value = v
+	})
 
 	return {
 		// 狀態
@@ -534,6 +660,10 @@ export function useProcessTimer(getTimerRef) {
 		assembleId,
 
 		hasStarted,
+
+		displaySecs,   // 提供給UI顯示
+    elapsedSecs,
+    isClosed,
 
 		// 提供給 <TimerDisplay @update:time>
 		onTick,

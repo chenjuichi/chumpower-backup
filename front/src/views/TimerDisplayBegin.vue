@@ -16,6 +16,9 @@ const props = defineProps({
   isPaused:  { type: Boolean, default: true },
   show:      { type: Boolean, default: true },
   fontSize:  { type: [Number, String], default: 18 },
+
+  displayMs:  { type: Number, default: null },
+  initialMs:  { type: Number, default: 0 },   // 初始毫秒
 })
 
 /**
@@ -27,6 +30,7 @@ const emit = defineEmits(['update:time', 'update:isPaused'])
 
 /* ----- 內部狀態 ----- */
 const elapsedMs = ref(0)     // 目前累積的毫秒
+//const elapsedMs = ref(props.initialMs || 0)
 let intervalId = null        // setInterval handler
 
 /* ----- 轉字串顯示（HH:MM:SS）----- */
@@ -38,18 +42,27 @@ const hhmmss = computed(() => {
   return `${h}:${m}:${s}`
 })
 
+const shownMs = computed(() => props.displayMs ?? elapsedMs.value)
+
 /* ----- 核心：開始/停止/暫停/恢復/重置 ----- */
 function _tick() {
+  // 有凍結值就不要再累加或對外 emit
+  if (props.displayMs !== null) return
+
   elapsedMs.value += 1000
   emit('update:time', elapsedMs.value)
-  console.log('[TD] tick', elapsedMs.value)
+  console.log('TimerDisplayBegin.vue, [TD] tick', elapsedMs.value)
 }
 
 function start() {
   // 僅當可見且非暫停時才啟動
   if (!props.show) return
   if (intervalId) return
+  if (props.isPaused) return
   console.log('[TD] start')
+
+  stop()
+
   intervalId = setInterval(_tick, 1000)
 }
 
@@ -116,20 +129,39 @@ watch(
 */
 watch(() => props.isPaused, (paused, old) => {
   console.log('[TD] isPaused changed', old, '→', paused)
-  if (paused) stop()
+  if (!!paused) stop()
   else start()
 }, { immediate: true })
 
-watch(
-  () => props.show,
-  (v) => {
-    if (!v) stop()
+watch(() => props.show, (v) => {
+  if (!v) stop()
     else if (!props.isPaused) start()
+})
+
+watch(() => props.displayMs, (v) => {
+  if (v !== null) {
+    // 進入凍結 → 停止內部加總
+    stop()
+  } else {
+    // 解除凍結 → 若未暫停且顯示中，恢復 interval
+    if (!props.isPaused && props.show) start()
   }
-)
+})
+
+watch(() => props.initialMs, (ms) => {
+  if (props.displayMs === null && typeof ms === 'number') {
+    elapsedMs.value = ms
+  }
+})
 
 /* ----- 掛載/卸載行為 ----- */
 onMounted(() => {
+  // 測試timer
+  console.log('%c[TD] mounted', 'color:#2962FF')
+  //
+
+  elapsedMs.value = props.initialMs || 0
+
   if (props.autoStart && !props.isPaused && props.show) {
     start()
   }

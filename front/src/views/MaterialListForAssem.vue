@@ -407,6 +407,7 @@
             @click:outside="handleOutsideClick(dlg)"
             :eager="true"
             >
+
             <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
               <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                 備料資訊
@@ -590,11 +591,7 @@
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
-        <v-icon
-          style="color: blue;"
-          @click="editOrderNum(item)"
-          small
-        >
+        <v-icon style="color: blue;" @click="editOrderNum(item)" small>
           mdi-pencil-outline
         </v-icon>
 
@@ -800,7 +797,7 @@ const deleteTitle = ref('刪除工單');
 const deleteMessage = ref('此操作將刪除相關資料(BOM/Assemble/Process)，確定？');
 const confirmRef = ref(null);
 
-const transport_message = ref('備料自動送出')
+const transport_message = ref('備料完成自動送出')
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
@@ -1184,6 +1181,7 @@ watch(
             // 語法2, 簡潔
             // 用「可選鏈結呼叫」直接在存在時才呼叫；不存在就得到 undefined，await undefined 會立即通過，不丟錯。
             await dlg.proc.updateProcess?.();
+            console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
             await dlg.proc.closeProcess?.();
 
             console.log("dialog , i:", i)
@@ -2688,10 +2686,10 @@ const setActive = (value) => {
   toggle_exclusive.value = value;       // 設置當前活動按鈕
   if (toggle_exclusive.value == 1) {
     showMenu.value = true;
-    transport_message.value = '備料人工送出'
+    transport_message.value = '備料完成人工送出'
   } else {
     showMenu.value = false;
-    transport_message.value = '備料自動送出'
+    transport_message.value = '備料完成自動送出'
   }
 }
 
@@ -2699,12 +2697,9 @@ const checkReceiveQty = (item) => {
   console.log("checkReceiveQty,", item);
 
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-  const deliveryQty = Number(item.delivery_qty) || 0;   //備料數量
-  //const totalDeliveryQty = Number(item.total_delivery_qty) || 0;
-  //const reqQty = Number(item.req_qty) || 0;
+  const deliveryQty = Number(item.delivery_qty) || 0;   //備料數量 (目前輸入)
   const totalQty = Number(item.total_delivery_qty);    //應備數量
 
-  //console.log("deliveryQty > reqQty:", deliveryQty, reqQty)
   console.log("deliveryQty > totalQty:", deliveryQty, totalQty)
 
   if (item.isLackMaterial == 0  && deliveryQty != totalQty && deliveryQty != 0) {
@@ -3020,7 +3015,8 @@ async function handleClose(dlg) {
 async function handleConfirm(dlg) {
   //await dlg.proc.updateProcess();   // 先把目前時間回寫(不結束)
   if (!dlg?.proc) return;
-  await dlg.proc.closeProcess();   // 停表 + 回寫 + reset
+  console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
+  await dlg.proc.closeProcess({ receive_qty: editedRecord.value.delivery_qty});   // 停表 + 回寫 + reset
   dlg.dialogVisible = false;
 
   // 可選：從 dialogs 移除
@@ -3031,8 +3027,6 @@ async function handleConfirm(dlg) {
 const checkTextEditField = (focused, item) => {
   if (!focused) { // 當失去焦點時
     console.log("checkTextEditField(): 失去焦點");
-
-    //updateItem2(item);
   } else {
     console.log("checkTextEditField(): 獲得焦點");
   }
@@ -3109,8 +3103,10 @@ const updateItem2 = async (item) => {
     deliveryQty = Number(item.delivery_qty) || 0;
   }
 
+  let payload = {};
+
   // 記錄當前備料數量
-  let payload = {
+  payload = {
     id: item.id,
     record_name: 'delivery_qty',
     record_data: deliveryQty,
@@ -3120,7 +3116,7 @@ const updateItem2 = async (item) => {
 
   payload = {
     material_id: item.id,
-    seq: 1,
+    seq: 2,
     record_name1: 'process_work_time_qty',
     record_data1: deliveryQty,
   };
@@ -3682,8 +3678,6 @@ const callAGV = async () => {
     // 逐筆更新「等待 AGV」狀態 + 相關 Process 欄位
     let successCount = 0;
     for (const id of selectedIds) {
-      console.log('selected item:', id);
-
       try {
         await updateMaterial({
           id,
@@ -3691,11 +3685,14 @@ const callAGV = async () => {
           record_data: 1,          // 1: 等待 agv
         });
 
+        const m = materials.value.find(x => x.id == id);
+        //if (!m) continue;
+
         await updateProcessDataByMaterialID({
           material_id: id,
-          seq: 1,
+          seq: 2,
           record_name1: 'process_work_time_qty',
-          record_data1: 10,
+          record_data1: m.delivery_qty,
         });
 
         successCount++;

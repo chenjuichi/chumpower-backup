@@ -1,0 +1,33 @@
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+/front/src/views/*copy*.vue
+/front/src/misins/*copy*.js
+/front/src/router/*copy*.js
+/front/src/components/*copy*.vue
+/front/node_modules/
+/front/public/
+
+/server/*copy*.py
+/server/table/*copy*.py
+/server/database/*copy*.py
+/server/ajax/*copy*.py
+/server/common/*.*
+/server/resource/*.*

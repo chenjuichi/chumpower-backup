@@ -162,56 +162,23 @@
         在線員工
       </v-btn>
     -->
+      <v-btn
+        class="ml-4 mt-1"
+        color="indigo-darken-4"
+        variant="outlined"
+        style="
+        position:relative;
+        left:50px;
+        top:5px;
+        min-width:110px; max-height:34px; border-radius:6px;"
+        prepend-icon="mdi-account-details-outline"
+        @click="onClickOnlineUsers"
+      >
+        在線員工
+      </v-btn>
+
     </v-col>
   </v-row>
-
-  <!-- 在線員工 dialog -->
-  <v-dialog v-model="onlineDialog" max-width="700px">
-    <v-card>
-      <v-card-title class="d-flex justify-space-between align-center">
-        <span class="text-h6">在線員工</span>
-        <v-btn icon="mdi-close" variant="text" @click="onlineDialog = false" />
-      </v-card-title>
-
-      <v-card-text>
-        <v-data-table
-          :headers="onlineHeaders"
-          :items="filteredOnlineUsers"
-          density="compact"
-          class="elevation-1"
-        >
-          <!-- Dept 欄位的 header 換成 combobox -->
-          <template #header.department="{ header }">
-            <div class="d-flex align-center">
-              <span class="mr-2">{{ header.title }}</span>
-              <v-combobox
-                v-model="selectedDeptForOnline"
-                :items="deptOptionsForOnline"
-                density="compact"
-                hide-details
-                variant="underlined"
-                style="max-width: 150px;"
-              />
-            </div>
-          </template>
-
-          <!-- onLine 欄位，依值套不同背景色 -->
-          <template #item.online="{ item }">
-            <div
-              class="text-center pa-1"
-              :style="getOnlineCellStyle(item.online)"
-            >
-              {{ item.online }}
-            </div>
-          </template>
-        </v-data-table>
-      </v-card-text>
-
-      <v-card-actions class="justify-end">
-        <v-btn color="primary" @click="onlineDialog = false">關閉</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
 
   <v-data-table
     :headers="headers"
@@ -243,7 +210,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <!--<span>備料送出</span>-->
-                  <span>備料準備</span>
+                  <span>備料準備中</span>
                   <v-progress-circular
                     :model-value="progress_value2"
                     :rotate="360"
@@ -256,7 +223,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝送出</span>
+                  <span>組裝進行中</span>
                   <v-progress-circular
                     :model-value="progress_value3"
                     :rotate="360"
@@ -269,7 +236,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>入庫登記</span>
+                  <span>等待入庫中</span>
                   <v-progress-circular
                     :model-value="progress_value4"
                     :rotate="360"
@@ -356,6 +323,68 @@
                     </tbody>
                   </v-table>
                 </v-card-text>
+              </v-card>
+            </v-dialog>
+
+            <!-- 在線員工 dialog -->
+            <v-dialog v-model="onlineDialog" max-width="800px">
+              <v-card>
+                <v-card-title class="d-flex justify-space-between align-center">
+                  <span class="text-h6">在線員工</span>
+                  <v-btn icon="mdi-close" variant="text" @click="onlineDialog = false" />
+                </v-card-title>
+
+                <v-card-text>
+                  <v-data-table
+                    :headers="onlineHeaders"
+                    :items="filteredOnlineUsers"
+                    density="compact"
+                    class="elevation-1"
+                  >
+                    <!-- Dept 欄位 header + combobox -->
+                    <template v-slot:header.dep_name = "{ column }">
+                      <div class="d-flex align-center">
+                        <span class="mr-2">{{ column.title }}</span>
+                        <v-combobox
+                          v-model="selectedDeptForOnline"
+                          :items="deptOptionsForOnline"
+                          density="compact"
+                          hide-details
+                          variant="underlined"
+                          style="max-width: 150px;"
+                        />
+                      </div>
+                    </template>
+
+                    <!-- workHours 欄位 header + combobox -->
+                    <template #header.workHours="{ column }">
+                      <div class="d-flex align-center justify-end">
+                        <span class="mr-2">{{ column.title }}</span>
+                        <v-combobox
+                          v-model="selectedWorkHours"
+                          :items="workHourOptions"
+                          item-title="label"
+                          item-value="value"
+                          density="compact"
+                          hide-details
+                          variant="underlined"
+                          style="max-width: 180px;"
+                        />
+                      </div>
+                    </template>
+
+                    <!-- onLine 欄位，依值改背景色 -->
+                    <template v-slot:item.online="{ item }">
+                      <div class="text-center pa-1" :style="getOnlineCellStyle(item.online)">
+                        {{ item.online }}
+                      </div>
+                    </template>
+                  </v-data-table>
+                </v-card-text>
+
+                <v-card-actions class="justify-end">
+                  <v-btn color="primary" @click="onlineDialog = false">關閉</v-btn>
+                </v-card-actions>
               </v-card>
             </v-dialog>
           </div>
@@ -460,6 +489,7 @@ import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
 import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
+//import { users_and_deps_and_process }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
@@ -477,10 +507,11 @@ const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
-
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
+
 
 //=== component name ==
 defineComponent({ name: 'InformationForAssem' });
@@ -553,11 +584,32 @@ const headers = [
 ];
 
 const onlineHeaders = [
-  { title: '  ', sortable: false, key: 'id', width: '2px' },
-  { title: 'Name', key: 'name' },
-  { title: 'Dept', key: 'department' },
-  { title: 'onLine', key: 'online', align: 'end' },
+  { title: '  ',  sortable: false, key: 'id', width: '2px' },
+  { title: '部門',     key: 'dep_name' },
+  { title: '員工姓名', key: 'emp_name' },
+  { title: '工時合計', key: 'workHours', align: 'end' },
+  { title: '在線資訊', key: 'online', align: 'end' },
 ];
+
+// 工時篩選（0=當天工時，1=前一天，3=前三天總和，7=一星期總和）
+const selectedWorkHours = ref(0)  // 預設值 select = 0 => 當天工時
+
+const workHourOptions = ref([
+  { label: '當天',       value: 0 },
+  { label: '前一天',     value: 1 },
+  { label: '前三天內', value: 3 },
+  { label: '一星期內', value: 7 },
+])
+
+// 在線員工 dialog
+const onlineDialog = ref(false)
+
+// 原始員工資料（等你從後端拿）
+const allOnlineUsers = ref([])
+
+// 部門下拉選單 + 目前選取的部門
+const selectedDeptForOnline = ref('全部')
+const deptOptionsForOnline = ref(['全部'])
 
 //const localIp = 'localhost';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
@@ -760,15 +812,6 @@ onMounted(async () => {
   document.addEventListener("visibilitychange", handleVisibilityChange);
 
   /*
-  console.log('取得本機ip...');
-  try {
-    localIP.value = await getLocalIP();
-    console.error('本機ip:', localIP.value);
-  } catch (err) {
-    console.error(err);
-  }
-  */
-  /*
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
@@ -860,23 +903,14 @@ onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 
-// 在線員工 dialog 相關
-const onlineDialog = ref(false)
 
-// 所有員工（或有 onLine 狀態的員工）
-const allOnlineUsers = ref([])
-
-// 部門下拉選單 + 目前選取的部門
-const selectedDeptForOnline = ref('全部')
-const deptOptionsForOnline = ref(['全部'])
-
-// 根據部門篩選的列表，給 v-data-table 用
+// 根據部門過濾後，給 v-data-table 的 items
 const filteredOnlineUsers = computed(() => {
   if (selectedDeptForOnline.value === '全部') {
     return allOnlineUsers.value
   }
   return allOnlineUsers.value.filter(
-    u => u.department === selectedDeptForOnline.value
+    (u) => u.dep_name === selectedDeptForOnline.value
   )
 })
 
@@ -884,48 +918,53 @@ const filteredOnlineUsers = computed(() => {
 const getOnlineCellStyle = (status) => {
   const v = Number(status)
   if (v === 0) {
-    return { backgroundColor: '#d5f5e3' }  // 淡綠
+    return { backgroundColor: '#d5f5e3' } // 淡綠
   }
   if (v === 1) {
-    return { backgroundColor: '#f5b7b1' }  // 淡紅
+    return { backgroundColor: '#f5b7b1' } // 淡紅
   }
   if (v === 2) {
-    return { backgroundColor: '#fcf3cf' }  // 淡黃
+    return { backgroundColor: '#fcf3cf' } // 淡黃
   }
   return {}
 }
 
 const onClickOnlineUsers = async () => {
+  // 先開 dialog，避免資料還沒回來就看不到反應
   onlineDialog.value = true
+
+  // 你可以先用假資料測，排除 template / reactivity 問題
+  const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
+  allOnlineUsers.value = resp || [];
   /*
-  try {
-    // 這裡假設後端有一支 API 回傳：
-    // [{ emp_id, emp_name, dep_name, online }, ...]
-    // 你可以先用 /listUsers，再擴充回傳 online 狀態。
-    const response = await axios.get('/listUsers')
-
-    if (response.data && response.data.users) {
-      const rows = response.data.users
-
-      allOnlineUsers.value = rows.map((u, idx) => ({
-        id: idx + 1,
-        name: u.emp_name,
-        department: u.dep_name,
-        // 這裡的 online 先預留，等你後端決定 0/1/2 的規則
-        online: u.online ?? 0,
-      }))
-
-      const depts = Array.from(
-        new Set(allOnlineUsers.value.map(u => u.department).filter(Boolean))
-      )
-      deptOptionsForOnline.value = ['全部', ...depts]
-    }
-  } catch (err) {
-    console.error('載入在線員工失敗:', err)
-  }
+  allOnlineUsers.value = [
+    { id: 1, emp_name: '王小明', dep_name: '裝配一課', online: 0 },
+    { id: 2, emp_name: '李小華', dep_name: '裝配二課', online: 1 },
+    { id: 3, emp_name: '陳大同', dep_name: '品保課',   online: 2 },
+  ]
   */
-}
+  // 再從 allOnlineUsers 裡面抓 dep_name 做選單
+  const src = allOnlineUsers.value || [];
+  const depts = Array.from(
+    new Set(src.map(u => u.dep_name).filter(Boolean))
+  );
+  deptOptionsForOnline.value = ['全部', ...depts];
+  /*
+  const depts = Array.from(
+    new Set(allOnlineUsers.value.map((u) => u.dep_name).filter(Boolean))
+  )
+  deptOptionsForOnline.value = ['全部', ...depts]
+  */
 
+  // ✅ 之後要串後端時，可以改成：
+  // const resp = await listOnlineUsers()
+  // allOnlineUsers.value = resp.data.users.map((u, idx) => ({
+  //   id: idx + 1,
+  //   name: u.emp_name,
+  //   dep_name: u.dep_name,
+  //   online: u.online,   // 0 / 1 / 2
+  // }))
+}
 
 //=== method ===
 const fmt = (d) => {
@@ -943,6 +982,16 @@ const initialize = async () => {
     await listInformations();
 
     await listWorkingOrderStatus();
+    /*
+    //allOnlineUsers.value = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    allOnlineUsers.value = resp || [];
+
+    const depts = Array.from(
+      new Set(src.map(u => u.dep_name).filter(Boolean))
+    );
+    deptOptionsForOnline.value = ['全部', ...depts];
+    */
   } catch (error) {
     console.error("Error during initialize():", error);
   }

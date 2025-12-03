@@ -3,10 +3,13 @@ import random
 import re
 from datetime import datetime, date, timedelta
 
-from sqlalchemy import distinct, func, case
+from datetime import datetime as dt
+
+from sqlalchemy import distinct, func, case, select
 from flask import Blueprint, jsonify, request, current_app
 
 from database.tables import User, UserDelegate, Material, Bom, Assemble, Permission, AbnormalCause, Process, Product, Setting, Session
+from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product
 
 from dotenv import dotenv_values
 
@@ -276,7 +279,12 @@ def list_users2():
         _user_object = {
           'emp_id': user['emp_id'],
           'emp_name': user['emp_name'],
-          'dep_name': user['dep_name'],
+
+          #'dep_name': user['dep_name'],
+          'dep_name': re.sub(r"^\d+-", "", user['dep_name']),
+
+          'is_user_delegate': user['is_user_delegate'],
+
           'emp_perm': perm_item.auth_code,    #4, 3, 2, 1
           'emp_lastRoutingName': setting_item.lastRoutingName,
           'routingPriv': setting_item.routingPriv,
@@ -293,6 +301,23 @@ def list_users2():
         'status': return_value,
         'users': _user_results    #員工資料
     })
+
+
+@listTable.route('/listDelegates', methods=['GET'])
+def list_delegates():
+    print("listDelegates....")
+
+    user_id = int(request.args.get('user_id'))
+    s = Session()
+    rows = s.query(UserDelegate).filter(UserDelegate.user_id == user_id).order_by(UserDelegate.start_date.desc(), UserDelegate.id.desc()).all()
+    return jsonify(success=True, items=[{
+        'id': r.id,
+        'user_id': r.user_id,
+        'delegate_emp_id': r.delegate_emp_id,
+        'start_date': r.start_date.isoformat(),
+        'end_date': r.end_date.isoformat() if r.end_date else None,
+        'reason': r.reason,
+    } for r in rows])
 
 
 '''
@@ -352,7 +377,7 @@ def list_materials_p():
     _results = []
     return_value = True
 
-    _objects = s.query(Material).filter(Material.move_by_process_type == 4).all()
+    _objects = s.query(P_Material).filter(P_Material.move_by_process_type == 4).all()
     materials = [u.__dict__ for u in _objects]
     processed_order_nums = set()  # 用於追踪已處理過的 order_num
     for record in materials:
@@ -383,6 +408,7 @@ def list_materials_p():
           'delivery_date':record['material_delivery_date'],   #交期
           'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
           'comment': cleaned_comment,                         #說明
+          'isBom' : record['isBom'],
           'isTakeOk' : record['isTakeOk'],
           'isLackMaterial' : record['isLackMaterial'],
           'isBatchFeeding' :  record['isBatchFeeding'],
@@ -685,7 +711,11 @@ def list_working_order_status():
             func.str_to_date(Material.material_delivery_date, '%Y-%m-%d')
             .between(today, post_14_day)
         )
-        .filter(Material.id.in_(step_1_material_ids_subq))    # Material.id 在「這些有 step1 未結束 process」的 material_id
+        .filter(
+           Material.id.in_(
+            select(step_1_material_ids_subq.c.material_id)
+          )    # Material.id 在「這些有 step1 未結束 process」的 material_id
+        )
         .scalar()
     )
 
@@ -707,7 +737,11 @@ def list_working_order_status():
             func.str_to_date(Material.material_delivery_date, '%Y-%m-%d')
             .between(today, post_14_day)
         )
-        .filter(Material.id.in_(step_21_22_23_material_ids_subq))   # Material.id 在「這些有 step_21_22_23 未結束 process」的 material_id
+        .filter(
+          Material.id.in_(
+            select(step_21_22_23_material_ids_subq.c.material_id)
+          )   # Material.id 在「這些有 step_21_22_23 未結束 process」的 material_id
+        )
         .scalar()
     )
 
@@ -723,23 +757,29 @@ def list_working_order_status():
     step_31_material_ids_subq = (
         s.query(Process.material_id)
         .filter(
-            Process.process_type.in_([3, 6]),                     # ✅ 有 3 或 6
-            Process.begin_time != '',                             # ✅ 有開始時間
-            Process.end_time != '',                               # ✅ 有結束時間
-            ~Process.material_id.in_(type_31_material_ids_subq)   # ❌ 沒有任何一筆 type 31
+          Process.process_type.in_([3, 6]),                     # ✅ 有 3 或 6
+          Process.begin_time != '',                             # ✅ 有開始時間
+          Process.end_time != '',                               # ✅ 有結束時間
+          ~Process.material_id.in_(                             # ❌ 沒有任何一筆 type 31
+            select(type_31_material_ids_subq.c.material_id)
+          )
         )
         .distinct()
         .subquery()
     )
 
     warehouse_count = (
-        s.query(func.count(distinct(Material.order_num)))
-        .filter(
-            func.str_to_date(Material.material_delivery_date, '%Y-%m-%d')
-            .between(today, post_14_day)
-        )
-        .filter(Material.id.in_(step_31_material_ids_subq))   # Material.id 在「這些有 step_31 未結束 process」的 material_id
-        .scalar()
+      s.query(func.count(distinct(Material.order_num)))
+      .filter(
+        func.str_to_date(Material.material_delivery_date, '%Y-%m-%d')
+        .between(today, post_14_day)
+      )
+      .filter(
+        Material.id.in_(
+          select(step_31_material_ids_subq)
+        )   # Material.id 在「這些有 step_31 未結束 process」的 material_id
+      )
+      .scalar()
     )
 
     '''
@@ -953,11 +993,10 @@ def list_Warehouse_For_assemble():
     _results = []
     return_value = True
 
-
     materials = [u.__dict__ for u in s.query(Material).all()]
     processed_order_nums = set()
 
-    # 過濾掉 isAssembleStationShow 為 True 的資料
+    # 篩選 isAssembleStationShow 為 True 的資料
     filtered_materials = [record for record in materials if record['isAssembleStationShow']]
     for record in filtered_materials:
       cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
@@ -1051,6 +1090,7 @@ def list_materials_and_assembles():
 
         index = 0
         test_index = 0
+        pre_p_id=0
         for material_record in _objects:
             if not material_record.isShow:
                 continue
@@ -1097,22 +1137,43 @@ def list_materials_and_assembles():
                   # 這裡一定要是 list，不是數字！
                   target_procs = [
                     p for p in process_records
-                    if p.material_id == assemble_record.material_id
-                    and p.process_type == target_pt
+                    if (
+                      p.material_id == assemble_record.material_id
+                      and p.process_type == target_pt
+                      and p.assemble_id == assemble_record.id
+                      and p.begin_time
+                      and str(p.begin_time).strip()
+                    )
                   ]
 
                   matched_count = len(target_procs)
+                  print("matched_count:",matched_count)
                   total_work_qty = sum((p.process_work_time_qty or 0) for p in target_procs)
 
                   # 從 target_procs 中，再篩同一個 assemble_id 的紀錄
                   # 只要有任一筆 begin_time 有值：
                   #   show_timer = True
                   #   show_name  = 該筆的 p.user_id
+
+                  print("1.##hello:pre_p_id", pre_p_id)
+                  """
                   for p in target_procs:
-                    if p.assemble_id == assemble_record.id and bool(p.begin_time and str(p.begin_time).strip()):
+                    print("2.##hello:pre_p_id, p.id", pre_p_id, p.id)
+                    if pre_p_id != p.id and p.assemble_id == assemble_record.id and bool(p.begin_time and str(p.begin_time).strip()):
+                      pre_p_id=p.id
                       show_timer = True
                       show_name = p.user_id or ''
+                      print("3.##hello:p.id", p.id, show_name)
                       break
+                  """
+                  if target_procs:
+                    latest_p = max(target_procs, key=lambda x: x.id)  # 或 key=lambda x: x.begin_time
+                    show_timer = True
+                    show_name = latest_p.user_id or ''
+                    print("### latest process.id:", latest_p.id, "user:", show_name)
+
+
+
 
                 # a_statement: step != 0 且有對應 process，且已報工數量 >= 交期數量
                 a_statement = (
@@ -1121,10 +1182,15 @@ def list_materials_and_assembles():
                     and matched_count > 0
                     and total_work_qty >= (material_record.delivery_qty or 0)
                 )
-                print("$$$ step, matched_count:", step, matched_count, total_work_qty, a_statement, total_records, assemble_record.id)
-                if step == 0 or (step != 0 and matched_count == 0 and total_records != 0) or a_statement:
+                print("$$$ step, matched_count:", step, a_statement, assemble_record.id)
+                # 1) 已結束 step（process_step_code = 0）不顯示
+                # 2) 報工數量已經 >= 交期數量的不顯示
+                #if step == 0 or (step != 0 and matched_count == 0 and total_records != 0) or a_statement:
                 #if step == 0 or assemble_record.user_id:
+                if step == 0 and not a_statement:
                   continue
+
+                print("2. $$$ step, matched_count:", step, a_statement, assemble_record.id)
 
                 # ---- 安全取值區 ----
                 cleaned_comment = safe_str(material_record.material_comment).strip()
@@ -1669,22 +1735,6 @@ def list_assemble_informations():
         'status': return_value,
         'informations': _results
     })
-
-
-@listTable.route('/listDelegate', methods=['GET'])
-def list_delegates():
-    user_id = int(request.args.get('user_id'))
-    s = Session()
-    rows = s.query(UserDelegate).filter(UserDelegate.user_id == user_id).order_by(UserDelegate.start_date.desc(), UserDelegate.id.desc()).all()
-
-    return jsonify(success=True, delegates=[{
-        'id': r.id,
-        'user_id': r.user_id,
-        'delegate_emp_id': r.delegate_emp_id,
-        'start_date': r.start_date.isoformat(),
-        'end_date': r.end_date.isoformat() if r.end_date else None,
-        'reason': r.reason,
-    } for r in rows])
 
 
 @listTable.route('/createDelegate', methods=['POST'])

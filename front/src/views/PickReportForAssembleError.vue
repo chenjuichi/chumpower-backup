@@ -909,6 +909,7 @@ function confirmCauseMsg () {
   console.log("causeDlg.target.cause_message:", causeDlg.target.cause_message);
 
   const copyItem = JSON.parse(JSON.stringify(filteredInformations.value[editedIndex.value]));
+  console.log("&&& copyItem:", copyItem)
   onValueUpdate(copyItem);
 
   closeCauseDlg();

@@ -967,9 +967,18 @@ onMounted(async () => {
     });
 
     socket.value.on('station2_loading_ready', async(data) => {
+      //const num = parseInt(data.message, 10);
 
-      //activeColor.value='yellow';  // 物料進站
+      activeColor.value='yellow';  // 物料進站
 
+      //if ([1, 2, 3].includes(num)) {
+      //  const temp_msg = `物料已經進入第${num}號裝卸站!`;
+      //  console.warn(temp_msg);
+      //  //activeColor.value='yello';  // 物料進站
+      //  //showSnackbar(temp_msg, 'yellow lighten-5');
+      //} else {
+      //  console.error('接收到不合法的裝卸站號碼:', data.message);
+      //}
     });
 
     socket.value.on('station2_agv_start', async () => {
@@ -981,8 +990,6 @@ onMounted(async () => {
         console.warn('沒有選取任何項目');
         return;
       }
-
-      activeColor.value='yellow';  // 物料進站
 
       for (const idx of selectedIdx) {
         const rec = materials_and_assembles_by_user.value.find(i => i.index === idx);

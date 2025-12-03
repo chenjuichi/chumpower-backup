@@ -1,8 +1,6 @@
 import axios from 'axios';
 import { ref, reactive, watch } from 'vue';
 
-//import { snackbar, snackbar_info, snackbar_color } from './snackbarStore';
-
 // for countExcelFiles
 export const fileCount = ref(0);         //定義 fileCount 狀態變數
 
@@ -17,7 +15,6 @@ export const assemble_copy_ids = ref([]);
 
 // for copyNewAssemble
 export const assemble_new_copy_ids = ref([]);
-
 
 // for listMaterials
 export const materials = ref([]);
@@ -85,27 +82,12 @@ export const loginUser = reactive({
 });
 
 // for listUsers2
-//export const loginEmpIDInput = ref(null);
 export const temp_desserts2 = ref([]);
 export const desserts2 = ref([]);
 
-//export const users_and_deps_and_process = ref([]);
-
-//export const loginUser = reactive({
-//  loginEmpID: '',
-//  loginName: '',
-//  loginPassword: ''
-//});
-
-
 export const currentAGV = ref({})
-//  status: 0,
-//  station: 1
-//});
+
 const temp_current_agv = ref({})
-//  status: 0,
-//  station: 1
-//});
 
 const foundDessert = ref(null);
 const list_table_is_ok = ref(false);
@@ -114,8 +96,8 @@ export const snackbar = ref(false);
 export const snackbar_info = ref('');
 export const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
 
-// 定義 apiOperation，用來處理不同的 API 操作
-export const apiOperation = (operation, path, payload) => {
+// 定義 p_apiOperation，用來處理不同的 API 操作
+export const p_apiOperation = (operation, path, payload) => {
   return (payload) => {
     if (payload != undefined)
       console.log(`${operation.toUpperCase()} ${path} with payload`, payload);
@@ -145,7 +127,6 @@ export const apiOperation = (operation, path, payload) => {
 
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
     */
-    // 2025-10-14 modify
     const request =
       operation === 'get'
         ? axios.get(path, { params: payload, timeout: 10000 })
@@ -176,12 +157,9 @@ export const apiOperation = (operation, path, payload) => {
             socket_server_ip.value = res.data.socket_server_ip;
           }
 
-          if (path == '/listMaterials') {
-            materials.value = [...res.data.materials];
-          }
-
           if (path == '/listMaterialsP') {
             materials.value = [...res.data.materials];
+            console.log("materials.value:", materials.value)
           }
 
           if (path == '/listWarehouseForAssemble') {

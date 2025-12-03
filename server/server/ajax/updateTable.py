@@ -17,7 +17,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import and_
 
-from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
+from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 
@@ -243,6 +243,27 @@ def update_user():
     return jsonify({
         'status': return_value
     })
+
+
+@updateTable.route('/updateDelegate', methods=['POST'])
+def terminate_active():
+    print("updateDelegate....")
+
+
+    data = request.json
+    user_id = int(data['user_id'])
+    end_date = datetime.fromisoformat(data['end_date'].replace('Z','')) if data.get('end_date') else datetime.now()
+
+    s = Session()
+    rows = s.query(UserDelegate).filter(
+        UserDelegate.user_id == user_id,
+        UserDelegate.start_date <= datetime.now(),
+        (UserDelegate.end_date.is_(None)) | (UserDelegate.end_date >= datetime.now())
+    ).all()
+    for r in rows:
+        r.end_date = end_date
+    s.commit()
+    return jsonify(success=True, affected=len(rows))
 
 
 # from bom table update some data

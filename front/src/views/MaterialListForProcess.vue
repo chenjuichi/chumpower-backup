@@ -62,7 +62,7 @@
 
             :style="{
               position: 'relative',
-              right: screenSizeInInches > 20 ? '600px' : '130px',
+              right: screenSizeInInches > 20 ? '620px' : '150px',
               top: '0px',
               fontWeight: '700',
               width: '120px'
@@ -75,28 +75,6 @@
               <v-badge color="info" :content="fileCount" inline />
             </template>
           </v-btn>
-
-          <!--客製化 編輯訂單按鍵-->
-          <!--
-          <v-btn
-            :disabled="fileCount != 0"
-            color="primary"
-            variant="outlined"
-            style="
-              position: relative;
-              right: 200px;
-              top: 0px;
-              font-weight: 700;
-              z-index: 2;
-              transition: opacity 0.3s ease, visibility 0.3s ease;
-            "
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-            @click="editDialog = true"
-          >
-            <v-icon left color="blue">mdi-text-box-edit-outline</v-icon>
-            <span style="color: #000;">編輯訂單</span>
-          </v-btn>
-          -->
 
           <!-- Bom 編輯對話視窗-->
           <div class="pa-4 text-center">
@@ -339,7 +317,7 @@
           </div>
 
           <!--客製化 員工選單-->
-          <div style="position: relative; right: 160px; width: 160px;">
+          <div style="position: relative; right: 150px; width: 160px;">
             <v-text-field
               v-model="selectedEmployee"
               @keyup.enter="handleEmployeeSearch"
@@ -378,9 +356,8 @@
             />
           </div>
 
-          <!--客製化 手動推車/AGV切換按鍵-->
+          <!--客製化 手動推車按鍵-->
           <div class="button-container">
-            <v-btn-toggle >
               <v-btn
                 variant="outlined"
                 :style="{
@@ -393,20 +370,6 @@
                 <v-icon right color="#003171">mdi-forklift</v-icon>
                 <span>手動推車</span>
               </v-btn>
-
-              <v-btn
-                variant="outlined"
-                :style="{
-                  background: toggle_exclusive === 2 ? '#27ae60' : '#e7e9eb',
-                  color: toggle_exclusive === 2 ? '#fff' : '#000',
-                  fontWeight: '700'
-                }"
-                @click="setActive(2)"
-              >
-                <span>AGV送料</span>
-                <v-icon right color="#003171">mdi-truck-flatbed</v-icon>
-              </v-btn>
-            </v-btn-toggle>
           </div>
 
           <!--客製化 備料送出按鍵-->
@@ -414,7 +377,7 @@
             :disabled="c_isBlinking"
             color="primary"
             variant="outlined"
-            style="position:relative; right:155px; top:0px; font-weight:700; padding-left:8px;
+            style="position:relative; right:145px; top:0px; font-weight:700; padding-left:8px;
                    padding-right:8px;"
             @click="select_transportation_method"
             ref="sendButton"
@@ -423,40 +386,7 @@
             <span>{{ transport_message }}</span>
           </v-btn>
 
-          <!--
-          <span
-            :style="{
-              'fontSize': '14px',
-              'display': 'inline-block',
-              'min-width': '120px',
-              'visibility': (!isFlashLed && isCallForklift) ? 'visible' : 'hidden',
-            }"
-          >
-          堆高機送料中
-          </span>
-          -->
-
           <div style="display: flex; flex-direction: column; align-items: center;">
-            <!-- 客製化黃綠燈 -->
-            <!--
-            <div
-              :style="{
-                display: 'inline-block',
-                borderRadius: '50%',
-                width: '25px',
-                height: '25px',
-                position: 'relative',
-                top: '0px',
-                left: '-90px',
-
-                opacity: isFlashLed && isVisible ? 1 : 0,
-                transition: 'opacity 0.5s ease',
-                background: background,
-                border: '1px solid black'
-              }"
-            ></div>
-            -->
-
             <span
               style="position:relative; top:30px; right:180px;"
               :style="{
@@ -572,7 +502,7 @@
             </v-card>
           </v-dialog>
 
-          <!-- 備料區檢料異常備註 -->
+          <!-- 檢料異常備註 顯示對話視窗-->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
@@ -678,15 +608,6 @@
       </div>
     </template>
 
-    <!--
-    <template v-slot:item.material_num="{ item }">
-      <div>
-        <div>{{ item.material_num }}</div>
-        <div :style="getStatusStyle(item.material_status)">{{ material_status[item.material_status] }}</div>
-      </div>
-    </template>
-    -->
-
     <!-- 自訂 '需求數量' (req_qty) 欄位 -->
     <template v-slot:item.req_qty="{ item }">
       <div>
@@ -699,7 +620,6 @@
     <template v-slot:item.comment="{ item }">
       <div>
         <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
       </div>
     </template>
 
@@ -709,6 +629,8 @@
         size="small"
         variant="tonal"
         style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+
+        :disabled="item.isBom"
 
         @click="toggleExpand(item)"
       >
@@ -739,12 +661,6 @@
     <!-- 自訂 '備料數量' 輸入欄位 -->
     <template v-slot:item.delivery_qty="{ item }">
       <div style="position: relative; display: inline-block;">
-        <!--
-        :disabled="item.input_disable"
-        :style="{
-            '--input-text-color': (item.isError || item.input_disable) ? 'red' : 'black'  // 動態設置 CSS 變數
-        }"
-        -->
         <v-text-field
           v-model="item.delivery_qty"
           dense
@@ -791,12 +707,15 @@ const router = useRouter();
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-import { desserts2 }  from '../mixins/crud.js';
-import { materials, boms, currentBoms, currentAGV, material_copy, fileCount }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
+import { desserts2 }  from '../mixins/crud.js';
+
+import { boms, currentBoms, material_copy, fileCount }  from '../mixins/crud.js';
+import { materials }  from '../mixins/p_crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
+import { p_apiOperation }  from '../mixins/p_crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
@@ -804,10 +723,10 @@ const listUsers2 = apiOperation('get', '/listUsers2');
 
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFilesP');
 const countExcelFiles = apiOperation('get', '/countExcelFilesP');
-const listMaterials = apiOperation('get', '/listMaterialsP');
+
+const listMaterials = p_apiOperation('get', '/listMaterialsP');
 
 const getBoms = apiOperation('post', '/getBoms');
-const getAGV = apiOperation('post', '/getAGV');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
@@ -815,7 +734,7 @@ const copyMaterial = apiOperation('post', '/copyMaterial');
 const copyMaterialAndBom = apiOperation('post', '/copyMaterialAndBom');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const createProcess = apiOperation('post', '/createProcess');
-const updateAGV = apiOperation('post', '/updateAGV');
+
 const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
 const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
 const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
@@ -854,7 +773,7 @@ const sendButton = ref(null)
 
 const screenSizeInInches = ref(null);
 
-const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AGV:2, 人推車:1
+const toggle_exclusive = ref(1);              // 控制選擇的按鈕, AGV:2, 預設人推車:1
 
 const editDialogBtnDisable = ref(true);
 
@@ -863,8 +782,6 @@ const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
 
 let intervalIdForLed = null;
 
-const background = ref('#ffff00');
-const isCallAGV = ref(false);                 // 確認是否已經呼叫了callAGV(), true:已經按鍵了, 不能重複按鍵
 const showMenu = ref(false);                  // 控制員工選單顯示
 
 const isCallForklift = ref(false);            // 確認是否已經呼叫了CallForklift(), true:已經按鍵了, 不能重複按鍵
@@ -885,7 +802,6 @@ const bar_code = ref('');
 const barcodeInput = ref(null);         // 外部條碼欄位
 
 const deliveryQtyInput = ref(null)      // 對應 table 中備料數量欄位（稍後動態取得）
-//const currentItemId = ref(null)
 
 const placeholderTextForEmployee = ref('請選擇員工');
 const placeholderTextForOrderNum = ref('請選擇工單');
@@ -1309,7 +1225,7 @@ onMounted(async () => {
           console.error(`資料更新失敗，id: ${item}`, error);
         }
       });
-
+      /*
       // 記錄AGV狀態資料
       payload = {
         id: 1,
@@ -1320,6 +1236,7 @@ onMounted(async () => {
 
       background.value='#10e810'
       activeColor.value='SeaGreen';   // 物料出站
+      */
     })
 
     //以下待確認
@@ -1488,7 +1405,7 @@ onMounted(async () => {
 
         } // end else loop
       });
-
+      /*
       // 記錄AGV狀態資料
       payload = {
         id: 1,
@@ -1499,7 +1416,7 @@ onMounted(async () => {
       console.log('agv_end 處理步驟3...');
 
       activeColor.value='DarkOrange';   //物料送達組裝區
-
+      */
       // 插入延遲 3 秒
       await delay(3000);
 
@@ -1717,6 +1634,7 @@ onMounted(async () => {
         };
         await createProcess(payload);
       });
+      /*
       // 記錄AGV狀態資料
       payload = {
         id: 1,
@@ -1725,10 +1643,10 @@ onMounted(async () => {
       };
       await updateAGV(payload);
 
-      //startFlashing();
       background.value='#ffff00'
       isFlashLed.value = true;
       activeColor.value='blue';   // 機器人進站
+      */
     });
 
     socket.value.on('kuka_server_not_ready', async (data) => {
@@ -2149,11 +2067,6 @@ const isSelected = (item) => {
 
 const toggleSelect = (item) => {
   //console.log("toggleSelect(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
-  // 檢查是否已呼叫 AGV
-  if (isCallAGV.value) {
-    showSnackbar('已呼叫 AGV，工單不能改變！', 'red accent-2');
-    return; // 不改變選擇狀態
-  }
 
   const index = selectedItems.value.indexOf(item.columns.id);
   if (index === -1) {
@@ -2507,7 +2420,6 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       shortage_note: '',
     }
     await copyMaterialAndBom(payload);
-    //console.log("material_copy:", material_copy.value)
 
     payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
       id: material_copy.value.id,
@@ -2686,8 +2598,8 @@ const dialog_stopTimer = () => {
 const select_transportation_method = () => {
   if (toggle_exclusive.value == 1) {
     callForklift();
-  } else {
-    callAGV();
+
+
   }
 };
 
@@ -2730,93 +2642,6 @@ const callForklift = async () => {
   });
 
   //startFlashing();
-};
-
-const callAGV = async () => {
-  console.log("callAGV()...");
-
-  let payload = {};
-
-  if (!isCallAGV.value) {       // 沒有重複按鍵
-    //console.log("step2...");
-    if (selectedItems.value.length == 0) {  //已點選選單
-      //console.log("step2-1...");
-      showSnackbar("請選擇送料的工單!", 'red accent-2');
-      return;
-    }
-
-    if (toggle_exclusive.value == 2) {   //AGV自動送料
-      //console.log("step3-1...");
-      payload = {agv_id: 1};
-      await getAGV(payload);
-      console.log("hello, 備料區叫車, AGV 狀態:", currentAGV.value);
-
-      //確定AGV目前是閒置
-      if (currentAGV.value.status != 0) {
-      //  const stationMap = {1: '備料區', 2: '組裝區',  3: '成品區'};
-      //  const buf = stationMap[currentAGV.value.station] || '未知區域';
-      //  showSnackbar(`${buf}已經叫車, AGV目前忙碌中...`, 'red accent-2');
-      //  return;
-      }
-
-      isCallAGV.value = true
-    }
-    //console.log("step4...");
-  } else {
-    //console.log("step5...");
-    showSnackbar("請不要重複按鍵!", 'red accent-2');
-    return;
-  }
-  //console.log("step6...");
-
-  // 更新AGV狀態資料, AGV忙碌中
-  payload = {
-    id: 1,
-    status: 1,
-    station:  1,
-  };
-  await updateAGV(payload);
-
-  //isBlinking.value = true;
-  //2025-02-24 add the following block
-  payload = {
-    items: selectedItems.value,
-    orderNums: selectedOrderNums.value,
-  };
-  //
-  //socket.value.emit('station1_call', payload);  //2025-02-24 add payload
-  socket.value.emit('station1_call');  //2025-02-24 add payload
-  console.log("送出 station1_call訊息...")
-
-  order_num_on_agv_blink.value='叫車進站中...'
-
-  activeColor.value='red';    // 等待運輸
-
-  // 記錄等待agv到站開始時間
-  agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("AGV Start time:", agv1StartTime.value);
-
-  selectedItems.value.forEach(async (item) => {
-    console.log('selectedItems, item:', item);
-
-    payload = {
-      id: item,
-      record_name: 'show3_ok',                  //看板要顯示的欄位名稱
-      record_data: 1                            //看板要顯示的欄位內容, 1:等待agv
-    };
-    await updateMaterial(payload);
-
-    payload = {
-      material_id: item,
-      seq: 1,
-      record_name1: 'process_work_time_qty',
-      record_data1: 10,
-    };
-    await updateProcessDataByMaterialID(payload);
-
-
-  });
-  //console.log("step7...");
 };
 
 const readAllExcelFun = async () => {

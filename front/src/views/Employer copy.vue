@@ -11,7 +11,7 @@
   </v-snackbar>
 
   <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
-    <v-card width="60vw" class="pa-md-4 mt-3 pb-2 mx-lg-auto">
+    <v-card width="90vw" class="pa-md-4 mt-3 pb-2 mx-lg-auto">
       <!--items-per-page-text="每頁的資料筆數"-->
       <v-data-table
         :headers="headers"
@@ -30,7 +30,7 @@
             <v-toolbar-title>員工資料</v-toolbar-title>
             <v-divider class="mx-4" inset vertical /><v-spacer />
             <v-spacer></v-spacer>
-            <v-dialog v-model="dialog" max-width="700" rounded='lg'>
+            <v-dialog v-model="dialog" max-width="1000" rounded='lg'>
               <template v-slot:activator="{ props: activatorProps }">
                   <!--<v-btn v-bind="activatorProps" @click="openDialog" color="primary" dark class="mb-2" v-if="currentUser.perm <= 2">-->
                   <v-btn v-bind="activatorProps" @click="dialog = true" color="primary" dark class="mb-2" v-if="currentUser.perm <= 2">
@@ -61,13 +61,11 @@
                           </v-col>
                           <v-col cols="12" md="4">
                             <v-text-field
-                            label="姓名"
-                            v-model="editedItem.emp_name"
-                            :rules="[requiredRule, nameRule]"
-
-                            variant="underlined"
-
-                          />
+                              label="姓名"
+                              v-model="editedItem.emp_name"
+                              :rules="[requiredRule, nameRule]"
+                              variant="underlined"
+                            />
                           </v-col>
                           <v-col cols="12" md="4">
                             <v-select
@@ -94,7 +92,67 @@
                           </pre>
                         </v-row>
 
-                        <v-row no-gutters align="center" style="top: -40px; position: relative;" v-if="editedIndex != -1">
+                        <!-- 代理人區塊 -->
+                        <v-card class="mt-4" variant="outlined" width="60vw">
+                          <v-card-title class="text-subtitle-1 font-weight-bold">代理設定</v-card-title>
+                          <v-card-text>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <!-- 代理人：用 autocomplete 從員工清單挑 -->
+                              <v-row style="display:flex; justify-content:flex-end; align-items:flex-end;" no-gutters>
+                                <v-col cols="12" md="3">
+                                  <v-autocomplete
+                                    label="代理人(員工編號)"
+                                    v-model="form.delegate_emp_id"
+                                    :items="allUsersEmpIds"
+                                    clearable
+                                    density="compact"
+
+                                    placeholder="輸入或選擇 8 碼員工編號"
+                                  />
+                                </v-col>
+                                <v-col cols="12" md="9"></v-col>
+                              </v-row>
+
+                              <v-row style="display:flex; justify-content:flex-end; align-items:flex-end;" no-gutters>
+                                <v-col cols="12" md="3">
+                                  <v-text-field
+                                    label="代理起始"
+                                    v-model="form.delegate_start"
+                                    density="compact"
+                                    placeholder="2025-09-19 08:00"
+                                  />
+                                </v-col>
+                                <v-col cols="12" md="1"></v-col>
+                                <v-col cols="12" md="3">
+                                  <v-text-field
+                                    label="代理結束(可空)"
+                                    v-model="form.delegate_end"
+                                    density="compact"
+                                    placeholder="2025-09-30 18:00"
+                                  />
+                                </v-col>
+                                <v-col cols="12" md="1"></v-col>
+                                <v-col cols="12" md="4">
+                                  <v-text-field
+                                    label="代理事由"
+                                    v-model="form.delegate_reason"
+                                    density="compact"
+                                    variant="underlined"
+                                    placeholder="例：年度特休、出差、產線支援…"
+                                  />
+                                </v-col>
+                              </v-row>
+                            </div>
+
+                            <div class="mt-2">
+                              <v-btn class="mr-2" @click="saveDelegate" variant="flat">儲存代理</v-btn>
+                              <v-btn color="error" @click="clearDelegate" variant="flat">移除目前生效代理</v-btn>
+                            </div>
+                          </v-card-text>
+                        </v-card>
+
+                        <!-- 重設密碼預設值 區塊 -->
+                        <v-row no-gutters align="center" style="top: -55px; left:200px; position:relative;" v-if="editedIndex != -1">
                           <v-col cols="12" md="3"></v-col>
                           <div style="margin-bottom: 0; font-size: 14px;">
                             <span style="font-weight: bold;">重設密碼預設值</span>
@@ -119,19 +177,20 @@
                         </div>
                       </v-col>
                     </v-row>
-                    <v-row justify="center">
+
+                    <v-row justify="center" style="position:relative; top: -40px;">
                       <v-col cols="auto">
-                    <v-btn text @click="close" class="btns">
-                      <i class="fa-regular fa-circle-xmark" />
-                      取消
-                    </v-btn>
+                        <v-btn text @click="close" class="btns">
+                          <i class="fa-regular fa-circle-xmark"></i>
+                          取消
+                        </v-btn>
                       </v-col>
                       <v-col cols="auto">
-                    <v-btn text @click="save" class="btns" :disabled='validateFields'>
-                      <i class="fa-regular fa-circle-check" />
-                      確定
-                    </v-btn>
-                    </v-col>
+                        <v-btn text @click="save" class="btns" :disabled='validateFields'>
+                          <i class="fa-regular fa-circle-check"></i>
+                          確定
+                        </v-btn>
+                      </v-col>
                     </v-row>
                   </v-card-text>
               </v-card>
@@ -191,6 +250,11 @@
 
 <script setup>
 import { ref, reactive, defineComponent, computed, watch, onMounted, onBeforeMount, nextTick } from 'vue';
+
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrBefore);             //啟用 plugin
+
 import { TreeView } from "vue-tree-view";
 //import TreeView from "vue3-treeview";
 import "vue-tree-view/dist/style.css";
@@ -218,6 +282,7 @@ const listUsers2 = apiOperation('get', '/listUsers2');
 const removeUser = apiOperation('post', '/removeUser');
 const updateUser = apiOperation('post', '/updateUser');
 const register = apiOperation('post', '/register');
+const createDelegate = apiOperation('post', '/createDelegate');
 
 //=== component name ==
 defineComponent({
@@ -266,11 +331,17 @@ const route = useRoute(); // Initialize router
 
 const headers = [
   { title: '工號', sortable: true, value: 'emp_id' },
-  { title: '姓名', sortable: false, value: 'emp_name'},
+  { title: '姓名', sortable: false, value: 'emp_name', width: 80 },
   { title: '部門', sortable: true, value: 'dep_name' },
-  { title: '群組', sortable: false, value: 'emp_perm' },
+  /*
+  { title: '目前代理人', value: 'current_delegate_emp_id', width: 130 },
+  { title: '代理期間',   value: 'current_delegate_range', width: 220 },
+  { title: '代理事由',   value: 'current_delegate_reason', width: 220 },
+  */
   { title: '請假', value: 'is_user_delegate', width: 110 },
-  { title: 'Actions', sortable: false, value: 'actions' },
+
+  { title: '群組', sortable: false,    value: 'emp_perm', width: 110 },
+  { title: 'Actions', sortable: false, value: 'actions', width: 110 },
 ];
 
 const footerOptions = [
@@ -329,6 +400,23 @@ const pagination = reactive({
   itemsPerPage: 10, // 預設值, rows/per page
   page: 1,
 });
+
+const allUsers = ref([])                // 後端 /users 列表
+//const allUsersEmpIds = computed(() => desserts2.value.map(u => u.emp_id))
+//const allUsersEmpIds = computed(() => desserts2.value.map(u => `${u.emp_name}(${u.emp_id})`))
+const allUsersEmpIds = computed(() =>
+  desserts2.value.map(u => `${u.emp_name}${parseInt(u.emp_id, 10)}`)
+)
+
+
+const editingUser = ref(null)           // 目前在編輯的 user（整筆）
+const form = reactive({
+  // 其它 user 欄位…（emp_id, emp_name, dep_name…）
+  delegate_emp_id: '',
+  delegate_start: '',
+  delegate_end: '',
+  delegate_reason: '',
+})
 
 //const snackbar = ref(false);
 //const snackbar_info = ref('');
@@ -536,6 +624,10 @@ const editItem = (item) => {
 
   console.log("treeViewSelection:", treeViewSelection.value)
   editedItem.password_reset = 'no'
+
+  // ✅ 把代理資訊帶進來
+  openEdit(editedItem);
+
   dialog.value = true;
 }
 
@@ -682,6 +774,48 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
+
+// 開啟編輯時，把「目前生效代理」帶入 form（若有）
+function openEdit(user) {
+  editingUser.value = user
+  // 這裡假設後端回給你 current_delegate_*，否則自己 call /delegate/active?user_id=
+  form.delegate_emp_id = user.current_delegate_emp_id || ''
+  form.delegate_start  = user.current_delegate_start || ''
+  form.delegate_end    = user.current_delegate_end   || ''
+  form.delegate_reason = user.current_delegate_reason || ''
+}
+
+// 儲存代理：後端以「新增一筆」方式處理；若同時間段重疊，請後端拒絕並回訊息
+async function saveDelegate() {
+  if (!editingUser.value) return
+  const payload = {
+    user_id: editingUser.value.id,
+    delegate_emp_id: form.delegate_emp_id,
+    start_date: form.delegate_start ? dayjs(form.delegate_start).toISOString() : null,
+    end_date:   form.delegate_end   ? dayjs(form.delegate_end).toISOString()   : null,
+    reason: form.delegate_reason || '',
+  }
+  const data = await createDelegate(payload);
+
+  if (!data.success) {
+    // 顯示 data.message
+    return
+  }
+  // 成功後刷新列表（或只刷新當列）
+  //await fetchUsers()
+  await listUsers2();
+
+}
+
+// 清掉「目前生效」代理（把落在今天的那筆 end_date 設為 now）
+async function clearDelegate() {
+  if (!editingUser.value) return
+  const { data } = await axios.post('/delegate/terminate_active', {
+    user_id: editingUser.value.id,
+    end_date: dayjs().toISOString(),
+  })
+  await fetchUsers()
+}
 </script>
 
 <style lang="scss" scoped>

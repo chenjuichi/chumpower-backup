@@ -349,7 +349,7 @@
             variant="outlined"
             style="position:relative; right:155px; top:0px; font-weight:700; padding-left:8px;
                    padding-right:8px;"
-            @click="select_transportation_method"
+            @click="onClickTrans"
             ref="sendButton"
           >
             <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
@@ -1457,20 +1457,9 @@ onMounted(async () => {
     });
 
     socket.value.on('station1_loading_ready', async(data) => {
-      console.log("receive station1_loading_ready socket...");
+      //console.log("receive station1_loading_ready socket...");
 
-      //const num = parseInt(data.message, 10);
-
-      activeColor.value='yellow';  // 物料進站
-
-      //if ([1, 2, 3].includes(num)) {
-      //  const temp_msg = `物料已經進入第${num}號裝卸站!`;
-      //  console.warn(temp_msg);
-      //  //activeColor.value='yello';  // 物料進站
-      //  //showSnackbar(temp_msg, 'yellow lighten-5');
-      //} else {
-      //  console.error('接收到不合法的裝卸站號碼:', data.message);
-      //}
+      //activeColor.value='yellow';  // 物料進站
     });
 
     socket.value.on('station1_agv_start', async () => {
@@ -1481,6 +1470,8 @@ onMounted(async () => {
         console.warn('station1_agv_start: 沒有選取任何項目');
         return;
       }
+
+      activeColor.value='yellow';  // 物料進站
 
       for (const id of selectedIds) {
         try {
@@ -1494,19 +1485,6 @@ onMounted(async () => {
           console.warn('updateMaterial 失敗, id =', id, err);
         }
       }
-      /*
-      let payload = {};
-      // 依據每個 item 的 id 進行資料更新
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-        payload = {
-          id: item,
-          record_name: 'show3_ok',      //看板要顯示的欄位名稱
-          record_data: 16,              //看板要顯示的欄位內容, 16:AGV start
-        };
-        await updateMaterial(payload);
-      });
-      */
     });
 
     socket.value.on('station1_agv_begin', async () => {
@@ -3335,7 +3313,7 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
-const select_transportation_method = () => {
+const onClickTrans = () => {
   if (toggle_exclusive.value == 1) {
     callForklift();
   } else {

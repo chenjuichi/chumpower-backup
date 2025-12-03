@@ -2,16 +2,18 @@ import math
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-#from sqlalchemy import func
-from database.tables import User, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
-#from sqlalchemy import or_
+
+from database.tables import User, UserDelegate, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
+
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.inspection import inspect
 from werkzeug.security import generate_password_hash
 
 from datetime import datetime, timezone
 
 import pymysql
 from sqlalchemy import exc
+from sqlalchemy import func
 
 createTable = Blueprint('createTable', __name__)
 
@@ -139,6 +141,43 @@ def create_user():
         'returnID': tempID,
         'returnName': tempName,
     })
+
+
+@createTable.route('/createDelegate', methods=['POST'])
+def create_delegate():
+    print("createDelegate....")
+
+    data = request.json
+    user_id = data.get('user_id')
+    delegate_emp_id = data.get('delegate_emp_id').strip()
+    start_date = datetime.fromisoformat(data.get('start_date').replace('Z','')) if data.get('start_date') else None
+    end_date = datetime.fromisoformat(data.get('end_date').replace('Z','')) if data.get('end_date') else None
+    reason = (data.get('reason') or '').strip()
+
+    if not user_id or not delegate_emp_id or not start_date:
+        return jsonify(success=False, message='user_id / delegate_emp_id / start_date 為必填')
+
+    s = Session()
+    # 檢查重疊
+    overlap = s.query(UserDelegate).filter(
+        UserDelegate.user_id == user_id,
+        UserDelegate.start_date <= (end_date or datetime.max),
+        start_date <= func.ifnull(UserDelegate.end_date, datetime.max)  # MySQL: IFNULL
+    ).count()
+    if overlap > 0:
+        return jsonify(success=False, message='期間與既有代理重疊，請調整')
+
+    ud = UserDelegate(
+        user_id=user_id,
+        delegate_emp_id=delegate_emp_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason
+    )
+    s.add(ud)
+    s.commit()
+    return jsonify(success=True, id=ud.id)
+
 
 '''
 @createTable.route("/createSpindleRunins", methods=['POST'])
@@ -356,18 +395,21 @@ def create_process():
   _period_time = request_data.get('periodTime')
   _period_time2 = request_data.get('periodTime2')
   _process_work_time_qty = request_data.get('process_work_time_qty')
+
   _normal_work_time = request_data.get('normal_work_time')
+  _assemble_id = request_data.get('assemble_id')
+  _has_started = bool(request_data.get('has_started'))
 
   _user_id = request_data['user_id']
-  #_order_num = request_data['order_num']
   _id = request_data['id']
   _process_type= request_data['process_type']
 
   print("process_type:", _process_type)
+  print("id:", _id)
+  print("assemble_id:", _assemble_id)
+  print("has_started:", _has_started)
   print("begin_time:", _begin_time)
   print("end_time:", _end_time)
-  print("process_work_time_qty:", _process_work_time_qty)
-  print("id:", _id, type(_id))
 
   s = Session()
 
@@ -390,6 +432,8 @@ def create_process():
   # 3️⃣ 直接新增 process 記錄（無論是否已存在）
   new_process = Process(
     material_id = _id,
+    assemble_id = _assemble_id,
+    has_started = _has_started,
     user_id = _user_id,
     process_type = _process_type,
     normal_work_time = _normal_work_time,
@@ -551,9 +595,11 @@ def copy_assemble_for_difference():
       rec.must_receive_end_qty = pre_must_val
 
   # 3. 複製這些記錄（排除 id）並新增到 DB
+  print("len(matching_assembles):", len(matching_assembles))
   new_ids = []
   for record in matching_assembles:
     #abnormal_field=False
+    """
     if record.work_num == 'B109':
       process_step_code =3
       ok2=3
@@ -570,6 +616,24 @@ def copy_assemble_for_difference():
       # 如果不是這三種工作中心，就略過，不新增
       print("skip record.id =", record.id, "work_num =", record.work_num)
       continue
+    """
+
+    if record.work_num == 'B109':
+        process_step_code = 3
+        ok2 = 3
+        ok3 = 3
+    elif record.work_num == 'B110':
+        process_step_code = 2
+        ok2 = 5
+        ok3 = 5
+    elif record.work_num == 'B106':
+        process_step_code = 1
+        ok2 = 7
+        ok3 = 7
+    else:
+        # 如果不是這三種工作中心，就略過，不新增
+        print("skip record.id =", record.id, "work_num =", record.work_num)
+        continue
 
     abnormal_field=False
 
@@ -595,6 +659,7 @@ def copy_assemble_for_difference():
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID
+    print("new_record.id:", new_record.id)
     new_ids.append(new_record.id)
   # end for loop
 
@@ -1091,6 +1156,7 @@ def create_product():
         for it in raw_items:
             p = Product(
                 material_id      = int(it.get("material_id")),
+                process_id       = int(it.get("process_id")),
                 delivery_qty     = _normalize_int(it.get("delivery_qty"), 0),
                 assemble_qty     = _normalize_int(it.get("assemble_qty"), 0),
                 allOk_qty        = _normalize_int(it.get("allOk_qty"), 0),
@@ -1145,6 +1211,7 @@ def _int_or_error(value, name):
         return iv
     except Exception:
         raise ValueError(f"{name} 必須是非負整數")
+
 
 @createTable.route("/copyNewIdAssemble", methods=['POST'])
 def copy_new_id_assemble():
@@ -1255,3 +1322,109 @@ def copy_new_id_assemble():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
     finally:
         s.close()
+
+
+@createTable.route("/copyDeliveryRecord", methods=['POST'])
+def copy_delivery_record():
+    print("copyDeliveryRecord....")
+
+    request_data = request.get_json() or {}
+    print("request_data:", request_data)
+
+    assemble_id = request_data.get("assemble_id")           # 要複製哪一筆 assemble.id
+    new_total_completed = request_data.get("total_completed_qty")
+    new_completed = request_data.get("completed_qty")
+
+    # 參數檢查
+    if assemble_id is None:
+        return jsonify({
+            "return_value": False,
+            "message": "缺少 assemble_id 參數"
+        }), 400
+
+    try:
+        new_total_completed = int(new_total_completed)
+        new_completed = int(new_completed)
+    except (TypeError, ValueError):
+        return jsonify({
+            "return_value": False,
+            "message": "total_completed_qty / completed_qty 必須是整數"
+        }), 400
+
+    s = Session()
+    try:
+        with s.begin():
+            # 1. 取得原始 assemble 記錄
+            assemble = s.get(Assemble, assemble_id)
+            if not assemble:
+                return jsonify({
+                    "return_value": False,
+                    "message": f"找不到 assemble.id = {assemble_id}"
+                }), 404
+
+            # 先記錄原始值，避免被覆蓋之後無法計算差額
+            orig_total_completed = assemble.total_completed_qty or 0
+            orig_completed = assemble.completed_qty or 0
+
+            # 檢查拆分數量是否合理
+            if new_total_completed < 0 or new_completed < 0:
+                return jsonify({
+                    "return_value": False,
+                    "message": "total_completed_qty / completed_qty 不可為負數"
+                }), 400
+
+            if new_total_completed > orig_total_completed or new_completed > orig_completed:
+                return jsonify({
+                    "return_value": False,
+                    "message": "拆分數量不可大於原本的 total_completed_qty / completed_qty"
+                }), 400
+
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 2. 建立「新紀錄」
+            #    其他欄位都沿用原資料，只調整指定欄位：
+            #    new_assemble.total_completed_qty = 原本 - 傳入 total_completed_qty
+            #    new_assemble.completed_qty       = 原本 - 傳入 completed_qty
+            #    new_assemble.isAssembleStationShow = False
+            #    new_assemble.is_copied_from_id = 原始 id (方便追蹤來源)
+            remain_total_completed = orig_total_completed - new_total_completed
+            remain_completed = orig_completed - new_completed
+
+            # 3. 建立「新紀錄」，先複製所有欄位
+            mapper = inspect(Assemble)
+
+            new_assemble = Assemble()
+            for col in mapper.columns:
+                col_name = col.key
+                # 不要複製主鍵＆create_at，讓 DB 自己長
+                if col_name in ("id", "create_at"):
+                    continue
+                setattr(new_assemble, col_name, getattr(assemble, col_name))
+
+            # 4. 接著覆寫指定要改的欄位
+            new_assemble.total_completed_qty = remain_total_completed
+            new_assemble.completed_qty = remain_completed
+            new_assemble.isAssembleStationShow = False
+            new_assemble.is_copied_from_id = assemble.id
+            new_assemble.update_time = now_str
+
+            s.add(new_assemble)
+            # with s.begin(): 會自動 commit
+
+        return jsonify({
+            "return_value": True,
+            "message": "ok",
+            "source_id": assemble_id,
+            "new_id": new_assemble.id,
+        })
+
+    except Exception as e:
+        s.rollback()
+        print("copyDeliveryRecord error:", e)
+        return jsonify({
+            "return_value": False,
+            "message": f"copyDeliveryRecord 發生錯誤: {e}"
+        }), 500
+    finally:
+        s.close()
+

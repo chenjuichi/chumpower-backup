@@ -733,3 +733,30 @@
 連線時間: Fri Nov 21 2025 09:07:01 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
 連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
 連線失敗: connect ECONNREFUSED 192.168.68.111:6600, mode: false, RUN_MODE: false
+連線時間: Fri Nov 21 2025 22:14:48 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Sun Nov 23 2025 11:29:27 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.0.12:6600, mode: false, RUN_MODE: false
+連線時間: Sun Nov 23 2025 22:11:30 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Sun Nov 23 2025 23:18:31 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Sun Nov 23 2025 23:18:42 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.0.12:6600, mode: false, RUN_MODE: false
+連線時間: Mon Nov 24 2025 09:41:21 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Tue Nov 25 2025 10:12:39 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.68.111:6600, mode: false, RUN_MODE: false
+連線時間: Wed Nov 26 2025 09:52:45 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Thu Nov 27 2025 09:37:35 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Fri Nov 28 2025 09:45:12 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Mon Dec 01 2025 10:12:15 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Tue Dec 02 2025 09:28:27 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.68.111:6600, mode: false, RUN_MODE: false
+連線時間: Wed Dec 03 2025 09:37:52 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false

@@ -41,53 +41,7 @@
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
 
-          <!--客製化 堆高機送料中按鍵-->
-          <!--
-          <v-btn
-            :disabled="!station2_trans_ready"
-            color="primary"
-            variant="outlined"
-            :style="{
-              position: 'relative',
-              right: screenSizeInInches > 20 ? '600px' : '570px',
-              top: '0px',
-              fontWeight: '700',
-              width: '120px',
-              background: '#e67e22',
-              background: station2_trans_ready ? '#e67e22' : '#e7e9eb',
-            }"
-            @click="forkliftNoticeFun"
-          >
-
-            <div v-if="station2_trans_ready" class="blink" style="display: flex; align-items: center;">
-              <v-icon left color="#fff">mdi-forklift</v-icon>
-              <span style="color: #fff;">堆高機送料中</span>
-            </div>
-            <div v-else style="display: flex; align-items: center;">
-              <v-icon left color="#000">mdi-forklift</v-icon>
-              <span style="color: #000;">堆高機送料中</span>
-            </div>
-          </v-btn>
-
-          <div style="display: flex; flex-direction: column; align-items: center;">
-            <div style="position:relative;right: 550px; font-size: 16px;">{{ station2_trans_empName }}</div>
-          </div>
-          -->
-
-          <!--
-          <v-btn
-            v-if="materials_and_assembles.length > 0"
-            color="primary"
-            variant="outlined"
-            style="position: relative; right: 500px; top: 0px;"
-            @click="refreshComponent"
-          >
-            <v-icon left color="blue">mdi-refresh</v-icon>
-            更新訂單
-          </v-btn>
-          -->
-
-          <!-- 組裝區來料異常備註 -->
+           <!-- 組裝區來料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
@@ -459,24 +413,25 @@
           right: 50px;
           color:#4000ff;
           width:88px;
+          min-width:88px;
           font-variant-numeric:tabular-nums;"
       >
-      <TimerDisplay
-        :fontSize="18"
-        :autoStart="false"
+        <TimerDisplay
+          :fontSize="18"
+          :autoStart="false"
 
-        :show="true"
+          :show="true"
 
-        :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${currentUser.empID}`"
+          :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${currentUser.empID}`"
 
-        :ref="el => setTimerEl(item, el)"
-        :isPaused="isPausedOf(item)"
-        @update:isPaused="val => setPausedOf(item, val)"
-        @update:time="ms => onTickOf(item, ms)"
+          :ref="el => setTimerEl(item, el)"
+          :isPaused="isPausedOf(item)"
+          @update:isPaused="val => setPausedOf(item, val)"
+          @update:time="ms => onTickOf(item, ms)"
 
-        class="me-2"
-        style="min-width:88px; display:inline-block;"
-      />
+          class="me-2"
+          style="min-width:88px; display:inline-block;"
+        />
       </span>
       <!-- 綠點：這筆「有人」在開工（不限本人） -->
       <!--
@@ -1678,7 +1633,7 @@ const createAbnormalFun = async () => {
   console.log("createAbnormalFun()...");
 
   if (abnormalDialog_new_must_receive_qty.value != abnormalDialog_must_receive_qty.value) {
-    let temp_str = '(' + abnormalDialog_delivery_qty.value + abnormalDialog_new_must_receive_qty.value + ')'
+    let temp_str = '(' + abnormalDialog_delivery_qty.value + ' / ' + abnormalDialog_new_must_receive_qty.value + ')'
     abnormalDialog_message.value = '備料區來料數量不對! '+ temp_str;
     console.log("temp_str:", temp_str);
     let payload = {}
@@ -1695,7 +1650,7 @@ const createAbnormalFun = async () => {
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials_and_assembles.value.findIndex(
-        (kk) => kk.id === item.id
+        (kk) => kk.id === abnormalDialog_record.value.id
       );
 
       if (targetIndex !== -1) {
@@ -1895,7 +1850,7 @@ const updateItem = async (item) => {
   */
 
   //待待
-  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 const checkInputStr = (inputStr) => {

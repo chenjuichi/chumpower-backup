@@ -1,8 +1,9 @@
 import re
-
+import random
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
 from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from database.p_tables import P_Material, P_Assemble, P_Process, P_AbnormalCause
 from sqlalchemy import and_, or_, not_, func
 #from sqlalchemy.orm import joinedload
 from sqlalchemy import func, cast, Integer
@@ -12,7 +13,9 @@ from collections import defaultdict
 #from flask_cors import CORS
 #from operator import itemgetter
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from datetime import datetime as dt
+
 from zoneinfo import ZoneInfo
 
 getTable = Blueprint('getTable', __name__)
@@ -402,6 +405,29 @@ def end_ok_flag(s, material_id: int, process_step_code: int) -> bool:
         return False
     return True
 
+
+def need_more_assemble_abnormal_qty(k1: int, s=None):
+    close_after = False
+    if s is None:
+        from database.tables import Session  # 若你的檔名不同請調整
+        s = Session()
+        close_after = True
+
+    try:
+        total = (
+            s.query(func.coalesce(func.sum(Assemble.abnormal_qty), 0))
+             .filter(Assemble.material_id == k1)
+             .filter(Assemble.user_id != '')
+             .scalar()
+        ) or 0
+
+        total = int(total)
+        return total
+    finally:
+        if close_after:
+            s.close()
+
+
 def need_more_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
     #print("need_more_process_qty()...")
 
@@ -685,6 +711,60 @@ def get_boms():
     material_record = s.query(Material).filter_by(order_num=_order_num).first()
   elif _id is not None:       # 如果傳入了 id
     material_record = s.query(Material).filter_by(id=_id).first()
+
+  boms = material_record._bom
+
+  # 將 boms 轉換成字典格式返回，並篩選出 isPickOK 為 False 的項目
+  results = [
+    {
+      'id': bom.id,
+      'order_num': material_record.order_num,
+      'seq_num': bom.seq_num,           # 項目編號
+      'material_num': bom.material_num,     # 物料編號
+      'mtl_comment': bom.material_comment,  # 物料說明
+      'qty': bom.req_qty,                   # 數量
+      'date': material_record.material_date,       # 日期
+      'date_alarm': '',
+      'receive': bom.receive,               #領取
+      'lack': bom.lack,                     #缺料
+      'isPickOK': bom.isPickOK
+    }
+    for bom in boms if not bom.isPickOK
+  ]
+
+  s.close()
+
+  temp_len = len(results)
+  print("getBoms, 總數: ", temp_len)
+  if (temp_len == 0):
+    return_value = False
+
+  return jsonify({
+    'status': return_value,
+    'boms': results
+  })
+
+
+@getTable.route("/getBomsP", methods=['POST'])
+def get_boms_p():
+  print("getBomsP....")
+
+  request_data = request.get_json()
+  #_order_num = request_data['order_num']
+  _order_num = request_data.get('order_num')
+  _id = request_data.get('id')
+
+  #print("_order_num:", _order_num)
+  return_value = True
+  s = Session()
+
+
+  # 檢查傳入的參數，選擇查詢條件
+  material_record = None
+  if _order_num is not None:  # 如果傳入了 order_num
+    material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
+  elif _id is not None:       # 如果傳入了 id
+    material_record = s.query(P_Material).filter_by(id=_id).first()
 
   boms = material_record._bom
 
@@ -1466,6 +1546,124 @@ def close_process_begin():
 # ------------------------------------------------------------------
 
 
+
+@getTable.route("/getUsersDepsProcesses", methods=['POST'])
+def get_users_deps_processes():
+    print("getUsersDepsProcesses....")
+
+    _user_results = []
+    return_value = True
+    raw_select = 0
+    """
+    if request.method == 'GET':
+        # 從 query 取
+        raw_select = request.args.get('select', 0)
+    else:
+    """
+        # 從 JSON 取
+    #data = request.get_json(silent=True) or {}
+    data = request.get_json()
+
+    raw_select = data.get('select', 0)
+
+    try:
+        # 取得 select 參數（0, 1, 3, 7），預設 0
+        raw_select = request.args.get('select', '0')
+        try:
+            select_days = int(raw_select)
+        except ValueError:
+            select_days = 0
+
+        # 只允許 0,1,3,7，其它當 0
+        if select_days not in (0, 1, 3, 7):
+            select_days = 0
+
+        today = dt.now().date()
+
+        if select_days <= 0:
+            # select = 0 → 只算今天
+            start_day = today
+            end_day = today
+        else:
+            # select = 1/3/7 → 算「前 N 天」，不含今天
+            # 例如 select=3：今天 11/23，範圍是 11/20 ~ 11/22
+            start_day = today - timedelta(days=select_days)
+            end_day = today - timedelta(days=1)
+
+        start_str = f"{start_day.strftime('%Y-%m-%d')} 00:00:00"
+        end_str   = f"{end_day.strftime('%Y-%m-%d')} 23:59:59"
+        print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
+
+        s = Session()
+
+        _objects = s.query(User).all()
+        users = [u.__dict__ for u in _objects]
+        index=0
+        for user in users:
+            # 依你原本邏輯：只留下 isRemoved == True 的使用者
+            if user['isRemoved'] == False:
+                continue
+
+            emp_id = user['emp_id']
+
+            # 計算這段日期內的 elapsedActive_time 總和
+            total_elapsed = (
+                s.query(func.coalesce(func.sum(Process.elapsedActive_time), 0))
+                .filter(
+                    Process.user_id == emp_id,
+                    Process.begin_time != '',
+                    Process.end_time != '',
+                    Process.begin_time >= start_str,
+                    Process.begin_time <= end_str,
+                    Process.end_time >= start_str,
+                    Process.end_time <= end_str,
+                )
+                .scalar()
+            ) or 0
+
+            total_elapsed = int(total_elapsed)
+            #print("total_elapsed:", total_elapsed)
+            # 轉成 hh:mm:ss 文字
+            h = total_elapsed // 3600
+            m = (total_elapsed % 3600) // 60
+            sec = total_elapsed % 60
+            total_str = f"{h:02d}:{m:02d}:{sec:02d}"
+            index = index + 1
+            _user_object = {
+              'id': index,
+              'emp_id': emp_id,
+              'emp_name': user['emp_name'],
+              'dep_name': user['dep_name'].split('-', 1)[1],
+
+              #'elapsedActive_range_secs':  total_elapsed,
+              #'elapsedActive_range_str':  total_str,
+              #'elapsedActive_select':  select_days,
+              'workHours': total_str,
+              'online': random.randint(0, 2),
+            }
+
+            _user_results.append(_user_object)
+
+
+        temp_len = len(_user_results)
+        print("getUsersDepsProcesses, 總數: ", temp_len)
+
+        return jsonify({
+          'status': return_value,
+          'users_and_deps_and_process': _user_results,
+        })
+
+    except Exception as e:
+        s.rollback()
+        print("list_users_deps_processes error:", e)
+        return jsonify({
+            'status': False,
+            'error': str(e),
+        })
+    finally:
+        s.close()
+
+
 @getTable.route("/getProcessesByOrderNum", methods=['POST'])
 def get_processes_by_order_num():
     print("getProcessesByOrderNum....")
@@ -1510,10 +1708,23 @@ def get_processes_by_order_num():
               alarm_msg_string = (alarm_proc_record[0].alarm_message or '').strip()
             else:
               alarm_msg_string = ''
+
+            if record.process_type == 21:
+              alarm_msg_string = alarm_proc_record[0].Incoming1_Abnormal
         else:
             alarm_msg_enable = True
             alarm_msg_isAssembleFirstAlarm = True
             alarm_msg_string = ''
+
+            if (
+              material.Incoming0_Abnormal != '' and
+              record.end_time !='' and
+              record.begin_time !='' and
+              record.assemble_id==0 and
+              record.process_type in [1, 5]
+            ):
+              alarm_msg_string = material.Incoming0_Abnormal
+
 
         # 跳過 begin_time 為 None、空字串、只有空白、或無效預設值的紀錄
         bt = (record.begin_time or "").strip()
@@ -1665,48 +1876,68 @@ def get_Warehouse_For_assemble_by_history():
     s = Session()
     try:
         q = (
-            s.query(Material, Process)
-             .join(Process, Process.material_id == Material.id)
+            s.query(Material, Assemble, Process)
+             .join(Process, Process.material_id == Material.id)         # Material -> Process
+             .join(Assemble, Assemble.id == Process.assemble_id)        # Process -> Assemble
              .filter(Process.has_started.is_(True))
              .filter(Process.end_time.isnot(None))
              .filter(Process.end_time != '')
              .filter(Process.normal_work_time.in_([2, 3]))
         )
 
-        # 資料是 (Material, Process) JOIN 回來的 tuple
+        # 資料是 (Material, Assemble, Process) JOIN 回來的 tuple
         rows = q.all()
 
         def g(obj, name, default=None):
             return getattr(obj, name, default) if obj is not None else default
 
+        def safe_str(v, default=''):
+          try:
+            return '' if v is None else str(v)
+          except Exception:
+            return default
+
         results = []
         index=0
-        for m, p in rows:
+        for m, a, p in rows:
+            isWarehouseStationShow = bool(g(a, "isWarehouseStationShow", 0))
+            #print("isWarehouseStationShow:", isWarehouseStationShow)
+            if isWarehouseStationShow:
+               continue
 
             cleaned_comment = (g(m, "material_comment", "") or "").strip()
+            material_id=g(m, "id")
+            assemble_id=g(a, "id")
+            input_allOk_disable=g(a, "input_allOk_disable")
+            ok, process_total = need_more_process_qty(k1=material_id, a1=assemble_id, t1=31, must_qty=0, s=s)
+            print("process_total:", process_total)
             index=index+1
+
             results.append({
                 "index":  index,
-                "id":                 g(m, "id"),
-                "order_num":          g(m, "order_num", ""),
-                "material_num":       g(m, "material_num", ""),
-                "req_qty":            g(m, "material_qty", 0),
-                "date":               g(m, "material_delivery_date", ""),
-                "input_disable":      g(m, "input_disable", False),
-                "shortage_note":      g(m, "shortage_note", ""),
-                "comment":            cleaned_comment,
-                #"isLackMaterial":     g(m, "isLackMaterial", 0),
-                "Incoming2_Abnormal": (g(m, "Incoming2_Abnormal", "") == ""),
+                "id":                   material_id,
+                "order_num":            g(m, "order_num", ""),
+                "material_num":         g(m, "material_num", ""),
+                "req_qty":              g(m, "material_qty", 0),
+                "date":                 g(m, "material_delivery_date", ""),
+                "input_allOk_disable":  input_allOk_disable,
+                "allOk_disable":  g(a, "input_allOk_disable"),
 
-                "process_id":       g(p, "id"),
-                "assemble_id":       g(p, "assemble_id"),
-                "delivery_qty":       g(p, "process_work_time_qty"),    # 到庫數量
-                "must_allOk_qty":     g(p, "must_allOk_qty", 0),        # 應入庫數量
-                "allOk_qty":          g(p, "allOk_qty", 0),             # 入庫數量
-                "isAllOk":           g(p, "isAllOk", 0),
+                "shortage_note":        g(m, "shortage_note", ""),
+                "comment":              cleaned_comment,
+                "Incoming2_Abnormal":   (g(m, "Incoming2_Abnormal", "") == ""),
 
-                "normal_work_time": g(p, "normal_work_time", 0),
-                "tooltipVisible": False,
+                "process_id":           g(p, "id"),
+                "assemble_id":          assemble_id,
+                "delivery_qty":         g(p, "process_work_time_qty"),    # 到庫數量
+                "must_allOk_qty":       g(p, "must_allOk_qty", 0),        # 應入庫總數量
+                "total_allOk_qty":      process_total,                    # 已入庫登記總數量
+                #"allOk_qty":            g(p, "allOk_qty", 0),             # 入庫數量
+                "allOk_qty":            g(a, "allOk_qty", 0),             # 入庫數量
+                "isWarehouseStationShow": isWarehouseStationShow,
+
+                "normal_work_time":     g(p, "normal_work_time", 0),
+                "tooltipVisible":       False,
             })
 
         results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
@@ -2660,7 +2891,7 @@ def get_materials_and_assembles_by_user():
 
             matched_count = len(target_procs)
 
-        if matched_count == 0:
+        if matched_count == 0 and not assemble_record.isAssembleStationShow:
         #if (assemble_record.user_id != _user_id):   # 相同登入者
           continue
 
@@ -2708,11 +2939,12 @@ def get_materials_and_assembles_by_user():
         code = work_num[1:] if len(work_num) >= 2 else work_num
         name = code_to_name.get(code, '')
         pt =code_to_pt.get(code, 0)
-        print("pt:", pt)
-        print("must_qty:", assemble_record.id, assemble_record.must_receive_end_qty)
+        #print("pt:", pt)
+        #print("must_qty:", assemble_record.id, assemble_record.must_receive_end_qty)
         ok, process_total = need_more_process_qty(k1=assemble_record.material_id, a1=assemble_record.id, t1=pt, must_qty=assemble_record.must_receive_end_qty, s=s)
         # ok 為 True 代表 process_total < 50；False 代表已達標或超過
-        print("id, process_total:", assemble_record.id, process_total)
+        #assemble_abnormal_total=need_more_assemble_abnormal_qty(k1=assemble_record.material_id, s=s)
+        #print("id, process_total, assemble_abnormal_total:", assemble_record.id, process_total, assemble_abnormal_total)
 
         #print("user_proc_records:", user_proc_records)
         r = next(

@@ -42,7 +42,9 @@ class P_Material(BASE):
 
     material_date = Column(String(12), nullable=False)
     material_delivery_date = Column(String(12), nullable=False)
-    isBom = Column(Boolean, default=False)
+
+    isBom = Column(Boolean, default=False)              # True:在領料中, 不要顯示詳情(bom表), False:要顯示詳情
+
     isTakeOk = Column(Boolean, default=False)
     isShow = Column(Boolean, default=False)
     isAssembleAlarm = Column(Boolean, default=True)
@@ -233,6 +235,10 @@ class P_Assemble(BASE):
     isAssembleStationShow = Column(Boolean, default=False)
     isWarehouseStationShow = Column(Boolean, default=False)
 
+    isStockIn = Column(Boolean, default=False)          # 是否入庫, True: 必須入庫(作業短文以Z開頭)
+    isSimultaneously = Column(Boolean, default=False)   # True: 各個加工製程同步(平行製程), False: 各個加工製程是有順序性
+    isShowBomGif = Column(Boolean, default=False)       # True: 不顯示Bom動態gif圖示
+
     alarm_enable = Column(Boolean, default=True)
     alarm_message = Column(String(250), default='', nullable=False)
 
@@ -319,3 +325,25 @@ class P_Process(BASE):
 
     def get_dict(self):
       return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+
+
+class P_Part(BASE):
+    __tablename__ = 'p_part'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    process_step_code= Column(Integer)
+    part_code  = Column(String(10))   # 製程代號 (B100-01)
+    part_comment = Column(String(30)) # 製程說明(作業描述)
+    work_code  = Column(String(10))   # 工作中心
+    work_name  = Column(String(30))   # 工作中心名稱
+    cost_code  = Column(String(10))   # 成本中心
+    cost_name  = Column(String(30))   # 成本中心名稱
+    create_at = Column(DateTime, server_default=func.now())   #
+
+    def __repr__(self):
+      fields = ', '.join([f"{name}={getattr(self, name)}" for name in self.__mapper__.columns.keys()])
+      return f"<LargeTable({fields})>"
+
+    def get_dict(self):
+      return {name: getattr(self, name) for name in self.__mapper__.columns.keys()}
+

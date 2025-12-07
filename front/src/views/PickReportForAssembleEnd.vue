@@ -2401,7 +2401,8 @@ const checkReceiveQty = (item) => {
   const diff = Number(item.abnormal_qty)                  //異常數量
   //  ~ = 應完成總數量 - 已完成總數量 - 異常數量
   //const tmp = temp - completed - diff
-  const tmp = temp - completed
+  //const tmp = temp - completed
+  const tmp = temp
   if (total > tmp) {
     receive_qty_alarm.value = '完成數量錯誤!';
     item.tooltipVisible = true;     // 顯示 Tooltip
@@ -3967,7 +3968,6 @@ const checkTextEditField = (focused, item) => {
     }
   }
 };
-
 
 const checkAbnormalField = (focused, item) => {
   if (!focused) { // 當失去焦點時

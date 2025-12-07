@@ -18,7 +18,7 @@
           >
             <button class="dropbtnk" :disabled="localNavLinks[0].isEnabled">
               <div :class="{'button-content': localNavLinks[0].isSegment }">
-                <!--item1, menu 1-->
+                <!--item1, menu 1 在製品生產資訊-->
                 <span :class="{'button-title': localNavLinks[0].isSegment }">{{ localNavLinks[0].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[0].isSegment }]" />
@@ -75,7 +75,7 @@
           >
               <button class="dropbtnk" :disabled="localNavLinks[5].isEnabled">
                 <div :class="{'button-content': localNavLinks[5].isSegment }">
-                  <!--item2, menu 6-->
+                  <!--item2, menu 6 備料清單-->
                   <span :class="{'button-title': localNavLinks[5].isSegment }">{{ localNavLinks[5].text }}</span>
                   <span class="icon-container">
                     <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[5].isSegment }]" />
@@ -111,7 +111,7 @@
           >
               <button class="dropbtnk" :disabled="localNavLinks[8].isEnabled">
                 <div :class="{'button-content': localNavLinks[8].isSegment }">
-                  <!--item3, menu 9-->
+                  <!--item3, menu 9 組裝生產-->
                   <span :class="{'button-title': localNavLinks[8].isSegment }">{{ localNavLinks[8].text }}</span>
                   <span class="icon-container">
                     <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[8].isSegment}]" />
@@ -160,7 +160,7 @@
           >
             <button class="dropbtnk" :disabled="localNavLinks[12].isEnabled">
               <div :class="{'button-content': localNavLinks[12].isSegment }">
-                <!--item4, menu 13-->
+                <!--item4, menu 13 成品入庫-->
                 <span :class="{'button-title': localNavLinks[12].isSegment }">{{ localNavLinks[12].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[12].isSegment}]" />
@@ -200,11 +200,12 @@
             </div>
           </li>
           <!--item5-->
+          <!--style="display: none;"-->
           <li
             class="nav-item dropdown dropdownk"
             @mouseenter="onHover(4)"
             @mouseleave="onLeave(4)"
-            style="display: none;"
+
           >
             <button class="dropbtnk" :disabled="localNavLinks[16].isEnabled">
               <div :class="{'button-content': localNavLinks[16].isSegment }">
@@ -253,7 +254,7 @@
           >
             <button class="dropbtnk" :disabled="localNavLinks[20].isEnabled">
               <div :class="{'button-content': localNavLinks[20].isSegment }">
-                <!--item6, menu 21-->
+                <!--item6, menu 21 系統設定-->
                 <span :class="{'button-title': localNavLinks[20].isSegment }">{{ localNavLinks[20].text }}</span>
                 <span class="icon-container">
                   <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[20].isSegment}]" />

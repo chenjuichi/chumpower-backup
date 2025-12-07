@@ -25,7 +25,7 @@ export const warehouses = ref([]);
 // for getProcessesByOrderNum
 export const processes = ref([]);
 
-// for listMaterialsAndAssembles
+// for listMaterialsAndAssemblesP
 export const materials_and_assembles = ref([]);
 export const assembles_active_user_count = ref([]);
 
@@ -166,7 +166,7 @@ export const p_apiOperation = (operation, path, payload) => {
             warehouses.value = [...res.data.warehouse_for_assemble];
           }
 
-          if (path == '/listMaterialsAndAssembles') {
+          if (path == '/listMaterialsAndAssemblesP') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
           }

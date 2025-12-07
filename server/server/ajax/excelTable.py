@@ -19,7 +19,7 @@ import openpyxl
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from database.tables import User, Session, Material, Bom, Assemble, Product
-from database.p_tables import P_Material, P_Bom, P_Assemble, P_Product
+from database.p_tables import P_Material, P_Bom, P_Assemble, P_Product, P_Part
 
 from database.tables import ProcessedFile
 from flask import Blueprint, jsonify, request, current_app
@@ -67,8 +67,8 @@ def read_all_excel_process_code_p():
     target_sheet_name = "配件工作中心資料表-0922 (2)"
     # 可能的欄位名稱
     target_col_candidates = [
-        "製程代號 \n(標準內文碼)",
-        "製程代號 (標準內文碼)",
+      "製程代號 \n(標準內文碼)",
+      "製程代號 (標準內文碼)",
     ]
 
     # 只掃描 openpyxl 支援的格式
@@ -80,34 +80,34 @@ def read_all_excel_process_code_p():
 
             # 1) 先過濾掉非 Excel 檔案（不再去開 .bat / .py）
             if not lower.endswith(valid_exts) and not lower.endswith(".xls"):
-                continue
+              continue
 
             full_path = os.path.join(root, fname)
             #print(f"處理 Excel 檔案: {full_path}")
 
             # 2) .xls 直接提示：openpyxl 不支援，要你改成 .xlsx
             if lower.endswith(".xls"):
-                print(f"  檔案 {fname} 為舊版 .xls，openpyxl 不支援，請另存為 .xlsx 後再使用。")
-                continue
+              print(f"  檔案 {fname} 為舊版 .xls，openpyxl 不支援，請另存為 .xlsx 後再使用。")
+              continue
 
             # 3) 其他副檔名（.xlsx/.xlsm…）才用 openpyxl 讀
             try:
-                wb = load_workbook(full_path, data_only=True)
+              wb = load_workbook(full_path, data_only=True)
             except Exception as e:
-                print(f"  載入工作簿失敗: {e}")
-                continue
+              print(f"  載入工作簿失敗: {e}")
+              continue
 
             if target_sheet_name not in wb.sheetnames:
-                print(f"  檔案 {fname} 沒有工作表「{target_sheet_name}」，略過。")
-                continue
+              print(f"  檔案 {fname} 沒有工作表「{target_sheet_name}」，略過。")
+              continue
 
             ws = wb[target_sheet_name]
 
             # 讀第一列當表頭
             header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
             if not header_row:
-                print(f"  檔案 {fname} 的表頭是空的，略過。")
-                continue
+              print(f"  檔案 {fname} 的表頭是空的，略過。")
+              continue
 
             # 找目標欄位的 column index（1-based）
             target_col_idx = None
@@ -115,22 +115,22 @@ def read_all_excel_process_code_p():
             # 先直接比對候選名稱
             for idx, val in enumerate(header_row, start=1):
                 if val is None:
-                    continue
+                  continue
                 val_str = str(val).strip()
                 if val_str in target_col_candidates:
-                    target_col_idx = idx
-                    break
+                  target_col_idx = idx
+                  break
 
             # 找不到就模糊搜尋「製程代號」
             if target_col_idx is None:
                 for idx, val in enumerate(header_row, start=1):
-                    if val is None:
-                        continue
-                    val_str = str(val).strip()
-                    if "製程代號" in val_str:
-                        target_col_idx = idx
-                        print(f"  發現相似欄位名稱使用: {val_str} (col {idx})")
-                        break
+                  if val is None:
+                    continue
+                  val_str = str(val).strip()
+                  if "製程代號" in val_str:
+                    target_col_idx = idx
+                    print(f"  發現相似欄位名稱使用: {val_str} (col {idx})")
+                    break
 
             if target_col_idx is None:
                 print(f"  檔案 {fname} 找不到「製程代號」欄位，略過。表頭: {list(header_row)}")
@@ -140,33 +140,33 @@ def read_all_excel_process_code_p():
             codes = []
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if target_col_idx - 1 >= len(row):
-                    continue
+                  continue
                 cell_val = row[target_col_idx - 1]
                 if cell_val is None:
-                    continue
+                  continue
                 cell_str = str(cell_val).strip()
                 if cell_str == "":
-                    continue
+                  continue
 
-                # 🔴 重點：這裡統一把前面的 'B' 去掉，讓 key 變成 '100-01'
+                # 統一把前面的 'B' 去掉，讓 key 變成 '100-01'
                 # 這樣才能對上 read_all_excel_files_p 裡的 code = workNum[1:]
                 if cell_str.startswith("B"):
-                    cell_str = cell_str[1:]
+                  cell_str = cell_str[1:]
 
                 codes.append(cell_str)
 
             if not codes:
-                print(f"  檔案 {fname} 的目標欄位沒有有效資料，略過。")
-                continue
+              print(f"  檔案 {fname} 的目標欄位沒有有效資料，略過。")
+              continue
 
             m = len(codes)
             print(f"  檔案 {fname} 有 {m} 筆製程代號。")
 
             # 第1列 -> m, 第2列 -> m-1, ..., 第m列 -> 1
             for idx, code in enumerate(codes, start=1):
-                value = m - idx + 1
-                code_to_assembleStep[code] = value
-                # print(f"    {idx}-th row, code={code}, value={value}")
+              value = m - idx + 1
+              code_to_assembleStep[code] = value
+              # print(f"    {idx}-th row, code={code}, value={value}")
 
     print("read_all_excel_process_code_p(), 完成，總筆數:", len(code_to_assembleStep))
     return code_to_assembleStep
@@ -342,8 +342,8 @@ def read_all_excel_files_p():
   _base_dir = current_app.config['baseDir']
   _target_dir = _base_dir.replace("_in", "_out")
   _base_dir = _base_dir.replace("_in", "_in_p")
-  print("read excel files, 目錄: ", _base_dir)
-  print("move excel files to, 目錄: ", _target_dir)
+  #print("read excel files, 目錄: ", _base_dir)
+  #print("move excel files to, 目錄: ", _target_dir)
 
   # 讀取指定目錄下的所有指定檔案名稱
   files = [
@@ -353,7 +353,7 @@ def read_all_excel_files_p():
   ]
 
   if not files:
-    return jsonify({'status': False, 'message': return_message1})
+    return jsonify({'status': False, 'message': '錯誤, 沒有工單檔案!'})
 
   sheet_names_to_check = [
     current_app.config['excel_product_sheet'],
@@ -373,11 +373,10 @@ def read_all_excel_files_p():
     ).scalar()
 
     if already_processed:
-      temp_msg =f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
-      print(temp_msg)
+      return_message1 = f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
+      print(return_message1)
       _path = os.path.join(_base_dir, _file_name)
       file_count_total -=1
-      return_message1 = temp_msg
     else:
       _path = _base_dir + '\\' + _file_name
       global_var = _path + ' 檔案讀取中...'
@@ -401,15 +400,20 @@ def read_all_excel_files_p():
         material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
         bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
         assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
-        print("assemble_df columns:", list(assemble_df.columns))
+        print(
+          "columns: material_df, bom_df, assemble_df",
+          list(material_df.columns),
+          list(bom_df.columns),
+          list(assemble_df.columns)
+        )
 
         # 處理 BOM 和 Assemble 的 訂單欄位
         if '訂單' in bom_df.columns:
           bom_df.iloc[:, 0] = (
-              bom_df.iloc[:, 0]
-              .apply(normalize_order_number)
-              .replace('nan', '')
-              .astype(str)
+            bom_df.iloc[:, 0]
+            .apply(normalize_order_number)
+            .replace('nan', '')
+            .astype(str)
           )
           bom_df = bom_df.astype({bom_df.columns[0]: object})   # 把 dtype 設成 object
         else:
@@ -421,19 +425,22 @@ def read_all_excel_files_p():
         print("bom_df:", bom_df, len(bom_df) )
 
         if '訂單' in assemble_df.columns:
-            assemble_df['訂單'] = (
-                assemble_df['訂單']
-                .apply(normalize_order_number)
-                .replace('nan', '')
-                .astype(str)
-            )
-            assemble_df = assemble_df.astype({'訂單': object})
+          assemble_df['訂單'] = (
+            assemble_df['訂單']
+            .apply(normalize_order_number)
+            .replace('nan', '')
+            .astype(str)
+          )
+          assemble_df = assemble_df.astype({'訂單': object})
         else:
-            # 如果沒有訂單欄位，就印出警告，後面就一定抓不到資料
-            print("⚠️ assemble_df 缺少 '訂單' 欄位，無法依訂單過濾工序資料! columns =", list(assemble_df.columns))
+          # 如果沒有訂單欄位，就印出警告，後面就一定抓不到資料
+          print("⚠️ assemble_df 缺少 '訂單' 欄位，無法依訂單過濾工序資料! columns =", list(assemble_df.columns))
 
         # 先記錄整個 BOM sheet 是否完全沒資料
         bom_df_is_empty = bom_df.empty
+
+        # 記錄已處理過的單號，避免重複產生 P_Material / P_Product / P_Bom / P_Assemble
+        seen_order_nums = set()
 
         # 處理 Material
         for _, row in material_df.iterrows(): # for loop_material
@@ -441,6 +448,13 @@ def read_all_excel_files_p():
           if not order_num:
             print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
             continue
+
+          # 🔹若這個單號之前處理過，就略過
+          if order_num in seen_order_nums:
+            print(f"[略過] 單號 {order_num} 已在前面處理過，略過重複的 Material/BOM/Assemble")
+            continue
+
+          seen_order_nums.add(order_num)
 
           # 先檢查 BOM 是否有資料
           if bom_df_is_empty:
@@ -465,6 +479,7 @@ def read_all_excel_files_p():
 
           material_isBom = bom_df_is_empty
           material_isTakeOk = bom_df_is_empty
+          material_isShow = bom_df_is_empty
 
           material = P_Material(
             order_num=order_num,
@@ -483,6 +498,7 @@ def read_all_excel_files_p():
             move_by_process_type = 4,
             isBom = material_isBom,
             isTakeOk = material_isTakeOk,
+            isShow = material_isShow,
           )
           s.add(material)
           s.flush()  # 確保 material.id 可用
@@ -494,82 +510,165 @@ def read_all_excel_files_p():
 
           # BOM
           if not bom_df_is_empty: # bom_df_is_empty if block
-              # 一般情況：有 BOM 資料，就按原本邏輯依據訂單編號建立多筆 P_Bom
-              bom_entries = bom_df[bom_df['訂單'] == order_num]
-              print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
+            # 一般情況：有 BOM 資料，就按原本邏輯依據訂單編號建立多筆 P_Bom
+            bom_entries = bom_df[bom_df['訂單'] == order_num]
+            print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
 
-              for _, bom_row in bom_entries.iterrows():  # for loop_bom
-                  shortage = to_int0(bom_row.get('物料短缺'))
-                  bom = P_Bom(
-                      material_id=material.id,
-                      seq_num=clean_nan(bom_row.get('預留項目')),
-                      material_num=clean_nan(bom_row.get('物料')),
-                      material_comment=clean_nan(bom_row.get('物料說明')),
-                      req_qty=clean_nan(bom_row.get('需求數量')),
-                      start_date=convert_date(row.get('交期')),
-                      lack_bom_qty=shortage,
-                      receive=(shortage == 0),
-                  )
-                  s.add(bom)
-              # end for loop_bom
+            for _, bom_row in bom_entries.iterrows():  # for loop_bom
+                shortage = to_int0(bom_row.get('物料短缺'))
+                bom = P_Bom(
+                    material_id=material.id,
+                    seq_num=clean_nan(bom_row.get('預留項目')),
+                    material_num=clean_nan(bom_row.get('物料')),
+                    material_comment=clean_nan(bom_row.get('物料說明')),
+                    req_qty=clean_nan(bom_row.get('需求數量')),
+                    start_date=convert_date(row.get('交期')),
+                    lack_bom_qty=shortage,
+                    receive=(shortage == 0),
+                )
+                s.add(bom)
+            # end for loop_bom
           else:
-              # ⚠️ 特例：整個 BOM sheet 是空的 (bom_df: Empty DataFrame)
-              # 為每一個 Material 建立一筆「預設」的 P_Bom
-              print(f"[預設 BOM] 單號 {order_num} BOM 為空，建立 1 筆預設 P_Bom")
-              bom = P_Bom(
-                  material_id=material.id,
-                  seq_num='',
-                  material_num='',
-                  material_comment='預設BOM (原始Excel無BOM資料)',
-                  req_qty=0,   # 這裡如果你希望等於 tempQty 也可以改成 tempQty
-                  start_date=convert_date(row.get('交期')),
-                  lack_bom_qty=0,
-                  receive=True,
-              )
-              s.add(bom)
+            # ⚠️ 特例：整個 BOM sheet 是空的 (bom_df: Empty DataFrame)
+            # 為每一個 Material 建立一筆「預設」的 P_Bom
+            print(f"[預設 BOM] 單號 {order_num} BOM 為空，建立 1 筆預設 P_Bom")
+            bom = P_Bom(
+                material_id=material.id,
+                seq_num='',
+                material_num='',
+                material_comment='預設BOM (原始Excel無BOM資料)',
+                req_qty=0,   # 這裡如果你希望等於 tempQty 也可以改成 tempQty
+                start_date=convert_date(row.get('交期')),
+                lack_bom_qty=0,
+                receive=True,
+            )
+            s.add(bom)
           # end bom_df_is_empty if block
+
           s.commit()
 
           # Assemble
           if '訂單' not in assemble_df.columns:
-              print(f"⚠️ assemble_df 沒有 '訂單' 欄位，無法產生該工單的 P_Assemble，order_num={order_num}")
-              assemble_entries = assemble_df.iloc[0:0]  # 空的 DataFrame
+            print(f"⚠️ assemble_df 沒有 '訂單' 欄位，無法產生該工單的 P_Assemble，order_num={order_num}")
+            assemble_entries = assemble_df.iloc[0:0]  # 空的 DataFrame
           else:
-              assemble_entries = assemble_df[assemble_df['訂單'] == order_num]
+            assemble_entries = assemble_df[assemble_df['訂單'] == order_num]
+
+          print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
+
+          # 只拿「訂單 + 物料」都跟這個 material 相同的工序
+          material_num = material.material_num
+          group_df = assemble_entries[assemble_entries['物料'] == material_num].reset_index(drop=True)
+          n = len(group_df)
+
+          # 預設全部 isSimultaneously = False
+          simultaneously_flags = [False] * n
+
+          # 先掃一次：找出「作業有值但標準內文碼為空」的列，標記它的前一筆 / 下一筆
+          for i in range(n):
+            seq_val = clean_nan(group_df.loc[i, '作業'])
+            seq_str = str(seq_val).strip() if seq_val is not None else ''
+
+            code_val = clean_nan(group_df.loc[i, '標準內文碼'])
+            code_str = str(code_val).strip() if code_val is not None else ''
+
+            # 符合「有作業、沒標準內文碼」的條件
+            if seq_str and not code_str:
+              # 上一筆
+              if i - 1 >= 0:
+                # 同一個物料，才算同組（其實 group_df 已經是同物料了）
+                simultaneously_flags[i - 1] = True
+              # 下一筆
+              if i + 1 < n:
+                simultaneously_flags[i + 1] = True
+
+          processed_work_nums = set()
+
+          # 再掃一次：真正建立 P_Assemble
+          for i in range(n):
+            assemble_row = group_df.loc[i]
+
+            workNum = clean_nan(assemble_row.get('標準內文碼'))
+            # 空 workNum 的那筆（例如中間那筆沒有標準內文碼）本來就不建 P_Assemble
+            if not workNum:
+              print("    ⚠️ workNum 為空，略過這筆工序。")
+              continue
+
+            if workNum in processed_work_nums:
+              print(f"    ⚠️ workNum {workNum} 重複，已處理過，略過。")
+              continue
+            processed_work_nums.add(workNum)
+
+            seq_num = clean_nan(assemble_row.get('作業'))
+
+            # 取 code & step_code
+            if len(workNum) > 1:
+              code = workNum[1:]
+            else:
+              code = workNum  # 安全一點，避免 workNum 只有 1 個字的時候 [1:] 變成空字串
+
+            step_code = code_to_assembleStep.get(code, 0)
+            print(f"    ▶ code: {repr(code)}, step_code: {step_code}")
+
+            abnormal_field = False
+
+            # 讀取作業短文，判斷是否以 'Z' 開頭 → isStockIn
+            op_short = clean_nan(assemble_row.get('作業短文')) or ''
+            op_short_str = str(op_short).strip()
+            is_stock_in = op_short_str.startswith('Z')
+
+            # 這一列的 isSimultaneously
+            is_simultaneously = simultaneously_flags[i]
+
+            #if bom_df_is_empty:
+            #  must_receive_qty=clean_nan(row.get('數量')) or 0
+            #else:
+            #  must_receive_qty=0
+
+            assemble = P_Assemble(
+                material_id=material.id,
+                material_num=clean_nan(assemble_row.get('物料')),
+                material_comment=clean_nan(assemble_row.get('物料說明')),
+                seq_num=seq_num,
+                work_num=workNum,
+                process_step_code=step_code,
+                input_abnormal_disable=abnormal_field,
+                user_id='',
+                isStockIn=is_stock_in,
+                isSimultaneously=is_simultaneously,
+                #must_receive_qty=must_receive_qty,
+                must_receive_qty=clean_nan(assemble_row.get('作業數量 (MEINH)')),
+            )
+            s.add(assemble)
+
+          # end loop_assemble
+          s.commit()
+
+          # commit 後再查一次看這個 material_id 到底有幾筆
+          cnt = s.query(P_Assemble).filter_by(material_id=material.id).count()
+          print(f"  [Assemble] material_id={material.id} 在 P_Assemble 目前總共有 {cnt} 筆")
+
+
+          """
+          # Assemble
+          if '訂單' not in assemble_df.columns:
+            print(f"⚠️ assemble_df 沒有 '訂單' 欄位，無法產生該工單的 P_Assemble，order_num={order_num}")
+            assemble_entries = assemble_df.iloc[0:0]  # 空的 DataFrame
+          else:
+            assemble_entries = assemble_df[assemble_df['訂單'] == order_num]
 
           print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
           # 附帶印出前幾筆訂單欄位，幫助 debug
           # print('assemble_df 訂單欄位前幾筆:', assemble_df['訂單'].head().tolist())
 
           processed_work_nums = set()
-          """
-          for _, assemble_row in assemble_entries.iterrows(): # for loop_assemble
-            workNum = clean_nan(assemble_row.get('工作中心'))
-            if not workNum or workNum in processed_work_nums:
-              continue
-            processed_work_nums.add(workNum)
-
-            code = workNum[1:]
-            step_code = code_to_assembleStep.get(code, 0)
-            abnormal_field = False
-
-            assemble = P_Assemble(
-                material_id=material.id,
-                material_num=clean_nan(assemble_row.get('物料')),
-                material_comment=clean_nan(assemble_row.get('物料說明')),
-                seq_num=clean_nan(assemble_row.get('作業')),
-                work_num=workNum,
-                process_step_code=step_code,
-                input_abnormal_disable=abnormal_field,
-                user_id=''
-            )
-            s.add(assemble)
-          """
           for idx, (row_idx, assemble_row) in enumerate(assemble_entries.iterrows(), start=1):  # for loop_assemble
-            print(f"  [Assemble] 第 {idx} 筆 assemble_row 原始資料:", assemble_row.to_dict())
+            #print(f"  [Assemble] 第 {idx} 筆 assemble_row 原始資料:", assemble_row.to_dict())
 
             workNum = clean_nan(assemble_row.get('標準內文碼'))
-            print("    ▶ workNum(raw after clean_nan):", repr(workNum))
+            #print("    ▶ workNum(raw after clean_nan):", repr(workNum))
+
+            seq_num=clean_nan(assemble_row.get('作業'))
 
             # 先確認是不是因為 workNum 為空被跳過
             if not workNum:
@@ -592,17 +691,24 @@ def read_all_excel_files_p():
 
             abnormal_field = False
 
+            # 讀取作業短文，判斷是否以 'Z' 開頭
+            op_short = clean_nan(assemble_row.get('作業短文')) or ''
+            op_short_str = str(op_short).strip()
+            is_stock_in = op_short_str.startswith('Z')
+
             assemble = P_Assemble(
                 material_id=material.id,
                 material_num=clean_nan(assemble_row.get('物料')),
                 material_comment=clean_nan(assemble_row.get('物料說明')),
-                seq_num=clean_nan(assemble_row.get('作業')),
+                #seq_num=clean_nan(assemble_row.get('作業')),
+                seq_num=seq_num,
                 work_num=workNum,
                 process_step_code=step_code,
                 input_abnormal_disable=abnormal_field,
-                user_id=''
+                user_id='',
+                isStockIn=is_stock_in,
             )
-            print("    ✅ 準備新增 P_Assemble:", assemble)
+            #print("    ✅ 準備新增 P_Assemble:", assemble)
             s.add(assemble)
 
           # end loop_assemble
@@ -613,13 +719,14 @@ def read_all_excel_files_p():
           print(f"  [Assemble] material_id={material.id} 在 P_Assemble 目前總共有 {cnt} 筆")
           # end loop_assemble
           s.commit()
-        # end els loop
-      # end for loop_material
+        # end for loop_material
+      # end with loop_1_a
 
         # ✅ 資料處理完後，記錄檔案處理紀錄
         processed_file = ProcessedFile(file_name=file_name_base)
         s.add(processed_file)
         s.commit()
+        """
 
     # 移動處理完成的檔案
     try:
@@ -713,13 +820,10 @@ def read_all_excel_files():
     ).scalar()
 
     if already_processed:
-      temp_msg =f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
-      print(temp_msg)
+      return_message1 = f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
+      print(return_message1)
       _path = os.path.join(_base_dir, _file_name)
       file_count_total -=1
-      return_message1 = temp_msg
-
-    #  continue
     else:
       _path = _base_dir + '\\' + _file_name
       global_var = _path + ' 檔案讀取中...'

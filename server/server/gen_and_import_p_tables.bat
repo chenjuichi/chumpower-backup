@@ -20,7 +20,16 @@ REM mysql -uroot -p77974590 -e "SET FOREIGN_KEY_CHECKS = 1;" chumpower
 
 echo.
 echo 完成匯入 p_tables_ddl.sql
+rem pause
+
+rem echo 準備讀取exce檔案,並匯入p_part table
+rem pause
+rem
+rem python -m database.p_part_loader
+rem
+rem echo 匯入完成...
 
 :END
 pause
+
 @echo on

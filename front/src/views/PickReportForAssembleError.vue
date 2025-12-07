@@ -365,6 +365,13 @@
 
     <!-- 自訂 '異常原因填寫' 欄位 -->
     <template v-slot:item.cause_message="{ item }">
+      <div class="cause-cell">
+        {{ item.cause_message || ' ' }}
+      </div>
+    </template>
+
+    <!--
+    <template v-slot:item.cause_message="{ item }">
 
       <div class="d-flex align-center">
         <v-icon
@@ -383,6 +390,12 @@
           readonly
         />
       </div>
+    </template>
+    -->
+    <template v-slot:item.actions="{ item }">
+      <v-icon small class="mr-2" @click="editCauseMessage(item)" style="color: blue;">
+        mdi-pencil
+      </v-icon>
     </template>
 
     <template #no-data>
@@ -410,39 +423,56 @@
             style="position: relative; left: 10px;  width: 410px;"
           />
         </div>
+
         <div style="display: flex;">
-          <v-text-field
-            v-model.number="causeDlg.form.qty"
-            type="number"
-            min="0"
-            :max="causeDlg.form.max_qty"
-            label="數量"
+        <!--<div style="position: relative; display: inline-block;">-->
+          <div class="cause_dlg_wrapper">
+            <v-text-field
+              v-model="causeDlg.form.qty"
+              label="數量"
+              variant="outlined"
+              hide-details
 
-            variant="outlined"
-            hide-details
-            class="cause_dlg_text"
-            style="min-width:0;"
-          />
+              @keydown="handleKeyDown"
+              @update:modelValue="checkReceiveQty()"
+              @update:focused="(focused) => checkTextEditField(focused, item)"
+              @keyup.enter="updateItem2(item)"
 
+              class="cause_dlg_text"
+              style="min-width:0;"
+            />
+            <span
+              v-show="abnormal_tooltipVisible"
+              class="cause_dlg_tooltip"
+            >
+              {{ abnormal_alarm }}
+            </span>
+          </div>
           <v-combobox
             v-model="causeDlg.form.err_msg"
             :items="abnormal_causes_msg"
             hide-details
             class="cause_dlg_combo"
-            style="min-width:0;"
+            style="min-width:0; position: relative; left: 15px;"
           />
         </div>
 
-        <div class="mt-1">
+        <div>
           <span
             @click="appendPreviewToMsg"
             style="cursor:pointer; user-select:none; color:#1A237E"
             title="點一下把預覽內容加入訊息"
           >
-          <v-icon color="blue">
-            mdi-mouse-left-click-outline
-          </v-icon>
-          預覽選取：<strong>{{ composedMsg }}</strong>
+            預覽:
+            <span class="composed-preview-box">
+              <strong>{{ composedMsg || ' ' }}</strong>
+            </span>
+            <span style="position: relative; left: 35px;">
+              選取：
+              <v-icon color="blue" >
+                mdi-mouse-left-click-outline
+              </v-icon>
+            </span>
           </span>
         </div>
       </v-card-text>
@@ -508,6 +538,9 @@ let observer = null;
 
 const showBackWarning = ref(true);
 
+const abnormal_tooltipVisible = ref(false)
+const abnormal_alarm = ref('');
+
 const bar_code = ref('');
 const barcodeInput = ref(null);
 
@@ -538,8 +571,9 @@ const headers = [
   //{ title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:120 },
 
-  { title: '異常原因', sortable: false, key: 'cause_message', width:280 },
+  { title: '異常原因', sortable: false, key: 'cause_message', width:270 },
   //{ title: '異常原因填寫', sortable: false, key: 'cause_message' },
+  { title: '編輯', sortable: false, key: 'actions' },
 ];
 
 const causeMessageMap = ref([]); // 儲存用戶輸入的 cause_message，使用 order_num 作為鍵
@@ -658,6 +692,8 @@ watch(bar_code, (newVal) => {
 })
 
 //=== computed ===
+const userId = computed(() => currentUser.value.empID ?? '')
+
 /**
  * 組合規則：
  * - 若 qty > 0 且有 err_msg（可複選）：msg = `${qty}x${err_msg.join('、')}`
@@ -842,6 +878,15 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+const previewSelect = () => {
+  // 原本可能長得像
+  if (this.causeDlg.form.cause_message) {
+    this.causeDlg.form.cause_message += ' , ' + this.composedMsg
+  } else {
+    this.causeDlg.form.cause_message = this.composedMsg
+  }
+}
+
 function toStr(v) {
   // 先處理 null/undefined
   if (v == null) return ''
@@ -863,9 +908,17 @@ function appendPreviewToMsg () {
   // 清掉兩邊多餘的頓號
   const clean = s => s.replace(/^、+|、+$/g, '')
 
+  // 判斷「只有數量x」的情況，例如 1x、2x、  3 x
+  const isQtyOnly = s => /^\d+\s*x\s*$/i.test(s)
+
+  // 目前已經有的內容，如果不是純「1x」才保留
   const pieces = []
-  if (cur) pieces.push(clean(cur))
-  if (add) pieces.push(clean(add))
+  if (cur && !isQtyOnly(cur))
+    pieces.push(clean(cur))
+
+  // 新增的 composedMsg，如果不是純「1x」才加入
+  if (add && !isQtyOnly(add))
+    pieces.push(clean(add))
 
   causeDlg.form.msg = pieces.join('、')
 }
@@ -914,6 +967,74 @@ function confirmCauseMsg () {
 
   closeCauseDlg();
 }
+
+const handleKeyDown = (event) => {
+  const inputChar = event.key;
+
+  const caps = event.getModifierState && event.getModifierState('CapsLock');
+  console.log("CapsLock is: ", caps); // true when CapsLock is on
+
+  // 允許左右方向鍵、backspace 和 delete 鍵
+  if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+    return;
+  }
+
+  // 使用正規化運算式檢查是否為數字且長度不超過5
+  if (!/^\d$/.test(inputChar)) {
+    event.preventDefault();  // 阻止非數字輸入或超過長度的輸入
+  }
+
+  const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
+
+  // 檢查輸入的長度是否超過5，及輸入數字小於100000, 阻止多餘的輸入
+  if (inputValue.length > 5 && inputValue < 100000) {
+    event.preventDefault();
+    return;
+  }
+
+  // 偵測是否按下 Enter 鍵
+  if (event.key === 'Enter' || event.keyCode === 13) {
+    console.log('Return key pressed');
+    // 如果需要，這裡可以執行其他操作，或進行額外的驗證
+    //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
+  }
+};
+
+const checkReceiveQty = () => {
+  console.log("checkReceiveQty()...");
+
+  const total = Number(causeDlg.form.qty) || 0;
+  const temp = Number(causeDlg.form.max_qty) || 0;
+  console.log("total, temp:",total, temp)
+  if (total > temp) {
+    abnormal_alarm.value = '數量錯誤!';
+    abnormal_tooltipVisible.value = true;     // 顯示 Tooltip
+    setTimeout(() => {
+      abnormal_tooltipVisible.value = false;  // 2秒後隱藏 Tooltip
+      abnormal_alarm.value = '';              // 清空輸入欄位
+    }, 2000);
+    console.error('數量錯誤!');
+  } else {
+    abnormal_tooltipVisible.value = false;
+  }
+};
+
+const checkTextEditField = (focused, item) => {
+  if (!focused) { // 當失去焦點時
+    console.log("checkTextEditField()...");
+
+    console.log("離開 focus");
+    if (causeDlg.form.qty === '' || causeDlg.form.qty === null || causeDlg.form.qty === undefined) {
+      item.receive_qty = 0;
+    }
+
+  } else {
+    console.log("進入 focus");
+    if (causeDlg.form.qty === 0 || causeDlg.form.qty === '0') {
+      causeDlg.form.qty = '';
+    }
+  }
+};
 
 const initialize = async () => {
   console.log("PickReportForAssembleError, initialize()...");
@@ -1062,6 +1183,7 @@ const getInformationsForAssembleErrorByHistoryFun = async () => {
 
   let payload = {
     history_flag: history.value,
+    userId: userId.value
   };
   await getInformationsForAssembleErrorByHistory(payload);
 };
@@ -2012,6 +2134,20 @@ const showSnackbar = (message, color) => {
   transform: rotateX(90deg) translateZ(20px);
 }
 
+// 讓這個 dialog 裡的「數量」欄位，文字 & 游標垂直置中
+:deep(.cause_dlg_text .v-field) {
+  height: 32px;             // 高度可以為：32、36、40
+  min-height: 32px;
+}
+
+:deep(.cause_dlg_text .v-field__input) {
+  min-height: 32px;
+  height: 32px;
+  align-items: center;    // 垂直置中的關鍵
+  padding-top: 0;         // 把上下多餘 padding 拿掉
+  padding-bottom: 0;
+}
+
 :deep(.cause_dlg_text > .v-input__control) {
   position: relative;
   left: -10px;
@@ -2025,12 +2161,12 @@ const showSnackbar = (message, color) => {
   min-width: 300px;
   padding: 10px;
 }
-
+/*
 :deep(.cause_dlg_text input[type="number"] ) {
   position: relative;
   top: -10px;
 }
-
+*/
 .tight-field {
   flex: 1 1 auto;
   min-width: 0;
@@ -2137,4 +2273,69 @@ const showSnackbar = (message, color) => {
   left: 30px;
 }
 
+.cause-cell {
+  background-color: #f0f0f0;   // 灰底
+  width: 270px;
+  min-width: 270px;
+  max-width: 270px;
+
+  height: 21px;               // 固定高度
+  display: flex;
+  align-items: center;        // 垂直置中
+  justify-content: flex-start;
+
+  padding: 0 6px;
+  box-sizing: border-box;
+
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  font-weight: 600;            // 粗黑字
+  color: #000;                 // 字體顏色設定為黑色（可無則預設黑）
+}
+
+.cause_dlg_wrapper {
+  position: relative;
+  display: inline-block;  // 或 block, 看你排版
+}
+
+// 讓 tooltip 貼在 text-field 上方
+.cause_dlg_tooltip {
+  position: absolute;
+  left: 100px;
+  bottom: 100%;                   // 貼住輸入框上緣
+  //transform: translateY(-4px);  // 往上浮一點（想貼緊就改成 0）
+  transform: translateY(8px);    // 往上浮一點（想貼緊就改成 0）
+
+  z-index: 2;
+  background-color: white;
+  padding: 0 4px;
+  min-width: 120px;
+  white-space: nowrap;
+  color: red;
+  text-align: left;
+  font-weight: 700;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.composed-preview-box {
+  display: inline-flex;           /* ⭐ 使用 Flex 才能真正垂直置中 */
+  align-items: center;            /* ⭐ 垂直置中 */
+  height: 21px;                   /* ⭐ 固定高度 */
+  line-height: 21px;              /* （可選）讓字更置中 */
+
+  background-color: #f0f0f0;      /* 灰底 */
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+
+  padding: 0 6px;
+  box-sizing: border-box;
+
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;        /* 超長顯示 ... */
+}
 </style>

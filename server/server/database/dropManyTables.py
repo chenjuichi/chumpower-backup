@@ -41,6 +41,8 @@ drop_table('p_association_material_abnormal')
 drop_table('p_material')
 drop_table('p_abnormal_cause')
 
+drop_table('p_part')
+
 drop_table('agv')
 drop_table('user_delegate')  #代理人table
 drop_table('user')        # 員工table

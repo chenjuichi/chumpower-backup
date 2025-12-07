@@ -394,10 +394,10 @@ const history = ref(false);
 
 const selectedItems = ref([]); // 儲存選擇的項目 (基於 id)
 
-const userId = 'user_chumpower';
+const app_user = 'user_chumpower';
 const clientAppName = 'WarehouseForAssemble';
 
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, app_user, clientAppName);
 
 const over_qty_alarm = ref('');
 

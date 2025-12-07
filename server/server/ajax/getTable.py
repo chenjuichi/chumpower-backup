@@ -1543,8 +1543,410 @@ def close_process_begin():
     )
 
 
-# ------------------------------------------------------------------
+# -----dialog2~Process for PickReportForProcessBegin.vue 及 PickReportForProcessEnd.vue -------------------------------------------------------------
 
+
+@getTable.route("/dialog2StartProcessProcess", methods=['POST'])
+def start_process_process():
+    print("dialog2StartProcessProcess API....")
+
+    data = request.json
+    material_id = data["material_id"]
+    user_id = data["user_id"]
+    process_type = data.get("process_type", 1)
+    assemble_id = data.get("assemble_id")
+
+    s = Session()
+
+    material_record = s.query(P_Material).filter_by(id=material_id).first()
+
+    # 1) 先找「同工單(同製程)、尚未結束」的最後一筆（不帶 user 條件）
+    log = (
+        s.query(P_Process)
+        .filter_by(material_id=material_id, assemble_id=assemble_id, process_type=process_type, user_id=user_id)
+        .filter(Process.end_time.is_(None))
+        .order_by(Process.id.desc())
+        .first()
+    )
+
+    if log:
+      # 回傳動態 live elapsed，和你現行邏輯一致
+      live = _live_elapsed_seconds(log)
+      return jsonify(
+        success=True,
+        process_id=log.id,
+        begin_time=log.begin_time,
+        elapsed_time=int(live),
+        is_paused=bool(log.is_pause),
+        pause_time=int(log.pause_time or 0),
+        has_started=bool(getattr(log, "has_started", True)),
+
+        isOpen=getattr(material_record, "isOpen", None) if material_record else None,
+        hasStarted=getattr(material_record, "hasStarted", None) if material_record else None,
+        startStatus=getattr(material_record, "startStatus", None) if material_record else None,
+        isOpenEmpId=getattr(material_record, "isOpenEmpId", None) if material_record else None,
+      )
+
+    # 2) 沒有未結束流程 → 幫當前 user 新建
+    new_log = P_Process(
+        material_id=material_id,
+        assemble_id=assemble_id,
+        user_id=user_id,
+        process_type=process_type,
+        begin_time=None,               # 由「開始」時再補
+        end_time=None,
+        elapsedActive_time=0,
+        is_pause=True,                 # 進入即顯示「開始」
+        has_started=False,
+        pause_time=0,
+        pause_started_at=None,
+    )
+    s.add(new_log)
+
+    # 同步 Material（若前端有用到這些欄位）
+    if material_record:
+        material_record.isOpen = True
+        material_record.isOpenEmpId = user_id
+
+    s.commit()
+
+    return jsonify(
+      success=True,
+      process_id=new_log.id,
+      begin_time=new_log.begin_time,
+      elapsed_time=0,                     # 新建當然是 0
+      is_paused=True,
+      pause_time=0,
+      has_started=False,
+
+      isOpen=getattr(material_record, "isOpen", None) if material_record else None,
+      hasStarted=getattr(material_record, "hasStarted", None) if material_record else None,
+      startStatus=getattr(material_record, "startStatus", None) if material_record else None,
+      isOpenEmpId=getattr(material_record, "isOpenEmpId", None) if material_record else None,
+    )
+
+
+@getTable.route("/dialog2UpdateProcessProcess", methods=['POST'])
+def update_process_process():
+    print("dialog2UpdateProcessProcess API....")
+
+    data = request.json
+    process_id = data["process_id"]
+    new_secs   = int(data.get("elapsed_time", 0) or 0)
+
+    s = Session()
+
+    # 確保結果「最多只會有一筆」,
+    # 回傳值:
+    # 有一筆資料 → 回傳那筆物件
+    # 沒有資料 → 回傳 None
+    # 異常:
+    # 超過一筆 → 丟 MultipleResultsFound 例外
+    log = s.query(P_Process).filter_by(id=process_id).with_for_update().one_or_none()   # 鎖定該行後再更新, 避免 pause_started_at/pause_time 在同一瞬間被兩支 API 互相覆寫
+
+    if not log:
+        print("error, process not found!")
+        return jsonify(success=False, message="process not found"), 404
+
+    if log.end_time is not None:
+        print("error, process already closed!")
+
+        return jsonify(
+                success=True,
+                message="process already closed",
+                is_paused=bool(log.is_pause),
+                elapsed_time=int(log.elapsedActive_time or 0),
+                pause_time=int(log.pause_time or 0)
+            ), 200
+
+    cur = int(log.elapsedActive_time or 0)
+
+    # 取「想要的暫停狀態」：若前端沒傳，就用目前 DB 狀態
+    want_pause = data.get("is_paused")
+    #if want_pause is None:
+    #    want_pause = bool(log.is_pause)
+    #else:
+    #    want_pause = bool(want_pause)
+    want_pause = bool(log.is_pause) if want_pause is None else bool(want_pause)
+
+    # 🚧 夾擋：暫停中不得把有效秒數加大
+    if want_pause and new_secs > cur:
+      new_secs = cur
+
+    # 仍保留「不回退」
+    if new_secs < cur:
+      new_secs = cur
+
+    log.elapsedActive_time = new_secs
+
+    # 正確維護 pause 欄位
+    now = datetime.now(timezone.utc)
+
+    print(f"[upd] cur={cur}, new={int(data.get('elapsed_time',0) or 0)}, want_pause={want_pause}, saved={log.elapsedActive_time}")
+
+    if want_pause:
+        # 進入/維持暫停：確保有起點
+        if not log.is_pause:
+          log.is_pause = True
+          log.pause_started_at = now
+        elif not getattr(log, "pause_started_at", None):
+          log.pause_started_at = now
+    else:
+        # 從暫停→恢復：補上這段暫停的秒數
+        if log.is_pause:
+            ps = getattr(log, "pause_started_at", None)
+            if ps:
+                if ps.tzinfo is None:
+                    ps = ps.replace(tzinfo=timezone.utc)
+                delta = max(0, int((now - ps).total_seconds()))
+                log.pause_time = int(log.pause_time or 0) + delta
+            log.pause_started_at = None
+            log.is_pause = False
+
+    s.commit()
+
+    return jsonify(
+      success=True,
+      is_paused=bool(log.is_pause),
+      elapsed_time=int(log.elapsedActive_time or 0),
+      pause_time=int(log.pause_time or 0),
+      pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
+    )
+
+
+@getTable.route("/dialog2ToggleProcessProcess", methods=['POST'])
+def toggle_process_process():
+    print("dialog2ToggleProcessProcess API....")
+
+    #
+    #切換暫停/恢復：
+    #  - is_paused=True  → 進入暫停狀態：只記下 pause_started_at（若當前不是暫停）
+    #  - is_paused=False → 恢復：把 (now - pause_started_at) 累加到 pause_time，並清空 pause_started_at
+    #
+    data = request.json
+    process_id = data["process_id"]
+    want_pause = bool(data["is_paused"])
+
+    s = Session()
+
+    log = s.query(P_Process).get(process_id)
+    q = s.query(P_Process).filter_by(id=process_id).with_for_update()   # 鎖定該行後再更新, 避免 pause_started_at/pause_time 在同一瞬間被兩支 API 互相覆寫
+    log = q.one_or_none()
+
+    if not log:
+        return jsonify(success=False, message="process not found"), 404
+    if log.end_time is not None:
+        return jsonify(success=False, message="process already closed"), 400
+
+    # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
+    now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
+    now_tpe_str = now_tpe_aw.strftime(FMT)
+
+    if want_pause:
+        # → 要暫停
+        if not log.is_pause:
+          # 只有從「非暫停」→「暫停」時，才記錄起點
+          log.is_pause = True
+
+          log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
+        else:
+          if not log.pause_started_at:
+            log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
+    else:
+        # → 要恢復
+        if log.is_pause:
+          # 從「暫停」→「恢復」時，把這段暫停秒數累加到 pause_time
+          if log.pause_started_at:
+            ps = log.pause_started_at
+            ps_aw = ps if ps.tzinfo else ps.replace(tzinfo=TPE)
+            delta = int((now_tpe_aw - ps_aw).total_seconds())
+            log.pause_time = (log.pause_time or 0) + max(0, delta)
+          log.pause_started_at = None
+          log.is_pause = False
+
+        # 第一次開始時，標記 has_started=True，並補 begin_time
+        if not getattr(log, "has_started", False):
+          # 若你的模型已有 has_started 欄位，這裡會生效
+          try:
+            log.has_started = True
+          except AttributeError:
+            # 若模型尚未加欄位，就忽略，不影響既有邏輯
+            pass
+
+          if not log.begin_time:
+            log.begin_time = now_tpe_str
+
+    s.commit()
+
+    return jsonify(
+      success=True,
+      is_paused=log.is_pause,
+      elapsed_time=int(log.elapsedActive_time or 0),
+      pause_time=log.pause_time or 0,
+      pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
+      # 回傳 has_started 讓前端可用（即使沒有欄位也安全處理）
+      #has_started=getattr(log, "has_started", None),
+      has_started=bool(log.has_started),
+    )
+
+
+@getTable.route("/dialog2CloseProcessProcess", methods=['POST'])
+def close_process_process():
+    print("dialog2CloseProcessProcess API....")
+
+    data = request.json
+    process_id   = data["process_id"]
+    elapsed_time = data.get("elapsed_time")
+    receive_qty  = data.get("receive_qty", 0)
+    alarm_enable = data.get("alarm_enable")
+    alarm_message = data.get("alarm_message")
+    isAssembleFirstAlarm = data.get("isAssembleFirstAlarm")
+    #assemble_id  = data.get("assemble_id", None)
+    assemble_id  = data.get("assemble_id")
+
+    print("process_id:", process_id, "receive_qty:", receive_qty, "alarm_enable:", alarm_enable, "assemble_id:", assemble_id)
+    print("alarm_enable data type:",alarm_enable, type(alarm_enable))
+    print("isAssembleFirstAlarm data type:",isAssembleFirstAlarm, type(isAssembleFirstAlarm))
+
+    myTest  = data.get("test")
+    print("test, qty:", myTest, receive_qty)
+
+    s = Session()
+
+    log = s.query(P_Process).filter_by(id=process_id).first()
+
+    if not log:
+      return jsonify(success=False, message="process not found"), 404
+
+    if (log.end_time is not None) and (log.process_work_time_qty !=0):
+      print("$$close_process_begin step1..")
+      return jsonify(
+        success=True,
+        message="already closed",
+        elapsed_time=int(log.elapsedActive_time or 0),
+        pause_time=int(log.pause_time or 0),
+        end_time=log.end_time,
+      ), 200
+
+    TPE = ZoneInfo("Asia/Taipei")
+    now_aw = datetime.now(TPE).replace(microsecond=0)
+
+    # 1) 若暫停中，先把最後一段暫停秒數補進 pause_time
+    if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
+      print("$$close_process_begin step2..")
+
+      try:
+        ps = log.pause_started_at
+        if isinstance(ps, str):
+          # 依你的實際格式調整；若你存 "%Y-%m-%d %H:%M:%S"，改用 datetime.strptime
+          ps = datetime.fromisoformat(ps)
+        if ps.tzinfo is None:
+          ps = ps.replace(tzinfo=TPE)
+
+        delta = int((now_aw - ps).total_seconds())
+        log.pause_time = (log.pause_time or 0) + max(delta, 0)
+      except Exception as e:
+        print("close_process: pause_time accumulate failed:", e)
+      finally:
+        log.pause_started_at = None
+
+    # 2) 校正『有效計時秒數』：採單向遞增（避免寫回比現值還小）
+    if elapsed_time is not None:
+      print("$$close_process_begin step3..")
+
+      try:
+        last_secs = int(elapsed_time)
+      except Exception:
+        last_secs = int(log.elapsedActive_time or 0)
+      cur_secs = int(log.elapsedActive_time or 0)
+
+      log.elapsedActive_time = max(cur_secs, last_secs)
+
+    # 3) 可選：更新 HH:MM:SS 文字欄（若模型有此欄位）
+    try:
+      print("$$close_process_begin step4..")
+
+      log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
+    except Exception:
+      pass
+
+    # 4) 關閉狀態
+    print("$$close_process_begin step5..")
+
+    log.is_pause = True
+    log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
+    print("log.process_work_time_qty:", receive_qty)
+    log.process_work_time_qty = receive_qty
+
+    if alarm_enable:
+      print("$$close_process_begin step5a..")
+      log.normal_work_time = 1
+      log.abnormal_cause_message=''
+    if not alarm_enable and isAssembleFirstAlarm:
+      print("$$close_process_begin step5b..")
+      log.normal_work_time = 1
+      log.abnormal_cause_message=''
+    if not alarm_enable and not isAssembleFirstAlarm:
+      print("@@close_process_begin step5c..")
+      log.normal_work_time = 0
+      log.abnormal_cause_message=alarm_message
+
+    log.must_allOk_qty = receive_qty
+
+    # 5)（重點）若有傳 assemble_id + receive_qty，更新該站完成數
+    # 也就是說, 處理 receive_qty / assemble_id 之類的寫回，都在此處補充
+    is_completed   = False
+    total_completed = None
+    must_qty       = None
+
+    try:
+      print("$$close_process_begin step6..")
+      rq = int(receive_qty or 0)
+    except Exception:
+      rq = 0
+
+    print("$$close_process_begin step7..")
+    if assemble_id is not None and rq > 0:
+      try:
+        asm = s.query(P_Assemble).get(int(assemble_id))
+        print("$$close_process_begin step8..")
+      except Exception:
+        asm = None
+
+      print("$$close_process_begin step9..")
+      if asm:
+        print("$$close_process_begin step10..")
+        # 依你的實際欄位名調整：
+        # 假設：must_receive_end_qty = 應完成數量、total_ask_qty_end = 已完成總數
+        must_qty = int(asm.must_receive_end_qty or 0)
+        cur_total = int(asm.total_ask_qty_end or 0)
+        new_total = cur_total + rq
+
+        asm.total_ask_qty_end = new_total
+        total_completed = new_total
+        is_completed = (must_qty > 0 and new_total >= must_qty)
+
+        s.add(asm)
+
+    print("$$close_process_begin step11..")
+    s.add(log)
+
+    s.commit()
+
+    return jsonify(
+      success=True,
+      end_time=log.end_time,
+      elapsed_time=int(log.elapsedActive_time or 0),
+      pause_time=int(log.pause_time or 0),
+      # 待確定
+      # ✅ 前端可用來鎖定 Begin/End 的開始/結束鍵
+      is_completed=is_completed,
+      total_completed=total_completed,
+      must_qty=must_qty
+    )
+
+
+# ------------------------------------------------------------------
 
 
 @getTable.route("/getUsersDepsProcesses", methods=['POST'])
@@ -1957,6 +2359,7 @@ def get_informations_for_assemble_error_by_history():
 
     data = request.json
     _history_flag = data.get('history_flag', False)   # 是否包含歷史資料
+    _userId = data.get('userId')
     print("history_flag:", _history_flag)
 
     s = Session()
@@ -2014,6 +2417,9 @@ def get_informations_for_assemble_error_by_history():
       for assemble_record in material_record._assemble:   # for loop b
         if assemble_record.abnormal_qty == 0:
            continue
+
+        if assemble_record.writer_id != _userId:
+          continue
 
         #if assemble_record.alarm_enable:   #False:異常
         if assemble_record.alarm_enable and assemble_record.isAssembleFirstAlarm:   #False:異常

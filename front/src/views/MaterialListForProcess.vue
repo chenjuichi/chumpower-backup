@@ -51,7 +51,7 @@
           class="d-flex align-center pe-2"
           style="font-weight:700; position: relative; right: 10px;"
         >
-          加工區備料清單
+          加工區領料清單
           <v-spacer />
 
           <!--客製化 匯入清單按鍵-->

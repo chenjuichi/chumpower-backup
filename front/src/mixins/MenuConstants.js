@@ -49,8 +49,8 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 10, text: "1.領料生產報工", to: '/g01', isEnabled: false, isSegment: false },
-      { id: 11, text: "2.完成生產報工", to: '/g01c', isEnabled: false, isSegment: false },
+      { id: 10, text: "1.組裝生產報工", to: '/g01', isEnabled: false, isSegment: false },
+      { id: 11, text: "2.完成組裝生產報工", to: '/g01c', isEnabled: false, isSegment: false },
       { id: 12, text: "3.異常填報", to: '/g01d', isEnabled: false, isSegment: false },
     ]
   },
@@ -74,8 +74,8 @@ export const menuData = [
     isEnabled: false,
     isSegment: false,
     children: [
-      { id: 18, text: "1.領料生產報工", to: '/h1', isEnabled: false, isSegment: false },
-      { id: 19, text: "2.完成生產報工", to: '/h2', isEnabled: false, isSegment: false },
+      { id: 18, text: "1.加工生產報工", to: '/h1', isEnabled: false, isSegment: false },
+      { id: 19, text: "2.完成加工生產報工", to: '/h2', isEnabled: false, isSegment: false },
       { id: 20, text: "3.異常填報", to: '/h3', isEnabled: false, isSegment: false },
     ]
   },

@@ -533,6 +533,7 @@ class Process(BASE):
     must_allOk_qty = Column(Integer, default=0)                   # 成品, 應入庫數量
     allOk_qty = Column(Integer, default=0)                        # 成品, 入庫數量
     isAllOk = Column(Boolean, default=False)                      # true: 已入庫
+
     normal_work_time = Column(Integer, default=1)                 # 最後1筆工序(1:yes, 0:no), 正常工序(1:正常工時, 0:異常整修工時)
                                                                   #bit0: 正常工序(1:正常工時, 0:異常整修工時)
                                                                   #bit1: 最後1筆工序(1:yes, 0:no)

@@ -58,7 +58,54 @@
           class="d-flex align-center pe-2"
           style="font-weight:700; position: relative; right: 10px;"
         >
-          組裝區備料清單
+          <v-menu
+            v-model="show_dropdown"
+            location="bottom start"
+            :close-on-content-click="false"
+            content-class="help-menu"
+          >
+            <template #activator="{ props }">
+              <strong class="dropdown-label" v-bind="props">
+                組裝區備料清單
+              </strong>
+            </template>
+            <v-card
+              class="text-caption help-card"
+              color="black"
+              variant='tonal'
+            >
+              <div style="font-weight:700; margin-bottom:6px;">
+                操作說明（第 {{ page + 1 }} / {{ pages.length }} 頁）
+              </div>
+
+              <div class="help-body">
+                <Transition :name="transitionName" mode="out-in">
+                  <div :key="page" class="content-area">
+                    <div v-for="(line, idx) in pages[page]" :key="idx">
+                      <span v-html="line"></span>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+
+              <!-- 底部換頁 -->
+              <div class="help-footer d-flex align-center justify-space-evenly">
+                <v-btn class="help-btn" size="small" variant="outlined" :disabled="page === 0" @click="goPrev">
+                  上一頁
+                </v-btn>
+
+                <div class="help-page-indicator">
+                  {{ page + 1 }} / {{ pages.length }}
+                </div>
+
+                <v-btn class="help-btn" size="small" variant="outlined" :disabled="page === pages.length - 1" @click="goNext">
+                  下一頁
+                </v-btn>
+              </div>
+            </v-card>
+          </v-menu>
+
+          <!--組裝區備料清單-->
           <v-spacer />
 
           <!--客製化 匯入清單按鍵-->
@@ -397,7 +444,6 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-          <!--<div v-for="dlg in dialogs" :key="dlg.user_id + '-' + dlg.material_id">-->
           <v-dialog
             v-for="dlg in dialogs"
             :key="dlg.material_id"
@@ -408,22 +454,30 @@
             :eager="true"
             >
 
-            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+            <v-card
+              :style="{
+              maxHeight: boms.length > 5 ? '500px' : 'unset',
+              overflowY: boms.length > 5 ? 'auto' : 'unset'}">
+              <v-card-title
+                class="text-h5 sticky-title"
+                style="background-color: #1b4965; color: white;">
                 備料資訊
-                <span style="font-size:16px;">訂單{{ dlg.order_num }}</span>&nbsp;&nbsp;
+                <span style="font-size:16px;">
+                  訂單{{ dlg.order_num }}
+                </span>
+                &nbsp;&nbsp;
                 <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
                 <TimerDisplay
                   :key="dlg.material_id"
                   :ref="setTimerRef(dlg)"
                   v-model:isPaused="dlg.proc.isPaused"
-                  :show="true"
+                  :show="!shouldBlockTimer"
                   :autoStart="false"
                   @update:time="dlg.proc.onTick"
                 />
                 <v-btn
                   @click="dlg.proc.toggleTimer()"
-                  :disabled="isAllReceiveIsFalse"
+                  :disabled="shouldBlockTimer"
                   :prepend-icon = "getIcon(dlg.proc.isPaused)"
                   :style="{ background: dlg.proc.isPaused ? '#4CAF50' : '#FFEB3B', color: dlg.proc.isPaused ? '#fff' : '#000' }"
                 >
@@ -441,9 +495,7 @@
 
                     text="確定"
                     class="text-none"
-
                     @click="onConfirm(dlg)"
-
                     variant="flat"
                     flat
                   />
@@ -630,9 +682,10 @@
     </template>
 
     <!-- 自訂 '詳情' 按鍵 -->
+    <!--v-if="!item.finished && item.hasStarted"-->
     <template v-slot:item.action="{ item }">
       <v-badge
-        v-if="!item.finished && item.hasStarted"
+        v-if="item.hasStarted"
         dot
         :color="item.startStatus ? 'green' : 'red'"
         location="top end"
@@ -663,18 +716,10 @@
         <v-icon color='green-darken-3' end>
           {{ 'mdi-note-search-outline' }}
         </v-icon>
-        <!--
-        <v-icon
-          :color="item.hasStarted ? 'orange-darken-4' : 'green-darken-3'"
-          end
-        >
-          {{ item.hasStarted ? 'mdi-note-remove-outline' : 'mdi-note-search-outline' }}
-        </v-icon>
-        -->
       </v-btn>
     </template>
 
-    <!-- 自訂 '應備數量'欄位的資料藍位 -->
+    <!-- 自訂 '應備數量'欄位的資料欄位 -->
     <template v-slot:item.total_delivery_qty="{ item }">
       <div style="display:flex; align-items:center;">
         <v-icon
@@ -730,8 +775,12 @@
 <script setup>
 import { ref, reactive, shallowRef, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, nextTick } from 'vue';
 
+// AutoAnimate, Vue.js的動畫
+//import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
+
 import TimerDisplay from "./TimerDisplay.vue";
 import { useProcessTimer } from "../mixins/useProcessTimer.js";
+
 import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
@@ -792,6 +841,52 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+const show_dropdown = ref(false);
+const page = ref(0);
+
+// 方向：next / prev
+const transitionName = ref('slide-next')
+
+// ✅ 每一頁是一個陣列（每一行可用 <br> 或直接一行一個）
+const pages = [
+  [
+    '<span class="title-style">備料</span>',
+    //'1) 點擊備料工單的「詳情」按鍵',
+    '1) 點擊備料工單的 ' +
+    '<span class="fake-vbtn fake-vbtn--tonal">' +
+    '詳 情 ' +
+    '<span class="fake-vicon mdi mdi-note-search-outline"></span>' +
+    '</span> 按鍵',
+
+
+    '2) 點擊「開始」按鍵以開始備料及報工計時<br />&nbsp; &nbsp; 點擊「暫停」按鍵以暫停報工計時',
+    '3) 點擊「確定」按鍵以完成該筆工單的備料',
+    '4) 就已完成備料的 <span class="order-no">訂單編號</span> 輸入備料數量並按「enter」鍵或',
+        '直接按「enter」鍵',
+    '5) 就已完成備料的 <span class="order-no">訂單編號</span> 勾選「送料」',
+    '6) 點擊「備料完成自動送出」按鍵'
+  ],
+  [
+    //'工單維護',
+    '<span class="title-style">工單維護</span>',
+    '1) 工單刪除',
+    '2) 匯入工單以更新工單內容',
+    '3) 修改訂單日期或訂單數量',
+  ],
+    [
+    '<span class="title-style">異常備註</span>',
+    //'1) 工單刪除',
+    '1) 點擊備料工單的' +
+       '<span class="fake-vicon-bell mdi mdi-bell-plus"></span>',
+    '2) 點選&nbsp;' +
+        '<span class="fake-vauto">' +
+        '<span class="fake-vauto__icon">▾</span>' +
+        '</span>' +
+        '&nbsp;並選擇異常備註項目',
+    '3) 點擊「確定」按鍵以完成異常備註',
+  ],
+]
+
 // 刪除對話框相關
 const deleteTitle = ref('刪除工單');
 const deleteMessage = ref('此操作將刪除相關資料(BOM/Assemble/Process)，確定？');
@@ -868,15 +963,15 @@ const headers = [
   { title: '  ', sortable: false, key: 'id', width: '2px' },
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '物料編號', sortable: false, key: 'material_num'},
-  { title: '需求數量', sortable: false, key: 'req_qty' },
+  { title: '需求數量', sortable: false, key: 'req_qty', width:110 },
   //{ title: '場域位置', sortable: false, key: 'location' },
   //{ title: '缺料註記', sortable: false, key: 'shortage_note' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '備料內容', sortable: false, key: 'action' },
   //{ title: '待送料總數', sortable: false, key: 'total_delivery_qty' },
-  { title: '應備數量', sortable: false, key: 'total_delivery_qty' },
+  { title: '應備數量', sortable: false, key: 'total_delivery_qty', width:110 },
   //{ title: '實際送料數', sortable: false, key: 'delivery_qty' },
-  { title: '備料數量', sortable: false, key: 'delivery_qty' },
+  { title: '備料數量', sortable: false, key: 'delivery_qty', width:110 },
 ];
 
 const modify_bom_headers =[
@@ -908,6 +1003,8 @@ const currentProcessId = ref(0);
 
 const editDialog = ref(false);
 const enableDialogBtn = ref(false);
+
+const editingRowId = ref(null);
 
 const showBackWarning = ref(true);
 
@@ -945,8 +1042,8 @@ const pagination = reactive({
 });
 
 // 定義 facet 列表
-const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
-const userFacets = ref(['Facet 1', 'Facet 4']);
+//const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
+//const userFacets = ref(['Facet 1', 'Facet 4']);
 
 const test_count = ref(0);
 
@@ -969,10 +1066,23 @@ const itemsWithIcons = [
 //=== watch ===
 setupGetBomsWatcher();
 
+// help menu每次打開都回到第 1 頁
+watch(show_dropdown, (open) => {
+  if (open) {
+    page.value = 0
+    transitionName.value = 'slide-next'
+  }
+})
+
+watch(materials, (mItems) => {
+    if (materials.value.length==0)
+      selectedItems.value = [];
+});
+
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
-  console.log("watch(), newItems:", newItems)
-  localStorage.setItem('selectedItems', JSON.stringify(newItems));
+    //console.log("watch(), newItems:", newItems)
+    localStorage.setItem('selectedItems', JSON.stringify(newItems));
   },
   { deep: true }
 );
@@ -1273,15 +1383,31 @@ const formattedDate = computed(() => {
 //});
 const isDialogConfirmDisabled = computed(() => {
   // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
-  return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  //return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  return enableDialogBtn.value || boms.value.length === 0;
 });
 
 const isAllReceiveIsFalse = computed(() => {
   // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
-  return boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  //return boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  return boms.value.length === 0;
 });
 
+const shouldBlockTimer = computed(() => {
+  const list = boms.value || [];
 
+  // 沒有任何 BOM → 一定不顯示計時、不讓按開始
+  if (list.length === 0) return true;
+
+  // 有 BOM，但每一筆都是 receive = false / null → 視為「全部缺料」
+  const allLack = list.every(
+    (b) => b.receive === false || b.receive === null
+  );
+
+  return allLack;
+});
+
+/*
 const isStarted = computed(() => {
   return (item) => {
     const dlg = dialogs.value.find(
@@ -1306,7 +1432,7 @@ const ishasWorked = computed(() => {
     return Boolean(dlg?.proc?.for_vue3_has_started);
   };
 });
-
+*/
 
 //=== mounted ===
 onMounted(async () => {
@@ -1347,9 +1473,8 @@ onMounted(async () => {
   // 如果窗口大小變化需要重新計算
   //window.addEventListener('resize', calculatePanelPosition);
 
-  // 阻止直接後退
-  window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
-  //history.pushState(null, null, document.URL)
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
   window.addEventListener('popstate', handlePopState)
 
   console.log("current routeName:", routeName.value);
@@ -2329,14 +2454,13 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
-//window.removeEventListener('resize', calculatePanelPosition);
 
-window.removeEventListener('popstate', handlePopState);
-clearInterval(intervalId);
-//clearInterval(intervalIdForLed);
-//dialog_stopTimer();
+  window.removeEventListener('popstate', handlePopState);
+  clearInterval(intervalId);
+  //clearInterval(intervalIdForLed);
+  //dialog_stopTimer();
 
-//stopFlashing();
+  //stopFlashing();
 });
 
 //=== created ===
@@ -2367,7 +2491,11 @@ onBeforeUnmount(() => {
 
 onBeforeUnmount(() => {
   // 1) 停止自動更新（若內部會 clearInterval/timeout）
-  try { stopAutoRefresh?.(); } catch (e) { console.warn('stopAutoRefresh failed:', e); }
+  try {
+    stopAutoRefresh?.();
+  } catch (e) {
+    console.warn('stopAutoRefresh failed:', e);
+  }
 
   // 2) DOM 事件
   document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -2402,6 +2530,18 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+function goPrev () {
+  if (page.value <= 0) return
+  transitionName.value = 'slide-prev'
+  page.value -= 1
+}
+
+function goNext () {
+  if (page.value >= pages.length - 1) return
+  transitionName.value = 'slide-next'
+  page.value += 1
+}
+
 function setRowState(materialId, patch) {
   const idx = materials.value.findIndex(r => r.id === materialId);
   if (idx === -1) return;
@@ -2497,36 +2637,12 @@ const calculatePanelPosition = () => {
   })
 }
 
-/*
-const customFilter = (value, search, item) => {
-  //const customFilter = (search, item) => {
-  console.log("customFilter, item:", item);
-
-    if (!search) return true;
-  search = search.toLowerCase();
-
-  return Object.values(item).some(val =>
-    String(val).toLowerCase().includes(search)
-  );
-};
-*/
-
-/*
-const handlePopState = () => {
-// 重新添加歷史紀錄以阻止實際後退
-history.pushState(null, null, document.URL)
-
-// 只在第一次顯示警告
-if (showBackWarning.value) {
-  showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
-  showBackWarning.value = false
-}
-}
-*/
 const handlePopState = () => {
   // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL)
-  window.history.pushState(history.state, '', document.URL)
+  ////history.pushState(history.state, '', document.URL)
+  //window.history.pushState(history.state, '', document.URL)
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
@@ -2850,9 +2966,6 @@ async function enforceStartPausedIfNew(dlg) {
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),item.order_num, item.isOpen:", item.order_num, item.isOpen);
 
-  //console.log("toggle==>", item.isOpen, item.hasStarted, item.isOpenEmpId, currentUser.value.empID)
-  //console.log("toggle==>", item.isOpenEmpId !="" ,!(item.isOpen || item.hasStarted), item.isOpenEmpId != currentUser.value.empID)
-
   if (item.isTakeOk) {
     showSnackbar("備料已完成!", "orange-darken-2");
     return;
@@ -2879,12 +2992,12 @@ const toggleExpand = async (item) => {
     id: item.id,
   };
   await getBoms(payload);
+
   current_cell.value = item.delivery_qty
-  editedRecord.value = item;          // 點擊詳情按鍵的目前紀錄
-  //console.log("toggleExpand, editedRecord", editedRecord.value)
+  editedRecord.value = item;                // 點擊詳情按鍵的目前紀錄
 
   // 記錄當前開始備料時間
-  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+  currentStartTime.value = new Date();      // 使用 Date 來記錄當時時間
   console.log("Start time:", currentStartTime.value, item, item.id);
 
   // 記錄當前途程狀態
@@ -3003,11 +3116,24 @@ async function handleConfirm(dlg) {
 }
 
 const checkTextEditField = (focused, item) => {
-  if (!focused) { // 當失去焦點時
-    console.log("checkTextEditField(): 失去焦點");
-  } else {
+  //if (!focused) { // 當失去焦點時
+  //  console.log("checkTextEditField(): 失去焦點");
+  //} else {
+  //  console.log("checkTextEditField(): 獲得焦點");
+  //}
+
+  if (focused) {
     console.log("checkTextEditField(): 獲得焦點");
+    editingRowId.value = item.id;
+    //stopAutoRefresh()
+  } else {
+    console.log("checkTextEditField(): 失去焦點");
+    editingRowId.value = null;
+    //startAutoRefresh()
   }
+
+  item._editing_delivery = !!focused
+
 };
 
 const addAbnormalInMaterial = (item) => {
@@ -3121,7 +3247,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
 
   isConfirmed.value = true;
 
-  let my_material_orderNum = boms.value[0].order_num;
+  //let my_material_orderNum = boms.value[0].order_num;
 
   currentEndTime.value = new Date();  // 記錄當前結束時間
   let periodTime = calculatePeriodTime(currentStartTime.value, currentEndTime.value);  // 計算時間間隔
@@ -3898,9 +4024,9 @@ const modifyExcelFilesFun = async () => {
       modify_boms.value = modify_result.bom;
       modify_file_name.value = modify_result.processedFiles;
       console.log("modify_boms:", modify_boms.value);
-      console.log("modify_file_name:", modify_file_name.value);
-      console.log("results:", modify_result.results);
-      console.log("message:", modify_result.message);
+      //console.log("modify_file_name:", modify_file_name.value);
+      //console.log("results:", modify_result.results);
+      //console.log("message:", modify_result.message);
 
       editDialogBtnDisable.value = false;
 
@@ -4367,6 +4493,7 @@ p {
   right: 0;
   text-align: center;
 }
+
 :deep(.v-date-picker-month__weekday:nth-child(6))::after {
   content: '五';
   visibility: visible;
@@ -4376,6 +4503,7 @@ p {
   right: 0;
   text-align: center;
 }
+
 :deep(.v-date-picker-month__weekday:nth-child(7))::after {
   content: '六';
   visibility: visible;
@@ -4537,5 +4665,210 @@ p {
 
 .seperator h5 span {
   padding: 0 2em;
+}
+
+.dropdown-label{
+  cursor: pointer;
+  user-select: none;
+}
+
+.dropdown-label:hover{
+  text-decoration: underline;
+}
+
+.card-border-blue {
+  border: 2px solid #0d47a1;
+  border-radius: 12px;
+}
+
+.content-area{
+  line-height: 1.6;
+}
+
+/* 下一頁：新內容從右進，舊內容往左出 */
+.slide-next-enter-active,
+.slide-next-leave-active{
+  transition: transform .18s ease, opacity .18s ease;
+}
+.slide-next-enter-from{
+  transform: translateX(14px);
+  opacity: 0;
+}
+.slide-next-leave-to{
+  transform: translateX(-14px);
+  opacity: 0;
+}
+
+/* 上一頁：新內容從左進，舊內容往右出 */
+.slide-prev-enter-active,
+.slide-prev-leave-active{
+  transition: transform .18s ease, opacity .18s ease;
+}
+.slide-prev-enter-from{
+  transform: translateX(-14px);
+  opacity: 0;
+}
+.slide-prev-leave-to{
+  transform: translateX(14px);
+  opacity: 0;
+}
+
+:deep(.order-no) {
+  color: #1976d2;
+  font-weight: 700;
+}
+
+:deep(.title-style) {
+  color: #0d47a1;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+// ✅ 這個才是真正的 v-menu 外層容器
+:deep(.v-overlay__content.help-menu){
+  width: 370px !important;
+  min-width: 370px !important;
+  max-width: 370px !important;
+  overflow-x: hidden !important;   // ✅ 關掉水平捲軸
+}
+
+// ✅ 固定卡片尺寸 + 防溢出
+:deep(.help-card) {
+  width: 100%;
+  min-height: 320px;
+
+  display: flex;
+  flex-direction: column;
+
+  box-sizing: border-box;
+  overflow: hidden; // 不要讓 footer 撐破外框
+
+  overflow-x: hidden;
+}
+
+// ✅ 中間內容區：自動撐滿剩餘高度
+.help-body{
+  flex: 1;
+  min-height: 0;     // 重要：讓內容可被限制高度
+  overflow: auto;    // 內容太多就內部滾動，不影響 footer
+  padding-right: 4px;// 避免 scrollbar 擠到字
+  margin-left: 4px;
+
+  overflow-x: hidden;   // ✅ 關鍵：把 translateX 超出的部分裁掉
+  width: 100%;
+}
+
+:deep(.help-footer) {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;          // ✅ 不讓 footer 造成水平溢出
+
+  display: flex;
+  align-items: center;
+  justify-content: center;     // ✅ 三者整組置中，不會靠右爆出去
+  gap: 4px;                    // ✅ 間距
+}
+
+// ✅ 壓縮 Vuetify v-btn 的寬度/內距（scoped 必須 :deep 才打得到）
+.help-btn:deep(.v-btn__content){
+  white-space: nowrap;
+}
+
+.help-footer :deep(.v-btn){
+  min-width: 52px !important;  // ✅ 預設通常 >= 64px，這裡再縮
+  padding-inline: 6px !important;
+}
+
+// 頁碼不換行
+.help-page-indicator{
+  font-size: 12px;
+  opacity: .75;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+:deep(.fake-vbtn){
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  height: 28px;              // ✅ 固定高度
+  padding: 0 10px;           // 左右內距，垂直由 height 控
+  border-radius: 8px;
+  box-sizing: border-box;
+
+  font-size: 16px;
+  font-weight: 400;
+  font-family: 'cwTeXYen', sans-serif;
+
+  user-select: none;
+  cursor: default;          // ✅ 看起來是按鈕，但不提示可點
+  white-space: nowrap;
+}
+
+// 模擬 Vuetify tonal
+:deep(.fake-vbtn--tonal){
+  background: rgba(63, 81, 181, .12);            // indigo 淡底
+  border: 1px solid rgba(63, 81, 181, .35);
+}
+
+// 模擬 v-icon（用 mdi 字型)
+:deep(.fake-vicon){
+  font-size: 18px;
+  line-height: 1;
+  color: #1b5e20; // green-darken-3 類似色
+}
+
+:deep(.fake-vauto){
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  width: 110px;         // 可調整
+  height: 32px;         // 看起來像 dense
+  padding: 0 10px;
+
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.28);
+  background: #fff;
+
+  box-sizing: border-box;
+  vertical-align: middle;
+
+  user-select: none;
+  cursor: default;      /* 不可點外觀 */
+}
+
+:deep(.fake-vauto__placeholder){
+  flex: 1 1 auto;                  /* ✅ 撐滿 */
+  min-width: 0;                    /* ✅ 才能 ellipsis */
+  opacity: .7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.fake-vauto__icon){
+  opacity: .7;
+  flex: 0 0 auto;
+  margin-left: 85px;               // ✅ 跟文字間距
+}
+
+:deep(.fake-vicon-bell) {
+  display: inline-block;
+  font-size: 16px;                 /* 對應 size="16" */
+  line-height: 1;
+
+  margin-left: 5px;              /* 你原本的 margin-left */
+  margin-right: 8px;               /* class="mr-2" 約等於 8px */
+
+  color: #81d4fa;                  /* light-blue lighten-3 類似色 */
+
+  transition: opacity .3s ease, visibility .3s ease;
+  opacity: 1;
+  visibility: visible;
+
+  vertical-align: text-top;
 }
 </style>

@@ -163,7 +163,6 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
       }
 
 
-
 # ------------------------------------------------------------------
 # 組裝線
 
@@ -386,7 +385,7 @@ class Assemble(BASE):
     total_ask_qty = Column(Integer, default=0)                    #領取(完成)數量總數
     total_ask_qty_end = Column(Integer, default=0)                #已結束(完成)總數量顯示順序
 
-    must_receive_end_qty = Column(Integer, default=0)             #應完成數量
+    must_receive_end_qty = Column(Integer, default=0)             #應完成總數量
     abnormal_qty = Column(Integer, default=0)                     #異常數量
 
     user_id = Column(String(8))                                   #工序作業員工工號(領料)

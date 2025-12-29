@@ -505,19 +505,32 @@ onMounted(async () => {
   }
   //+++
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
+  window.addEventListener('popstate', handlePopState);
+
   console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
 
-  userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
+  if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
   console.log("currentUser:", currentUser.value);
-
-  //# intervalId = setInterval(getWarehouseForAssembleByHistoryFun, 10 * 1000);  // 每 10秒鐘調用一次 API
+  //
 
   // 從 localStorage 中恢復 selectedItems
   let savedItems = localStorage.getItem('selectedItems');
@@ -593,7 +606,9 @@ onMounted(async () => {
 });
 
 //=== unmounted ===
-onUnmounted(() => {   // 清除計時器（當元件卸載時）
+onUnmounted(() => {   // 清除計時器（當元件卸載時
+  window.removeEventListener('popstate', handlePopState)
+
   //# clearInterval(intervalId);
 });
 
@@ -633,6 +648,16 @@ const initialize = async () => {
     console.error("Error during initialize():", error);
   }
 };
+
+const handlePopState = () => {
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
+
+  if (showBackWarning.value) {
+    showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
+    showBackWarning.value = false
+  }
+}
 
 const handleBarCode = () => {
   if (bar_code.value.length !== 12) {

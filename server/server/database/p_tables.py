@@ -237,7 +237,7 @@ class P_Assemble(BASE):
 
     isStockIn = Column(Boolean, default=False)          # 是否入庫, True: 必須入庫(作業短文以Z開頭)
     isSimultaneously = Column(Boolean, default=False)   # True: 各個加工製程同步(平行製程), False: 各個加工製程是有順序性
-    isShowBomGif = Column(Boolean, default=False)       # True: 不顯示Bom動態gif圖示
+    isShowBomGif = Column(Boolean, default=False)       # True: 在報工開始的模組, 不顯示Bom動態gif圖示
 
     alarm_enable = Column(Boolean, default=True)
     alarm_message = Column(String(250), default='', nullable=False)

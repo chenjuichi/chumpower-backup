@@ -158,8 +158,33 @@ export const p_apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/listMaterialsP') {
-            materials.value = [...res.data.materials];
-            console.log("materials.value:", materials.value)
+            //materials.value = [...res.data.materials];
+            //console.log("materials.value:", materials.value)
+            const serverRows = res.data.materials || [];
+
+            // 建一份舊資料 map：用 id 對應舊 row
+            const oldMap = new Map(materials.value.map(r => [r.id, r]))
+
+            materials.value = serverRows.map(r => {
+              const old = oldMap.get(r.id)
+              /*
+              // ✅ 如果這列正在編輯：保留舊的 delivery_qty（使用者剛打的）
+              if (editingRowId.value === r.id && old) {
+                return {
+                  ...r,
+                  delivery_qty: old.delivery_qty,
+                  // 如果你還有其他「輸入中要保留」的欄位，也可一起保留
+                  // e.g. some_ui_flag: old.some_ui_flag,
+                }
+              }
+              */
+              if (old?._editing_delivery) {
+                return { ...r, delivery_qty: old.delivery_qty, _editing_delivery: true }
+              }
+
+              // 其他列：直接用後端回來的資料
+              return r
+            })
           }
 
           if (path == '/listWarehouseForAssemble') {
@@ -234,10 +259,9 @@ export const p_apiOperation = (operation, path, payload) => {
 
             temp_desserts2.value.sort((a, b) => a.emp_id - b.emp_id);   // 升冪排序
             desserts2.value = Object.assign([], temp_desserts2.value);  // 複製原員工資料(已排序)
-            //list_table_is_ok.value = true;
           }
 
-          if (path == '/readAllExcelFiles' || path == '/readAllExcelFilesP' ||
+          if (path == '/readAllExcelFilesP' ||
               path == '/deleteAssemblesWithNegativeGoodQty') {
             //console.log("get, path is", path)
             return res.data;
@@ -247,7 +271,7 @@ export const p_apiOperation = (operation, path, payload) => {
           //  return res.data;
           //}
 
-          if (path == '/countExcelFilesP' || path == '/countExcelFiles') {
+          if (path == '/countExcelFilesP') {
             fileCount.value = res.data.count;
           }
 
@@ -256,17 +280,21 @@ export const p_apiOperation = (operation, path, payload) => {
 
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
-              path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
-              path == '/updateProcessData' ||
-              path == '/updateAssembleMustReceiveQtyByMaterialID' ||
-              path == '/updateAssembleMustReceiveQtyByMaterialIDAndDate' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
-              path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
-              //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
               path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
-              path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2' ||
-              path == 'updateBomXorReceive') {
-            //console.log("res.data:", res.data);
+              path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2') {
+            return res.data.status;
+          }
+
+          if (path == '/updateAssembleMustReceiveQtyByMaterialIDAndDateP' ||
+              path == '/updateAssembleMustReceiveQtyByMaterialIDP' ||
+              path == '/updateAssmbleDataByMaterialIDP' ||
+              path== '/updateProcessDataByMaterialIDP' ||
+              path == '/updateMaterialRecordP' ||
+              path == 'updateBomXorReceiveP' ||
+              path == '/updateProcessDataP' ||
+              path == '/updateAssembleP' ||
+              path == '/updateMaterialP') {
             return res.data.status;
           }
 
@@ -283,7 +311,7 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
-          if (path == '/createProcess') {
+          if (path == '/createProcessP') {
             return res.data;
           }
 
@@ -312,9 +340,9 @@ export const p_apiOperation = (operation, path, payload) => {
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
-              path == '/dialog2StartProcess'      || path == '/dialog2UpdateProcess'      || path == '/dialog2ToggleProcess'      || path == '/dialog2CloseProcess' ||
-              path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin') {
-            return res.data;
+  path == '/dialog2StartProcessMP'      || path == '/dialog2UpdateProcessMP'      || path == '/dialog2ToggleProcessMP'      || path == '/dialog2CloseProcessMP' ||
+  path == '/dialog2StartProcessProcess' || path == '/dialog2UpdateProcessProcess' || path == '/dialog2ToggleProcessProcess' || path == '/dialog2CloseProcessProcess') {
+           return res.data;
           }
           /*
           if (path == '/getInformationsForAssembleErrorByHistory') {
@@ -443,8 +471,7 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data.content;
           }
 
-          if (path == '/getBoms') {
-            //console.log("res.data.boms:", res.data.boms);
+          if (path == '/getBomsP') {
             temp_boms.value = [...res.data.boms];
             currentBoms.value = res.data.boms;
             list_table_is_ok.value = true;
@@ -507,34 +534,6 @@ export const p_apiOperation = (operation, path, payload) => {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
           }
-
-
-      //    if (path == '/updateAssemble' || path == '/updateMaterial' || path == '/updateMaterialRecord' ||
-      //        path == '/updateAGV') {
-      //        //path == '/getMaterial'  || path == '/updateAGV') {
-      //      //console.log("res.data:", res.data);
-      //      return res.data.status;
-      //    }
-
-          //if (path == '/updateMaterial') {
-          //  console.log("res.data:", res.data);
-          //  return res.data.status;
-          //}
-
-          //if (path == '/updateMaterialRecord') {
-          //  console.log("res.data:", res.data);
-          //  return res.data.status;
-          //}
-
-          //if (path == '/createProcess') {
-          //  console.log("res.data:", res.data);
-          //  return res.data.status;
-          //}
-
-          //if (path == '/getMaterial') {
-          //  console.log("res.data:", res.data);
-          //  return res.data.status;
-          //}
         }
         // 在這裡可以處理其他操作的回傳值
         //return res.data;

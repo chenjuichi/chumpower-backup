@@ -10,6 +10,14 @@
     </template>
   </v-snackbar>
 
+  <!-- 燈號控制面板 -->
+  <!--
+  <DraggablePanel v-show="toggle_exclusive === 2"  :initX="panelX" :initY="panelY" :isDraggable="true" ref="draggablePanel">
+    <LedLights :activeColor="activeColor" />
+  </DraggablePanel>
+  -->
+  <ConfirmDialog ref="confirmRef" />
+
   <!-- data table -->
   <v-data-table
     :headers="headers"
@@ -62,7 +70,7 @@
 
             :style="{
               position: 'relative',
-              right: screenSizeInInches > 20 ? '620px' : '150px',
+              right: screenSizeInInches > 20 ? '600px' : '130px',
               top: '0px',
               fontWeight: '700',
               width: '120px'
@@ -78,27 +86,15 @@
 
           <!-- Bom 編輯對話視窗-->
           <div class="pa-4 text-center">
-            <v-dialog v-model="editDialog" max-width="900">
-              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '600px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
+            <v-dialog v-model="editDialog" max-width="980">
+              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '800px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  編輯訂單
-                  <v-fade-transition mode="out-in">
-                    <v-btn
-                      style="position: relative; right: -550px;"
-                      color="success"
-                      prepend-icon="mdi-content-save"
-                      :disabled="editDialogBtnDisable"
-                      text="確定"
-                      class="text-none"
-                      @click="updateModifyMaterialAndBomsFun"
-                      variant="flat"
-                      flat
-                    />
-                  </v-fade-transition>
+                  工單維護
                 </v-card-title>
                 <v-card-text>
+                  <!--第 1 列-->
                   <v-row>
-                    <v-col cols="12" md="5">
+                    <v-col cols="12" md="3" class="d-flex" justify="start">
                       <v-text-field
                         v-model="selectedOrderNum"
                         @keyup.enter="handleOrderNumSearch"
@@ -111,7 +107,8 @@
                         </template>
                       </v-text-field>
                     </v-col>
-                    <v-col cols="12" md="3">
+                    <v-col cols="12" md="4" class="d-flex" justify="end">
+                      <span style="color: #0D47A1;" class="mb-4 mr-5 text-caption">訂單日期</span>
                       <v-menu
                         v-model="fromDateMenu"
                         :close-on-content-click="false"
@@ -138,8 +135,7 @@
                         />
                       </v-menu>
                     </v-col>
-
-                    <v-col cols="12" md="4">
+                    <v-col cols="12" md="3" class="d-flex">
                       <v-text-field
                         variant="solo"
                         required
@@ -152,17 +148,76 @@
                         </template>
                       </v-text-field>
                     </v-col>
+                    <v-col cols="12" md="2" class="d-flex" justify="start">
+                      <v-btn
+                        color="success"
+                        prepend-icon="mdi-content-save"
+                        text="修改"
+                        class="text-none"
+                        @click="updateModifyMaterialAndBomsFun"
+                        variant="flat"
+                      />
+                    </v-col>
                   </v-row>
+                    <div class="seperator" style="position:relative; left: 60px; top: -10px;">
+                      <h5><span></span></h5>
+                    </div>
+                  <!--第 2 列-->
                   <v-row>
-                    <v-col cols="12" md="2" style="margin-top: 25px;">
+                    <v-col cols="12" md="2"
+                      style="padding-top:0px; padding-bottom:0px; margin-top: -0px;"
+                       class="d-flex justify-start align-center pt-0 pb-0">
+                      <!--刪除工單按鍵-->
+                        <v-btn
+                          variant="outlined"
+                          style="width:100px; min-width:100px; font-weight:700;"
+                          class="warnning_btn"
+                          @click="onDelete"
+                        >
+                          <v-icon left style="font-weight:700; color:#ff4444">mdi-file-remove</v-icon>
+                          <span style="color: #0D47A1; font-weight:600;">刪除工單</span>
+                        </v-btn>
+
+                    <!--
+                      <div class="flip_btn">
+                        <v-btn
+                          style="position:relative; right:45px; width:100px; min-width:100px; font-weight:700; border-radius:6px; border-width:1.5px; border-color:#ff5252"
+
+                          class="warnning_btn side default-side primary thin mt-1 mx-auto"
+
+                          @mouseenter="editDialog = true"
+                        >
+                          <v-icon left style="font-weight:700; color:#ff4444">mdi-file-remove</v-icon>
+                          <span style="color: #0D47A1; font-weight:600;">刪除工單</span>
+                        </v-btn>
+                        <div class="side hover-side" style="position:relative; right:40px;">
+                          <v-btn color="#ff4444" style="position:relative; right:3px; width:70px;" class="mt-n1 mr-15 mx-auto" @click="editDialog = false">
+                            <v-icon left size="24px" color="#ffffff">mdi-close-circle-outline</v-icon>
+                            <span style="color:#ffffff">取消</span>
+                          </v-btn>
+                          <v-btn color="#00c851" style="position:relative; left:3px; width:70px;" class="mt-n1 mr-15 mx-auto" @click="removeMaterialsAndRelationTableFun">
+                            <v-icon left size="24px" color="#ffffff">mdi-check-circle-outline</v-icon>
+                            <span style="color:#ffffff">確定</span>
+                          </v-btn>
+                        </div>
+                      </div>
+                    -->
+                    </v-col>
+                    <!--</v-col>-->
+                    <v-col cols="12" md="10"></v-col>
+                  </v-row>
+                  <!--第 3 列-->
+                  <v-row>
+                    <v-col cols="12" md="2" style="margin-top: 15px;">
+                      <!--匯入工單按鍵-->
                       <v-btn
                         color="primary"
                         variant="outlined"
                         style="width:100px; min-width:100px; font-weight:700;"
-                        @click="modifyExcelFilesFun"
+                        @click="onModify"
                       >
                         <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                        <span style="color: #0D47A1;">匯入BOM</span>
+                        <span style="color: #0D47A1;">匯入工單</span>
                       </v-btn>
                     </v-col>
                     <v-col cols="12" md="10">
@@ -200,124 +255,12 @@
                 </v-card-text>
               </v-card>
             </v-dialog>
-          <!--
-            <v-dialog v-model="editDialog" max-width="900">
-              <v-card prepend-icon="mdi-text-box-edit-outline" title="編輯訂單">
-                <v-card-text>
-                  <v-row>
-
-                    <v-col cols="12" md="5">
-                      <v-text-field
-                        v-model="selectedOrderNum"
-                        @keyup.enter="handleOrderNumSearch"
-                        variant="solo"
-                        readonly
-                        class="modify_order_num"
-                      >
-                        <template #prepend>
-                          <span class="text-caption">訂單編號</span>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-
-
-                    <v-col cols="12" md="3">
-                      <v-menu
-                        v-model="fromDateMenu"
-                        :close-on-content-click="false"
-                        :nudge-right="40"
-                        transition="scale-transition"
-                        offset-y
-                        max-width="300px"
-                        min-width="300px"
-                      >
-                        <template #activator="{ props }">
-                          <v-text-field
-                            prepend-icon="mdi-calendar"
-                            readonly
-                            :value="formattedDate"
-                            v-bind="props"
-                            variant="solo"
-                            class="modify_date"
-                          />
-                        </template>
-                        <v-date-picker
-                          v-model="fromDateVal"
-                          color="blue-lighten-1"
-                          @update:model-value="handleDateChange"
-                        />
-                      </v-menu>
-                    </v-col>
-
-
-                    <v-col cols="12" md="4">
-                      <v-text-field
-                        variant="solo"
-                        required
-                        class="modify_qty"
-                        @keydown="handleKeyDown"
-                        v-model="selectedReqQty"
-                      >
-                        <template #prepend>
-                          <span class="text-caption">訂單數量</span>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                  </v-row>
-
-                  <v-row>
-                    <v-col cols="12" md="2">
-                      <v-btn
-                        color="primary"
-                        variant="outlined"
-                        style="
-                          width:100px;
-                          min-width:100px;
-                          position:relative;
-                          left:-10px;
-                          top:-10px;
-                          font-weight:700;
-                        "
-                        @click="modifyExcelFilesFun"
-                      >
-                        <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                        <span style="color: #0D47A1;">匯入BOM</span>
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="12" md="10" class="custom-bordered-row">
-                      <v-data-table
-                        :items="modify_boms"
-                        :headers="modify_bom_headers"
-                        items-per-page="5"
-                        style="position: relative; top: -15px;"
-                      />
-                    </v-col>
-                  </v-row>
-                </v-card-text>
-                <v-divider></v-divider>
-                <v-card-actions>
-                  <v-spacer></v-spacer>
-                  <v-btn
-                    text="Close"
-                    variant="tonal"
-                    prepend-icon="mdi-close-circle"
-                    @click="editDialog = false"
-                  />
-
-                  <v-btn
-                    text="Save"
-                    variant="tonal"
-                    append-icon="mdi-content-save"
-                    @click="editDialog = false"
-                  />
-                </v-card-actions>
-              </v-card>
-            </v-dialog>
-          -->
           </div>
 
           <!--客製化 員工選單-->
-          <div style="position: relative; right: 150px; width: 160px;">
+          <div
+            style="position: relative; right: 160px; width: 160px;"
+            v-show="!c_isBlinking && materials.length > 0">
             <v-text-field
               v-model="selectedEmployee"
               @keyup.enter="handleEmployeeSearch"
@@ -333,7 +276,6 @@
               "
               :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
             />
-
             <!-- v-select 用於選擇員工 -->
             <v-select
               v-model="inputSelectEmployee"
@@ -357,6 +299,7 @@
           </div>
 
           <!--客製化 手動推車按鍵-->
+        <!--
           <div class="button-container">
               <v-btn
                 variant="outlined"
@@ -371,10 +314,10 @@
                 <span>手動推車</span>
               </v-btn>
           </div>
-
-          <!--客製化 備料送出按鍵-->
+        -->
+          <!--客製化 領料送出按鍵-->
           <v-btn
-            :disabled="c_isBlinking"
+            :disabled="c_isBlinking || materials.length==0"
             color="primary"
             variant="outlined"
             style="position:relative; right:145px; top:0px; font-weight:700; padding-left:8px;
@@ -393,10 +336,10 @@
                 'fontSize': '14px',
                 'display': 'inline-block',
                 'min-width': '120px',
-                'visibility': (!isVisible && isCallForklift) ? 'visible' : 'hidden',
+                'visibility': isCallForklift ? 'visible' : 'hidden',
               }"
             >
-              堆高機送料中
+              人工送料中...
             </span>
 
             <!--客製化搜尋-->
@@ -427,17 +370,46 @@
           </div>
 
           <!-- Bom 顯示對話視窗-->
-          <v-dialog v-model="dialog" max-width="980px" @keydown.esc="handleEscClose" @click:outside="handleOutsideClick">
-            <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
-              <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                備料資訊
-                <span style="font-size:16px;">訂單{{ dialog_order_num }}</span>&nbsp;&nbsp;
-                <span v-if="!isDialogConfirmDisabled" style="font-size:16px; margin-left:10px; color:yellow;">備料時間{{ dialog_timer }}</span>&nbsp;&nbsp;
+          <v-dialog
+            v-for="dlg in dialogs"
+            :key="dlg.material_id"
+            v-model="dlg.dialogVisible"
+            max-width="980px"
+            @keydown.esc="handleEscClose(dlg)"
+            @click:outside="handleOutsideClick(dlg)"
+            :eager="true"
+            >
 
-                <!--<span style="font-size:14px;">備料時間：{{ dialog_totalActiveTime }}</span>&nbsp;&nbsp;-->
-
-                <v-btn v-if="!dialog_isPaused" @click="dialog_pauseTimer">暫停</v-btn>
-                <v-btn v-else @click="dialog_resumeTimer">恢復</v-btn>
+            <v-card
+              :style="{
+              maxHeight: boms.length > 5 ? '500px' : 'unset',
+              overflowY: boms.length > 5 ? 'auto' : 'unset'}">
+              <v-card-title
+                class="text-h5 sticky-title"
+                style="background-color: #1b4965; color: white;">
+                領料資訊
+                <span style="font-size:16px;">
+                  訂單{{ dlg.order_num }}
+                </span>
+                &nbsp;&nbsp;
+                <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
+                <TimerDisplay
+                  :key="dlg.material_id"
+                  :ref="setTimerRef(dlg)"
+                  v-model:isPaused="dlg.proc.isPaused"
+                  :show="true"
+                  :autoStart="false"
+                  @update:time="dlg.proc.onTick"
+                />
+                <v-btn
+                  @click="dlg.proc.toggleTimer()"
+                  :disabled="isAllReceiveIsFalse"
+                  :prepend-icon = "getIcon(dlg.proc.isPaused)"
+                  :style="{ background: dlg.proc.isPaused ? '#4CAF50' : '#FFEB3B', color: dlg.proc.isPaused ? '#fff' : '#000' }"
+                >
+                  <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
+                  {{ dlg.proc.isPaused ? "開始" : "暫停" }}
+                </v-btn>
 
                 <v-fade-transition mode="out-in">
                   <v-btn
@@ -445,11 +417,11 @@
                     color="success"
                     prepend-icon="mdi-check-circle-outline"
 
-                    :disabled="isDialogConfirmDisabled"
+                    :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
 
                     text="確定"
                     class="text-none"
-                    @click="updateItem"
+                    @click="onConfirm(dlg)"
                     variant="flat"
                     flat
                   />
@@ -464,7 +436,7 @@
                       <th class="text-left" style="width: 520px;">物料</th>
                       <th class="text-left">數量</th>
                       <th class="text-left" style="width: 120px;">日期</th>
-                      <th class="text-left">領料</th>
+                      <!--<th class="text-left">領料</th>-->
                     </tr>
                   </thead>
 
@@ -492,24 +464,27 @@
                           <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
                         </div>
                       </td>
+                    <!--
                       <td>
                         <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
                       </td>
+                    -->
                     </tr>
                   </tbody>
                 </v-table>
               </v-card-text>
             </v-card>
           </v-dialog>
+          <!--</div>-->
 
-          <!-- 檢料異常備註 顯示對話視窗-->
+          <!-- 加工區領料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
               <!--取消自動捲軸，完全依內容高度決定是否超出-->
               <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
                 <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
-                  備料區檢料異常備註
+                  加工區領料異常備註
                 </v-card-title>
 
                 <v-card-text>
@@ -524,10 +499,12 @@
                       <v-col cols="7" class="pa-0">
                         <v-autocomplete
                           v-model="abnormalDialog_autocomplete_message"
+                          v-model:search="abnormalDialog_search"
                           :items="itemsWithIcons"
                           item-title="text"
-                          item-value="text"
+                          item-value="id"
                           density="compact"
+                          @update:menu="open => { if (open) abnormalDialog_search = '' }"
                         >
                           <template #item="{ item, props }">
                             <div v-bind="props" class="d-flex align-center px-4 py-2">
@@ -548,19 +525,29 @@
                 </v-card-text>
 
                 <v-card-actions class="justify-center">
-                  <v-btn
-                    color="success"
-                    prepend-icon="mdi-content-save"
+                  <div v-if="abnormalDialog_display">
+                    <v-btn
+                      color="success"
+                      prepend-icon="mdi-content-save"
 
-                    text="確定"
-                    class="text-none"
-                    @click="createAbnormalFun"
-                    variant="flat"
-                  />
-                  <v-btn
-                    color="error"
-                    prepend-icon="mdi-close"
-                    text="取消"
+                      text="確定"
+                      class="text-none"
+                      @click="createAbnormalFun"
+                      variant="flat"
+                    />
+                    <v-btn
+                      color="error"
+                      prepend-icon="mdi-close"
+                      text="取消"
+                      class="text-none"
+                      @click="abnormalDialog = false"
+                      variant="flat"
+                    />
+                  </div>
+                  <v-btn v-else
+                    color="success"
+                    prepend-icon="mdi-exit-to-app"
+                    text="離開"
                     class="text-none"
                     @click="abnormalDialog = false"
                     variant="flat"
@@ -584,24 +571,17 @@
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
-        <!-- v-icon -->
-        <v-icon
-          style="transition: opacity 0.3s ease, visibility 0.3s ease;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-          @click="editOrderNum(item)"
-          small
-          class="mr-2"
-        >
-          mdi-pencil
+        <!--
+        <v-icon style="color: blue;" @click="editOrderNum(item)" small>
+          mdi-pencil-outline
         </v-icon>
-        <!-- Order Info -->
-        <div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
-          <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
-          <span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>
-        </div> <!--檢料完成-->
-        <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
+        -->
+        <!--領料完成-->
+        <div style="color: blue; margin-right: 20px;" v-if="item.isTakeOk">
           {{ item.order_num }}
-        </div> <!--檢料完成-->
+        </div>
+
+        <!--領料尚未完成-->
         <div style="margin-right: 20px;" v-else>
           {{ item.order_num }}
         </div>
@@ -612,7 +592,7 @@
     <template v-slot:item.req_qty="{ item }">
       <div>
         <div>{{ item.req_qty }}</div>
-        <div style="color: #a6a6a6; font-size:12px;">{{ item.date }}</div>
+        <div style="color: #a6a6a6; font-size:12px;">{{ item.delivery_date }}</div>
       </div>
     </template>
 
@@ -620,45 +600,69 @@
     <template v-slot:item.comment="{ item }">
       <div>
         <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
       </div>
     </template>
 
     <!-- 自訂 '詳情' 按鍵 -->
+    <!--v-if="!item.finished && item.hasStarted"-->
     <template v-slot:item.action="{ item }">
+      <v-badge
+        v-if="item.hasStarted"
+        dot
+        :color="item.startStatus ? 'green' : 'red'"
+        location="top end"
+        offset-x="6"
+        offset-y="6"
+      >
+        <v-btn
+          size="small"
+          variant="tonal"
+          style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+          :disabled="item.isBom"
+          @click="toggleExpand(item)"
+        >
+          詳 情
+          <v-icon color='green-darken-3' end>
+            {{ 'mdi-note-search-outline' }}
+          </v-icon>
+        </v-btn>
+      </v-badge>
+
       <v-btn
+        v-else
         size="small"
         variant="tonal"
         style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-
-        :disabled="item.isBom"
-
         @click="toggleExpand(item)"
       >
         詳 情
-        <v-icon color="orange-darken-4" end>mdi-open-in-new</v-icon>
+        <v-icon color='green-darken-3' end>
+          {{ 'mdi-note-search-outline' }}
+        </v-icon>
       </v-btn>
     </template>
 
     <!-- 自訂 '應備數量'欄位的資料藍位 -->
     <template v-slot:item.total_delivery_qty="{ item }">
       <div style="display:flex; align-items:center;">
-          <v-icon
-            style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-            @click="addAbnormalInMaterial(item)"
-            size="16"
-            class="mr-2"
-            :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
-          >
-            mdi-bell-plus
-          </v-icon>
+        <v-icon
+          style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
+          @click="addAbnormalInMaterial(item)"
+          size="16"
+          class="mr-2"
+          :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
+        >
+          mdi-bell-plus
+        </v-icon>
         <span style="margin-left: 15px;">
           {{ item.total_delivery_qty }}
         </span>
       </div>
     </template>
 
-    <!-- 自訂 '備料數量' 輸入欄位 -->
+    <!-- 自訂 '領料數量' 輸入欄位 -->
     <template v-slot:item.delivery_qty="{ item }">
       <div style="position: relative; display: inline-block;">
         <v-text-field
@@ -671,7 +675,6 @@
           @update:focused="(focused) => checkTextEditField(focused, item)"
           @keyup.enter="updateItem2(item)"
           :disabled="!item.isTakeOk"
-
           :style="{
             '--input-text-color': (item.isError || item.delivery_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
           }"
@@ -694,9 +697,17 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+import { ref, reactive, shallowRef, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, nextTick } from 'vue';
+
+import TimerDisplay from "./TimerDisplayMP.vue";
+import { useProcessTimer } from "../mixins/useProcessTimerMP.js";
+
+import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
+
+import LedLights from './LedLights.vue';
+//import DraggablePanel from './DraggablePanel.vue';
 
 import draggable from 'vuedraggable';
 import { useRoute } from 'vue-router';
@@ -707,57 +718,66 @@ const router = useRouter();
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
-import { socket_server_ip }  from '../mixins/crud.js';
 import { desserts2 }  from '../mixins/crud.js';
+import { currentAGV, material_copy }  from '../mixins/crud.js';
+import { socket_server_ip }  from '../mixins/crud.js';
 
-import { boms, currentBoms, material_copy, fileCount }  from '../mixins/crud.js';
-import { materials }  from '../mixins/p_crud.js';
+import { materials, boms, currentBoms, fileCount}  from '../mixins/p_crud.js';
+import { setupGetBomsWatcher }  from '../mixins/p_crud.js';
 
-import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
+
 import { p_apiOperation }  from '../mixins/p_crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
+
+//=== tables維護用 api ==
+
 const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
 const listUsers2 = apiOperation('get', '/listUsers2');
 
-const readAllExcelFiles = apiOperation('get', '/readAllExcelFilesP');
-const countExcelFiles = apiOperation('get', '/countExcelFilesP');
-
-const listMaterials = p_apiOperation('get', '/listMaterialsP');
-
-const getBoms = apiOperation('post', '/getBoms');
+const getAGV = apiOperation('post', '/getAGV');
 const updateBoms = apiOperation('post', '/updateBoms');
-const updateMaterial = apiOperation('post', '/updateMaterial');
-const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
 const copyMaterial = apiOperation('post', '/copyMaterial');
 const copyMaterialAndBom = apiOperation('post', '/copyMaterialAndBom');
-const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-const createProcess = apiOperation('post', '/createProcess');
-
+const updateAGV = apiOperation('post', '/updateAGV');
 const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
 const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
-const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
-const updateProcessDataByMaterialID = apiOperation('post', '/updateProcessDataByMaterialID');
-const updateBomXorReceive = apiOperation('post', '/updateBomXorReceive');
-
 const updateSetting = apiOperation('post', '/updateSetting');
+const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
+const updateMaterialFields = apiOperation('post', 'updateMaterialFields');
+
+//=== p_tables維護用 api ==
+
+const listMaterials = p_apiOperation('get', '/listMaterialsP');
+const readAllExcelFiles = p_apiOperation('get', '/readAllExcelFilesP');
+const countExcelFiles = p_apiOperation('get', '/countExcelFilesP');
+
+const getBoms = p_apiOperation('post', '/getBomsP');
+const updateMaterial = p_apiOperation('post', '/updateMaterialP');
+const createProcess = p_apiOperation('post', '/createProcessP');
+const updateAssmbleDataByMaterialID = p_apiOperation('post', '/updateAssmbleDataByMaterialIDP');
+const updateMaterialRecord = p_apiOperation('post', '/updateMaterialRecordP');
+const updateProcessDataByMaterialID = p_apiOperation('post', '/updateProcessDataByMaterialIDP');
+const updateProcessData = p_apiOperation('post', '/updateProcessDataP');
+const updateAssembleMustReceiveQtyByMaterialID = p_apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDP');
+const updateBomXorReceive = p_apiOperation('post', '/updateBomXorReceiveP');
 
 //=== component name ==
-defineComponent({
-  name: 'MaterialListForProcess'
-});
+defineComponent({ name: 'MaterialListForProcess' });
 
 // === mix ==
 const { initAxios } = myMixin();
 
 //=== props ===
-const props = defineProps({
-  showFooter: Boolean
-});
+const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-const transport_message = ref('備料自動送出')
+// 刪除對話框相關
+const deleteTitle = ref('刪除工單');
+const deleteMessage = ref('此操作將刪除相關資料(P_BOM/P_Assemble/P_Process)，確定？');
+const confirmRef = ref(null);
+
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
@@ -773,16 +793,16 @@ const sendButton = ref(null)
 
 const screenSizeInInches = ref(null);
 
-const toggle_exclusive = ref(1);              // 控制選擇的按鈕, AGV:2, 預設人推車:1
 
 const editDialogBtnDisable = ref(true);
 
-const isVisible = ref(true);                  // 設定初始狀態為顯示
-const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
+//const isVisible = ref(true);                  // 設定初始狀態為顯示
+//const isFlashLed = ref(false);                // 控制紅黃綠燈是否閃爍
 
-let intervalIdForLed = null;
+//let intervalIdForLed = null;
 
-const showMenu = ref(false);                  // 控制員工選單顯示
+const background = ref('#ffff00');
+const isCallAGV = ref(false);                 // 確認是否已經呼叫了callAGV(), true:已經按鍵了, 不能重複按鍵
 
 const isCallForklift = ref(false);            // 確認是否已經呼叫了CallForklift(), true:已經按鍵了, 不能重複按鍵
 
@@ -794,8 +814,6 @@ const selectedId = ref(0);
 const selectedOrderNum = ref(null);
 const selectedReqQty = ref(null);
 const selectedDate = ref(null);
-const minDate = ref('2014-01-01');
-const maxDate = ref('2054-12-31');
 const fromDateVal = ref('');
 
 const bar_code = ref('');
@@ -808,7 +826,11 @@ const placeholderTextForOrderNum = ref('請選擇工單');
 const inputSelectEmployee = ref(null);
 const inputSelectOrderNum = ref(null);
 
-let intervalId = null;                        // 10分鐘, 倒數計時器
+let intervalId = null;                        // 10分鐘, 倒數計時器, for exce file 偵測
+let refreshTimerId = null;                    // 11秒, for refresh materials[]
+const refreshTimerMs = ref(11 * 1000);        // 11秒
+const lastRefreshed = ref(null);
+const tableLoading = ref(false);
 
 const route = useRoute();                     // Initialize router
 
@@ -828,11 +850,11 @@ const headers = [
   //{ title: '場域位置', sortable: false, key: 'location' },
   //{ title: '缺料註記', sortable: false, key: 'shortage_note' },
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '備料內容', sortable: false, key: 'action' },
+  { title: '領料內容', sortable: false, key: 'action' },
   //{ title: '待送料總數', sortable: false, key: 'total_delivery_qty' },
-  { title: '應備數量', sortable: false, key: 'total_delivery_qty' },
+  { title: '應領數量', sortable: false, key: 'total_delivery_qty' },
   //{ title: '實際送料數', sortable: false, key: 'delivery_qty' },
-  { title: '備料數量', sortable: false, key: 'delivery_qty' },
+  { title: '領料數量', sortable: false, key: 'delivery_qty' },
 ];
 
 const modify_bom_headers =[
@@ -848,58 +870,50 @@ const selectedItems = ref([]);      // 儲存選擇的項目 (基於 id)
 const selectedOrderNums = ref([]);  // 儲存選擇的項目 (基於 orderNum)
 const inputValueForItems = ref([]); // 儲存輸入的值
 
-//const inputIDs = ref([]);
-
-//const localIp = 'localhost';
-//const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.0.13';
-//const serverIp = '192.168.0.13';
-//const serverIp = process.env.VUE_SOCKET_SERVER_IP
-const userId = 'user_chumpower';
+const app_user_id = 'user_chumpower';
 const clientAppName = 'MaterialListForAssem';
-//console.log("serverIp:", serverIp)
 // 初始化Socket連接
-//const { socket, setupSocketConnection } = useSocketio(localIp, userId);
-const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, userId, clientAppName);
+const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, app_user_id, clientAppName);
 
 const delivery_qty_alarm = ref('');
 
-//const localIP = ref('');
-const from_agv_input_order_num = ref('');
 const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const currentUser = ref({});
-const componentKey = ref(0)       // key 值用於強制重新渲染
+const componentKey = ref(0);            // key 值用於強制重新渲染
+const currentProcessId = ref(0);
 
 const editDialog = ref(false);
 const enableDialogBtn = ref(false);
+
+const editingRowId = ref(null);
 
 const showBackWarning = ref(true);
 
 const current_cell = ref(null);
 
-const currentStartTime = ref(null);   // 記錄開始時間
-const currentEndTime = ref(null);   // 記錄開始時間
+const currentStartTime = ref(null);       // 記錄開始時間
+const currentEndTime = ref(null);         // 記錄開始時間
 
-const agv1StartTime = ref(null);      //等待agv計時開始
+const agv1StartTime = ref(null);          // 等待agv計時開始
 const agv1EndTime = ref(null);
-const agv2StartTime = ref(null);      //運行agv計時開始
+const agv2StartTime = ref(null);          // 運行agv計時開始
 const agv2EndTime = ref(null);
 
-const forklift2StartTime = ref(null);      //運行agv計時開始
-const forklift2EndTime = ref(null);
+const forklift2StartTime = ref(null);     // 堆高機運行計時開始
+const forklift2EndTime = ref(null);       // 堆高機運行計時結束
+
+const dialog_totalActiveTime = ref('00:00:00')  // 最終顯示開啟總時間
+
+//let dialog_elapsedActive = 0            // 已經累積的有效秒數（扣掉暫停）
+let dialog_pauseStart = null              // 暫停開始時間（毫秒）
+
 
 const dialog = ref(false);
 const dialog_order_num = ref('');
 
-const dialog_timer = ref('00:00:00');           // 即時顯示計時器
-const dialog_totalActiveTime = ref('00:00:00')  // 最終顯示開啟總時間
-
-const dialog_isPaused = ref(false)              // dialog內, 計時器狀態控制
-let dialog_intervalId = null;
-let dialog_startTime = null;            // 本次計時起點（毫秒）
-let dialog_elapsedActive = 0            // 已經累積的有效秒數（扣掉暫停）
-let dialog_pauseStart = null            // 暫停開始時間（毫秒）
+const dialogs = ref([]);              // 儲存多個 dialog 狀態
 
 const isConfirmed = ref(false);
 
@@ -911,34 +925,43 @@ const pagination = reactive({
 });
 
 // 定義 facet 列表
-const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
-const userFacets = ref(['Facet 1', 'Facet 4']);
+//const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
+//const userFacets = ref(['Facet 1', 'Facet 4']);
 
 const test_count = ref(0);
 
 const abnormalDialogBtnDisable = ref(true);
-const abnormalDialog = ref(false);                    // dialog顯示切換開關
-const abnormalDialog_order_num = ref('');             // 訂單編號
-const abnormalDialog_autocomplete_message = ref('');  // v-autocomplete component所選擇的字串
-const abnormalDialog_message = ref('');               // dialog顯示訊息
+const abnormalDialog = ref(false);                      // dialog顯示切換開關
+const abnormalDialog_order_num = ref('');               // 訂單編號
+const abnormalDialog_autocomplete_message = ref(null);  // v-autocomplete component所選擇的字串
+const abnormalDialog_search = ref('')                   // 控制搜尋字
+const abnormalDialog_message = ref('');                 // dialog顯示訊息
 const abnormalDialog_display = ref(true);
 
-const abnormalDialog_record = ref(null);    // 點擊鈴鐺icon的目前紀錄
+const abnormalDialog_record = ref(null);                // 點擊鈴鐺icon的目前紀錄
 
 const itemsWithIcons = [
-  { text: '臨時領料', icon: 'mdi-clock-outline' },
-  { text: '堆高機搬運物料', icon: 'mdi-forklift' }
+  { id:1, text: '臨時領料', icon: 'mdi-clock-outline' },
+  { id:2, text: '堆高機搬運物料', icon: 'mdi-forklift' },
+  { id:3, text: '多筆領料', icon: 'mdi-clock-check'},
 ]
+
+const transport_message = ref('領料人工送出')
+const showMenu = ref(true);                  // 控制員工選單顯示
+const toggle_exclusive = ref(1);              // 控制選擇的按鈕, 預設AGV:2, 人推車:1
 
 //=== watch ===
 setupGetBomsWatcher();
 
-//setupListUsersWatcher();
+watch(materials, (mItems) => {
+    if (materials.value.length==0)
+      selectedItems.value = [];
+});
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
-  console.log("watch(), newItems:", newItems)
-  localStorage.setItem('selectedItems', JSON.stringify(newItems));
+    //console.log("watch(), newItems:", newItems)
+    localStorage.setItem('selectedItems', JSON.stringify(newItems));
   },
   { deep: true }
 );
@@ -950,44 +973,289 @@ watch(bar_code, (newVal) => {
   }
 })
 
-watch(dialog, async (newVal, oldVal) => {
-//watch(dialog, (newVal, oldVal) => {
-    if (oldVal === true && newVal === false) {
-    bar_code.value = '';
-  }
+watch(
+  () => dialogs.value.map(d => d.dialogVisible),
+  async (newVals, oldVals = []) => {
+    for (let i = 0; i < newVals.length; i++) {
+      const dlg = dialogs.value[i];
+      if (!dlg) continue; // 安全防呆
 
-  //// 等待 DOM 完全渲染後才執行 focus
-  //nextTick(() => {
-  //  // 自動 focus
-  //  if (barcodeInput.value) {
-  //    barcodeInput.value.focus();
-  //  }
-  //})
+      const isOpenNow = !!newVals[i];
+      const wasOpen   = !!oldVals[i];
 
-  if (newVal) {
-    // === 對話框打開時啟動計時器 ===
-    dialog_startTimer();
-  } else {
-    // === 對話框關閉時停止計時器 ===
-    dialog_stopTimer();
+      // === dialog 剛打開 ===
+      /*
+      if (isOpenNow && !wasOpen) {
+        console.log("🟢 Dialog opened");
 
-  // if (!newVal) {
-    await nextTick();
-    if (isConfirmed.value && editedRecord.value.id != null) {
-      const el = document.getElementById(`receiveQtyID-${editedRecord.value.id}`)
-      el?.focus()
-    } else {
-      // 聚焦條碼欄位
-      //barcodeInput.value?.focus()
-      if (barcodeInput.value) {
-        barcodeInput.value.focus();
+        // 先確保前一次的資源已釋放（若有殘留）
+        //try { dlg.proc?.dispose?.(); } catch(_) {}
+        //dlg.proc = null;
+
+        // 設 isOpen = true（寫回資料庫）
+        try {
+
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpen",
+            record_data: true,
+          });
+
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpenEmpId",
+            record_data: currentUser.value.empID,
+          });
+
+        } catch (e) {
+          console.warn("update isOpen(true) or isOpenEmpId 失敗:", e);
+        }
+
+        // 在 table 中把該筆標成 isOpen=true（響應式）
+        const targetIndex = materials.value.findIndex(kk => kk.id === dlg.material_id);
+        if (targetIndex !== -1) {
+          materials.value[targetIndex] = {
+            ...materials.value[targetIndex],
+            isOpen: true,
+            isOpenEmpId: currentUser.value.empID,
+          };
+        }
+
+        // 等待 DOM 渲染完成，TimerDisplay 的 ref 才能使用
+        await nextTick();
+
+        try {
+          // 確保每個 dlg 都有自己的 useProcessTimer 實例（⚠ 要傳函式！）
+          if (!dlg.proc) {
+            dlg.proc = useProcessTimer(() => dlg.timerRef);
+          }
+
+          // 每次打開都用新的 useProcessTimer，避免舊 interval 殘留
+          //dlg.proc = useProcessTimer(() => dlg.timerRef);
+
+          // 每次打開都向後端取最新狀態並還原
+          await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
+        } catch (e) {
+          console.error("startProcess 失敗：", e);
+        }
+      }
+      */
+      if (isOpenNow && !wasOpen) {
+        console.log("🟢 Dialog opened");
+
+        // 只更新 Material 狀態，不再 startProcess
+        try {
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpen",
+            record_data: true,
+          });
+
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpenEmpId",
+            record_data: currentUser.value.empID,
+          });
+        } catch (e) {
+          console.warn("update isOpen(true)/isOpenEmpId 失敗:", e);
+        }
+
+        // 在 table 中把該筆標成 isOpen=true（響應式）
+        const targetIndex = materials.value.findIndex(kk => kk.id === dlg.material_id);
+        if (targetIndex !== -1) {
+          materials.value[targetIndex] = {
+            ...materials.value[targetIndex],
+            isOpen: true,
+            isOpenEmpId: currentUser.value.empID,
+          };
+        }
+
+        // 等待 DOM 渲染完成，TimerDisplay 的 ref 才能使用
+        await nextTick();
+      }
+
+      // === dialog 剛關閉 ===
+      if (!isOpenNow && wasOpen) {
+        console.log("Dialog closed");
+
+        const reason = dlg.closeReason;
+
+        if (dlg.proc.for_vue3_has_started) {  //工單已開始
+          try {
+
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "hasStarted",
+              record_data: true,
+            });
+
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "isOpenEmpId",
+              record_data: currentUser.value.empID,
+            });
+
+            /*
+            await updateMaterialFields({
+              id: dlg.material_id,
+              fields: {
+                hasStarted: true,
+                isOpenEmpId: currentUser.value.empID,
+              }
+            });
+            */
+          } catch (e) {
+            console.warn("update hasStarted(true) or isOpenEmpId 失敗:", e);
+          }
+
+          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+          if (targetIndex2 !== -1) {
+            materials.value[targetIndex2] = {
+              ...materials.value[targetIndex2],
+              hasStarted: true,
+              isOpenEmpId: currentUser.value.empID,
+            };
+          }
+        } else {
+          try {
+            await updateMaterial({
+              id: dlg.material_id,
+              record_name: "isOpenEmpId",
+              record_data: "",
+            });
+          } catch (e) {
+            console.warn("update isOpenEmpId 失敗:", e);
+          }
+
+          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+          if (targetIndex2 !== -1) {
+            materials.value[targetIndex2] = {
+              ...materials.value[targetIndex2],
+              isOpenEmpId: "",
+            };
+          }
+        }
+
+        if (dlg._closingOnce === undefined) dlg._closingOnce = false;
+
+        if (dlg._closingOnce) return;     // 已在關閉流程中 → 直接略過
+        dlg._closingOnce = true;
+
+        try {
+          if (reason === 'esc' || reason === 'outside') {
+            if (!dlg?.proc) return;   // ← 這裡加，避免 undefined 錯誤
+
+            console.log("$$ esc狀態 $$")
+            // ✅ ESC / 外點：流程保持運行，不暫停
+            /*
+            if (dlg?.proc?.updateActiveNoPause) {
+              await dlg.proc.updateActiveNoPause();
+            } else {
+              console.warn('ESC/Outside close → proc not ready, skip keep-running update');
+            }
+            */
+            // 根據當下狀態決定要維持暫停還是不中斷繼續
+            console.log("dlg?.proc?.isPaused:",dlg?.proc?.isPaused)
+
+            if (dlg?.proc?.isPaused) {
+              console.log("暫停的狀態")
+              // ✅ 現在是暫停 → 維持暫停離開
+              await dlg.proc.updateKeepPaused();
+              //await dlg.proc.updateProcess();           // 存入最新 elapsed（暫停狀態）
+              // 同步表格列 → 紅
+              setRowState(dlg.material_id, {
+                is_paused: true,
+                startStatus: false,
+              });
+            } else {
+
+              console.log("開始的狀態")
+              // ✅ 現在在跑 → 不中斷離開
+              await dlg.proc.updateActiveNoPause();
+              //await dlg.proc.updateProcess();           // 存入最新 elapsed（運行中）
+              // 同步表格列 → 綠
+              setRowState(dlg.material_id, {
+                is_paused: false,
+                startStatus: true,
+                has_started: true,
+                isOpenEmpId: String(currentUser.value.empID || ''),
+              });
+
+            }
+
+            dlg.dialogVisible = false;
+
+          } else {
+            console.log("$$ 確定按鍵狀態 $$")
+
+            // 🛑 一般關閉：暫停 + 回寫
+            dlg?.timerRef?.pause?.(); // 視覺上暫停
+            if (dlg?.proc?.isPaused)
+              dlg.proc.isPaused.value = true;
+            // 語法1, 容易了解
+            //if (dlg.proc.updateProcess) await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
+            //if (dlg.proc.closeProcess)  await dlg.proc.closeProcess();
+            // 語法2, 簡潔
+            // 用「可選鏈結呼叫」直接在存在時才呼叫；不存在就得到 undefined，await undefined 會立即通過，不丟錯。
+            await dlg.proc.updateProcess?.();
+            console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
+            await dlg.proc.closeProcess?.();
+
+            console.log("dialog , i:", i)
+            dialogs.value.splice(i, 1);
+          }
+        } catch (e) {
+          console.error("close-handling 失敗：", e);
+        } finally {
+          // ✅ 不論哪種關閉，都釋放本地 interval/輪詢，避免背景偷跑
+          //try { dlg.proc?.dispose?.(); } catch (_) {}
+          //dlg.proc = null;             // 下次打開會重建
+
+          // 重置關閉原因，避免下次誤判
+          dlg.closeReason = null;
+          // 這次流程結束，讓下一次可以再執行
+          dlg._closingOnce = false;
+        }
+
+        try {
+          await updateMaterial({
+            id: dlg.material_id,
+            record_name: "isOpen",
+            record_data: false,
+          });
+        } catch (e) {
+          console.warn("update isOpen(false) 失敗:", e);
+        }
+
+        const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
+        if (targetIndex2 !== -1) {
+          materials.value[targetIndex2] = {
+            ...materials.value[targetIndex2],
+            isOpen: false,
+          };
+        }
+
+        // ✅ 從陣列移除該 dialog（放在 nextTick 後移除，避免索引變動干擾當前迭代）
+        //const idxToRemove = i;
+        //await nextTick();
+        //dialogs.value.splice(idxToRemove, 1);
+
+        // 清空條碼（只對當前 dlg）
+        bar_code.value = '';
+
+        // 聚焦欄位
+        await nextTick();
+        if (isConfirmed.value && editedRecord.value?.id != null) {
+          document.getElementById(`receiveQtyID-${editedRecord.value.id}`)?.focus();
+        } else {
+          barcodeInput.value?.focus();
+        }
+        isConfirmed.value = false; // 重置狀態
       }
     }
-    isConfirmed.value = false // 重置狀態
-  }
-});
-
-
+  },
+  { deep: true }
+);
 
 //=== computed ===
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1022,14 +1290,45 @@ const formattedDate = computed(() => {
 //});
 const isDialogConfirmDisabled = computed(() => {
   // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
-  return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  //return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  return enableDialogBtn.value || boms.value.length === 0;
 });
+
+const isAllReceiveIsFalse = computed(() => {
+  // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
+  //return boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
+  return boms.value.length === 0;
+});
+/*
+const isStarted = computed(() => {
+  return (item) => {
+    const dlg = dialogs.value.find(
+      d =>
+        d.material_id === item.id &&
+        d.user_id === currentUser.value.empID
+    );
+    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
+    console.log("dlg?.proc?.for_vue3_pause_or_start_status", dlg?.proc?.for_vue3_pause_or_start_status)
+    return Boolean(dlg?.proc?.for_vue3_pause_or_start_status);
+  };
+});
+
+const ishasWorked = computed(() => {
+  return (item) => {
+    const dlg = dialogs.value.find(
+      d =>
+        d.material_id === item.id &&
+        d.user_id === currentUser.value.empID
+    );
+    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
+    return Boolean(dlg?.proc?.for_vue3_has_started);
+  };
+});
+*/
 
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
-
-  //dialog_startTimer();
 
   //+++
   const dpi = window.devicePixelRatio;
@@ -1071,20 +1370,28 @@ onMounted(async () => {
   //history.pushState(null, null, document.URL)
   window.addEventListener('popstate', handlePopState)
 
-  //const { current } = useLocale();
-  //console.log("目前語系:", current.value); // 應該輸出 "zhHant"
-
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
 
-  userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  let user = localStorage.getItem("loginedUser");
-  currentUser.value = user ? JSON.parse(user) : null;
+  if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
   console.log("currentUser:", currentUser.value);
+  //
 
   // 取得每個 v-text-field 的唯一 ID
   //2025-02-13 mark the following function
@@ -1101,9 +1408,9 @@ onMounted(async () => {
   intervalId = setInterval(countExcelFiles, 10 * 60 * 1000);  // 每 10 分鐘調用一次 API, 10分鐘=600000毫秒
 
   // 設定紅黃綠燈閃爍週期
-  intervalIdForLed = setInterval(() => {
-    isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
-  }, 500);
+  //intervalIdForLed = setInterval(() => {
+  //  isVisible.value = !isVisible.value;  // 每秒切換顯示狀態
+  //}, 500);
 
   isBlinking.value = selectedItems.value.length == 0 ? true:false;
 
@@ -1124,344 +1431,125 @@ onMounted(async () => {
   try {
     await setupSocketConnection();
     /*
-    if (!savedItems) {
-      console.log('送出 agv_reset 指令');
-      socket.value.emit('agv_reset');
-    }
-    */
-
-    /*
-    socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
-      console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
-
-      const materialPayload0 = {
-        order_num: data,
-      };
-      const response0 = await getMaterial(materialPayload0);
-
-      if(response0) {
-        console.log('工單 '+ data + ' 已檢料完成!');
-        socket.value.emit('station1_order_ok');
-
-        //from_agv_input_order_num.value = data;
-        //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
-        //isBlinking.value = true; // 開始按鍵閃爍
-
-        // 定義 materialPayload1
-        const materialPayload1 = {
-          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-          record_name: 'show3_ok',
-          record_data: 1    // 設為 1，等待agv
-        };
-        await updateMaterial(materialPayload1);
-      } else {
-        console.log('工單 '+ data + ' 還沒檢料完成!');
-        socket.value.emit('station1_order_ng');
-        order_num_on_agv_blink.value = '';
-      }
+    socket.value.on('station1_error', async () => {
+      console.log("receive station1_error socket...");
+      activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
     });
-    */
-    //socket.value.emit('station1_loading');
 
     socket.value.on('station1_loading_ready', async(data) => {
-      console.log("receive station1_loading_ready socket...");
-
-      //const num = parseInt(data.message, 10);
-
-      activeColor.value='yellow';  // 物料進站
-
-      //if ([1, 2, 3].includes(num)) {
-      //  const temp_msg = `物料已經進入第${num}號裝卸站!`;
-      //  console.warn(temp_msg);
-      //  //activeColor.value='yello';  // 物料進站
-      //  //showSnackbar(temp_msg, 'yellow lighten-5');
-      //} else {
-      //  console.error('接收到不合法的裝卸站號碼:', data.message);
-      //}
     });
 
     socket.value.on('station1_agv_start', async () => {
       console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
 
-      let payload = {};
-      // 依據每個 item 的 id 進行資料更新
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-        payload = {
-          id: item,
-          record_name: 'show3_ok',      //看板要顯示的欄位名稱
-          record_data: 16,              //看板要顯示的欄位內容, 16:AGV start
-        };
-        await updateMaterial(payload);
-        //try {
-        //  await updateMaterial(payload);
-        //  console.log(`資料更新成功，id: ${item}`);
-        //} catch (error) {
-        //  console.error(`資料更新失敗，id: ${item}`, error);
-        //}
-      });
+      const selectedIds = Array.isArray(selectedItems.value) ? [...selectedItems.value] : [];
+      if (selectedIds.length === 0) {
+        console.warn('station1_agv_start: 沒有選取任何項目');
+        return;
+      }
+
+      activeColor.value='yellow';  // 物料進站
+
+      for (const id of selectedIds) {
+        try {
+          console.log('selected item:', id);
+          await updateMaterial({
+            id,
+            record_name: 'show3_ok', // 看板要顯示的欄位名稱
+            record_data: 16,         // 16: AGV start
+          });
+        } catch (err) {
+          console.warn('updateMaterial 失敗, id =', id, err);
+        }
+      }
     });
 
     socket.value.on('station1_agv_begin', async () => {
       console.log('AGV暫停, 收到 station1_agv_begin 訊息');
 
-      let payload = {};
-      // 記錄agv在站與站之間運行開始時間
-      agv2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV Start time:", agv2StartTime.value);
+      // 記錄 agv 在站與站之間運行開始時間（確保是 Date 物件）
+      agv2StartTime.value = new Date();
+      console.log('AGV Start time:', agv2StartTime.value);
 
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-
-        payload = {
-          id: item,
-          record_name: 'show3_ok',    //看板要顯示的欄位名稱
-          record_data: 2              //看板要顯示的欄位內容, 2:agv移動至組裝區中
-        };
-        try {
-          await updateMaterial(payload);
-          console.log(`資料更新成功，id: ${item}`);
-        } catch (error) {
-          console.error(`資料更新失敗，id: ${item}`, error);
-        }
-      });
-      /*
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 2,      // 行走中
-        station:  2,    // 行走至組裝區
-      };
-      await updateAGV(payload);
-
-      background.value='#10e810'
-      activeColor.value='SeaGreen';   // 物料出站
-      */
-    })
-
-    //以下待確認
-
-    socket.value.on('station2_agv_end', async (data) => {
-      console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
-
-      // 記錄agv在站與站之間運行結束時間
-      agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV end time:", agv2EndTime.value);
-
-      let payload = {};
-      let targetItem = {};
-      selectedItems.value.forEach(async (item) => {
-        targetItem = materials.value.find(m => m.id == item);
-        console.log("targetItem:", targetItem)
-
-        //console.log('selectedItems, item:', item);
-        payload = {
-          id: targetItem.id,
-          show1_ok: 2,      //組裝站
-          show2_ok: 3,      //未組裝
-          show3_ok: 3,      //等待組裝中
-          whichStation: 2,  //目標途程:組裝站
-        };
-        await updateMaterialRecord(payload);
-        /*
-        payload = {
-          assemble_id: targetItem.id,
-          record_name: 'show1_ok',
-          record_data: 3,
-        };
-        await updateAssemble(payload);
-        payload = {
-          assemble_id: targetItem.id,
-          record_name: 'show2_ok',
-          record_data: 10,
-        };
-        await updateAssemble(payload);
-        payload = {
-          assemble_id: targetItem.id,
-          record_name: 'show3_ok',
-          record_data: 3,
-        };
-        await updateAssemble(payload);
-        payload = {
-          assemble_id: targetItem.id,
-          record_name: 'whichStation',
-          record_data: 3,
-        };
-        await updateAssemble(payload);
-        */
-        payload = {
-          material_id: targetItem.id,
-          delivery_qty: 0,
-          record_name1: 'show1_ok',
-          record_data1: 2,
-          record_name2: 'show2_ok',
-          record_data2: 3,
-          record_name3: 'show3_ok',
-          record_data3: 3,
-        };
-        await updateAssmbleDataByMaterialID(payload)
-
-      });
-      console.log('agv_end 處理步驟1...');
-
-      let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
-      let formattedStartTime = formatDateTime(agv2StartTime.value);
-      let formattedEndTime = formatDateTime(agv2EndTime.value);
-      console.log("AGV 運行 Start Time:", formattedStartTime);
-      console.log("AGV 運行 End Time:", formattedEndTime);
-      console.log("AGV 運行 Period time:", agv2PeriodTime);
-
-      //let payload1 = {};
-      //let payload2 = {};
-      //let payload_new = {};
-
-      console.log('agv_end 處理步驟2...');
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
-
-        let myMaterial = materials.value.find(m => m.id == item);
-
-        payload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv2PeriodTime,
-          user_id: 'AGV1-2',                        //在備料區('AGV1'), 呼叫AGV的運行時間('-2'), 即簡稱AGV1-2
-          order_num: myMaterial.order_num,
-          process_type: 2,                          //agv到組裝區
-          id: myMaterial.id,
-        };
-        await createProcess(payload);
-        console.log('步驟2-1...');
-
-        //紀錄該筆的agv送料數量
-        payload = {
-          id: myMaterial.id,
-          record_name: 'delivery_qty',
-          record_data: myMaterial.delivery_qty,
-        };
-        await updateMaterial(payload);
-        console.log('步驟2-2...');
-
-        //紀錄該筆的應領取數量, 2025-06-16 add, 改順序
-        payload = {
-          material_id: myMaterial.id,
-          record_name: 'must_receive_qty',
-          //record_data: myMaterial.delivery_qty,
-          record_data: myMaterial.total_delivery_qty,
-        };
-        await updateAssembleMustReceiveQtyByMaterialID(payload);
-        console.log('步驟2-2-a...');
-
-        //紀錄該筆的agv送料狀態
-        //if (Number(myMaterial.delivery_qty) !=0 && Number(myMaterial.total_delivery_qty) !=0) {
-        payload = {
-          id: myMaterial.id,
-          record_name: 'isShow',
-          record_data: true
-        };
-        await updateMaterial(payload);
-        console.log('步驟2-3...');
-
-        if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
-          console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
-
-          let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
-
-          payload = {
-            copy_id: myMaterial.id,                 //工單table id
-            delivery_qty: myMaterial.delivery_qty,  //備料數量
-            total_delivery_qty: tempDelivery,       //應備數量
-            show2_ok: 2,                            //備料完成
-            shortage_note: '',
-          }
-          await copyMaterial(payload);
-          test_count.value += 1;
-          console.log('步驟2-4...', test_count.value);
-        } else {
-          //if (myMaterial.isLackMaterial == 0) {
-            payload = {
-              //order_num: my_material_orderNum,
-              id: myMaterial.id,
-              record_name: 'show2_ok',
-              record_data: 3                  // 等待組裝作業
-            };
-            await updateMaterial(payload);
-          //}
-          //console.log("myMaterial.is_copied, id:", myMaterial.is_copied, myMaterial.id)
-          if (myMaterial.is_copied)  {
-            payload = {
-              copied_material_id: myMaterial.id,
-            };
-            await updateBomXorReceive(payload);
-
-            // 延遲 1 秒
-            await delay(1000);
-
-            // 通知合併工單顯示
-            eventBus.emit('merge_work_orders');
-            console.log('合併工單顯示通知已發出')
-          }
-
-
-        } // end else loop
-      });
-      /*
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 0,      // ready
-        station:  2,    // 已在組裝區
-      };
-      await updateAGV(payload);
-      console.log('agv_end 處理步驟3...');
-
-      activeColor.value='DarkOrange';   //物料送達組裝區
-      */
-      // 插入延遲 3 秒
-      await delay(3000);
-
-      isFlashLed.value = false;     //黃綠燈熄滅
-
-      selectedItems.value = [];
-      if (localStorage.getItem('selectedItems')) {
-        localStorage.removeItem('selectedItems');
+      // 取出乾淨的 id 陣列
+      const selectedIds = Array.isArray(selectedItems.value) ? [...selectedItems.value] : [];
+      if (selectedIds.length === 0) {
+        console.warn('沒有選取任何項目');
+        return;
       }
-      //待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-    }); // end socket loop
 
-    //socket.value.on('station2_agv_ready', async () => {
-    //  console.log('AGV 已在組裝區裝卸站, 收到 station2_agv_ready 訊息...');
-    //});
+      let successCount = 0;
 
+      for (const id of selectedIds) {
+        try {
+          console.log('selected item:', id);
+          await updateMaterial({
+            id,
+            record_name: 'show3_ok', // 看板欄位名稱
+            record_data: 2,          // 2: agv移動至組裝區中
+          });
+          successCount++;
+          console.log(`資料更新成功，id: ${id}`);
+        } catch (error) {
+          console.error(`資料更新失敗，id: ${id}`, error);
+        }
+      }
+
+      // 若至少有一筆更新成功，再更新 AGV 狀態與 UI
+      if (successCount > 0) {
+        await updateAGV({
+          id: 1,
+          status: 2,  // 行走中
+          station: 2, // 行走至組裝區
+        });
+
+        background.value = '#10e810';
+        activeColor.value = 'SeaGreen'; // 物料出站
+      } else {
+        console.warn('沒有任何資料成功更新，略過 AGV 狀態更新與 UI 變色');
+      }
+    })
+    */
+    //以下待確認
+    /*
     socket.value.on('station2_trans_end', async (data) => {
-      console.log("收到 station2_trans_ready訊息...", data);
+      console.log("收到 station2_trans_end訊息...", data);
 
+      // 送出事件
       socket.value.emit('station2_trans_over');
-      console.log("送出 station2_trans_over訊息...");
+      console.log('送出 station2_trans_over 訊息...');
 
-      // 記錄forklift在站與站之間運行結束時間
-      forklift2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("forklift end time:", forklift2EndTime.value);
+      // 記錄 forklift 在站與站之間運行結束時間
+      forklift2EndTime.value = new Date();
+      console.log('forklift end time:', forklift2EndTime.value);
 
-      let payload = {};
-      let targetItem = {};
+      // 取出乾淨的 id 陣列
+      const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+      if (selectedIds.length === 0) {
+        console.warn('trans_end：沒有選取任何項目');
+        return;
+      }
 
-      selectedItems.value.forEach(async (item) => {
-        targetItem = materials.value.find(m => m.id == item);
-        console.log("targetItem:", targetItem)
+      // === 步驟1：更新 material/assemble 顯示狀態 + 記錄搬運方式 ===
+      for (const id of selectedIds) {
+        const m = materials.value.find(x => x.id == id);
+        if (!m) {
+          console.warn('trans_end：找不到 material，id=', id);
+          continue;
+        }
 
-        payload = {
-          id: targetItem.id,
-          show1_ok: 2,      //組裝站
-          show2_ok: 3,      //未組裝
-          show3_ok: 3,      //等待組裝中
-          whichStation: 2,  //目標途程:組裝站
-        };
-        await updateMaterialRecord(payload);
+        // 組裝站 / 未組裝 / 等待組裝中 / 目標途程
+        await updateMaterialRecord({
+          id: m.id,
+          show1_ok: 2,     // 組裝站
+          show2_ok: 3,     // 未組裝
+          show3_ok: 3,     // 等待組裝中
+          //whichStation: 2, // 目標途程：組裝站
+        });
 
-        payload = {
-          material_id: targetItem.id,
+        // 同步更新 assemble
+        await updateAssmbleDataByMaterialID({
+          material_id: m.id,
           delivery_qty: 0,
           record_name1: 'show1_ok',
           record_data1: 2,
@@ -1469,130 +1557,121 @@ onMounted(async () => {
           record_data2: 3,
           record_name3: 'show3_ok',
           record_data3: 3,
-        };
-        await updateAssmbleDataByMaterialID(payload)
+        });
 
-        payload = {
-          id: targetItem.id,
+        // 紀錄搬運方式：手動（堆高機）
+        await updateMaterial({
+          id: m.id,
           record_name: 'move_by_automatic_or_manual',
-          record_data: false
-        };
-        await updateMaterial(payload);
-      });
-      // end forEach loop
+          record_data: false,
+        });
+      }
       console.log('trans_end 處理步驟1...');
 
-      let formattedStartTime = formatDateTime(forklift2StartTime.value);
-      let formattedEndTime = formatDateTime(forklift2EndTime.value);
-      let PeriodTime = calculatePeriodTime(forklift2StartTime.value, forklift2EndTime.value);  // 計算時間間隔
-      console.log("forklift 運行 Start Time:", formattedStartTime);
-      console.log("forklift 運行 End Time:", formattedEndTime);
-      console.log("forklift 運行 Period time:", PeriodTime);
+      // === 安全計算時間（確保 end >= start） ===
+      const startDate = new Date(forklift2StartTime.value || Date.now());
+      const endDate   = new Date(forklift2EndTime.value   || Date.now());
+      const startMs   = +startDate;
+      const endMs     = Math.max(+endDate, startMs);
 
-      console.log('trans_end 處理步驟2...');
-      selectedItems.value.forEach(async (item) => {
-        console.log('selectedItems, item:', item);
+      const formattedStartTime = formatDateTime(new Date(startMs));
+      const formattedEndTime   = formatDateTime(new Date(endMs));
+      const PeriodTime         = calculatePeriodTime(new Date(startMs), new Date(endMs));
 
-        let myMaterial = materials.value.find(m => m.id == item);
-        console.log('selectedItems, item:', myMaterial);
+      console.log('forklift 運行 Start Time:', formattedStartTime);
+      console.log('forklift 運行 End   Time:', formattedEndTime);
+      console.log('forklift 運行 Period    :', PeriodTime);
 
-        payload = {
+      // === 步驟2：建立 Process、寫回數量與狀態、處理多批次 ===
+      for (const id of selectedIds) {
+        const m = materials.value.find(x => x.id == id);
+        if (!m) continue;
+
+        // 2-1. 建立「堆高機到組裝區」流程
+        await createProcess({
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: PeriodTime,
-          user_id: currentUser.value.empID,
-          order_num: myMaterial.order_num,
-          process_type: 5,                          //forklift到加工區
-          id: myMaterial.id,
-        };
-        await createProcess(payload);
+          user_id: currentUser.value?.empID ?? '', // 操作人
+          order_num: m.order_num,
+          process_type: 5, // forklift到組裝區
+          id: m.id,
+        });
         console.log('步驟2-1...');
 
-        let processPayload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: PeriodTime,
-          user_id: currentUser.value.empID,
-          //order_num: my_material_orderNum,
-          process_type: 1,                  // 備料
-          id: editedRecord.value.id,
-          process_work_time_qty: editedRecord.value.req_qty, // 報工數量
-        };
-        await createProcess(processPayload);
+        // 2-1b.（保留你原本的備料報工）*若 editedRecord 存在才送*
+        if (editedRecord?.value?.id) {
+          await createProcess({
+            begin_time: formattedStartTime,
+            end_time: formattedEndTime,
+            periodTime: PeriodTime,
+            user_id: currentUser.value?.empID ?? '',
+            process_type: 1, // 備料
+            id: editedRecord.value.id,
+            process_work_time_qty: editedRecord.value.req_qty, // 報工數量
+          });
+        }
 
-        //紀錄該筆的forklift送料數量
-        payload = {
-          id: myMaterial.id,
+        // 2-2. 記錄送料數量
+        await updateMaterial({
+          id: m.id,
           record_name: 'delivery_qty',
-          record_data: myMaterial.delivery_qty
-        };
-        await updateMaterial(payload);
+          record_data: m.delivery_qty,
+        });
         console.log('步驟2-2...');
 
-        //紀錄該筆的應領取數量
-        payload = {
-          material_id: myMaterial.id,
+        // 2-2-a. 記錄應領取數量（用 total_delivery_qty）
+        await updateAssembleMustReceiveQtyByMaterialID({
+          material_id: m.id,
           record_name: 'must_receive_qty',
-          record_data: myMaterial.total_delivery_qty,
-        };
-        await updateAssembleMustReceiveQtyByMaterialID(payload);
+          record_data: m.total_delivery_qty,
+        });
         console.log('步驟2-2-a...');
 
-        //紀錄該筆的forklift送料狀態
-        payload = {
-          id: myMaterial.id,
+        // 2-3. 顯示此筆為可顯示
+        await updateMaterial({
+          id: m.id,
           record_name: 'isShow',
-          record_data: true
-        };
-        await updateMaterial(payload);
+          record_data: true,
+        });
         console.log('步驟2-3...');
 
-        if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
-          console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
+        // 2-4. 判斷是否多批次運送
+        const isMultiBatch = Number(m.delivery_qty) !== Number(m.total_delivery_qty);
 
-          let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
-
-          payload = {
-            copy_id: myMaterial.id,                 //工單table id
-            delivery_qty: myMaterial.delivery_qty,  //備料數量
-            total_delivery_qty: tempDelivery,       //應備數量
-            show2_ok: 2,                            //備料完成
-            shortage_note: '',
+        if (isMultiBatch) {
+          console.log('1張工單多批次運送, 新增未運送數量(相同工單)');
+          const remain = Number(m.total_delivery_qty) - Number(m.delivery_qty);
+          if (remain > 0) {
+            await copyMaterial({
+              copy_id: m.id,                   // 工單 table id
+              delivery_qty: m.delivery_qty,    // 本批備料
+              total_delivery_qty: remain,      // 剩餘應備
+              show2_ok: 2,                     // 備料完成
+              shortage_note: '',
+            });
+            test_count.value = (test_count.value || 0) + 1;
+            console.log('步驟2-4...', test_count.value);
           }
-          await copyMaterial(payload);
-          test_count.value += 1;
-          console.log('步驟2-4...', test_count.value);
         } else {
-          payload = {
-            id: myMaterial.id,
+          // 單批次 → 直接進「等待組裝作業」
+          await updateMaterial({
+            id: m.id,
             record_name: 'show2_ok',
-            record_data: 3                  // 等待組裝作業
-          };
-          await updateMaterial(payload);
+            record_data: 3,
+          });
 
-          if (myMaterial.is_copied)  {
-            payload = {
-              copied_material_id: myMaterial.id,
-            };
-            await updateBomXorReceive(payload);
-
-            // 延遲 1 秒
+          if (m.is_copied) {
+            await updateBomXorReceive({ copied_material_id: m.id });
             await delay(1000);
-
-            // 通知合併工單顯示
             eventBus.emit('merge_work_orders');
-            console.log('合併工單顯示通知已發出')
+            console.log('合併工單顯示通知已發出');
           }
-
-        } // end else loop
-      });
-
-      //activeColor.value='DarkOrange';   //物料送達組裝區
+        }
+      }
 
       // 插入延遲 3 秒
       await delay(3000);
-
-      //isFlashLed.value = false;     //黃綠燈熄滅
 
       selectedItems.value = [];
       if (localStorage.getItem('selectedItems')) {
@@ -1605,59 +1684,80 @@ onMounted(async () => {
     socket.value.on('station1_agv_ready', async () => {
       console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
 
-      order_num_on_agv_blink.value='';
+      order_num_on_agv_blink.value = '';
 
-      // 記錄等待agv到站結束時間
+      // 記錄等待 agv 到站結束時間（確保是 Date 物件）
       agv1EndTime.value = new Date();
-      console.log("AGV End time:", agv1EndTime.value);
+      console.log('AGV End time:', agv1EndTime.value);
 
-      let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-      let formattedStartTime = formatDateTime(agv1StartTime.value);
-      let formattedEndTime = formatDateTime(agv1EndTime.value);
-      console.log("AGV 等待 Start Time:", formattedStartTime);
-      console.log("AGV 等待 End Time:", formattedEndTime);
-      console.log("AGV 等待 Period time:", agv1PeriodTime);
+      // 安全計算時間：確保 end >= start
+      const startDate = new Date(agv1StartTime.value || Date.now());
+      const endDate   = new Date(agv1EndTime.value   || Date.now());
+      const startMs   = +startDate;
+      const endMs     = Math.max(+endDate, startMs);
 
-      let payload = {};
-      // 記錄備料區途程資料, 等待agv時間
-      selectedItems.value.forEach(async (item) => {
-        let myMaterial = materials.value.find(kk => kk.id == item);
+      const formattedStartTime = formatDateTime(new Date(startMs));
+      const formattedEndTime   = formatDateTime(new Date(endMs));
+      const agv1PeriodTime     = calculatePeriodTime(new Date(startMs), new Date(endMs));
 
-        payload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv1PeriodTime,
-          user_id: 'AGV1-1',                          //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
-          order_num: myMaterial.order_num,
-          process_type: 19,                           //在備料區
-          id: item,
-        };
-        await createProcess(payload);
-      });
-      /*
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 1,
-        station:  1,
-      };
-      await updateAGV(payload);
+      console.log('AGV 等待 Start Time:', formattedStartTime);
+      console.log('AGV 等待 End   Time:', formattedEndTime);
+      console.log('AGV 等待 Period    :', agv1PeriodTime);
 
-      background.value='#ffff00'
-      isFlashLed.value = true;
-      activeColor.value='blue';   // 機器人進站
-      */
+      // 取出乾淨的 id 陣列
+      const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+      if (selectedIds.length === 0) {
+        console.warn('沒有選取任何項目');
+        return;
+      }
+
+      // 逐筆寫入 Process：AGV1-1（備料區等待）
+      let successCount = 0;
+      for (const id of selectedIds) {
+        const myMaterial = materials.value.find(kk => kk.id == id);
+        if (!myMaterial) {
+          console.warn('找不到 material，id =', id);
+          continue;
+        }
+
+        try {
+          await createProcess({
+            begin_time: formattedStartTime,
+            end_time: formattedEndTime,
+            periodTime: agv1PeriodTime,
+            user_id: 'AGV1-1',          // 備料區(AGV1)等待時間(-1)
+            order_num: myMaterial.order_num,
+            process_type: 19,            // 在備料區等待 AGV
+            id: myMaterial.id,
+          });
+          successCount++;
+        } catch (err) {
+          console.error('createProcess 失敗, id =', id, err);
+        }
+      }
+
+      // 成功至少一筆再更新 AGV 狀態與 UI
+      if (successCount > 0) {
+        await updateAGV({
+          id: 1,
+          status: 1,  // 等待/忙碌
+          station: 1, // 備料區
+        });
+
+        // UI 狀態
+        background.value = '#ffff00';
+        //isFlashLed.value = true;
+        activeColor.value = 'blue'; // 機器人進站
+      } else {
+        console.warn('沒有任何流程寫入成功，略過 AGV 狀態更新與 UI 變更');
+      }
     });
-
+    */
     socket.value.on('kuka_server_not_ready', async (data) => {
       let temp_msg= data?.message || 'kuka端伺服器未準備好';
       console.warn(temp_msg);
       showSnackbar(temp_msg, 'red accent-2');
     });
-
-    //socket.value.on('agv_ack', async () => {
-    //  console.log('收到 agv_ack 回應');
-    //});
 
     socket.value.on('triggerLogout', async (data) => {
       console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
@@ -1669,10 +1769,8 @@ onMounted(async () => {
           itemsPerPage: 0,
           seeIsOk: '0',
           lastRoutingName: 'Main',
-          empID: userData.empID,
+          empID: currentUser.value.empID,
         };
-
-        //let isAuthenticated = false;
 
         try {
           await updateSetting(payload);
@@ -1681,7 +1779,9 @@ onMounted(async () => {
           //localStorage.setItem('Authenticated', isAuthenticated);
           localStorage.setItem('Authenticated', false);
           removelocalStorage();
-
+          //#
+          sessionStorage.removeItem('auth_user');  // 刪掉使用者
+          //#
           const resolvedRoute = router.resolve({ name: 'LoginRegister' });
           const path = resolvedRoute.href;
           console.log('triggerLogout socket...', path)
@@ -1699,39 +1799,154 @@ onMounted(async () => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
-//window.removeEventListener('resize', calculatePanelPosition);
+  //window.removeEventListener('resize', calculatePanelPosition);
 
-window.removeEventListener('popstate', handlePopState);
-clearInterval(intervalId);
-//clearInterval(intervalIdForLed);
-dialog_stopTimer();
+  window.removeEventListener('popstate', handlePopState);
+  clearInterval(intervalId);
+  //clearInterval(intervalIdForLed);
+  //dialog_stopTimer();
 
-stopFlashing();
+  //stopFlashing();
 });
 
 //=== created ===
 onBeforeMount(() => {
-console.log("Employer, created()...")
+  console.log("Employer, created()...")
 
-pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
-initAxios();
-initialize();
+  initAxios();
+  initialize();
+
+  startAutoRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+});
+
+/*
+onBeforeUnmount(() => {
+  stopAutoRefresh();
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+  // 元件銷毀前，把所有尚存的 proc 都釋放一次
+  dialogs.value.forEach(d => {
+    try { d.proc?.dispose?.(); } catch(_) {}
+    d.proc = null;
+  });
+})
+*/
+
+onBeforeUnmount(() => {
+  // 1) 停止自動更新（若內部會 clearInterval/timeout）
+  try {
+    stopAutoRefresh?.();
+  } catch (e) {
+    console.warn('stopAutoRefresh failed:', e);
+  }
+
+  // 2) DOM 事件
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+  /*
+  // 3) 取消 watchers（請在建立 watch 時把 unwatch 收進這裡）
+  try {
+    stopWatchFns?.forEach(fn => { try { fn?.(); } catch(_) {} });
+    if (Array.isArray(stopWatchFns)) stopWatchFns.length = 0;
+  } catch (_) {}
+  */
+
+  // 5) 解除 socket 監聽（和 mounted 時註冊的事件一一對應）
+  if (socket?.value) {
+    try { socket.value.off?.('station2_trans_over', onStation2TransOver); } catch (_) {}
+    try { socket.value.off?.('station2_agv_end', onStation2AgvEnd); } catch (_) {}
+    try { socket.value.off?.('station1_call_result', onStation1CallResult); } catch (_) {}
+    // 其他有 .on() 過的事件，也請逐一 off
+  }
+
+  // 7) 釋放每個 dialog 的計時/資源
+  for (const d of (dialogs.value ?? [])) {
+    try { d?.proc?.dispose?.(); } catch (_) {}
+    if (d) d.proc = null;
+  }
+
+  // 9) 重置可能卡住的 UI 狀態（避免離開頁面時按鈕維持鎖定）
+  try {
+    isCallAGV.value = false;
+    isCallForklift.value = false;
+  } catch (_) {}
 });
 
 //=== method ===
+function setRowState(materialId, patch) {
+  const idx = materials.value.findIndex(r => r.id === materialId);
+  if (idx === -1) return;
+  materials.value[idx] = { ...materials.value[idx], ...patch };
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshTimerId = setInterval(() => {
+    // 頁籤在前景才拉，減少伺服器負擔
+    if (document.visibilityState === 'visible') {
+      fetchMaterials()
+    }
+  }, refreshTimerMs.value) // 10 秒
+}
+
+function stopAutoRefresh() {
+  if (refreshTimerId) {
+    clearInterval(refreshTimerId)
+    refreshTimerId = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // 回到前景就立刻更新一次，避免看到舊資料
+    fetchMaterials()
+  }
+}
+
+async function fetchMaterials() {
+  try {
+    tableLoading.value = true
+    await listMaterials()
+    lastRefreshed.value = new Date()
+  } catch (err) {
+    console.error('fetchMaterials error:', err)
+  } finally {
+    tableLoading.value = false
+  }
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...");
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
-    await listMaterials();
+    //await listMaterials();
+    await fetchMaterials();
 
+    console.log('## materials ##', materials)
+
+    //await listUsers();
     await listUsers2();
+
+    //await listSocketServerIP();
+    //console.log("initialize, socket_server_ip:", socket_server_ip.value)
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
+
+const setTimerRef = (dlg) => {
+  return (el) => {
+    dlg.timerRef = el;
+  };
+}
+
+const getIcon = (isPaused) => {
+  return isPaused ? "mdi-play" : "mdi-pause"
+}
 
 const customFilter =  (value, query, item)  => {
   return value != null &&
@@ -1755,48 +1970,6 @@ const calculatePanelPosition = () => {
     }
   })
 }
-/*
-const dialog_startTimer = () => {
-  // 防止重複啟動
-  if (dialog_intervalId) return
-
-  dialog_startTime = Date.now()
-
-  dialog_intervalId = setInterval(() => {
-    const diff = Math.floor((Date.now() - dialog_startTime) / 1000) // 經過秒數
-    const h = String(Math.floor(diff / 3600)).padStart(2, '0')
-    const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0')
-    const s = String(diff % 60).padStart(2, '0')
-    dialog_timer.value = `${h}:${m}:${s}`
-  }, 1000)
-}
-
-const dialog_stopTimer = () => {
-  if (dialog_intervalId) {
-    clearInterval(intervalId);
-    dialog_intervalId = null;
-  }
-  dialog_timer.value = '00:00:00';
-}
-*/
-
-/*
-const dialog_startTimer = () => {
-  let seconds = 0
-  dialog_intervalId = setInterval(() => {
-    seconds++
-    const h = String(Math.floor(seconds / 3600)).padStart(2, '0')
-    const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')
-    const s = String(seconds % 60).padStart(2, '0')
-    dialog_timer.value = `${h}:${m}:${s}`
-  }, 1000)
-}
-
-const dialog_stopTimer = () => {
-  if (dialog_intervalId)
-    clearInterval(dialog_intervalId)
-}
-*/
 
 /*
 const customFilter = (value, search, item) => {
@@ -1941,7 +2114,7 @@ const updateEmployeeFieldFromSelect = () => {
   // 確保 placeholder 保持靜態文字
   placeholderTextForEmployee.value = "請選擇員工";
 };
-
+/*
 // 啟動閃爍效果
 const startFlashing = () => {
   console.log("startFlashing()...")
@@ -1951,24 +2124,24 @@ const startFlashing = () => {
     isVisible.value = !isVisible.value; // 每秒切換顯示狀態
   }, 500);
 }
-
+*/
 // 停止閃爍效果
-const stopFlashing = () => {
-  console.log("stopFlashing()...")
-
-  clearInterval(intervalIdForLed);
-  isVisible.value = true;               // 重設為顯示
-  isFlashLed.value = false;
-}
+//const stopFlashing = () => {
+//  console.log("stopFlashing()...")
+//
+//  clearInterval(intervalIdForLed);
+//  isVisible.value = true;               // 重設為顯示
+//  isFlashLed.value = false;
+//}
 
 const setActive = (value) => {
   toggle_exclusive.value = value;       // 設置當前活動按鈕
   if (toggle_exclusive.value == 1) {
     showMenu.value = true;
-    transport_message.value = '備料人工送出'
+    transport_message.value = '備料完成人工送出'
   } else {
     showMenu.value = false;
-    transport_message.value = '備料自動送出'
+    transport_message.value = '備料完成自動送出'
   }
 }
 
@@ -1976,26 +2149,20 @@ const checkReceiveQty = (item) => {
   console.log("checkReceiveQty,", item);
 
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
-  const deliveryQty = Number(item.delivery_qty) || 0;   //備料數量
-  //const totalDeliveryQty = Number(item.total_delivery_qty) || 0;
-  //const reqQty = Number(item.req_qty) || 0;
-  const totalQty = Number(item.total_delivery_qty);    //應備數量
+  const deliveryQty = Number(item.delivery_qty) || 0;   //領料數量 (目前輸入)
+  const totalQty = Number(item.total_delivery_qty);     //應領數量
 
-  //console.log("deliveryQty > reqQty:", deliveryQty, reqQty)
   console.log("deliveryQty > totalQty:", deliveryQty, totalQty)
 
-  if (item.isLackMaterial == 0  && deliveryQty != totalQty && deliveryQty != 0) {
-    let temp_str = item.order_num + '工單缺料情況，備料數量不能改變！'
-    showSnackbar(temp_str, 'red accent-2');
-    return; // 不改變選擇狀態
-  }
+  //if (deliveryQty != totalQty && deliveryQty != 0) {
+  //  let temp_str = item.order_num + '領料數量不能改變！'
+  //  showSnackbar(temp_str, 'red accent-2');
+  //  return; // 不改變選擇狀態
+  //}
 
   // 檢查是否超過需求數量
   if (deliveryQty > totalQty) {
-  //const total = Number(item.delivery_qty) + Number(item.total_delivery_qty);
-  //const temp = Number(item.req_qty)
-  //if (total > temp) {
-    delivery_qty_alarm.value = '備料數量超過應備數量!';
+    delivery_qty_alarm.value = '領料數量超過應備數量!';
     item.tooltipVisible = true;       // 顯示 Tooltip
     setTimeout(() => {
       item.tooltipVisible = false;    // 2秒後隱藏 Tooltip
@@ -2035,7 +2202,6 @@ const handleKeyDown = (event) => {
   }
 
   /*
-
   const inputValue = event.target.value || ''; // 確保 inputValue 是字符串
 
   // 使用正規化運算式檢查是否為數字且長度不超過3
@@ -2067,6 +2233,11 @@ const isSelected = (item) => {
 
 const toggleSelect = (item) => {
   //console.log("toggleSelect(), item.columns.id", item.raw, item.columns.id); // 查看 item.columns 是否包含 id
+  // 檢查是否已呼叫 AGV
+  if (isCallAGV.value) {
+    showSnackbar('已呼叫 AGV，工單不能改變！', 'red accent-2');
+    return; // 不改變選擇狀態
+  }
 
   const index = selectedItems.value.indexOf(item.columns.id);
   if (index === -1) {
@@ -2076,38 +2247,22 @@ const toggleSelect = (item) => {
   }
 };
 
-const handleEscClose = async () => {
-  console.log("Dialog closed via ESC key, item:", editedRecord.value);
+const handleEscClose = (dlg) => {
+  if (!dlg) return;                         // 防空
+  if (dlg._closing) return;                 // 防重複關閉
+  dlg._closing = true;
 
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: editedRecord.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
-
-  dialog.value = false;
+  dlg.closeReason = 'esc';
+  dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
 };
 
-const handleOutsideClick = async () => {
-  console.log("Dialog closed by clicking outside, item:", editedRecord.value);
+const handleOutsideClick = (dlg) => {
+  if (!dlg) return;
+  if (dlg._closing) return;
+  dlg._closing = true;
 
-  // 記錄當前途程狀態
-  let payload = {
-    order_num: editedRecord.value.order_num,
-    record_name: 'show2_ok',
-    record_data: 0                //未備料
-  };
-  await updateMaterial(payload);
-  //updateMaterial(payload).then(data => {
-  //  !data && showSnackbar(data.message, 'red accent-2');
-  //});
-
-  dialog.value = false;
+  dlg.closeReason = 'outside';
+  dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
 };
 
 const editOrderNum = async (item) => {
@@ -2134,10 +2289,56 @@ const editOrderNum = async (item) => {
   editDialog.value = true;
 }
 
-const toggleExpand = async (item) => {
-  console.log("toggleExpand(),", item.order_num);
+/*
+async function enforceStartPausedIfNew(dlg) {
+  // 先等 TimerDisplay 掛好
+  await nextTick();
 
-  enableDialogBtn.value = item.isTakeOk && !item.isShow;    //備料完成(按確定鍵) && AGV還沒送出
+  // 取目前毫秒（優先用 TimerDisplay; 退回用 composable 的 elapsedMs）
+  const ms =
+    dlg?.timerRef?.getElapsedMs?.() ??
+    dlg?.proc?.elapsedMs?.value ??
+    0;
+
+  // 只在「全新」(0 ms) 才處理；舊工單不動
+  if (ms !== 0) return;
+
+  // 1) 視覺 & 本地狀態 → 暫停
+  dlg?.timerRef?.pause?.();
+  if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
+
+  // 2) 回寫到後端（把 is_paused=true + elapsed=0 同步上去）
+  if (dlg?.proc?.updateProcess) {
+    try {
+      await dlg.proc.updateProcess();  // 會帶 is_paused=true 與目前 elapsed
+    } catch (e) {
+      console.warn('enforceStartPausedIfNew → updateProcess 失敗：', e);
+    }
+  }
+}
+*/
+
+const toggleExpand = async (item) => {
+  console.log("toggleExpand(),item.order_num, item.isOpen:", item.order_num, item.isOpen);
+
+  if (item.isTakeOk) {
+    showSnackbar("領料已完成!", "orange-darken-2");
+    return;
+  }
+
+  if (item.hasStarted && item.isOpenEmpId !="" && item.isOpenEmpId != currentUser.value.empID) {
+    let temp_msg = "員工" + item.isOpenEmpId + "領料進行中..."
+    showSnackbar(temp_msg, "orange-darken-2");
+    return;
+  }
+
+  if (item.isOpen && item.isOpenEmpId !="" && item.isOpenEmpId !="" && currentUser.value.empID != item.isOpenEmpId) {
+    let temp_msg = "員工" + item.isOpenEmpId + "準備中..."
+    showSnackbar(temp_msg, "orange-darken-2");
+    return;
+  }
+
+  enableDialogBtn.value = item.isTakeOk && !item.isShow;    //領料完成(按確定鍵) && AGV還沒送出
 
   let payload = {};
 
@@ -2146,12 +2347,12 @@ const toggleExpand = async (item) => {
     id: item.id,
   };
   await getBoms(payload);
-  current_cell.value = item.delivery_qty
-  editedRecord.value = item;          // 點擊詳情按鍵的目前紀錄
-  //console.log("toggleExpand, editedRecord", editedRecord.value)
 
-  // 記錄當前開始備料時間
-  currentStartTime.value = new Date();  // 使用 Date 來記錄當時時間
+  current_cell.value = item.delivery_qty
+  editedRecord.value = item;                // 點擊詳情按鍵的目前紀錄
+
+  // 記錄當前開始領料時間
+  currentStartTime.value = new Date();      // 使用 Date 來記錄當時時間
   console.log("Start time:", currentStartTime.value, item, item.id);
 
   // 記錄當前途程狀態
@@ -2159,7 +2360,7 @@ const toggleExpand = async (item) => {
     id: item.id,
     //order_num: item.order_num,
     record_name: 'show2_ok',
-    record_data: 1                //備料中
+    record_data: 0                //未領料
   };
   await updateMaterial(payload);
 
@@ -2170,32 +2371,126 @@ const toggleExpand = async (item) => {
     record_data: ''
   };
   await updateMaterial(payload);
+
   dialog_order_num.value=item.order_num;
-  dialog_timer.value = '00:00:00';
-  dialog_totalActiveTime.value = "00:00:00";
-  dialog_isPaused.value = false;
 
-  dialog_elapsedActive = 0;
-  dialog_startTime = Date.now();
-  dialog_pauseStart = null;
+  const user_id = currentUser.value.empID;
+  const process_type = 1;
+  const material_id = item.id;
+  const order_num = item.order_num;
 
-  dialog.value = true;
+  let dlg = dialogs.value.find(d => d.material_id === material_id && d.user_id === user_id);
+  if (!dlg) {
+    dlg = reactive({
+      material_id,
+      order_num,
+      user_id,
+      process_type,
+      dialogVisible: true,
+      timerRef: null,
 
-  dialog_startTimer();
-};
+      proc: null,       // 每個 dialog 一個 useProcessTimer 實例
 
-const checkTextEditField = (focused, item) => {
-  if (!focused) { // 當失去焦點時
-    console.log("checkTextEditField(): 失去焦點");
+      _closing: false,  // ESC/外點防重入
+      closeReason: null // 關閉原因（'esc' | 'outside' | 'normal' ...）
+    });
 
-    //updateItem2(item);
+    dialogs.value.push(dlg);
+
+    // 立刻建立 proc（把 timerRef 傳進去）
+    dlg.proc = useProcessTimer(() => dlg.timerRef);
+
+    await nextTick();
+
+    // 啟動/還原（從後端拿 elapsed_time / is_paused）
+    await dlg.proc.startProcess(material_id, process_type, user_id);
+    console.log("Process ID:", dlg.proc.processId);
+    currentProcessId.value = dlg.proc.processId;
+
+    // 若為全新工單就強制改成暫停
+    //await enforceStartPausedIfNew(dlg);
+    /*
+    // 偵測新工單、且正在跑 → 立刻停住並回寫成暫停。
+    // === 新增, begin：對「全新工單(00:00:00)」進場強制顯示「開始」 ===
+    await nextTick(); // 先等 TimerDisplay 掛好
+
+    setTimeout(async () => {
+      const ms =
+        dlg?.timerRef?.getElapsedMs?.() ??
+        dlg?.proc?.elapsedMs?.value ??
+        0;
+
+      const running = dlg?.proc?.isPaused?.value === false;
+
+      // 只有「毫秒 = 0」且「目前正在跑」才處理；其他全部不動
+      if (ms === 0 && running) {
+        // 1) 視覺先停住（畫面顯示「開始」）
+        dlg?.timerRef?.pause?.();
+        if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
+
+        // 2) 回寫到後端（把 is_paused=true，同步成真正暫停）
+        try {
+          await dlg?.proc?.updateProcess?.(); // 你現有的 API 會帶 is_paused=true
+        } catch (e) {
+          console.warn('force-start-paused (new order) → updateProcess failed:', e);
+        }
+      }
+    }, 0);
+    // === 新增, end：
+    */
   } else {
-    console.log("checkTextEditField(): 獲得焦點");
+    dlg._closing = false;       // 重置關閉旗標
+    dlg.closeReason = null;     // 重置關閉原因
+
+    dlg.dialogVisible = true; // 只要打開就好
+
+    await nextTick();
+    // 再同步一次（例如換人接手或後端狀態變了）
+    await dlg.proc.startProcess(material_id, process_type, user_id);
   }
 };
 
+// 關閉 dialog
+async function handleClose(dlg) {
+  //await dlg.proc.closeProcess();   // 停表 + 回寫 + reset
+  await dlg.proc.updateProcess();   // 先把目前時間回寫（不結束）
+  dlg.dialogVisible = false;
+}
+
+// 按「確定」時（視你的流程，可能只是 update）
+async function handleConfirm(dlg) {
+  //await dlg.proc.updateProcess();   // 先把目前時間回寫(不結束)
+  if (!dlg?.proc) return;
+  console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
+  await dlg.proc.closeProcess({ receive_qty: editedRecord.value.delivery_qty});   // 停表 + 回寫 + reset
+  dlg.dialogVisible = false;
+
+  // 可選：從 dialogs 移除
+  const idx = dialogs.value.indexOf(dlg);
+  if (idx !== -1) dialogs.value.splice(idx, 1);
+}
+
+const checkTextEditField = (focused, item) => {
+  //if (!focused) { // 當失去焦點時
+  //  console.log("checkTextEditField(): 失去焦點");
+  //} else {
+  //  console.log("checkTextEditField(): 獲得焦點");
+  //}
+
+  if (focused) {
+    console.log("checkTextEditField(): 獲得焦點");
+    editingRowId.value = item.id
+    //stopAutoRefresh()
+  } else {
+    console.log("checkTextEditField(): 失去焦點");
+    editingRowId.value = null
+    //startAutoRefresh()
+  }
+
+  item._editing_delivery = !!focused
+};
+
 const addAbnormalInMaterial = (item) => {
-  //console.log("addAbnormalInMaterial(),", item);
 
   abnormalDialog_record.value = materials.value.find(m => m.id == item.id);
 
@@ -2203,7 +2498,8 @@ const addAbnormalInMaterial = (item) => {
 
   abnormalDialogBtnDisable.value = true;
   abnormalDialog_order_num.value = item.order_num;
-  abnormalDialog_autocomplete_message.value = '';
+  abnormalDialog_autocomplete_message.value = null;
+  abnormalDialog_search.value = ''                   // 清掉舊搜尋字
   abnormalDialog_display.value = item.Incoming0_Abnormal;
   abnormalDialog.value = true;
   abnormalDialog_message.value = item.Incoming0_Abnormal_message;
@@ -2212,30 +2508,29 @@ const addAbnormalInMaterial = (item) => {
 const createAbnormalFun = async () => {
   console.log("createAbnormalFun()...");
 
-  if (abnormalDialog_autocomplete_message.value != '') {
-    let temp_str = '(' + abnormalDialog_autocomplete_message.value + ')'
-    abnormalDialog_message.value = '備料區檢料異常! '+ temp_str;
+  if (abnormalDialog_autocomplete_message.value !== null) {
+    const selected = itemsWithIcons.find(x => x.id === abnormalDialog_autocomplete_message.value)
+    const temp_str = `(${selected?.text ?? ''})`
+    //let temp_str = '(' + abnormalDialog_autocomplete_message.value + ')'
+    abnormalDialog_message.value = `加工區領料異常! ${temp_str}`;
     let payload = {}
     try {
-      //payload = {
-      //  assemble_id: item.assemble_id,
-      //  cause_message: ['備料區來料數量不對'],
-      //  cause_user: currentUser.value.empID,
-      //};
-      //await updateAssembleAlarmMessage(payload);
       console.log("abnormalDialog_record.order_num:", abnormalDialog_record.value.order_num)
+
       payload = {
         order_num: abnormalDialog_record.value.order_num,
         record_name: 'Incoming0_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateMaterial(payload);
+
       abnormalDialog_record.value.Incoming0_Abnormal=false;
       abnormalDialog_record.value.Incoming0_Abnormal_message=abnormalDialog_message.value;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials.value.findIndex(
-        (kk) => kk.id === item.id
+        //(kk) => kk.id === item.id
+        (kk) => kk.id === abnormalDialog_record.value.id
       );
 
       if (targetIndex !== -1) {
@@ -2266,11 +2561,10 @@ const updateItem2 = async (item) => {
     deliveryQty = Number(item.delivery_qty) || 0;
   }
 
-  //let payload = {};
+  let payload = {};
 
-  // 記錄當前備料數量
-  //2025-02-07 mark the following function
-  let payload = {
+  // 記錄當前領料數量
+  payload = {
     id: item.id,
     record_name: 'delivery_qty',
     record_data: deliveryQty,
@@ -2278,14 +2572,13 @@ const updateItem2 = async (item) => {
   await updateMaterial(payload);
   item.delivery_qty = deliveryQty
 
-    payload = {
-      material_id: item.id,
-      seq: 1,
-      record_name1: 'process_work_time_qty',
-      record_data1: deliveryQty,
-    };
-    await updateProcessDataByMaterialID(payload);
-
+  payload = {
+    material_id: item.id,
+    seq: 2,
+    record_name1: 'process_work_time_qty',
+    record_data1: deliveryQty,
+  };
+  await updateProcessDataByMaterialID(payload);
 
   item.isError = true;              // 輸入數值正確後，重置 數字 為 紅色
 
@@ -2294,15 +2587,22 @@ const updateItem2 = async (item) => {
   }
 };
 
+const onConfirm = async (dlg) => {
+  try {
+    await updateItem();       // 先更新
+    await handleConfirm(dlg); // 再處理 dialog 收尾/關閉/寫後端等
+  } catch (err) {
+    console.error('confirm failed:', err);
+  }
+};
+
 const updateItem = async () => {    //編輯 bom, material及process後端table資料
   console.log("MaterialListForAssm.vue, updateItem(),", boms.value);
 
   isConfirmed.value = true;
-  //currentItemId.value = item.id   // 記錄要聚焦的 ID
 
-  let my_material_orderNum = boms.value[0].order_num;
+  //let my_material_orderNum = boms.value[0].order_num;
 
-  //let endTime = new Date();
   currentEndTime.value = new Date();  // 記錄當前結束時間
   let periodTime = calculatePeriodTime(currentStartTime.value, currentEndTime.value);  // 計算時間間隔
   let formattedStartTime = formatDateTime(currentStartTime.value);
@@ -2311,8 +2611,10 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目
   // 若有則將 `take_out` 設為 false, 缺料且檢料完成
   // 若無則將 `take_out` 設為 true, 沒有缺料且檢料完成
+  /*
   let take_out = !boms.value.some(bom => !bom.receive);
   console.log("take_out:", take_out);
+  */
 
   // 1. 更新 boms 資料
   //2025-02-11 mark and update the following block
@@ -2323,14 +2625,13 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   //  return;
   //}
   await updateBoms(boms.value);
-  //
 
   let payload = {}
 
   // begin block檢查是否缺料
-  if (!take_out) {    // 該筆訂單缺料且檢料完成
+  //if (!take_out) {                    // 該筆訂單缺料且檢料完成
+    /*
     payload = {                       // 更新 materials 資料，shortage_note = '(缺料)'
-      //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'shortage_note',
       record_data: '(缺料)'
@@ -2338,8 +2639,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     await updateMaterial(payload);
     editedRecord.value.shortage_note = '(缺料)';
 
-    payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
-      //order_num: my_material_orderNum,
+    payload = {                       // 2. 更新 materials 資料，isLackMaterial = 0
       id: editedRecord.value.id,
       record_name: 'isLackMaterial',
       record_data: 0,          //缺料flag
@@ -2347,10 +2647,9 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     await updateMaterial(payload);
 
     editedRecord.value.isLackMaterial = 0;    //缺料(尚未拆單)且檢料完成
-
-  } else {            // 沒有缺料且檢料完成
+    */
+  //} else {                        // 沒有缺料且檢料完成
     payload = {
-      //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'shortage_note',
       record_data: ''
@@ -2359,7 +2658,6 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     editedRecord.value.shortage_note = '';
 
     payload = {       // 2. 更新 materials 資料，isLackMaterial = 99
-      //order_num: my_material_orderNum,
       id: editedRecord.value.id,
       record_name: 'isLackMaterial',
       record_data: 99,
@@ -2367,10 +2665,10 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
     await updateMaterial(payload);
 
     editedRecord.value.isLackMaterial = 99;   //沒有缺料且檢料完成 flag
-  }
+  //}
   // end block檢查是否缺料
 
-  // 紀錄已經按了確定鍵的狀態
+  // 紀錄前端已經按了確定鍵的狀態
   payload = {
     //order_num: my_material_orderNum,
     id: editedRecord.value.id,
@@ -2379,83 +2677,35 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   };
   await updateMaterial(payload);
   editedRecord.value.isTakeOk = true;
-  //
 
-  //2025-02-07 mark the if condition
-  //if (take_out) {                     // 該筆訂單檢料完成且沒有缺料
-    payload = {
-      //order_num: my_material_orderNum,
-      id: editedRecord.value.id,
-      record_name: 'show2_ok',
-      record_data: 2                  // 備料完成
-    };
-    await updateMaterial(payload);
+  // 紀錄前端領料已完成
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'hasStarted',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.hasStarted = false;
 
-    console.log("Formatted Start Time:", formattedStartTime);
-    console.log("Formatted End Time:", formattedEndTime);
-    console.log("Period time:", periodTime);
-    console.log("editedRecord:", editedRecord.value);
-    let processPayload = {
-      begin_time: formattedStartTime,
-      end_time: formattedEndTime,
-      periodTime: periodTime,
-      periodTime2: dialog_totalActiveTime.value,
-      user_id: currentUser.value.empID,
-      //order_num: my_material_orderNum,
-      process_type: 1,                  // 備料
-      id: editedRecord.value.id,
-      process_work_time_qty: editedRecord.value.req_qty, // 報工數量
-    };
-    await createProcess(processPayload);
+  await nextTick();
 
-    await listMaterials();    //2025-02-07 mark this line
-  //}
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'show2_ok',
+    record_data: 2                  // 領料完成
+  };
+  await updateMaterial(payload);
 
-  if (!take_out) {                     // 該筆訂單檢料完成且缺料
-    payload = {
-      copy_id: editedRecord.value.id,
-      delivery_qty: editedRecord.value.delivery_qty,
-      //total_delivery_qty: tempDelivery,
-      show2_ok: 2,            //備料完成
-      shortage_note: '',
-    }
-    await copyMaterialAndBom(payload);
+  payload = {
+    process_id: currentProcessId.value,
+    record_name: 'process_work_time_qty',
+    record_data: editedRecord.value.req_qty,
+  };
+  await updateProcessData(payload);
 
-    payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
-      id: material_copy.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 0,          //缺料flag
-    };
-    await updateMaterial(payload);
-    material_copy.value.isLackMaterial = 0;
+  //await listMaterials();    //2025-02-07 mark this line
+  await fetchMaterials();
 
-    materials.value.push(material_copy.value);
-
-    // 立刻排序：
-    materials.value.sort((a, b) => {
-      if (a.order_num === b.order_num) {
-        // isTakeOk: True 排前面 → False > True 時應該 return 1
-        return (a.isTakeOk === b.isTakeOk) ? 0 : (a.isTakeOk ? -1 : 1);
-      }
-      // order_num 升序
-      return a.order_num.localeCompare(b.order_num);
-    });
-  }
-  //
-  if (dialog_intervalId) {
-    clearInterval(dialog_intervalId);
-    dialog_intervalId = null;
-  }
-
-  // 如果沒按確定就關閉，必須自動暫停一次
-  if (!dialog_isPaused.value) {
-    dialog_pauseTimer();
-  }
-
-  // 回傳總時間給父元件
-  console.log("Dialog 總時間:", dialog_totalActiveTime.value);
-  //
-  dialog.value = false;
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
@@ -2484,164 +2734,264 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
-const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
-  const hours = String(time.getHours()).padStart(2, '0');
-  const minutes = String(time.getMinutes()).padStart(2, '0');
-  const seconds = String(time.getSeconds()).padStart(2, '0');
-
-  return `${hours}:${minutes}:${seconds}`;
-};
-
-//
-const dialog_formatTime = (seconds) => {
-  const totalSec = Math.floor(seconds / 1000)
-  const h = String(Math.floor(totalSec / 3600)).padStart(2, '0')
-  const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0')
-  const s = String(totalSec % 60).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
-
-// 啟動計時器
-const dialog_startTimer = () => {
-  if (dialog_intervalId) clearInterval(dialog_intervalId);
-
-  // 保留上次的時間，顯示正確的 elapsedActive
-  dialog_timer.value = dialog_formatTime(dialog_elapsedActive);
-  dialog_totalActiveTime.value = dialog_formatTime(dialog_elapsedActive);
-
-  // 判斷是否處於暫停狀態
-  if (!dialog_isPaused.value) {
-    dialog_startTime = Date.now();
-    dialog_intervalId = setInterval(dialog_updateTime, 1000);
-  }
-}
-
-// 更新顯示
-const dialog_updateTime = () => {
-  if (dialog_isPaused.value) return;
-
-  const now = Date.now();
-  const activeMs = dialog_elapsedActive + (now - dialog_startTime);
-
-  dialog_timer.value = dialog_formatTime(activeMs);
-  dialog_totalActiveTime.value = dialog_formatTime(activeMs);
-}
-
-// 暫停
-const dialog_pauseTimer = () => {
-  if (dialog_isPaused.value) return;
-
-  dialog_isPaused.value = true;
-  dialog_pauseStart = Date.now();
-  dialog_elapsedActive += dialog_pauseStart - dialog_startTime;
-
-  // 立即更新顯示，避免延遲一秒才停住
-  dialog_timer.value = dialog_formatTime(dialog_elapsedActive);
-  dialog_totalActiveTime.value = dialog_formatTime(dialog_elapsedActive);
-
-  clearInterval(dialog_intervalId);
-
-  //if (dialog_intervalId) {
-  //  clearInterval(dialog_intervalId)
-  //  dialog_intervalId = null
-  //  dialog_pauseStart = Date.now()
-  //  dialog_isPaused.value = true
-  //
-  //  // 更新累積時間到目前為止
-  //  dialog_elapsedActive += Math.floor((dialog_pauseStart - dialog_startTime) / 1000)
-  //}
-}
-
-// 恢復
-const dialog_resumeTimer = () => {
-  if (!dialog_isPaused.value) return;
-
-  dialog_isPaused.value = false;
-  dialog_startTime = Date.now();
-  dialog_pauseStart = null;
-
-  // 重新啟動 interval
-  dialog_intervalId = setInterval(dialog_updateTime, 1000);
-
-  //if (!dialog_intervalId && dialog_isPaused.value) {
-  //  dialog_isPaused.value = false
-  //  dialog_startTime = Date.now() // 重設起點
-  //  dialog_intervalId = setInterval(() => {
-  //    const diff = Math.floor((Date.now() - dialog_startTime) / 1000) + dialog_elapsedActive
-  //    dialog_timer.value = dialog_formatTime(diff)
-  //  }, 1000)
-  //}
-}
-
-// 停止
-const dialog_stopTimer = () => {
-  if (dialog_intervalId) {
-    clearInterval(dialog_intervalId)
-    dialog_intervalId = null
-  }
-
-  // 結算總有效時間
-  if (!dialog_isPaused.value) {
-    dialog_elapsedActive += Math.floor((Date.now() - dialog_startTime) / 1000)
-  }
-  dialog_totalActiveTime.value = dialog_formatTime(dialog_elapsedActive)
-
-  // 重置
-  dialog_elapsedActive = 0
-  dialog_startTime = null
-  dialog_pauseStart = null
-  dialog_timer.value = '00:00:00'
-  dialog_isPaused.value = false
-}
-//
-
-const select_transportation_method = () => {
+const onClickTrans = () => {
   if (toggle_exclusive.value == 1) {
     callForklift();
-
-
+  } else {
+    callAGV();
   }
+};
+
+const select_transportation_method = () => {
+  //if (toggle_exclusive.value == 1) {
+    callForklift();
+  //}
 };
 
 const callForklift = async () => {
   console.log("callForklift()...");
 
-  let payload = {};
-
-  if (!isCallForklift.value) {                          // 沒有重複呼叫
-    if (selectedItems.value.length == 0) {              // 已點選選單
-      showSnackbar("請選擇送料的工單!", 'red accent-2');
-      return;
-    }
-
-    //if (toggle_exclusive.value == 1)    //推車送料
-      isCallForklift.value = true
-  } else {
-    showSnackbar("請不要重複按鍵!", 'red accent-2');
+  // 防重複呼叫 + 基本檢查
+  const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+  if (selectedIds.length === 0) {
+    showSnackbar('請選擇送料的工單!', 'red accent-2');
+    return;
+  }
+  if (isCallForklift.value) {
+    showSnackbar('請不要重複按鍵!', 'red accent-2');
     return;
   }
 
-  const [id, name] = selectedEmployee.value.split(" ")
+  if (!selectedEmployee.value) {
+    showSnackbar('請先選擇領料送出的員工!', 'red accent-2');
+    return;
+  }
 
-  socket.value.emit('station2_trans_call', { empID: id, empName: name });
-  console.log("送出 station2_trans_call訊息...", selectedEmployee.value);
+  isCallForklift.value = true;
+  try {
+    console.log('trans_end 處理步驟1...');
 
-  // 記錄Forklift開始時間
-  forklift2StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("Forklift Start time:", forklift2StartTime.value);
+    // 步驟 1：更新 material/assemble 顯示狀態 + 紀錄搬運方式
+    for (const id of selectedIds) {
+      const m = materials.value.find(x => x.id == id);
+      if (!m) {
+        console.warn('找不到 material，id =', id);
+        continue;
+      }
 
-  selectedItems.value.forEach(async (item) => {
-    console.log('selectedItems, item:', item);
+      // 組裝站 / 未組裝 / 等待組裝中 / 目標途程
+      await updateMaterialRecord({
+        id: m.id,
+        show1_ok: 2,     // 組裝站
+        show2_ok: 3,     // 未組裝
+        show3_ok: 3,     // 等待組裝中
+        //whichStation: 2, // 目標途程: 組裝站
+      });
 
-    payload = {
-      id: item,
-      record_name: 'show3_ok',                    //看板要顯示的欄位名稱
-      record_data: 17                             //看板要顯示的欄位內容, 17:推車送料至組裝區中
-    };
-    await updateMaterial(payload);
-  });
+      // 同步更新 assemble
+      await updateAssmbleDataByMaterialID({
+        material_id: m.id,
+        delivery_qty: 0,
+        record_name1: 'show1_ok',
+        record_data1: 2,
+        record_name2: 'show2_ok',
+        record_data2: 3,
+        record_name3: 'show3_ok',
+        record_data3: 3,
+      });
 
-  //startFlashing();
+      // 搬運方式：false = 手動(堆高機)
+      await updateMaterial({
+        id: m.id,
+        record_name: 'move_by_automatic_or_manual',
+        record_data: false,
+      });
+    }
+
+    console.log('trans_end 處理步驟2...');
+
+    // 步驟 2：建立流程、寫回數量/狀態、處理多批次
+    for (const id of selectedIds) {
+      const m = materials.value.find(x => x.id == id);
+      if (!m) continue;
+
+      // 2-1. 建立「forklift 到組裝區」流程
+      await createProcess({
+        //user_id: currentUser.value?.empID ?? '',
+        user_id: selectedEmployee.value.split(" ")[0],
+        process_type: 5, // forklift到組裝區
+        id: m.id,
+      });
+      console.log('步驟2-1...');
+
+      // 2-2. 記錄送料數量
+      await updateMaterial({
+        id: m.id,
+        record_name: 'delivery_qty',
+        record_data: m.delivery_qty,
+      });
+      console.log('步驟2-2...');
+
+      // 2-2-a. 記錄應領取數量（用 total_delivery_qty）
+      await updateAssembleMustReceiveQtyByMaterialID({
+        material_id: m.id,
+        record_name: 'must_receive_qty',
+        record_data: m.total_delivery_qty,
+      });
+      console.log('步驟2-2-a...');
+
+      // 2-3. 讓此筆在看板上顯示
+      await updateMaterial({
+        id: m.id,
+        record_name: 'isShow',
+        record_data: true,
+      });
+      console.log('步驟2-3...');
+
+      // 2-4. 多批次 or 單批次
+      const isMultiBatch = Number(m.delivery_qty) !== Number(m.total_delivery_qty);
+
+      if (isMultiBatch) {
+        console.log('1張工單多批次運送, 新增未運送數量(相同工單)');
+        const remain = Number(m.total_delivery_qty) - Number(m.delivery_qty);
+        if (remain > 0) {
+          await copyMaterial({
+            copy_id: m.id,                   // 工單 table id
+            delivery_qty: m.delivery_qty,    // 本批備料
+            total_delivery_qty: remain,      // 剩餘應備
+            show2_ok: 2,                     // 備料完成
+            shortage_note: '',
+          });
+          test_count.value = (test_count.value || 0) + 1;
+          console.log('步驟2-4...', test_count.value);
+        }
+      } else {
+        // 單批次 → 直接進「等待組裝作業」
+        await updateMaterial({
+          id: m.id,
+          record_name: 'show2_ok',
+          record_data: 3,
+        });
+
+        // 若為合併工單，處理 BOM/收料合併並通知前端刷新
+        if (m.is_copied) {
+          await updateBomXorReceive({ copied_material_id: m.id });
+          await delay(1000);
+          eventBus.emit('merge_work_orders');
+          console.log('合併工單顯示通知已發出');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('trans_end 發生例外：', err);
+    showSnackbar('堆高機流程執行失敗，請稍後再試', 'red accent-2');
+  } finally {
+    // 無論成功或失敗都解鎖，避免卡住無法再按
+    await delay(3000);
+
+    isCallForklift.value = false;
+  }
+
+  // 插入延遲 3 秒
+  await delay(3000);
+
+  selectedItems.value = [];
+  if (localStorage.getItem('selectedItems')) {
+    localStorage.removeItem('selectedItems');
+  }
+  //待待
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+//##
+};
+
+const callAGV = async () => {
+  console.log("callAGV()...");
+
+  // 乾淨的 id 陣列（去重）
+  const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+
+  if (selectedIds.length === 0) {
+    showSnackbar('請選擇送料的工單!', 'red accent-2');
+    return;
+  }
+  if (isCallAGV.value) {
+    showSnackbar('請不要重複按鍵!', 'red accent-2');
+    return;
+  }
+
+  isCallAGV.value = true;
+  try {
+    // AGV 自動送料模式：先查 AGV 狀態
+    if (toggle_exclusive.value === 2) {
+      await getAGV({ agv_id: 1 });
+      console.log('hello, 備料區叫車, AGV 狀態:', currentAGV.value);
+      // 若要強制攔截忙碌狀態，可取消下面註解
+      // if (currentAGV.value?.status !== 0) {
+      //   const stationMap = {1: '備料區', 2: '組裝區', 3: '成品區'};
+      //   const buf = stationMap[currentAGV.value?.station] || '未知區域';
+      //   showSnackbar(`${buf}已經叫車，AGV 目前忙碌中...`, 'red accent-2');
+      //   return;
+      // }
+    }
+
+    // 送出叫車事件（真的帶 payload）
+    socket.value.emit('station1_call', {
+      items: selectedIds,
+      orderNums: Array.isArray(selectedOrderNums.value) ? [...selectedOrderNums.value] : [],
+    });
+    console.log('送出 station1_call 訊息...');
+
+    // UI 先切到等待狀態
+    order_num_on_agv_blink.value = '叫車進站中...';
+    activeColor.value = 'red'; // 等待運輸
+
+    // 記錄等待 agv 到站開始時間
+    agv1StartTime.value = new Date();
+    console.log('AGV Start time:', agv1StartTime.value);
+
+    // 逐筆更新「等待 AGV」狀態 + 相關 Process 欄位
+    let successCount = 0;
+    for (const id of selectedIds) {
+      try {
+        await updateMaterial({
+          id,
+          record_name: 'show3_ok', // 看板欄位
+          record_data: 1,          // 1: 等待 agv
+        });
+
+        const m = materials.value.find(x => x.id == id);
+        //if (!m) continue;
+
+        await updateProcessDataByMaterialID({
+          material_id: id,
+          seq: 2,
+          record_name1: 'process_work_time_qty',
+          record_data1: m.delivery_qty,
+        });
+
+        successCount++;
+      } catch (err) {
+        console.error('更新等待 AGV 狀態失敗，id =', id, err);
+      }
+    }
+
+    // 至少一筆成功才把 AGV 設為忙碌（避免空跑）
+    if (successCount > 0) {
+      await updateAGV({
+        id: 1,
+        status: 1,  // 忙碌/等待
+        station: 1, // 備料區
+      });
+    } else {
+      showSnackbar('沒有任何工單更新成功，未變更 AGV 狀態', 'red accent-2');
+    }
+  } catch (e) {
+    console.error('叫車流程例外：', e);
+    showSnackbar('叫車流程執行失敗，請稍後再試', 'red accent-2');
+  } finally {
+    // 無論成功失敗都解鎖，避免按鈕被卡住
+    isCallAGV.value = false;
+  }
 };
 
 const readAllExcelFun = async () => {
@@ -2661,7 +3011,9 @@ const readAllExcelFun = async () => {
     if (excel_file_data.status) {
       //fileCount.value = 0;
       await deleteAssemblesWithNegativeGoodQty();
-      listMaterials();
+
+      //listMaterials();
+      await fetchMaterials();
 
       // 自動 focus, 2025-06-03
       if (barcodeInput.value) {
@@ -2691,28 +3043,91 @@ const updateModifyMaterialAndBomsFun = async () => {
   await updateModifyMaterialAndBoms(payload)
 
   editDialog.value = false
+
+  await listMaterials();
+  await nextTick();
+}
+
+async function onModify() {
+  const ok = await confirmRef.value.open({
+    title: '匯入工單',
+    message: '匯入新的資料將修改目前工單資料(BOM/Assemble/Process)，確定？',
+    okText: '確定',
+    cancelText: '取消',
+  })
+  if (ok) {
+    modifyExcelFilesFun();
+  }
+}
+
+async function onDelete() {
+  const ok = await confirmRef.value.open({
+    title: '刪除工單',
+    message: '此操作將刪除目前工單資料(BOM/Assemble/Process)，確定？',
+    okText: '確定',
+    cancelText: '取消',
+  })
+  if (ok) {
+    removeMaterialsAndRelationTableFun();
+  }
+}
+
+const removeMaterialsAndRelationTableFun = async () => {
+  console.log("removeMaterialsAndRelationTableFun()...");
+
+  console.log("id:",selectedId.value);
+  let payload = {
+    id: selectedId.value,                   // material table id
+  };
+
+  try {
+    const status = await removeMaterialsAndRelationTable(payload);
+    console.log("status:", status)
+    if (status) {
+      editDialog.value = false
+      await listMaterials();
+      await nextTick();   // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
+      showSnackbar("刪除工單完成!", 'green darken-1');
+    }
+  } catch (error) {
+    console.error("Error during execution:", error);
+    showSnackbar("An error occurred.", 'red accent-2');
+  }
 }
 
 const modifyExcelFilesFun = async () => {
   console.log("modifyExcelFilesFun()...");
-
+  console.log("id:",selectedId.value);
   let payload = {
-    id: selectedId.value,
-    material_id: selectedOrderNum.value,
+    id: selectedId.value,                   // material table id
+    //material_id: selectedOrderNum.value,    //工單編號
   };
 
   try {
     const modify_result = await modifyExcelFiles(payload);
-
+    console.log("modify_result:", modify_result);
     if (modify_result.status) {
-      modify_boms.value = [...modify_result.modifyBom];
-      modify_file_name.value = modify_result.modifyFileName;
+      console.log("modify_result.status:", modify_result.status);
+      modify_boms.value = modify_result.bom;
+      modify_file_name.value = modify_result.processedFiles;
+      console.log("modify_boms:", modify_boms.value);
       //console.log("modify_file_name:", modify_file_name.value);
+      //console.log("results:", modify_result.results);
+      //console.log("message:", modify_result.message);
 
       editDialogBtnDisable.value = false;
+
+      // 重新抓清單
+      await listMaterials();
+
+      // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
+      await nextTick();
+
+      showSnackbar(modify_result.message, 'green darken-1');
     } else {
       showSnackbar(modify_result.message, 'red accent-2');
     }
+
   } catch (error) {
     console.error("Error during execution:", error);
     showSnackbar("An error occurred.", 'red accent-2');
@@ -3243,6 +3658,10 @@ p {
   left: 15px;
 }
 
+.warnning_btn {
+  color: red;
+}
+
 .control-panel {
   position: absolute;
   top: 50px;
@@ -3275,4 +3694,61 @@ p {
 //  font-family: Arial, sans-serif !important;
 //  font-weight: bold !important;
 //}
+
+//===過場特效
+
+.flip_btn {
+  position: relative;
+  top: -5px;
+  left: 30px;
+  height: 20px;
+  width: 130px;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease-in-out;
+  transform: translateZ(-20px);
+}
+
+.flip_btn:hover {
+  transform: rotateX(-90deg) translateY(20px);
+}
+
+.side {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 130px;
+  //width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.default-side {
+  transform: translateZ(20px);
+}
+
+.hover-side {
+  transform: rotateX(90deg) translateZ(20px);
+}
+//===
+
+.seperator h5 {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 1em;
+}
+
+//.seperator h5::before,
+.seperator h5::after {
+  content: "";
+  //display: block;
+  //flex-grow: 1;
+  height: 2px;
+  background: #ccc;
+  flex: 0 0 620px;   // 不伸縮，固定 620px
+  margin-left: 5px;
+}
+
+.seperator h5 span {
+  padding: 0 2em;
+}
 </style>

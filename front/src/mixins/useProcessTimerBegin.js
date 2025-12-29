@@ -134,6 +134,8 @@ export function useProcessTimer(getTimerRef) {
 		if (assemble_id != 0)
 			payload.assemble_id = assemble_id;
 
+		console.log('[Timer][startProcess] payload=', payload)
+
 		materialId.value  = mId;
 		processType.value = pType;
 		userId.value      = uId;

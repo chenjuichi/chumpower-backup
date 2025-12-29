@@ -452,6 +452,7 @@
             v-model="causeDlg.form.err_msg"
             :items="abnormal_causes_msg"
             hide-details
+            clearable
             class="cause_dlg_combo"
             style="min-width:0; position: relative; left: 15px;"
           />
@@ -774,9 +775,8 @@ const filteredInformations = computed(() => {
 onMounted(async () => {
   console.log("PickReportForAssembleError.vue, mounted()...");
 
-  // 阻止直接後退
-  window.history.pushState(null, null, document.URL);
-  //history.pushState(null, null, document.URL);
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
   window.addEventListener('popstate', handlePopState);
 
   console.log("current routeName:", routeName.value);
@@ -850,7 +850,8 @@ onUpdated(() => {
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
-  window.removeEventListener('popstate', handlePopState)
+  window.removeEventListener('popstate', handlePopState);
+
 
 //#  clearInterval(intervalId);
 
@@ -897,6 +898,49 @@ function toStr(v) {
 }
 
 function appendPreviewToMsg () {
+  const addRaw = toStr(composedMsg.value).trim()
+  if (!addRaw) return
+
+  // 🔸 「只有數量 x」，例如：1x、2x
+  const isQtyOnly = (s) => /^\d+\s*x$/.test(s)
+
+  // 🔸 「數量 x 後面還有內容」，例如：1xabc、2x異常
+  const isQtyWithReason = (s) => /^\d+\s*x.+$/.test(s)
+
+  // ⭐ 如果這次的 composedMsg 不是「數量 + x + 原因」，就直接忽略
+  //    → 1x 會被擋掉
+  //    → abc 也會被擋掉
+  if (!isQtyWithReason(addRaw)) {
+    return
+  }
+
+  const curRaw = toStr(causeDlg.form.msg || '').trim()
+
+  console.log("composedMsg , causeDlg.form.msg:", composedMsg.value, causeDlg.form.msg)
+
+  // 清掉兩邊多餘的頓號
+  const clean = s => s.replace(/^、+|、+$/g, '')
+
+  const pieces = []
+
+  // 🔸 舊的 msg：如果是「只有 1x 這種」，就不要保留
+  if (curRaw) {
+    const curClean = clean(curRaw)
+    if (!isQtyOnly(curClean)) {
+      pieces.push(curClean)
+    }
+  }
+
+  // 🔸 addRaw 在這裡一定是「數量 + x + 原因」了
+  const addClean = clean(addRaw)
+  if (addClean) {
+    pieces.push(addClean)
+  }
+
+  causeDlg.form.msg = pieces.join('、')
+}
+/*
+function appendPreviewToMsg () {
   const add = toStr(composedMsg.value).trim()
   //const add = (composedMsg.value || '').trim()
   if (!add) return
@@ -922,7 +966,7 @@ function appendPreviewToMsg () {
 
   causeDlg.form.msg = pieces.join('、')
 }
-
+*/
 function editCauseMessage (item) {
   console.log("editCauseMessage(), item:", item);
 
@@ -1051,18 +1095,6 @@ const initialize = async () => {
     console.error("InitializeError in getInformationsForAssembleErrorByHistoryFun():", error);
   }
 };
-/*
-const handlePopState = () => {
-  // 重新添加歷史紀錄以阻止實際後退
-  history.pushState(null, null, document.URL)
-
-  // 只在第一次顯示警告
-  if (showBackWarning.value) {
-    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
-    showBackWarning.value = false
-  }
-}
-*/
 
 const setComboboxRef = (el, orderNum) => {
   if (el) {
@@ -1119,8 +1151,10 @@ const focusItemField = async (item) => {
 
 const handlePopState = () => {
   // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL)
-  window.history.pushState(history.state, '', document.URL)
+  ////history.pushState(history.state, '', document.URL)
+  // window.history.pushState(history.state, '', document.URL)
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')

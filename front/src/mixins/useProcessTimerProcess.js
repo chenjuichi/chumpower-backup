@@ -1,16 +1,17 @@
 import { ref, nextTick, watch } from "vue";
 
-import { apiOperation } from './crud.js';
+import { p_apiOperation }  from '../mixins/p_crud.js';
 
-import { materials }  from './crud.js';
+
+import { materials }  from './p_crud.js';
 
 // 封裝各 API
-const dialog2StartProcess = apiOperation('post', '/dialog2StartProcessProcess');
-const dialog2UpdateProcess = apiOperation('post', '/dialog2UpdateProcessProcess');
-const dialog2ToggleProcess = apiOperation('post', '/dialog2ToggleProcessProcess');
-const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcessProcess');
+const dialog2StartProcess = p_apiOperation('post', '/dialog2StartProcessProcess');
+const dialog2UpdateProcess = p_apiOperation('post', '/dialog2UpdateProcessProcess');
+const dialog2ToggleProcess = p_apiOperation('post', '/dialog2ToggleProcessProcess');
+const dialog2CloseProcess = p_apiOperation('post', '/dialog2CloseProcessProcess');
 
-const updateMaterial = apiOperation('post', '/updateMaterial');
+const updateMaterial = p_apiOperation('post', '/updateMaterialP');
 
 let _uiStarted = false;   // 🔹避免重複 start() 造成多組 interval
 

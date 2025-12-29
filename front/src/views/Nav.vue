@@ -442,7 +442,7 @@ const isSegment = ref(false);
 const openDialog = ref(false);
 const openPdfDialog = ref(false);
 
-let intervalId = null;                        // 間格10秒, 倒數計時器
+//let intervalId = null;                        // 間格10秒, 倒數計時器
 
 const home_url = logo;
 const localShowFooter = ref(props.showFooter);
@@ -496,12 +496,14 @@ onMounted(() => {
   hoveredItems[4]=false;
   hoveredItems[5]=false;
   hoveredItems[6]=false;
-  //
-  //eventBus.on('triggerLogout', logout);
-  //
+
+  // 時間到要自動登出
+  eventBus.on('triggerLogout', logout);
+
+  // 顯示剩餘時間
   eventBus.on('updateCountdown', updateCountdown);
 
-  intervalId = setInterval(listWaitForAssembleFun, 37 * 1000);  // 每 37秒鐘調用一次 API
+  //1216 intervalId = setInterval(listWaitForAssembleFun, 37 * 1000);  // 每 37秒鐘調用一次 API
 });
 
 onBeforeUnmount(() => {
@@ -514,7 +516,7 @@ onBeforeUnmount(() => {
     popStateHandler.value = null;
   }
   //
-  //eventBus.off('triggerLogout', logout);
+  eventBus.off('triggerLogout', logout);
   //
   eventBus.off('updateCountdown', updateCountdown);
 });
@@ -522,7 +524,7 @@ onBeforeUnmount(() => {
 //=== unmounted ===
 onUnmounted(() => {
   //enableBackButton();
-  clearInterval(intervalId);    // 清除計時器（當元件卸載時）
+  //1216clearInterval(intervalId);    // 清除計時器（當元件卸載時）
 
   //alive = false
   //controller.abort()            // 中斷尚未完成的請求
@@ -686,6 +688,7 @@ const updateCountdown = (time) => {
 };
 
 // 登出功能(儲存user操作資料)
+/*
 const logout = () => {
   console.log("logout...");
 
@@ -698,36 +701,80 @@ const logout = () => {
     empID: userData.empID,
   };
   let isAuthenticated = false;
-  //status && (setAuthenticated(isAuthenticated), removelocalStorage(), router.replace({ name: 'LoginRegister' }));
+  ////status && (setAuthenticated(isAuthenticated), removelocalStorage(), router.replace({ name: 'LoginRegister' }));
   updateSetting(payload)
   .finally(() => {
     setAuthenticated(isAuthenticated);
     removelocalStorage();
-    //#
+  //  //#
     sessionStorage.removeItem('auth_user');  // 刪掉使用者
-    //#
-    //router.replace({ name: 'LoginRegister' });
+  //  //#
+  //  //router.replace({ name: 'LoginRegister' });
     const resolvedRoute = router.resolve({ name: 'LoginRegister' });
     const path = resolvedRoute.href;  // 取得解析後的 path
     router.replace({ path });         // 使用 path 來進行導航
   });
-  /*
-  updateSetting(payload).then(status => {
-    console.log("updateSetting status:", status);
-    if (status) {
-      setAuthenticated(isAuthenticated);
-      removelocalStorage();
-      console.log("Redirecting to LoginRegister...");
-      router.replace({ name: 'LoginRegister' });
-    }
-  }).catch(error => {
-    console.error("Error during logout:", error);
-  });
-  */
-  //router.replace({ name: 'LoginRegister' });  //啟動router
-  //if (router.currentRoute.value.path !== '/') {
-  //  router.push('/');
-  //}
+
+  //updateSetting(payload).then(status => {
+  //  console.log("updateSetting status:", status);
+  //  if (status) {
+  //    setAuthenticated(isAuthenticated);
+  //    removelocalStorage();
+  //    console.log("Redirecting to LoginRegister...");
+  //    router.replace({ name: 'LoginRegister' });
+  //  }
+  //}).catch(error => {
+  //  console.error("Error during logout:", error);
+  //});
+
+  ////router.replace({ name: 'LoginRegister' });  //啟動router
+  ////if (router.currentRoute.value.path !== '/') {
+  ////  router.push('/');
+  ////}
+};
+*/
+
+const logout = () => {
+  console.log("logout...");
+
+  const raw = localStorage.getItem('loginedUser');
+  let payload = null;
+
+  if (raw) {
+    // 有 loginedUser 才解析 & 組 payload
+    const userData = JSON.parse(raw) || {};
+    console.log("userData:", userData);
+
+    payload = {
+      itemsPerPage: 0, // 0: itemsPerPage 不必 update
+      seeIsOk: userData.setting_isSee ?? 0,
+      lastRoutingName: userData.setting_lastRoutingName ?? '',
+      empID: userData.empID ?? '',
+    };
+  }
+
+  let isAuthenticated = false;
+
+  // 有 payload 才呼叫 updateSetting，沒有就直接清理 & 導回登入
+  if (payload) {
+    updateSetting(payload).finally(() => {
+      doCleanupAndRedirect(isAuthenticated);
+    });
+  } else {
+    // loginedUser 已經不存在 (userData 為 null) 的情況
+    console.warn('loginedUser is null, skip updateSetting, just cleanup.');
+    doCleanupAndRedirect(isAuthenticated);
+  }
+};
+
+const doCleanupAndRedirect = (isAuthenticated) => {
+  setAuthenticated(isAuthenticated);
+  removelocalStorage();
+  sessionStorage.removeItem('auth_user');  // 刪掉使用者
+
+  const resolvedRoute = router.resolve({ name: 'LoginRegister' });
+  const path = resolvedRoute.href;
+  router.replace({ path });
 };
 
 // 清除localStorage內容

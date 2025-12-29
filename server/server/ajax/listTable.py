@@ -367,7 +367,6 @@ def list_boms():
 '''
 
 
-# list all materials
 @listTable.route("/listMaterialsP", methods=['GET'])
 def list_materials_p():
     print("listMaterialsP....")
@@ -408,9 +407,15 @@ def list_materials_p():
           'delivery_date':record['material_delivery_date'],   #交期
           'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
           'comment': cleaned_comment,                         #說明
+
+          'isOpen': record['isOpen'],
+          'isOpenEmpId': record['isOpenEmpId'],
+          'hasStarted': record['hasStarted'],
+          'startStatus': record['startStatus'],
+
           'isBom' : record['isBom'],
+
           'isTakeOk' : record['isTakeOk'],
-          'isLackMaterial' : record['isLackMaterial'],
           'isBatchFeeding' :  record['isBatchFeeding'],
           'isShow' : record['isShow'],
           'whichStation' : record['whichStation'],
@@ -1094,7 +1099,7 @@ def list_materials_and_assembles_p():
         index = 0
         for material_record in _objects:
             print("step 1...",material_record.id)
-            if not material_record.isShow:
+            if not material_record.isShow:    #true:檢料完成且已call AGV
               continue
 
             # 加工線已上線的筆數
@@ -1104,7 +1109,7 @@ def list_materials_and_assembles_p():
             for assemble_record in material_record._assemble:
                 print("step 2...", assemble_record.id)
 
-                if assemble_record.must_receive_qty <= 0:
+                if assemble_record.must_receive_qty <= 0:   #應領取數量
                   continue
                 print("step 3...")
 
@@ -1274,10 +1279,10 @@ def list_materials_and_assembles_p():
     except Exception as e:
         # 任何資料不乾淨都不讓它 500；記 log + 回傳空清單，避免前端炸掉
         import traceback
-        print("listMaterialsAndAssembles ERROR:", repr(e))
+        print("listMaterialsAndAssemblesP ERROR:", repr(e))
         traceback.print_exc()
         try:
-            current_app.logger.exception("listMaterialsAndAssembles failed")
+            current_app.logger.exception("listMaterialsAndAssemblesP failed")
         except Exception:
             pass
         s.close()
@@ -1343,6 +1348,7 @@ def list_materials_and_assembles():
 
             process_records = material_record._process
             total_records =len([p for p in process_records if ((p.material_id == material_record.id and p.assemble_id != 0))])
+            begin_records =len([p for p in process_records if ((p.material_id == material_record.id and p.assemble_id != 0 and p.has_started))])
 
             assemble_records = material_record._assemble
 
@@ -1418,9 +1424,6 @@ def list_materials_and_assembles():
                     show_name = latest_p.user_id or ''
                     print("### latest process.id:", latest_p.id, "user:", show_name)
 
-
-
-
                 # a_statement: step != 0 且有對應 process，且已報工數量 >= 交期數量
                 a_statement = (
                     step != 0
@@ -1492,7 +1495,8 @@ def list_materials_and_assembles():
 
                     'must_receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
                     'receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
-                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    #'must_receive_end_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_end_qty', 0),
 
                     'delivery_date': material_record.material_delivery_date,
                     'comment': cleaned_comment,
@@ -1515,6 +1519,7 @@ def list_materials_and_assembles():
                     'show_timer': show_timer,
                     'show_name': show_name,
 
+                    'begin_records' : begin_records,
                 }
                 _results.append(_object)
 

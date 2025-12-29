@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import and_
 
 from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
+from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
 
 from werkzeug.security import generate_password_hash
 
@@ -267,6 +268,7 @@ def terminate_active():
 
 
 # from bom table update some data
+"""
 @updateTable.route("/updateBoms", methods=['POST'])
 def update_boms():
     print("updateBoms....")
@@ -301,6 +303,67 @@ def update_boms():
         return_value = False
 
     s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+"""
+
+
+@updateTable.route("/updateBoms", methods=['POST'])
+def update_boms():
+    print("updateBoms....")
+    request_data = request.get_json()
+    print("request_data =", request_data, type(request_data))
+
+    s = Session()
+    return_value = True
+
+    try:
+        # 1️⃣ 把 request_data 統一轉成「list of dict」
+        if isinstance(request_data, dict):
+            # 如果改成 { "101": {...}, "102": {...} } 也ok
+            bom_list = list(request_data.values())
+        elif isinstance(request_data, list):
+            bom_list = request_data
+        else:
+            bom_list = []
+            print("updateBoms: unsupported payload type")
+
+        for bom_data in bom_list:
+            if not isinstance(bom_data, dict):
+                continue
+
+            bom_id = bom_data.get('id')
+            if not bom_id:
+                continue
+
+            bom = s.query(Bom).get(bom_id)
+            if not bom:
+                print(f"updateBoms: Bom id={bom_id} not found")
+                continue
+
+            # 目前 dialog 主要在改的是 receive / lack / lack_bom_qty / isPickOK
+            if 'receive' in bom_data:
+                bom.receive = bom_data['receive']
+            if 'lack' in bom_data:
+                bom.lack = bom_data['lack']
+            if 'lack_bom_qty' in bom_data:
+                bom.lack_bom_qty = bom_data['lack_bom_qty']
+            if 'isPickOK' in bom_data:
+                bom.isPickOK = bom_data['isPickOK']
+
+            # 如果還有其他欄位未來要改，也可以一併加上
+
+        s.commit()
+
+    except Exception as e:
+        s.rollback()
+        return_value = False
+        print("Error in updateBoms:", e)
+
+    finally:
+        s.close()
 
     return jsonify({
         'status': return_value
@@ -641,6 +704,61 @@ def update_assemble_data_by_material_id():
   })
 
 
+
+@updateTable.route("/updateAssmbleDataByMaterialIDP", methods=['POST'])
+def update_assemble_data_by_material_id_p():
+  print("updateAssmbleDataByMaterialIDP....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _delivery_qty = request_data.get('delivery_qty')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  _record_name2 = request_data.get('record_name2')
+  _record_data2 = request_data.get('record_data2')
+  _record_name3 = request_data.get('record_name3')
+  _record_data3 = request_data.get('record_data3')
+  _record_name4 = request_data.get('record_name4')
+  _record_data4 = request_data.get('record_data4')
+
+  #return_value = True  # true: 資料正確,
+  s = Session()
+
+  try:
+      # 查詢所有符合條件的紀錄
+      assemble_records = s.query(P_Assemble).filter(
+          P_Assemble.material_id == _material_id,
+          P_Assemble.must_receive_qty == _delivery_qty
+      ).all()
+
+      # 動態設定欄位
+      for asm in assemble_records:
+        if _record_name1 and _record_data1 is not None:
+          setattr(asm, _record_name1, _record_data1)
+        if _record_name2 and _record_data2 is not None:
+          setattr(asm, _record_name2, _record_data2)
+        if _record_name3 and _record_data3 is not None:
+          setattr(asm, _record_name3, _record_data3)
+        if _record_name4 and _record_data4 is not None:
+          setattr(asm, _record_name4, _record_data4)
+
+      # 提交更新
+      s.commit()
+      print(f"更新P_Assemble table成功，共 {len(assemble_records)} 筆資料")
+      return_value = True
+      #return
+  except Exception as e:
+      s.rollback()
+      print("更新P_Assemble table失敗:", str(e))
+      return_value = False
+      #return
+
+  return jsonify({
+    'status': return_value
+  })
+
+
 @updateTable.route("/updateProcessDataByMaterialID", methods=['POST'])
 def update_process_data_by_material_id():
   print("updateProcessDataByMaterialID....")
@@ -678,6 +796,57 @@ def update_process_data_by_material_id():
 
       # 提交更新
       s.commit()
+      print("target_process:", target_process)
+      print(f"更新成功!")
+      return_value = True
+  except Exception as e:
+      s.rollback()
+      print("更新失敗:", str(e))
+      return_value = False
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+
+@updateTable.route("/updateProcessDataByMaterialIDP", methods=['POST'])
+def update_process_data_by_material_id_p():
+  print("updateProcessDataByMaterialIDP....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _seq = request_data.get('seq')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
+
+  s = Session()
+
+  try:
+      material = s.query(P_Material).get(_material_id)
+      print("step1")
+      if not material:
+        return jsonify({'status': False, 'msg': 'Material not found'})
+      print("step2")
+
+      # 確保 _seq 不超過範圍
+      if _seq < 0 or _seq > len(material._process):
+        return jsonify({'status': False, 'msg': 'seq out of range'})
+
+      print("step3")
+
+      # 取出對應的 Process
+      target_process = material._process[_seq-1]
+      print("target_process:", target_process)
+      # 更新欄位
+      if _record_name1 and _record_data1 is not None:
+        setattr(target_process, _record_name1, _record_data1)
+      print("step4")
+
+      s.commit()
+
       print("target_process:", target_process)
       print(f"更新成功!")
       return_value = True
@@ -786,6 +955,47 @@ def update_assembleMustReceiveQty_by_MaterialID():
   })
 
 
+@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDP", methods=['POST'])
+def update_assembleMustReceiveQty_by_MaterialID_p():
+  print("updateAssembleMustReceiveQtyByMaterialIDP....")
+
+  request_data = request.get_json()
+  print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+  print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+
+  return_value = True  # true: 資料正確,
+  s = Session()
+
+  # 確認 record_name 是 Assemble 的合法欄位
+  valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
+  if _record_name not in valid_columns:
+    return_value = False
+    raise ValueError(f"'{ _record_name }' 不是 P_Assemble 表中的合法欄位")
+
+  # 查詢所有 material_id 相符的 Assemble 記錄
+  assemble_records = s.query(P_Assemble).filter_by(material_id = _material_id).all()
+
+  if not assemble_records:
+    return_value = False
+    raise ValueError(f"No P_Assemble records found for material_id { _material_id }")
+
+  updated_ids = []
+  for record in assemble_records:
+    setattr(record, _record_name, _record_data)  # 動態設欄位
+    updated_ids.append(record.id)
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
 @updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
 def update_assembleMustReceiveQty_by_materialID_and_date():
     print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
@@ -849,6 +1059,78 @@ def update_assembleMustReceiveQty_by_materialID_and_date():
     except Exception as e:
         s.rollback()
         print("update_assembleMustReceiveQty_by_materialID_and_date error:", e)
+        raise
+    finally:
+        s.close()
+
+    return jsonify({
+        'status': return_value
+    })
+
+
+@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDateP", methods=['POST'])
+def update_assembleMustReceiveQty_by_materialID_and_date_p():
+    print("updateAssembleMustReceiveQtyByMaterialIDAndDateP....")
+
+    request_data = request.get_json()
+    print("request_data", request_data)
+
+    _material_id   = request_data.get('material_id')
+    _raw_create_at = request_data.get('create_at')
+    _record_name   = request_data['record_name']
+    _record_data   = request_data['record_data']
+
+    print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+    print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
+
+    return_value = True
+    s = Session()
+
+    try:
+        # 1) 檢查欄位是否合法
+        valid_columns = [c.key for c in inspect(P_Assemble).mapper.column_attrs]
+        if _record_name not in valid_columns:
+            return_value = False
+            raise ValueError(f"'{_record_name}' 不是 P_Assemble 表中的合法欄位")
+
+        # 2) 正常化 create_at
+        if _raw_create_at is None:
+            return_value = False
+            raise ValueError("缺少 create_at 參數")
+
+        target_create_at = normalize_create_at(_raw_create_at)
+        print("normalized create_at:", target_create_at, "type:", type(target_create_at))
+
+        # 3) 查出同 material_id + 同 create_at 的那一批資料
+        assemble_records = (
+            s.query(P_Assemble)
+             .filter(
+                and_(
+                    P_Assemble.material_id == _material_id,
+                    P_Assemble.create_at == target_create_at
+                )
+             )
+             .all()
+        )
+
+        if not assemble_records:
+            return_value = False
+            raise ValueError(
+                f"No P_Assemble records found for material_id={_material_id} and create_at={_raw_create_at}"
+            )
+
+        updated_ids = []
+        for record in assemble_records:
+            setattr(record, _record_name, _record_data)
+            updated_ids.append(record.id)
+
+        print("updated p assemble ids:", updated_ids)
+
+        s.commit()
+
+    except Exception as e:
+        s.rollback()
+        print("update_assembleMustReceiveQty_by_materialID_and_date_p error:", e)
         raise
     finally:
         s.close()
@@ -971,6 +1253,43 @@ def update_material():
     })
 
 
+@updateTable.route("/updateMaterialP", methods=['POST'])
+def update_material_p():
+    print("updateMaterialP....")
+
+    request_data = request.get_json()
+    #print("request_data", request_data)
+    _order_num = request_data.get('order_num')
+    _id = request_data.get('id')
+    _record_name = request_data['record_name']
+    _record_data = request_data['record_data']
+    print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
+
+    return_value = True  # true: 資料正確, 註冊成功
+    s = Session()
+
+    # 檢查傳入的參數，選擇查詢條件
+    material_record = None
+    if _order_num is not None:  # 如果傳入了 order_num
+        material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
+    elif _id is not None:  # 如果傳入了 id
+        material_record = s.query(P_Material).filter_by(id=_id).first()
+
+    if material_record is None:
+      return_value = False
+    else:
+      # 動態設置欄位值
+      if hasattr(material_record, _record_name):
+        setattr(material_record, _record_name, _record_data)
+        s.commit()
+
+    s.close()
+
+    return jsonify({
+      'status': return_value
+    })
+
+
 # from material table update some data by id
 @updateTable.route("/updateAssemble", methods=['POST'])
 def update_assemble():
@@ -989,6 +1308,37 @@ def update_assemble():
 
   # 查找對應的記錄
   assemble_record = s.query(Assemble).filter_by(id = _assemble_id).first()
+
+  # 動態設置欄位值
+  if hasattr(assemble_record, _record_name):
+    setattr(assemble_record, _record_name, _record_data)
+    s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+# from material table update some data by id
+@updateTable.route("/updateAssembleP", methods=['POST'])
+def update_assemble_p():
+  print("updateAssembleP....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _assemble_id = request_data['assemble_id']
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+
+  print("_record_name:", _record_name)
+
+  return_value = True  # true: 資料正確, 註冊成功
+  s = Session()
+
+  # 查找對應的記錄
+  assemble_record = s.query(P_Assemble).filter_by(id = _assemble_id).first()
 
   # 動態設置欄位值
   if hasattr(assemble_record, _record_name):
@@ -1033,6 +1383,36 @@ def update_process_data():
   })
 
 
+@updateTable.route("/updateProcessDataP", methods=['POST'])
+def update_process_data_p():
+  print("updateProcessDataP....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _process_id = request_data['process_id']
+  _record_name = request_data['record_name']
+  _record_data = request_data['record_data']
+
+  #print("_record_name:", _record_name)
+
+  return_value = True  # true: 資料正確, 註冊成功
+  s = Session()
+
+  # 查找對應的記錄
+  process_record = s.query(P_Process).filter_by(id = _process_id).first()
+
+  # 動態設置欄位值
+  if hasattr(process_record, _record_name):
+    setattr(process_record, _record_name, _record_data)
+    s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
 # from material table update some data by id
 @updateTable.route("/updateMaterialRecord", methods=['POST'])
 def update_material_record():
@@ -1063,6 +1443,46 @@ def update_material_record():
       "show2_ok": _show2_ok,
       "show3_ok": _show3_ok,
       "whichStation": _whichStation,
+    })
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': True
+  })
+
+
+@updateTable.route("/updateMaterialRecordP", methods=['POST'])
+def update_material_record_p():
+  print("updateMaterialRecordP....")
+
+  request_data = request.get_json()
+
+  _order_num = request_data.get('order_num')
+  _id = request_data.get('id')
+
+  _show1_ok = request_data['show1_ok']
+  _show2_ok = request_data['show2_ok']
+  _show3_ok = request_data['show3_ok']
+  #_whichStation = request_data['whichStation']
+
+  s = Session()
+
+  if _order_num is not None:  # 如果傳入了 order_num
+    s.query(P_Material).filter(P_Material.order_num == _order_num).update({
+      "show1_ok": _show1_ok,
+      "show2_ok": _show2_ok,
+      "show3_ok": _show3_ok,
+      #"whichStation": _whichStation,
+    })
+  elif _id is not None:  # 如果傳入了 id
+    s.query(P_Material).filter(P_Material.id == _id).update({
+      "show1_ok": _show1_ok,
+      "show2_ok": _show2_ok,
+      "show3_ok": _show3_ok,
+      #"whichStation": _whichStation,
     })
 
   s.commit()
@@ -1315,6 +1735,61 @@ def update_bom_xor_receive():
             #else:
             #    source_material.isLackMaterial = 0
             #    updated = True
+
+    if updated:
+        s.commit()
+
+    s.close()
+
+    return jsonify({
+      'status': True,
+      'message': "Updated successfully."
+    })
+
+
+
+@updateTable.route("/updateBomXorReceiveP", methods=["POST"])
+def update_bom_xor_receive_p():
+    print("updateBomXorReceiveP....")
+
+    data = request.get_json()
+    copied_id = data.get("copied_material_id")
+    print("copied_id", copied_id)
+
+    s = Session()
+
+    # 找到複製資料
+    copied_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_id).first()
+    if not copied_material or not copied_material.is_copied_from_id:
+        return jsonify({"error": "Invalid copied p_material table or missing source ID"}), 400
+    print("copied_material:",copied_material)
+
+    # 找到原始資料
+    source_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_material.is_copied_from_id).first()
+    if not source_material:
+        return jsonify({"error": "Source p_material not found"}), 404
+    print("source p_material:",source_material)
+
+    # 條件限制：兩者其中之一 isLackMaterial 必須為 0 才繼續
+    if source_material.isLackMaterial != 0 and copied_material.isLackMaterial != 0:
+        return jsonify({"message": "No update required, neither material has isLackMaterial == 0"}), 200
+
+    # 建立 dict 以 seq_num 為 key 對應 receive
+    source_boms = {bom.seq_num: bom for bom in source_material._bom}
+    copied_boms = {bom.seq_num: bom for bom in copied_material._bom}
+    print("source_boms:",source_boms)
+    print("copied_boms:",copied_boms)
+
+    updated = False
+    for seq_num, source_bom in source_boms.items():
+        if seq_num in copied_boms:
+            copied_bom = copied_boms[seq_num]
+            xor_result = int(source_bom.receive) ^ int(copied_bom.receive)
+            if xor_result == 1:
+                source_bom.receive = True  #          將缺料清除
+                source_material.isLackMaterial = 99
+                copied_material.isLackMaterial = 0
+                updated = True
 
     if updated:
         s.commit()

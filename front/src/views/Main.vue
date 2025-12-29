@@ -126,24 +126,27 @@ const showSnackbar = (message, color) => {
 </script>
 
 <style lang="scss" scoped>
-  //html, body {
-  //  height: 100%;
-  //  margin: 0;
-  //  overflow: hidden; /* 禁用scroll bar */
-  //}
 
   .main-background {
+    position: fixed;
+    left: 0;
+    top: 60px;          // Nav 高度
+    bottom: 60px;       // Footer 高度
+    width: 100vw;
+    margin: 0;
+    padding: 0;
+
     display: flex;
     justify-content: center;
     align-items: center;
-    height: calc(100vh - 120px); /* 調整高度以考慮 Nav 和 Footer 的高度 */
-    margin-top: 60px;
-    margin-bottom: 60px;
+
+    overflow: hidden;   // 不讓內容撐出來 → 不出現外層 scrollbar
   }
 
   .main-background img {
     width: 100%;
-    height: 150%;
+    height: 100%;       // 剛好填滿 Nav 與 Footer 之間的高度
     object-fit: cover;
+    display: block;     // 避免 img 預設的 inline 造成奇怪空隙
   }
-  </style>
+</style>

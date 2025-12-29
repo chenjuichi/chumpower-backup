@@ -177,12 +177,28 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/listMaterials') {
-            materials.value = [...res.data.materials];
+            //materials.value = [...res.data.materials];
+
+            const serverRows = res.data.materials || [];
+
+            // 建一份舊資料 map：用 id 對應舊 row
+            const oldMap = new Map(materials.value.map(r => [r.id, r]))
+
+            materials.value = serverRows.map(r => {
+              const old = oldMap.get(r.id)
+
+              if (old?._editing_delivery) {
+                return { ...r, delivery_qty: old.delivery_qty, _editing_delivery: true }
+              }
+
+              // 其他列：直接用後端回來的資料
+              return r
+            })
           }
 
-          if (path == '/listMaterialsP') {
-            materials.value = [...res.data.materials];
-          }
+          //if (path == '/listMaterialsP') {
+          //  materials.value = [...res.data.materials];
+          //}
 
           if (path == '/listWarehouseForAssemble') {
             warehouses.value = [...res.data.warehouse_for_assemble];
@@ -259,7 +275,7 @@ export const apiOperation = (operation, path, payload) => {
             //list_table_is_ok.value = true;
           }
 
-          if (path == '/readAllExcelFiles' || path == '/readAllExcelFilesP' ||
+          if (path == '/readAllExcelFiles' ||
               path == '/deleteAssemblesWithNegativeGoodQty') {
             //console.log("get, path is", path)
             return res.data;
@@ -269,7 +285,7 @@ export const apiOperation = (operation, path, payload) => {
           //  return res.data;
           //}
 
-          if (path == '/countExcelFilesP' || path == '/countExcelFiles') {
+          if (path == '/countExcelFiles') {
             fileCount.value = res.data.count;
           }
 
@@ -335,8 +351,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
   path == '/dialog2StartProcess'      || path == '/dialog2UpdateProcess'      || path == '/dialog2ToggleProcess'      || path == '/dialog2CloseProcess' ||
-  path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin' ||
-  path == '/dialog2StartProcessProcess' || path == '/dialog2UpdateProcessProcess' || path == '/dialog2ToggleProcessProcess' || path == '/dialog2CloseProcessProcess') {
+  path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin') {
             return res.data;
           }
           /*

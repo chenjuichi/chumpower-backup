@@ -20,7 +20,7 @@
 						display: 'flex',
 						justifyContent: 'center',
 						alignItems: 'center',
-						background: '#000',
+						background: '#3664d9',
 						color: '#fff',
 						borderRadius: '50%',
 						height: '36px',
@@ -32,7 +32,7 @@
 				>
 					<i
 						class="fa-solid fa-bars fa-fade"
-						style="color: #fff; background: #000; font-size: 18px; transform: translateY(1px);"
+						style="color: #fff; background: #3664d9; font-size: 18px; transform: translateY(1px);"
 					/>
 				</button>
 

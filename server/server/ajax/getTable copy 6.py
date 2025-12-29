@@ -5,9 +5,7 @@ from werkzeug.security import check_password_hash
 from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
 from database.p_tables import P_Material, P_Assemble, P_Process, P_Part,P_AbnormalCause
 from sqlalchemy import and_, or_, not_, func
-
-from sqlalchemy.orm.exc import MultipleResultsFound
-
+#from sqlalchemy.orm import joinedload
 from sqlalchemy import func, cast, Integer
 
 from collections import defaultdict
@@ -1248,32 +1246,9 @@ def start_process_begin():
     process_type = data.get("process_type", 1)
     assemble_id = data.get("assemble_id")
 
-    if material_id is None or process_type is None or not user_id:
-      return jsonify({
-          "return_value": False,
-          "message": "missing params: material_id/process_type/user_id"
-      }), 400
-
     s = Session()
 
     material_record = s.query(Material).filter_by(id=material_id).first()
-
-    """
-    # ✅ 1) 同工單(同製程) 只允許一筆「未結束」的 active process
-    #    ⚠️ 不要用 user_id 當條件，否則不同人會各自開一筆 → 造成同步/回寫混亂
-    q = (
-        s.query(Process)
-          .filter(Process.material_id == int(material_id))
-          .filter(Process.process_type == int(process_type))
-          .filter(Process.end_time.is_(None))
-    )
-    # assemble_id 可能是 0 / None / 有值：有值就一起鎖定這張工單
-    if assemble_id is not None:
-        q = q.filter(Process.assemble_id == int(assemble_id))
-
-    log = q.order_by(Process.id.desc()).first()
-    """
-
 
     # 1) 先找「同工單(同製程)、尚未結束」的最後一筆（不帶 user 條件）
     log = (
@@ -1284,7 +1259,6 @@ def start_process_begin():
         .order_by(Process.id.desc())
         .first()
     )
-
 
     if log:
       # 回傳動態 live elapsed，和你現行邏輯一致
@@ -1302,25 +1276,21 @@ def start_process_begin():
         hasStarted=getattr(material_record, "hasStarted", None) if material_record else None,
         startStatus=getattr(material_record, "startStatus", None) if material_record else None,
         isOpenEmpId=getattr(material_record, "isOpenEmpId", None) if material_record else None,
-
-        user_id = log.user_id,  # 這裡回傳「真正持有該 active 流程的人」
       )
 
     # 2) 沒有未結束流程 → 幫當前 user 新建
     new_log = Process(
-      material_id=material_id,
-      assemble_id=assemble_id,
-      #user_id=user_id,
-      process_type=process_type,
-      begin_time=None,               # 由「開始」時再補
-      end_time=None,
-      elapsedActive_time=0,
-      is_pause=True,                 # 進入即顯示「開始」
-      has_started=False,
-      pause_time=0,
-      pause_started_at=None,
-
-      user_id=str(user_id),
+        material_id=material_id,
+        assemble_id=assemble_id,
+        user_id=user_id,
+        process_type=process_type,
+        begin_time=None,               # 由「開始」時再補
+        end_time=None,
+        elapsedActive_time=0,
+        is_pause=True,                 # 進入即顯示「開始」
+        has_started=False,
+        pause_time=0,
+        pause_started_at=None,
     )
     s.add(new_log)
 
@@ -1511,7 +1481,7 @@ def toggle_process_begin():
       has_started=bool(log.has_started),
     )
 
-"""
+
 @getTable.route("/dialog2CloseProcessBegin", methods=['POST'])
 def close_process_begin():
     print("dialog2CloseProcessBegin API....")
@@ -1667,153 +1637,6 @@ def close_process_begin():
       total_completed=total_completed,
       must_qty=must_qty
     )
-"""
-
-
-@getTable.route("/dialog2CloseProcessBegin", methods=["POST"])
-def close_process_begin():
-    print("dialog2CloseProcessBegin API....")
-
-    data = request.get_json() or {}
-    process_id   = data.get("process_id")
-    elapsed_time = data.get("elapsed_time")
-    receive_qty  = data.get("receive_qty", 0)
-    alarm_enable = data.get("alarm_enable")
-    alarm_message = data.get("alarm_message")
-    isAssembleFirstAlarm = data.get("isAssembleFirstAlarm")
-    assemble_id  = data.get("assemble_id")
-
-    print("process_id:", process_id, "receive_qty:", receive_qty,
-          "alarm_enable:", alarm_enable, "assemble_id:", assemble_id)
-
-    if not process_id:
-        return jsonify(success=False, message="missing process_id"), 400
-
-    # rq
-    try:
-        rq = int(receive_qty or 0)
-    except Exception:
-        rq = 0
-
-    TPE = ZoneInfo("Asia/Taipei")
-    now_aw = datetime.now(TPE).replace(microsecond=0)
-
-    s = Session()
-    try:
-        with s.begin():
-            # ✅ 1) 鎖住 Process 這筆，避免兩個人同時 close
-            log = (
-                s.query(Process)
-                 .filter(Process.id == int(process_id))
-                 .with_for_update()
-                 .first()
-            )
-            if not log:
-                return jsonify(success=False, message="process not found"), 404
-
-            # ✅ 2) 只要 end_time 有值就視為已關閉（避免重複加總/重複寫）
-            if log.end_time is not None:
-                return jsonify(
-                    success=True,
-                    message="already closed",
-                    elapsed_time=int(log.elapsedActive_time or 0),
-                    pause_time=int(log.pause_time or 0),
-                    end_time=log.end_time,
-                ), 200
-
-            # ✅ 3) 若暫停中，先把最後一段暫停秒數補進 pause_time
-            if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
-                try:
-                    ps = log.pause_started_at
-                    if isinstance(ps, str):
-                        ps = datetime.fromisoformat(ps)
-                    if ps.tzinfo is None:
-                        ps = ps.replace(tzinfo=TPE)
-
-                    delta = int((now_aw - ps).total_seconds())
-                    log.pause_time = (log.pause_time or 0) + max(delta, 0)
-                except Exception as e:
-                    print("close_process: pause_time accumulate failed:", e)
-                finally:
-                    log.pause_started_at = None
-
-            # ✅ 4) 校正有效秒數（單向遞增）
-            if elapsed_time is not None:
-                try:
-                    last_secs = int(elapsed_time)
-                except Exception:
-                    last_secs = int(log.elapsedActive_time or 0)
-                cur_secs = int(log.elapsedActive_time or 0)
-                log.elapsedActive_time = max(cur_secs, last_secs)
-
-            # 文字欄位
-            try:
-                log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
-            except Exception:
-                pass
-
-            # ✅ 5) 關閉：end_time、qty
-            log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
-
-            # 建議：結束不是暫停
-            log.is_pause = False
-            log.pause_started_at = None
-
-            log.process_work_time_qty = rq
-            log.must_allOk_qty = rq
-
-            # abnormal / normal
-            if alarm_enable:
-                log.normal_work_time = 1
-                log.abnormal_cause_message = ""
-            elif (not alarm_enable) and isAssembleFirstAlarm:
-                log.normal_work_time = 1
-                log.abnormal_cause_message = ""
-            else:
-                log.normal_work_time = 0
-                log.abnormal_cause_message = alarm_message or ""
-
-            # ✅ 6) 更新 Assemble 的已完成總數（total_ask_qty_end）
-            #    只做「加總」，絕對不要在這裡動 must_receive_end_qty（避免 8 -> 10）
-            is_completed = False
-            total_completed = None
-            must_qty = None
-
-            if assemble_id is not None and rq > 0:
-                asm = (
-                    s.query(Assemble)
-                     .filter(Assemble.id == int(assemble_id))
-                     .with_for_update()
-                     .first()
-                )
-                if asm:
-                    # ✅ 用 must_receive_end_qty 判斷是否完成（你異常調整後是 8 就以 8 為準）
-                    must_qty = int(asm.must_receive_end_qty or 0)
-
-                    cur_total = int(asm.total_ask_qty_end or 0)
-                    new_total = cur_total + rq
-                    asm.total_ask_qty_end = new_total
-
-                    total_completed = new_total
-                    is_completed = (must_qty > 0 and new_total >= must_qty)
-
-        # with s.begin() 自動 commit
-        return jsonify(
-            success=True,
-            end_time=log.end_time,
-            elapsed_time=int(log.elapsedActive_time or 0),
-            pause_time=int(log.pause_time or 0),
-            is_completed=is_completed,
-            total_completed=total_completed,
-            must_qty=must_qty
-        )
-
-    except Exception as e:
-        s.rollback()
-        print("dialog2CloseProcessBegin error:", e)
-        return jsonify(success=False, message=str(e)), 500
-    finally:
-        s.close()
 
 
 # -----dialog2~MP for 前端 MaterialListForProcess.vue -------------------------------------------------------------
@@ -3633,8 +3456,7 @@ def get_materials_and_assembles():
 
                     'must_receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
                     'receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
-                    #'must_receive_end_qty': getattr(assemble_record, 'must_receive_qty', 0),
-                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_end_qty', 0),
+                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_qty', 0),
 
                     'delivery_date': material_record.material_delivery_date,
                     'comment': cleaned_comment,
@@ -4096,7 +3918,6 @@ def get_materials_and_assembles_by_user():
         print("工序format_name:", format_name)
         print("assemble_record.input_end_disable:", assemble_record.input_end_disable)
 
-        '''
         _object = {
           'index': index,                                   #agv送料序號
           'id': material_record.id,                         #訂單編號
@@ -4165,86 +3986,6 @@ def get_materials_and_assembles_by_user():
 
           'is_copied_from_id': assemble_record.is_copied_from_id,
 
-          'create_at': assemble_record.create_at,
-        }
-        '''
-
-        _object = {
-          'index': index,                                   # agv送料序號
-          'id': material_record.id,                         # 訂單編號 (material id)
-          'order_num': material_record.order_num,           # 訂單編號
-          'material_num': material_record.material_num,     # 物料編號
-          'req_qty': material_record.material_qty,          # 組裝區需求數量(訂單數量)
-          'ask_qty': assemble_record.ask_qty,               # 組裝區領取數量
-
-          'assemble_work': format_name,                     # 工序
-          'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
-          'assemble_process_num': num,
-          'assemble_id': assemble_record.id,
-          'total_ask_qty_end': assemble_record.total_ask_qty_end,
-          'process_step_code': assemble_record.process_step_code,
-
-          # ---------------------------
-          # ✅ 完成/異常/應完成：一律以 assemble 表為準（同一個真相來源）
-          # ---------------------------
-          'must_receive_end_qty': int(getattr(assemble_record, 'must_receive_end_qty', 0) or 0),
-          'abnormal_qty': int(getattr(assemble_record, 'abnormal_qty', 0) or 0),
-          'completed_qty': int(getattr(assemble_record, 'completed_qty', 0) or 0),
-          'total_completed_qty': f"({int(getattr(assemble_record, 'total_completed_qty', 0) or 0)})",
-          'total_completed_qty_num': int(getattr(assemble_record, 'total_completed_qty', 0) or 0),
-
-          # ---------------------------
-          # ✅ 使用者自己的完成數：用 process_work_time_qty（你前面已算 user_receive_qty）
-          #    若你 End.vue 的 receive_qty 是顯示「個人完成」，這行一定要這樣回
-          # ---------------------------
-          'receive_qty': assemble_record.completed_qty,
-
-          # ---------------------------
-          # ✅ 保留「流程加總」(need_more_process_qty 的 process_total)
-          #    以不同 key，避免混淆 total_completed_qty_num
-          # ---------------------------
-          'process_total_qty': int(process_total or 0),
-
-          # ---------------------------
-          # 其他欄位維持原本
-          # ---------------------------
-          'delivery_date': material_record.material_delivery_date,   # 交期
-          'delivery_qty': material_record.delivery_qty,              # 現況數量
-          'total_assemble_qty': material_record.total_assemble_qty,  # 已(組裝)完成總數量
-
-          'comment': cleaned_comment,
-          'isAssembleAlarm': material_record.isAssembleAlarm,
-
-          'isAssembleFirstAlarm': assemble_record.isAssembleFirstAlarm,
-          'isAssembleFirstAlarm_qty': assemble_record.isAssembleFirstAlarm_qty,
-
-          'alarm_enable': assemble_record.alarm_enable,
-
-          'whichStation': material_record.whichStation,
-          'isAssembleStation3TakeOk': material_record.isAssembleStation3TakeOk,
-          'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,
-          'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,
-
-          'isLackMaterial': material_record.isLackMaterial,
-          'shortage_note': material_record.shortage_note,
-
-          'isAssembleStationShow': bool(assemble_record.isAssembleStationShow == 1),
-          'currentStartTime': assemble_record.currentStartTime,
-
-          'tooltipVisible': False,
-          'abnormal_tooltipVisible': False,
-
-          'input_end_disable': assemble_record.input_end_disable,
-          'input_abnormal_disable': assemble_record.input_abnormal_disable,
-
-          'process_step_enable': step_enable,
-          'code': code,
-
-          'isShowLastTime': user_is_show_last_time,
-          'last_time': user_last_time,
-
-          'assemble_count': len(material_record._assemble),
-          'is_copied_from_id': assemble_record.is_copied_from_id,
           'create_at': assemble_record.create_at,
         }
 

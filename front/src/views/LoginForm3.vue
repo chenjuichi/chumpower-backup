@@ -77,7 +77,7 @@
           </v-icon>
         </div>
         <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2025-12-02' }}
+          {{ 'Build 2025-12-23' }}
         </span>
       </div>
   </div>
@@ -211,9 +211,10 @@ onMounted(async () => {
 
   // 禁用 BackButton 功能
   //disableBackButton();
-  // 阻止直接後退
-  window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
-  //history.pushState(null, null, document.URL)
+  //// 阻止直接後退
+  //window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
   window.addEventListener('popstate', handlePopState)
 
   document.addEventListener('keydown', allowBackspaceInInputs);
@@ -328,8 +329,10 @@ const updateBackgroundSize = () => {
 
 const handlePopState = () => {
   // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL)
-  window.history.pushState(history.state, '', document.URL)
+  ////history.pushState(history.state, '', document.URL)
+  //window.history.pushState(history.state, '', document.URL)
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
@@ -699,7 +702,7 @@ html, body {
   padding: 20px;
   //background: rgba(255, 255, 255, 0.8);
   background: transparent;
-  transition: transform 0.5s ease-in-out;
+  transition: transform 2.2s ease-in-out;  // 從右滑到左」整個動畫只有 2.2 秒
   z-index: 2;
   border: none;
   box-shadow: none;
@@ -824,9 +827,25 @@ button#register {
   background-position: center;
   //background-position: center calc(50% - 30px);
   background-repeat: no-repeat;
-  background-attachment: fixed;
+  //background-attachment: fixed;
   //background-size: cover;
   background-size:auto 100%;    // height covering the whole page height
   overflow: hidden;
+}
+
+.background-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;                // 等於 top:0; right:0; bottom:0; left:0;
+  pointer-events: none;    // 不影響點擊
+  /* A/B 兩側往中間淡化，背景色是白色就用 #fff */
+
+  background: linear-gradient(
+  to right,
+  #ffffff 0%,
+  rgba(255,255,255,0) 18%,
+  rgba(255,255,255,0) 82%,
+  #ffffff 100%
+);
 }
 </style>

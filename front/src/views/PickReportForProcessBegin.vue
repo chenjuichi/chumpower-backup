@@ -10,12 +10,6 @@
     </template>
   </v-snackbar>
 
-  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
-    <LedLights :activeColor="activeColor" />
-  </DraggablePanel>
-
-  <ConfirmDialog ref="confirmRef" />
-
   <v-data-table
     :headers="headers"
     :items="materials_and_assembles"
@@ -37,18 +31,18 @@
     <template v-slot:top>
       <v-card>
         <v-card-title class="d-flex align-center pe-2" style="font-weight:700; min-height:86px; height:86px;">
-          加工區生產報工
+          加工區領料生產報工
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
 
-           <!-- 加工區來料異常備註 -->
+           <!-- 組裝區來料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
               <!--消自動捲軸，完全依內容高度決定是否超出-->
               <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
                 <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
-                  加工區來料異常備註
+                  組裝區來料異常備註
                 </v-card-title>
 
                 <v-card-text>
@@ -190,6 +184,7 @@
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div>
+        <!--
         <div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">
           <v-icon
             style="color: green;"
@@ -201,7 +196,9 @@
           {{ item.order_num }}&nbsp;&nbsp;
           <span style="color:red; font-weight:700; font-size:12px;">缺料</span>
         </div>
+
         <div style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;" v-else>
+
           <v-icon
             style="color: green;"
             @click.stop="onDelete(item)"
@@ -209,6 +206,8 @@
           >
             mdi-trash-can-outline
           </v-icon>
+         -->
+        <div style="color:black; font-size:12px;">
           {{ item.order_num }}
         </div>
         <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>
@@ -226,7 +225,8 @@
     <!-- 自訂 '應領取數量'欄位的資料欄位 -->
     <template v-slot:item.must_receive_qty="{ item }">
       <div style="display: flex; align-items: center;">
-        <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null"> <!--組裝途程-->
+        <!--
+        <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null">
           <v-icon
             style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
             :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
@@ -234,7 +234,6 @@
             size="16"
             class="mr-2"
             :color="item.Incoming1_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
-
           >
             mdi-bell-plus
           </v-icon>
@@ -243,15 +242,12 @@
           </span>
         </template>
         <template v-else>
+        -->
+        <template>
           <span style="margin-left: 25px;">
             {{ item.must_receive_qty }}
           </span>
         </template>
-        <!--
-        <span style="margin-left: 15px;">
-          {{ item.must_receive_qty }}
-        </span>
-        -->
       </div>
     </template>
 
@@ -326,10 +322,10 @@
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
-      <span v-if="item.show_name == userId"
+      <span v-if="isMineStarted(item)"
         style="
           position: relative;
-          right: 50px;
+          left: 70px;
           color:#4000ff;
           width:88px;
           min-width:88px;
@@ -341,7 +337,7 @@
 
           :show="true"
 
-          :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${currentUser.empID}`"
+          :key="`${item.id}:${item.assemble_id}:${item.process_step_code}:${currentUser.empID}`"
 
           :ref="el => setTimerEl(item, el)"
           :isPaused="isPausedOf(item)"
@@ -369,12 +365,12 @@
           variant="tonal"
 
           style="font-size:14px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
-          :style="item.show_name === userId ? { position: 'relative', right: '50px' } : {}"
+          :style="isMineStarted(item) ? { position: 'relative', left: '70px' } : {position: 'relative', left: '117px'}"
 
-          :disabled="isButtonDisabled(item)"
           @click="onClickBegin(item)"
           prepend-icon = "mdi-play"
           color="indigo-darken-4"
+
         >
           <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
           開 始
@@ -400,10 +396,6 @@ import { useProcessTimer } from "../mixins/useProcessTimerProcess.js";
 
 import eventBus from '../mixins/enentBus.js';
 
-import ConfirmDialog from "./confirmDialog";
-import LedLights from './LedLights.vue';
-import DraggablePanel from './DraggablePanel.vue';
-
 import { useRoute } from 'vue-router';
 
 const search = ref('');
@@ -419,27 +411,20 @@ import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 import { assembles_active_user_count, boms, socket_server_ip }  from '../mixins/crud.js';
 import { begin_count, end_count }  from '../mixins/crud.js';
 
-import { setupGetBomsWatcher }  from '../mixins/crud.js';
-
 import { materials_and_assembles }  from '../mixins/p_crud.js';
 
 import { apiOperation }  from '../mixins/crud.js';
-
 import { p_apiOperation }  from '../mixins/p_crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-const listMaterialsAndAssembles = p_apiOperation('get', '/listMaterialsAndAssemblesP');
+
+//=== tables維護用 api ==
+
 const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
-const updateAssembleMustReceiveQtyByMaterialIDAndDate = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDate');
-
 const copyAssemble = apiOperation('post', '/copyAssemble');
-const updateAssemble = apiOperation('post', '/updateAssemble');
-const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-//const createProcess = apiOperation('post', '/createProcess');
-const getBoms = apiOperation('post', '/getBoms');
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
 const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
@@ -447,9 +432,17 @@ const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAn
 
 const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
 
+//=== p_tables維護用 api ==
+
+const listMaterialsAndAssembles = p_apiOperation('get', '/listMaterialsAndAssemblesP');
+
+const getBoms = p_apiOperation('post', '/getBomsP');
+const updateMaterial = p_apiOperation('post', '/updateMaterialP');
+const updateAssembleMustReceiveQtyByMaterialIDAndDate = p_apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDateP');
+const updateAssemble = p_apiOperation('post', '/updateAssembleP');
 
 //=== component name ==
-defineComponent({ name: 'PickReportForAssembleBegin' });
+defineComponent({ name: 'PickReportForProcessBegin' });
 
 //=== mix ==
 const { initAxios } = myMixin();
@@ -478,12 +471,12 @@ const station2_trans_password = ref('password');
 const requiredRule = value => !!value || '必須輸入資料...';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
 
+
 const bar_code = ref('');
 const barcodeInput = ref(null);
 
 const hoveredItemIndex = ref(null); // 追蹤目前懸停在哪一筆資料上的 index
 const isTableVisible = ref(false);  // 用來控制表格是否顯示
-
 // 滑鼠位置(x, y)
 const mouseX = ref(0);
 const mouseY = ref(0);
@@ -497,21 +490,21 @@ const footerOptions = [
 ];
 
 //            0         1        2          3        4            5           6            7           8            9
-//const str2=['未領料', '領料中', '領料完成', '未加工', '加工作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
-const str2=['未領料', '領料中', '領料完成', '未加工', '加工作業中', 'aa/00/00' ]
+//const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:180 },
   { title: '物料編號', sortable: false, key: 'material_num', width:180},
   { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
   { title: '領料數量', sortable: false, key: 'delivery_qty', width:80 },
-  { title: '應加工數量', sortable: false, key: 'must_receive_qty', width:100 },
+  { title: '應領取數量', sortable: false, key: 'must_receive_qty', width:100 },  // 2025-06-13 add, 改順序
+  //{ title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:120 },
   { title: '交期', align: 'start', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'gif' },
   { title: '', sortable: false, key: 'action' },
 ];
-
 // 初始化Socket連接
 const app_user_id = 'user_chumpower';
 const clientAppName = 'PickReportForProcessBegin';
@@ -529,7 +522,7 @@ const outputStatus = ref({
 });
 
 const currentUser = ref({});
-const componentKey = ref(0)     // key 值用於強制重新渲染
+const componentKey = ref(0) // key 值用於強制重新渲染
 
 const currentBoms = ref([]);
 
@@ -569,7 +562,7 @@ const activeMap = reactive({
 const selectedAsmId = ref(null);
 
 //=== watch ===
-setupGetBomsWatcher();
+//setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
 watch(bar_code, (newVal) => {
@@ -666,8 +659,10 @@ onMounted(async () => {
   //+++
 
   // 阻止直接後退
-  //history.pushState(null, null, document.URL)
-  window.history.pushState(null, null, document.URL)
+  ////history.pushState(null, null, document.URL)
+  //window.history.pushState(null, null, document.URL)
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
   window.addEventListener('popstate', handlePopState)
 
   console.log("current routeName:", routeName.value);
@@ -731,6 +726,8 @@ onMounted(async () => {
       if ([1, 2, 3].includes(num)) {
         const temp_msg = `物料已經進入第${num}號裝卸站!`;
         console.warn(temp_msg);
+        //activeColor.value='yello';  // 物料進站
+        //showSnackbar(temp_msg, 'yellow lighten-5');
       } else {
         console.error('接收到不合法的裝卸站號碼:', data.message);
       }
@@ -745,15 +742,18 @@ onMounted(async () => {
     })
     // 燈號
     socket.value.on('station1_agv_ready', async () => {
-      activeColor.value='blue';   // 機器人進入加工區
+      activeColor.value='blue';   // 機器人進入組裝區
     })
 
     socket.value.on('station2_trans_ready', async (data) => {
       console.log("收到 station2_trans_ready訊息...", data);
+      //station2_trans_empID.value =data.empID;
+      //station2_trans_empName.value =data.empName;
       station2_trans_ready.value = true;
       forkliftNoticeFun();
 
       await initialize_for_created();
+      //initialize();
     })
 
     socket.value.on('triggerLogout', async (data) => {
@@ -849,7 +849,7 @@ onBeforeUnmount(() => {
 //=== method ===
 const KEY = 'material' // 'material' 或 'assemble'
 
-const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
+const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${uId}`
 
 const getT = (row) => useRowTimer(row, currentUser.value.empID)
 
@@ -921,10 +921,11 @@ function processTypeOf(row) {
   console.log("processTypeOf:", row.process_step_code)
 
   const step = Number(row.process_step_code ?? 0)
-  const work = row.assemble_work
-  if (step === 3 || (step === 0 && work.includes('B109'))) return 21  // 組裝
-  if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
-  if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
+  return step
+  //const work = row.assemble_work
+  //if (step === 3 || (step === 0 && work.includes('B109'))) return 21  // 組裝
+  //if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
+  //if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
 }
 
 // 以 material 為粒度，idKey 取 material_id（列表裡是 id=material.id）
@@ -943,7 +944,7 @@ async function restoreAllMyTimers() {
     if (!t?.restoreProcess) continue
     try {
       // 讓後端回傳 elapsed / paused 狀態；restoreOnly=true 不會重寫 begin_time
-      await t.restoreProcess(row.id, processTypeOf(row), me, row.assemble_id)
+      await t.restoreProcess(row.id, row.process_step_code, me, row.assemble_id)
       // useProcessTimerBegin.js 內已處理：paused 就 pause；running 就啟動本地 ticker + autoUpdate
     } catch (e) {
       console.warn('restore fail for row', row.id, e)
@@ -1192,7 +1193,7 @@ async function onClickBegin(row) {
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
-    await t.startProcess(row.id, processTypeOf(row), currentUser.value.empID, row.assemble_id)
+    await t.startProcess(row.id, row.process_step_code, currentUser.value.empID, row.assemble_id)
   }
   // 2) 立刻做一次 “恢復”（unpause, 以觸發後端寫入 begin_time
   console.log("t.isPaused:", t.isPaused.value)
@@ -1426,8 +1427,10 @@ const handlePopState = () => {
 */
 const handlePopState = () => {
   // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL);
-  window.history.pushState(history.state, '', document.URL);
+  ////history.pushState(history.state, '', document.URL);
+  //window.history.pushState(history.state, '', document.URL);
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
@@ -1516,7 +1519,7 @@ const createAbnormalFun = async () => {
 
   if (abnormalDialog_new_must_receive_qty.value != abnormalDialog_must_receive_qty.value) {
     let temp_str = '(' + abnormalDialog_delivery_qty.value + ' / ' + abnormalDialog_new_must_receive_qty.value + ')'
-    abnormalDialog_message.value = '領料區來料數量不對! '+ temp_str;
+    abnormalDialog_message.value = '備料區來料數量不對! '+ temp_str;
     console.log("temp_str:", temp_str);
     let payload = {}
 
@@ -1598,16 +1601,18 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  // 2-a.紀錄該筆的完工應領取數量
-  payload = {
-    material_id: item.id,
+  if (item.must_receive_end_qty==0) {
+    // 2-a.紀錄該筆的完工應領取數量
+    payload = {
+      material_id: item.id,
 
-    create_at: item.create_at,
+      create_at: item.create_at,
 
-    record_name: 'must_receive_end_qty',
-    record_data: Number(item.receive_qty),
-  };
-  await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
+      record_name: 'must_receive_end_qty',
+      record_data: Number(item.receive_qty),
+    };
+    await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
+  }
 
   //// 2-b.紀錄該筆的應領取數量, 2025-06-18 add, 改順序
   //payload = {
@@ -1651,9 +1656,9 @@ const updateItem = async (item) => {
 
   //if (item.input_disable) {
 
-  // 取得加工區目前途程的show2_ok訊息類型(開始)
-  checkInputStr(item.assemble_work);
-  console.log("outputStatus:", outputStatus.value, typeof(outputStatus.value.step1), typeof(outputStatus.value.step1))
+  // 取得組裝區目前途程的show2_ok訊息類型(開始)
+  //checkInputStr(item.assemble_work);
+  outputStatus.value = { step1: item.process_step_code, step2: item.process_step_code };
 
   // 6.按開始鍵後, 記錄當前途程開始狀態顯示訊息
   payload = {
@@ -1708,35 +1713,18 @@ const updateItem = async (item) => {
     item.input_disable = true;
   }
 
-  /* ready modify 2025-09-15
-  if (Number(item.must_receive_qty) != Number(item.receive_qty)) {
-    console.log("item.must_receive_qty != item.receive_qty", item.must_receive_qty, item.receive_qty)
-
-    let temp_qty = item.must_receive_qty - item.receive_qty;
-    console.log("temp_qty:", temp_qty)
-
-    //2025-08-04
-    payload = {
-      material_id: item.id,
-      record_name: 'must_receive_qty',
-      record_data: Number(item.receive_qty),
-    };
-    await updateAssembleMustReceiveQtyByMaterialID(payload);
-    //
-    payload = {
-      copy_id: item.assemble_id,
-      must_receive_qty: temp_qty,
-    }
-    await copyAssemble(payload);
-  }
-  */
+  const key = `${item.id}:${item.assemble_id}:${item.process_step_code}:${currentUser.value.empID}`
+  localStorage.setItem(`PROCESS_PR_END_SYNC_${currentUser.value.empID}`, `${key}|${Date.now()}`)
+  console.log("key key:",`PROCESS_PR_END_SYNC_${currentUser.value.empID}`, key)
 
   //待待
   window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
+/*
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
+
   //參考後端python, str2[]的指標
   if (inputStr.includes('109')) {             //組裝
     outputStatus.value = { step1: 4, step2: 5, };
@@ -1751,7 +1739,10 @@ const checkInputStr = (inputStr) => {
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
+
 };
+*/
+
 /*
 // 計算兩個時間字串的差值，返回格式化的時間差
 const calculatePeriodTimeStr = (startTime, endTime) => {

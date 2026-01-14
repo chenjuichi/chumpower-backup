@@ -191,6 +191,21 @@ export function useProcessTimer(getTimerRef) {
 			_startAutoUpdate();
 		}
 		*/
+
+		// --- 先同步 hook 狀態（讓 props.isPaused 先對） ---
+		elapsedMs.value = Math.max(0, seconds * 1000);
+		isPaused.value  = paused;
+
+		// ✅ 等 <TimerDisplay> render 完、ref 掛上後，再把秒數灌進去（避免 refresh 從 0 跑）
+		await nextTick();
+
+		const td = timer();
+		if (td?.setState) {
+		td.setState(seconds, paused);
+		} else if (td?.setElapsedTime) {
+		td.setElapsedTime(seconds * 1000);
+		}
+
 		if (paused) {
 			timer()?.pause();
 			_stopLocalTicker();

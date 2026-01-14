@@ -10,616 +10,563 @@
     </template>
   </v-snackbar>
 
-  <!-- 燈號控制面板 -->
-  <!--
-  <DraggablePanel v-show="toggle_exclusive === 2"  :initX="panelX" :initY="panelY" :isDraggable="true" ref="draggablePanel">
-    <LedLights :activeColor="activeColor" />
-  </DraggablePanel>
-  -->
   <ConfirmDialog ref="confirmRef" />
 
-  <!-- data table -->
-  <v-data-table
-    :headers="headers"
-    :items="materials"
+  <div ref="tableWrapRef" class="table-area">
 
-    :search="search"
-    :custom-filter="customFilter"
+    <!-- data table -->
+    <v-data-table
+      :headers="headers"
+      :items="materials"
 
-    fixed-header
-    style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
-    :items-per-page-options="footerOptions"
-    items-per-page="5"
-    item-value="id"
-    show-select
-    :value="selectedItems"
-    class="elevation-10 custom-table"
-  >
+      :search="search"
+      :custom-filter="customFilter"
 
-    <!-- 客製化 '選擇框' 欄位表頭 -->
-    <template v-slot:header.data-table-select>
-      <span class="custom-header">送料</span>
-    </template>
+      fixed-header
+      style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
+      :items-per-page-options="footerOptions"
+      items-per-page="5"
+      item-value="id"
+      show-select
+      :value="selectedItems"
+      class="elevation-10 custom-table"
+    >
 
-    <!-- 自定義每行的選擇框 -->
-    <template v-slot:item.data-table-select="{ internalItem }">
-      <v-checkbox-btn
-        :model-value="isSelected(internalItem)"
-        :disabled="!internalItem.raw.isTakeOk || internalItem.raw.delivery_qty == 0"
-        color="primary"
-        @update:model-value="toggleSelect(internalItem)"
-        :class="{ 'blue-text': internalItem.raw.isTakeOk }"
-      />
-    </template>
+      <!-- 客製化 '選擇框' 欄位表頭 -->
+      <template v-slot:header.data-table-select>
+        <span class="custom-header">送料</span>
+      </template>
 
-    <!-- 客製化 top 區域 -->
-    <template v-slot:top>
-      <v-card>
-        <v-card-title
-          class="d-flex align-center pe-2"
-          style="font-weight:700; position: relative; right: 10px;"
-        >
-          加工區領料清單
-          <v-spacer />
+      <!-- 自定義每行的選擇框 -->
+      <template v-slot:item.data-table-select="{ internalItem }">
+        <v-checkbox-btn
+          :model-value="isSelected(internalItem)"
+          :disabled="!internalItem.raw.isTakeOk || internalItem.raw.delivery_qty == 0"
+          color="primary"
+          @update:model-value="toggleSelect(internalItem)"
+          :class="{ 'blue-text': internalItem.raw.isTakeOk }"
+        />
+      </template>
 
-          <!--客製化 匯入清單按鍵-->
-          <v-btn
-            :disabled="fileCount === 0"
-            color="primary"
-            variant="outlined"
-
-            :style="{
-              position: 'relative',
-              right: screenSizeInInches > 20 ? '600px' : '130px',
-              top: '0px',
-              fontWeight: '700',
-              width: '120px'
-            }"
-            @click="readAllExcelFun"
+      <!-- 客製化 top 區域 -->
+      <template v-slot:top>
+        <v-card>
+          <v-card-title
+            class="d-flex align-center pe-2"
+            style="font-weight:700; position: relative; right: 10px;"
           >
-            <v-icon left color="green">mdi-microsoft-excel</v-icon>
-            <span style="color: #000;">匯入清單</span>
-            <template v-if="fileCount > 0" v-slot:append>
-              <v-badge color="info" :content="fileCount" inline />
-            </template>
-          </v-btn>
+            加工區領料清單
+            <v-spacer />
 
-          <!-- Bom 編輯對話視窗-->
-          <div class="pa-4 text-center">
-            <v-dialog v-model="editDialog" max-width="980">
-              <v-card :style="{ maxHeight: modify_boms.length > 5 ? '800px' : 'unset', overflowY: modify_boms.length > 5 ? 'auto' : 'unset' }">
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  工單維護
-                </v-card-title>
-                <v-card-text>
-                  <!--第 1 列-->
-                  <v-row>
-                    <v-col cols="12" md="3" class="d-flex" justify="start">
+            <!--客製化 匯入清單按鍵-->
+            <v-btn
+              :disabled="fileCount === 0"
+              color="primary"
+              variant="outlined"
+
+              :style="{
+                position: 'relative',
+                right: screenSizeInInches > 20 ? '600px' : '130px',
+                top: '0px',
+                fontWeight: '700',
+                width: '120px'
+              }"
+              @click="readAllExcelFun"
+            >
+              <v-icon left color="green">mdi-microsoft-excel</v-icon>
+              <span style="color: #000;">匯入清單</span>
+              <template v-if="fileCount > 0" v-slot:append>
+                <v-badge color="info" :content="fileCount" inline />
+              </template>
+            </v-btn>
+
+            <!-- Bom 編輯對話視窗-->
+            <div class="pa-4 text-center">
+              <v-dialog v-model="editDialog" max-width="680">
+                <v-card style="max-height: unset; overflow-y: unset;">
+                  <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
+                    工單維護
+                    <span style="font-size:16px;">
+                      訂單{{ selectedOrderNum }}
+                    </span>
+                  &nbsp;&nbsp;
+                  </v-card-title>
+                  <v-card-text>
+                    <!--第 1 列-->
+                  <!--
+                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
                       <v-text-field
                         v-model="selectedOrderNum"
                         @keyup.enter="handleOrderNumSearch"
                         variant="solo"
                         readonly
                         class="modify_order_num"
+                        style="width:auto; min-width:220px; max-width: fit-content;"
                       >
                         <template #prepend>
                           <span class="text-caption">訂單編號</span>
                         </template>
                       </v-text-field>
-                    </v-col>
-                    <v-col cols="12" md="4" class="d-flex" justify="end">
-                      <span style="color: #0D47A1;" class="mb-4 mr-5 text-caption">訂單日期</span>
-                      <v-menu
-                        v-model="fromDateMenu"
-                        :close-on-content-click="false"
-                        :nudge-right="40"
-                        transition="scale-transition"
-                        offset-y
-                        max-width="300px"
-                        min-width="300px"
-                      >
-                        <template #activator="{ props }">
-                          <v-text-field
-                            prepend-icon="mdi-calendar"
-                            readonly
-                            :value="formattedDate"
-                            v-bind="props"
-                            variant="solo"
-                            class="modify_date"
-                          />
-                        </template>
-                        <v-date-picker
-                          v-model="fromDateVal"
-                          color="blue-lighten-1"
-                          @update:model-value="handleDateChange"
-                        />
-                      </v-menu>
-                    </v-col>
-                    <v-col cols="12" md="3" class="d-flex">
-                      <v-text-field
-                        variant="solo"
-                        required
-                        class="modify_qty"
-                        @keydown="handleKeyDown"
-                        v-model="selectedReqQty"
-                      >
-                        <template #prepend>
-                          <span class="text-caption">訂單數量</span>
-                        </template>
-                      </v-text-field>
-                    </v-col>
-                    <v-col cols="12" md="2" class="d-flex" justify="start">
-                      <v-btn
-                        color="success"
-                        prepend-icon="mdi-content-save"
-                        text="修改"
-                        class="text-none"
-                        @click="updateModifyMaterialAndBomsFun"
-                        variant="flat"
-                      />
-                    </v-col>
-                  </v-row>
-                    <div class="seperator" style="position:relative; left: 60px; top: -10px;">
-                      <h5><span></span></h5>
                     </div>
-                  <!--第 2 列-->
-                  <v-row>
-                    <v-col cols="12" md="2"
-                      style="padding-top:0px; padding-bottom:0px; margin-top: -0px;"
-                       class="d-flex justify-start align-center pt-0 pb-0">
-                      <!--刪除工單按鍵-->
+                  -->
+                    <!--第 2 列-->
+                    <v-row>
+                      <v-col cols="12" md="3" class="d-flex" justify="start">
                         <v-btn
-                          variant="outlined"
-                          style="width:100px; min-width:100px; font-weight:700;"
-                          class="warnning_btn"
-                          @click="onDelete"
+                          color="success"
+                          prepend-icon="mdi-content-save"
+                          text="修改工單"
+                          class="text-none"
+                          @click="updateModifyMaterialAndBomsFun"
+                          variant="flat"
+                          width="120"
+                        />
+                      </v-col>
+                      <v-col cols="12" md="5" class="d-flex" justify="end">
+                        <span style="color: #0D47A1;" class="mb-4 mr-5 text-caption">訂單日期</span>
+                        <v-menu
+                          v-model="fromDateMenu"
+                          :close-on-content-click="false"
+                          :nudge-right="40"
+                          transition="scale-transition"
+                          offset-y
+                          max-width="300px"
+                          min-width="300px"
                         >
-                          <v-icon left style="font-weight:700; color:#ff4444">mdi-file-remove</v-icon>
-                          <span style="color: #0D47A1; font-weight:600;">刪除工單</span>
-                        </v-btn>
-
-                    <!--
-                      <div class="flip_btn">
-                        <v-btn
-                          style="position:relative; right:45px; width:100px; min-width:100px; font-weight:700; border-radius:6px; border-width:1.5px; border-color:#ff5252"
-
-                          class="warnning_btn side default-side primary thin mt-1 mx-auto"
-
-                          @mouseenter="editDialog = true"
-                        >
-                          <v-icon left style="font-weight:700; color:#ff4444">mdi-file-remove</v-icon>
-                          <span style="color: #0D47A1; font-weight:600;">刪除工單</span>
-                        </v-btn>
-                        <div class="side hover-side" style="position:relative; right:40px;">
-                          <v-btn color="#ff4444" style="position:relative; right:3px; width:70px;" class="mt-n1 mr-15 mx-auto" @click="editDialog = false">
-                            <v-icon left size="24px" color="#ffffff">mdi-close-circle-outline</v-icon>
-                            <span style="color:#ffffff">取消</span>
-                          </v-btn>
-                          <v-btn color="#00c851" style="position:relative; left:3px; width:70px;" class="mt-n1 mr-15 mx-auto" @click="removeMaterialsAndRelationTableFun">
-                            <v-icon left size="24px" color="#ffffff">mdi-check-circle-outline</v-icon>
-                            <span style="color:#ffffff">確定</span>
-                          </v-btn>
-                        </div>
-                      </div>
-                    -->
-                    </v-col>
-                    <!--</v-col>-->
-                    <v-col cols="12" md="10"></v-col>
-                  </v-row>
-                  <!--第 3 列-->
-                  <v-row>
-                    <v-col cols="12" md="2" style="margin-top: 15px;">
-                      <!--匯入工單按鍵-->
-                      <v-btn
-                        color="primary"
-                        variant="outlined"
-                        style="width:100px; min-width:100px; font-weight:700;"
-                        @click="onModify"
-                      >
-                        <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                        <span style="color: #0D47A1;">匯入工單</span>
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="12" md="10">
-                      <v-table class="inner" density="compact" fixed-header>
-                        <thead style="color: black;">
-                          <tr>
-                            <th class="text-left">元件</th>
-                            <th class="text-left">物料</th>
-                            <th class="text-left">數量</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr
-                            v-for="(bom_item, index) in modify_boms"
-                            :key="bom_item.seq_num"
-                            :style="{
-                              backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                            }"
-                          >
-                            <td>{{ bom_item.seq_num }}</td>
-                            <td>
-                              <div>
-                                <div>{{ bom_item.material_num }}</div>
-                                <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                              </div>
-                            </td>
-                            <td>
-                              <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </v-table>
-                    </v-col>
-                  </v-row>
-                </v-card-text>
-              </v-card>
-            </v-dialog>
-          </div>
-
-          <!--客製化 員工選單-->
-          <div
-            style="position: relative; right: 160px; width: 160px;"
-            v-show="!c_isBlinking && materials.length > 0">
-            <v-text-field
-              v-model="selectedEmployee"
-              @keyup.enter="handleEmployeeSearch"
-
-              variant="outlined"
-              density="comfortable"
-              style="
-                min-width: 160px;
-                width: 160px;
-                position: absolute;
-                z-index: 2;
-                transition: opacity 0.3s ease, visibility 0.3s ease;
-              "
-              :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
-            />
-            <!-- v-select 用於選擇員工 -->
-            <v-select
-              v-model="inputSelectEmployee"
-              :items="formattedDesserts"
-              item-title="display"
-              item-value="emp_id"
-              :placeholder="placeholderTextForEmployee"
-              variant="outlined"
-              density="comfortable"
-              @update:modelValue="updateEmployeeFieldFromSelect"
-              style="
-                min-width: 160px;
-                width: 160px;
-                position: relative;
-                top: 20px;
-                z-index: 1;
-                transition: opacity 0.3s ease, visibility 0.3s ease;
-              "
-              :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
-            />
-          </div>
-
-          <!--客製化 手動推車按鍵-->
-        <!--
-          <div class="button-container">
-              <v-btn
-                variant="outlined"
-                :style="{
-                  background: toggle_exclusive === 1 ? '#e67e22' : '#e7e9eb',
-                  color: toggle_exclusive === 1 ? '#fff' : '#000',
-                  fontWeight: '700'
-                }"
-                @click="setActive(1)"
-              >
-                <v-icon right color="#003171">mdi-forklift</v-icon>
-                <span>手動推車</span>
-              </v-btn>
-          </div>
-        -->
-          <!--客製化 領料送出按鍵-->
-          <v-btn
-            :disabled="c_isBlinking || materials.length==0"
-            color="primary"
-            variant="outlined"
-            style="position:relative; right:145px; top:0px; font-weight:700; padding-left:8px;
-                   padding-right:8px;"
-            @click="select_transportation_method"
-            ref="sendButton"
-          >
-            <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-            <span>{{ transport_message }}</span>
-          </v-btn>
-
-          <div style="display: flex; flex-direction: column; align-items: center;">
-            <span
-              style="position:relative; top:30px; right:180px;"
-              :style="{
-                'fontSize': '14px',
-                'display': 'inline-block',
-                'min-width': '120px',
-                'visibility': isCallForklift ? 'visible' : 'hidden',
-              }"
-            >
-              人工送料中...
-            </span>
-
-            <!--客製化搜尋-->
-            <v-text-field
-              v-model="search"
-
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              hide-details
-              single-line
-              style="position: relative; top: 47px; left: -170px; min-width: 150px;"
-              density="compact"
-            />
-
-            <!-- 客製化barcode輸入 -->
-            <v-text-field
-              v-model="bar_code"
-              :value="bar_code"
-              ref="barcodeInput"
-              @keyup.enter="handleBarCode"
-              hide-details="auto"
-              prepend-icon="mdi-barcode"
-              style="min-width:200px; position: relative; top: 18px;"
-              class="align-center"
-              density="compact"
-
-            ></v-text-field>
-          </div>
-
-          <!-- Bom 顯示對話視窗-->
-          <v-dialog
-            v-for="dlg in dialogs"
-            :key="dlg.material_id"
-            v-model="dlg.dialogVisible"
-            max-width="980px"
-            @keydown.esc="handleEscClose(dlg)"
-            @click:outside="handleOutsideClick(dlg)"
-            :eager="true"
-            >
-
-            <v-card
-              :style="{
-              maxHeight: boms.length > 5 ? '500px' : 'unset',
-              overflowY: boms.length > 5 ? 'auto' : 'unset'}">
-              <v-card-title
-                class="text-h5 sticky-title"
-                style="background-color: #1b4965; color: white;">
-                領料資訊
-                <span style="font-size:16px;">
-                  訂單{{ dlg.order_num }}
-                </span>
-                &nbsp;&nbsp;
-                <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
-                <TimerDisplay
-                  :key="dlg.material_id"
-                  :ref="setTimerRef(dlg)"
-                  v-model:isPaused="dlg.proc.isPaused"
-                  :show="true"
-                  :autoStart="false"
-                  @update:time="dlg.proc.onTick"
-                />
-                <v-btn
-                  @click="dlg.proc.toggleTimer()"
-                  :disabled="isAllReceiveIsFalse"
-                  :prepend-icon = "getIcon(dlg.proc.isPaused)"
-                  :style="{ background: dlg.proc.isPaused ? '#4CAF50' : '#FFEB3B', color: dlg.proc.isPaused ? '#fff' : '#000' }"
-                >
-                  <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
-                  {{ dlg.proc.isPaused ? "開始" : "暫停" }}
-                </v-btn>
-
-                <v-fade-transition mode="out-in">
-                  <v-btn
-                    style="position: relative; right: -250px;"
-                    color="success"
-                    prepend-icon="mdi-check-circle-outline"
-
-                    :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
-
-                    text="確定"
-                    class="text-none"
-                    @click="onConfirm(dlg)"
-                    variant="flat"
-                    flat
-                  />
-                </v-fade-transition>
-              </v-card-title>
-
-              <v-card-text>
-                <v-table class="inner" density="compact" fixed-header>
-                  <thead style="color: black;">
-                    <tr>
-                      <th class="text-left">元件</th>
-                      <th class="text-left" style="width: 520px;">物料</th>
-                      <th class="text-left">數量</th>
-                      <th class="text-left" style="width: 120px;">日期</th>
-                      <!--<th class="text-left">領料</th>-->
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    <tr
-                      v-for="(bom_item, index) in boms"
-                      :key="bom_item.seq_num"
-                      :style="{
-                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
-                      }"
-                    >
-                      <td>{{ bom_item.seq_num }}</td>
-                      <td style="width: 520px;">
-                        <div>
-                          <div>{{ bom_item.material_num }}</div>
-                          <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
-                      </td>
-                      <td style="width: 120px;">
-                        <div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
-                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
-                        </div>
-                      </td>
-                    <!--
-                      <td>
-                        <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
-                      </td>
-                    -->
-                    </tr>
-                  </tbody>
-                </v-table>
-              </v-card-text>
-            </v-card>
-          </v-dialog>
-          <!--</div>-->
-
-          <!-- 加工區領料異常備註 -->
-          <div class="pa-4 text-center">
-            <v-dialog v-model="abnormalDialog" max-width="500">
-              <!--取消最大高度限制，讓卡片內容可以顯示完整-->
-              <!--取消自動捲軸，完全依內容高度決定是否超出-->
-              <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
-                <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
-                  加工區領料異常備註
-                </v-card-title>
-
-                <v-card-text>
-                  <!-- 若 Incoming0_Abnormal 為 true，顯示第1與第2行 -->
-                  <template v-if="abnormalDialog_display">
-                    <v-row style="margin-bottom: 4px;" dense justify="center">
-                      <v-col cols="3" class="pa-0">訂單編號</v-col>
-                      <v-col cols="9" class="pa-0"></v-col>
-                    </v-row>
-                    <v-row dense>
-                      <v-col cols="5" class="pa-0">{{ abnormalDialog_order_num }}</v-col>
-                      <v-col cols="7" class="pa-0">
-                        <v-autocomplete
-                          v-model="abnormalDialog_autocomplete_message"
-                          v-model:search="abnormalDialog_search"
-                          :items="itemsWithIcons"
-                          item-title="text"
-                          item-value="id"
-                          density="compact"
-                          @update:menu="open => { if (open) abnormalDialog_search = '' }"
-                        >
-                          <template #item="{ item, props }">
-                            <div v-bind="props" class="d-flex align-center px-4 py-2">
-                              <v-icon class="mr-2" size="18" color="blue">{{ item.raw.icon }}</v-icon>
-                              <span style="color: #212121; font-weight: 600">{{ item.raw.text }}</span>
-                            </div>
+                          <template #activator="{ props }">
+                            <v-text-field
+                              prepend-icon="mdi-calendar"
+                              readonly
+                              :value="formattedDate"
+                              v-bind="props"
+                              variant="solo"
+                              class="modify_date"
+                            />
                           </template>
-                        </v-autocomplete>
+                          <v-date-picker
+                            v-model="fromDateVal"
+                            color="blue-lighten-1"
+                            @update:model-value="handleDateChange"
+                          />
+                        </v-menu>
+                      </v-col>
+                      <v-col cols="12" md="4" class="d-flex">
+                        <v-text-field
+                          variant="solo"
+                          required
+                          class="modify_qty"
+                          @keydown="handleKeyDown"
+                          v-model="selectedReqQty"
+                        >
+                          <template #prepend>
+                            <span class="text-caption">訂單數量</span>
+                          </template>
+                        </v-text-field>
                       </v-col>
                     </v-row>
-                  </template>
-                  <!-- 顯示第3行 -->
-                  <template v-else>
-                    <v-row style="margin-bottom: 4px;" dense justify="center">
-                      {{ abnormalDialog_message }}
+                    <!--第 3 列-->
+                    <v-row>
+                      <v-col cols="12" md="3"  class="d-flex" justify="start">
+                        <!--刪除工單按鍵-->
+                          <v-btn
+                            color="#ff4444"
+                            prepend-icon="mdi-file-remove"
+                            text="刪除工單"
+                            class="text-none"
+                            @click="onDelete"
+                            variant="flat"
+                            width="120"
+                          />
+                      </v-col>
+                      <v-col cols="12" md="9"></v-col>
                     </v-row>
-                  </template>
-                </v-card-text>
 
-                <v-card-actions class="justify-center">
-                  <div v-if="abnormalDialog_display">
+                  </v-card-text>
+                </v-card>
+              </v-dialog>
+            </div>
+
+            <!--客製化 員工選單-->
+            <div
+              class="employee-select"
+              style="position: relative; right: 160px; width: 160px;"
+            >
+              <v-text-field
+                v-model="selectedEmployee"
+                @keyup.enter="handleEmployeeSearch"
+                :disabled="c_isBlinking || materials.length === 0"
+                variant="outlined"
+                density="comfortable"
+                style="
+                  min-width: 160px;
+                  width: 160px;
+                  position: absolute;
+                  z-index: 2;
+                  transition: opacity 0.3s ease, visibility 0.3s ease;
+                "
+                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
+              />
+              <!-- v-select 用於選擇員工 -->
+              <v-select
+                v-model="inputSelectEmployee"
+                :items="formattedDesserts"
+                item-title="display"
+                item-value="emp_id"
+                :placeholder="placeholderTextForEmployee"
+                variant="outlined"
+                density="comfortable"
+                @update:modelValue="updateEmployeeFieldFromSelect"
+                :disabled="c_isBlinking || materials.length === 0"
+                style="
+                  min-width: 160px;
+                  width: 160px;
+                  position: relative;
+                  top: 20px;
+                  z-index: 1;
+                  transition: opacity 0.3s ease, visibility 0.3s ease;
+                "
+                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
+              />
+            </div>
+
+            <!--客製化 領料送出按鍵-->
+            <v-btn
+              :disabled="c_isBlinking || materials.length==0"
+              color="primary"
+              variant="outlined"
+
+              style="
+                position:relative;
+                right:158px;
+                top:0px;
+                font-weight:700;
+                padding-left:8px;
+                padding-right:8px;"
+              @click="onClickTrans"
+              ref="sendButton"
+            >
+              <template v-slot:prepend>
+                <v-icon color="blue">mdi-account-arrow-right-outline</v-icon>
+                領料完成人工送出
+              </template>
+            </v-btn>
+
+            <div style="display: flex; flex-direction: column; align-items: center;">
+            <!--
+              <span
+                style="position:relative; top:30px; right:180px;"
+                :style="{
+                  'fontSize': '14px',
+                  'display': 'inline-block',
+                  'min-width': '120px',
+                  'visibility': isCallForklift ? 'visible' : 'hidden',
+                }"
+              >
+                人工送料中...
+              </span>
+            -->
+
+      <TransportLoading
+        v-show="isCallForklift"
+        mode="forklift"
+        status="sending"
+
+        :width="transportWidth"
+        :top="20"
+        :left="transportLeft"
+      />
+
+              <!--客製化搜尋-->
+              <v-text-field
+                v-model="search"
+
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                hide-details
+                single-line
+                style="position: relative; top: 47px; left: -170px; min-width: 150px;"
+                density="compact"
+              />
+
+              <!-- 客製化barcode輸入 -->
+              <v-text-field
+                v-model="bar_code"
+                :value="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details="auto"
+                prepend-icon="mdi-barcode"
+                style="min-width:200px; position: relative; top: 18px;"
+                class="align-center"
+                density="compact"
+
+              ></v-text-field>
+            </div>
+
+            <!-- Bom 顯示對話視窗-->
+            <v-dialog
+              v-for="dlg in dialogs"
+              :key="dlg.material_id"
+              v-model="dlg.dialogVisible"
+              max-width="980px"
+              @keydown.esc="handleEscClose(dlg)"
+              @click:outside="handleOutsideClick(dlg)"
+              :eager="true"
+              >
+
+              <v-card
+                :style="{
+                maxHeight: boms.length > 5 ? '500px' : 'unset',
+                overflowY: boms.length > 5 ? 'auto' : 'unset'}">
+                <v-card-title
+                  class="text-h5 sticky-title"
+                  style="background-color: #1b4965; color: white;">
+                  領料資訊
+                  <span style="font-size:16px;">
+                    訂單{{ dlg.order_num }}
+                  </span>
+                  &nbsp;&nbsp;
+                  <!-- 透過 v-model:isPaused 自動建立 :isPaused="..." 與 @update:isPaused="..." 綁定 -->
+                  <TimerDisplay
+                    :key="dlg.material_id"
+                    :ref="setTimerRef(dlg)"
+                    v-model:isPaused="dlg.proc.isPaused"
+                    :show="true"
+                    :autoStart="false"
+                    @update:time="dlg.proc.onTick"
+                  />
+                  <v-btn
+                    @click="dlg.proc.toggleTimer()"
+                    :disabled="isAllReceiveIsFalse"
+                    :prepend-icon = "getIcon(dlg.proc.isPaused)"
+                    :style="{ background: dlg.proc.isPaused ? '#4CAF50' : '#FFEB3B', color: dlg.proc.isPaused ? '#fff' : '#000' }"
+                  >
+                    <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
+                    {{ dlg.proc.isPaused ? "開始" : "暫停" }}
+                  </v-btn>
+
+                  <v-fade-transition mode="out-in">
                     <v-btn
+                      style="position: relative; right: -250px;"
                       color="success"
-                      prepend-icon="mdi-content-save"
+                      prepend-icon="mdi-check-circle-outline"
+
+                      :disabled="isDialogConfirmDisabled || dlg.proc.isPaused"
 
                       text="確定"
                       class="text-none"
-                      @click="createAbnormalFun"
+                      @click="onConfirm(dlg)"
                       variant="flat"
+                      flat
                     />
-                    <v-btn
-                      color="error"
-                      prepend-icon="mdi-close"
-                      text="取消"
+                  </v-fade-transition>
+                </v-card-title>
+
+                <v-card-text>
+                  <v-table class="inner" density="compact" fixed-header>
+                    <thead style="color: black;">
+                      <tr>
+                        <th class="text-left">元件</th>
+                        <th class="text-left" style="width: 520px;">物料</th>
+                        <th class="text-left">數量</th>
+                        <th class="text-left" style="width: 120px;">日期</th>
+                        <!--<th class="text-left">領料</th>-->
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      <tr
+                        v-for="(bom_item, index) in boms"
+                        :key="bom_item.seq_num"
+                        :style="{
+                          backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4',
+                        }"
+                      >
+                        <td>{{ bom_item.seq_num }}</td>
+                        <td style="width: 520px;">
+                          <div>
+                            <div>{{ bom_item.material_num }}</div>
+                            <div style="color: #33cccc; font-weight: 600">{{ bom_item.mtl_comment }}</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.qty }}</div>
+                        </td>
+                        <td style="width: 120px;">
+                          <div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date }}</div>
+                            <div :class="{'red-text': bom_item.date_alarm}">{{ bom_item.date_alarm }}</div>
+                          </div>
+                        </td>
+                      <!--
+                        <td>
+                          <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
+                        </td>
+                      -->
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </v-card-text>
+              </v-card>
+            </v-dialog>
+            <!--</div>-->
+
+            <!-- 加工區領料異常備註 -->
+            <div class="pa-4 text-center">
+              <v-dialog v-model="abnormalDialog" max-width="500">
+                <!--取消最大高度限制，讓卡片內容可以顯示完整-->
+                <!--取消自動捲軸，完全依內容高度決定是否超出-->
+                <v-card :style="{ maxHeight: 'unset', overflowY: 'unset' }">
+                  <v-card-title class="text-h6 sticky-title text-center" style="background-color: #1b4965; color: white;">
+                    加工區領料異常備註
+                  </v-card-title>
+
+                  <v-card-text>
+                    <!-- 若 Incoming0_Abnormal 為 true，顯示第1與第2行 -->
+                    <template v-if="abnormalDialog_display">
+                      <v-row style="margin-bottom: 4px;" dense justify="center">
+                        <v-col cols="3" class="pa-0">訂單編號</v-col>
+                        <v-col cols="9" class="pa-0"></v-col>
+                      </v-row>
+                      <v-row dense>
+                        <v-col cols="5" class="pa-0">{{ abnormalDialog_order_num }}</v-col>
+                        <v-col cols="7" class="pa-0">
+                          <v-autocomplete
+                            v-model="abnormalDialog_autocomplete_message"
+                            v-model:search="abnormalDialog_search"
+                            :items="itemsWithIcons"
+                            item-title="text"
+                            item-value="id"
+                            density="compact"
+                            @update:menu="open => { if (open) abnormalDialog_search = '' }"
+                          >
+                            <template #item="{ item, props }">
+                              <div v-bind="props" class="d-flex align-center px-4 py-2">
+                                <v-icon class="mr-2" size="18" color="blue">{{ item.raw.icon }}</v-icon>
+                                <span style="color: #212121; font-weight: 600">{{ item.raw.text }}</span>
+                              </div>
+                            </template>
+                          </v-autocomplete>
+                        </v-col>
+                      </v-row>
+                    </template>
+                    <!-- 顯示第3行 -->
+                    <template v-else>
+                      <v-row style="margin-bottom: 4px;" dense justify="center">
+                        {{ abnormalDialog_message }}
+                      </v-row>
+                    </template>
+                  </v-card-text>
+
+                  <v-card-actions class="justify-center">
+                    <div v-if="abnormalDialog_display">
+                      <v-btn
+                        color="success"
+                        prepend-icon="mdi-content-save"
+
+                        text="確定"
+                        class="text-none"
+                        @click="createAbnormalFun"
+                        variant="flat"
+                      />
+                      <v-btn
+                        color="error"
+                        prepend-icon="mdi-close"
+                        text="取消"
+                        class="text-none"
+                        @click="abnormalDialog = false"
+                        variant="flat"
+                      />
+                    </div>
+                    <v-btn v-else
+                      color="success"
+                      prepend-icon="mdi-exit-to-app"
+                      text="離開"
                       class="text-none"
                       @click="abnormalDialog = false"
                       variant="flat"
                     />
-                  </div>
-                  <v-btn v-else
-                    color="success"
-                    prepend-icon="mdi-exit-to-app"
-                    text="離開"
-                    class="text-none"
-                    @click="abnormalDialog = false"
-                    variant="flat"
-                  />
-                </v-card-actions>
-              </v-card>
-            </v-dialog>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+            </div>
+          </v-card-title>
+        </v-card>
+      </template>
+
+      <!-- 客製化 '需求數量' (req_qty) 欄位表頭 -->
+      <template v-slot:header.req_qty="{ column }">
+        <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
+          <div>{{ column.title }}</div>
+          <div style="font-size:12px; margin-top: 5px;">(交貨日期)</div>
+        </div>
+      </template>
+
+      <!-- 自訂 '訂單編號' 欄位 -->
+      <template v-slot:item.order_num="{ item }">
+        <div style="display: flex; align-items: center;">
+
+          <v-icon style="color: blue;" @click="editOrderNum(item)" small>
+            mdi-pencil-outline
+          </v-icon>
+
+          <!--領料完成-->
+          <div style="color: blue; margin-right: 20px;" v-if="item.isTakeOk">
+            {{ item.order_num }}
           </div>
-        </v-card-title>
-      </v-card>
-    </template>
 
-    <!-- 客製化 '需求數量' (req_qty) 欄位表頭 -->
-    <template v-slot:header.req_qty="{ column }">
-      <div style="line-height: 1; margin: 0; padding: 0; text-align: center;">
-        <div>{{ column.title }}</div>
-        <div style="font-size:12px; margin-top: 5px;">(交貨日期)</div>
-      </div>
-    </template>
-
-    <!-- 自訂 '訂單編號' 欄位 -->
-    <template v-slot:item.order_num="{ item }">
-      <div style="display: flex; align-items: center;">
-        <!--
-        <v-icon style="color: blue;" @click="editOrderNum(item)" small>
-          mdi-pencil-outline
-        </v-icon>
-        -->
-        <!--領料完成-->
-        <div style="color: blue; margin-right: 20px;" v-if="item.isTakeOk">
-          {{ item.order_num }}
+          <!--領料尚未完成-->
+          <div style="margin-right: 20px;" v-else>
+            {{ item.order_num }}
+          </div>
         </div>
+      </template>
 
-        <!--領料尚未完成-->
-        <div style="margin-right: 20px;" v-else>
-          {{ item.order_num }}
+      <!-- 自訂 '需求數量' (req_qty) 欄位 -->
+      <template v-slot:item.req_qty="{ item }">
+        <div>
+          <div>{{ item.req_qty }}</div>
+          <div style="color: #a6a6a6; font-size:12px;">{{ item.delivery_date }}</div>
         </div>
-      </div>
-    </template>
+      </template>
 
-    <!-- 自訂 '需求數量' (req_qty) 欄位 -->
-    <template v-slot:item.req_qty="{ item }">
-      <div>
-        <div>{{ item.req_qty }}</div>
-        <div style="color: #a6a6a6; font-size:12px;">{{ item.delivery_date }}</div>
-      </div>
-    </template>
+      <!-- 自訂 '說明' 欄位 -->
+      <template v-slot:item.comment="{ item }">
+        <div>
+          <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
+          <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
+        </div>
+      </template>
 
-    <!-- 自訂 '說明' 欄位 -->
-    <template v-slot:item.comment="{ item }">
-      <div>
-        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
-      </div>
-    </template>
+      <!-- 自訂 '詳情' 按鍵 -->
+      <template v-slot:item.action="{ item }">
+        <v-badge
+          v-if="item.hasStarted"
+          dot
+          :color="item.startStatus ? 'green' : 'red'"
+          location="top end"
+          offset-x="6"
+          offset-y="6"
+        >
+          <v-btn
+            size="small"
+            variant="tonal"
+            style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+            :disabled="item.isBom"
+            @click="toggleExpand(item)"
+          >
+            詳 情
+            <v-icon color='green-darken-3' end>
+              {{ 'mdi-note-search-outline' }}
+            </v-icon>
+          </v-btn>
+        </v-badge>
 
-    <!-- 自訂 '詳情' 按鍵 -->
-    <!--v-if="!item.finished && item.hasStarted"-->
-    <template v-slot:item.action="{ item }">
-      <v-badge
-        v-if="item.hasStarted"
-        dot
-        :color="item.startStatus ? 'green' : 'red'"
-        location="top end"
-        offset-x="6"
-        offset-y="6"
-      >
         <v-btn
+          v-else
           size="small"
           variant="tonal"
           style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-          :disabled="item.isBom"
           @click="toggleExpand(item)"
         >
           詳 情
@@ -627,72 +574,60 @@
             {{ 'mdi-note-search-outline' }}
           </v-icon>
         </v-btn>
-      </v-badge>
+      </template>
 
-      <v-btn
-        v-else
-        size="small"
-        variant="tonal"
-        style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
-        @click="toggleExpand(item)"
-      >
-        詳 情
-        <v-icon color='green-darken-3' end>
-          {{ 'mdi-note-search-outline' }}
-        </v-icon>
-      </v-btn>
-    </template>
+      <!-- 自訂 '應備數量'欄位的資料藍位 -->
+      <template v-slot:item.total_delivery_qty="{ item }">
+        <div style="display:flex; align-items:center;">
+          <v-icon
+            style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
+            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
+            @click="addAbnormalInMaterial(item)"
+            size="16"
+            class="mr-2"
+            :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
+          >
+            mdi-bell-plus
+          </v-icon>
+          <span style="margin-left: 15px;">
+            {{ item.total_delivery_qty }}
+          </span>
+        </div>
+      </template>
 
-    <!-- 自訂 '應備數量'欄位的資料藍位 -->
-    <template v-slot:item.total_delivery_qty="{ item }">
-      <div style="display:flex; align-items:center;">
-        <v-icon
-          style="transition:opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-          @click="addAbnormalInMaterial(item)"
-          size="16"
-          class="mr-2"
-          :color="item.Incoming0_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
-        >
-          mdi-bell-plus
-        </v-icon>
-        <span style="margin-left: 15px;">
-          {{ item.total_delivery_qty }}
-        </span>
-      </div>
-    </template>
+      <!-- 自訂 '領料數量' 輸入欄位 -->
+      <template v-slot:item.delivery_qty="{ item }">
+        <div style="position: relative; display: inline-block;">
+          <v-text-field
+            v-model="item.delivery_qty"
+            dense
+            hide-details
+            :id="`receiveQtyID-${item.id}`"
+            @keydown="handleKeyDown"
+            @update:modelValue="(value) => { item.delivery_qty = value; checkReceiveQty(item); }"
+            @update:focused="(focused) => checkTextEditField(focused, item)"
+            @keyup.enter="updateItem2(item)"
+            :disabled="!item.isTakeOk"
+            :style="{
+              '--input-text-color': (item.isError || item.delivery_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
+            }"
+          />
+          <span
+            v-show="item.tooltipVisible"
+            style="position: absolute; left: -60px; top: 20; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 400; font-size: 10px !important;"
+          >
+            {{ delivery_qty_alarm }}
+          </span>
+        </div>
+      </template>
 
-    <!-- 自訂 '領料數量' 輸入欄位 -->
-    <template v-slot:item.delivery_qty="{ item }">
-      <div style="position: relative; display: inline-block;">
-        <v-text-field
-          v-model="item.delivery_qty"
-          dense
-          hide-details
-          :id="`receiveQtyID-${item.id}`"
-          @keydown="handleKeyDown"
-          @update:modelValue="(value) => { item.delivery_qty = value; checkReceiveQty(item); }"
-          @update:focused="(focused) => checkTextEditField(focused, item)"
-          @keyup.enter="updateItem2(item)"
-          :disabled="!item.isTakeOk"
-          :style="{
-            '--input-text-color': (item.isError || item.delivery_qty!=0) ? 'red' : 'black'  // 動態設置 CSS 變數
-          }"
-        />
-        <span
-          v-show="item.tooltipVisible"
-          style="position: absolute; left: -60px; top: 20; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 400; font-size: 10px !important;"
-        >
-          {{ delivery_qty_alarm }}
-        </span>
-      </div>
-    </template>
+      <!-- 自訂 data table 在沒有資料時, 畫面的顯示資訊 -->
+      <template #no-data>
+        <strong><span style="color: red;">目前沒有資料</span></strong>
+      </template>
+    </v-data-table>
 
-    <!-- 自訂 data table 在沒有資料時, 畫面的顯示資訊 -->
-    <template #no-data>
-      <strong><span style="color: red;">目前沒有資料</span></strong>
-    </template>
-  </v-data-table>
+  </div>
 </div>
 </template>
 
@@ -704,10 +639,9 @@ import { useProcessTimer } from "../mixins/useProcessTimerMP.js";
 
 import ConfirmDialog from "./confirmDialog";
 
-import eventBus from '../mixins/enentBus.js';
+import TransportLoading from './TransportLoading.vue'
 
-import LedLights from './LedLights.vue';
-//import DraggablePanel from './DraggablePanel.vue';
+import eventBus from '../mixins/enentBus.js';
 
 import draggable from 'vuedraggable';
 import { useRoute } from 'vue-router';
@@ -733,7 +667,6 @@ import { p_apiOperation }  from '../mixins/p_crud.js';
 
 //=== tables維護用 api ==
 
-const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
 const listUsers2 = apiOperation('get', '/listUsers2');
 
 const getAGV = apiOperation('post', '/getAGV');
@@ -742,26 +675,27 @@ const copyMaterial = apiOperation('post', '/copyMaterial');
 const copyMaterialAndBom = apiOperation('post', '/copyMaterialAndBom');
 const updateAGV = apiOperation('post', '/updateAGV');
 const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
-const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
 const updateSetting = apiOperation('post', '/updateSetting');
-const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 const updateMaterialFields = apiOperation('post', 'updateMaterialFields');
 
 //=== p_tables維護用 api ==
 
+const countExcelFiles = p_apiOperation('get', '/countExcelFilesP');
+const deleteAssemblesWithNegativeGoodQty = p_apiOperation('get', '/deleteAssemblesWithNegativeGoodQtyP');
 const listMaterials = p_apiOperation('get', '/listMaterialsP');
 const readAllExcelFiles = p_apiOperation('get', '/readAllExcelFilesP');
-const countExcelFiles = p_apiOperation('get', '/countExcelFilesP');
 
-const getBoms = p_apiOperation('post', '/getBomsP');
-const updateMaterial = p_apiOperation('post', '/updateMaterialP');
 const createProcess = p_apiOperation('post', '/createProcessP');
+const getBoms = p_apiOperation('post', '/getBomsP');
+const removeMaterialsAndRelationTable = p_apiOperation('post', '/removeMaterialsAndRelationTableP');
 const updateAssmbleDataByMaterialID = p_apiOperation('post', '/updateAssmbleDataByMaterialIDP');
 const updateMaterialRecord = p_apiOperation('post', '/updateMaterialRecordP');
 const updateProcessDataByMaterialID = p_apiOperation('post', '/updateProcessDataByMaterialIDP');
 const updateProcessData = p_apiOperation('post', '/updateProcessDataP');
 const updateAssembleMustReceiveQtyByMaterialID = p_apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDP');
 const updateBomXorReceive = p_apiOperation('post', '/updateBomXorReceiveP');
+const updateModifyMaterialAndBoms = p_apiOperation('post', '/updateModifyMaterialAndBomsP');
+const updateMaterial = p_apiOperation('post', '/updateMaterialP');
 
 //=== component name ==
 defineComponent({ name: 'MaterialListForProcess' });
@@ -778,6 +712,14 @@ const deleteTitle = ref('刪除工單');
 const deleteMessage = ref('此操作將刪除相關資料(P_BOM/P_Assemble/P_Process)，確定？');
 const confirmRef = ref(null);
 
+const tableWrapRef = ref(null);
+const sendButton = ref(null);
+const tableWidth = ref(0);
+const transportLeft = ref(0);
+const transportWidth = ref(0);
+
+let resizeObserver = null;
+
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
@@ -789,10 +731,8 @@ const panel_flag = ref(false)     // 允許拖曳的開關
 
 // 獲取元件引用
 const draggablePanel = ref(null)
-const sendButton = ref(null)
 
 const screenSizeInInches = ref(null);
-
 
 const editDialogBtnDisable = ref(true);
 
@@ -909,7 +849,6 @@ const dialog_totalActiveTime = ref('00:00:00')  // 最終顯示開啟總時間
 //let dialog_elapsedActive = 0            // 已經累積的有效秒數（扣掉暫停）
 let dialog_pauseStart = null              // 暫停開始時間（毫秒）
 
-
 const dialog = ref(false);
 const dialog_order_num = ref('');
 
@@ -948,7 +887,7 @@ const itemsWithIcons = [
 
 const transport_message = ref('領料人工送出')
 const showMenu = ref(true);                  // 控制員工選單顯示
-const toggle_exclusive = ref(1);              // 控制選擇的按鈕, 預設AGV:2, 人推車:1
+const toggle_exclusive = ref(1);              // 控制選擇的按鈕, AGV:2, 人推車:1
 
 //=== watch ===
 setupGetBomsWatcher();
@@ -1364,6 +1303,19 @@ onMounted(async () => {
 
   // 如果窗口大小變化需要重新計算
   //window.addEventListener('resize', calculatePanelPosition);
+
+  // ###
+  await nextTick()           // 等 DOM 真正 render 完
+  //updateTableWidth()
+  //calcTransportLeft()
+  calcTransportRange()
+
+  resizeObserver = new ResizeObserver(() => {
+    updateTableWidth()
+  })
+
+  resizeObserver.observe(tableWrapRef.value)
+  // ###
 
   // 阻止直接後退
   window.history.pushState(null, null, document.URL); //呼叫到瀏覽器原生的 history 物件
@@ -1873,6 +1825,14 @@ onBeforeUnmount(() => {
     isCallAGV.value = false;
     isCallForklift.value = false;
   } catch (_) {}
+
+  // ###
+  if (resizeObserver && tableWrapRef.value) {
+    resizeObserver.unobserve(tableWrapRef.value)
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  // ###
 });
 
 //=== method ===
@@ -1916,6 +1876,52 @@ async function fetchMaterials() {
   } finally {
     tableLoading.value = false
   }
+}
+
+const updateTableWidth = () => {
+  if (!tableWrapRef.value) return
+  tableWidth.value = tableWrapRef.value.clientWidth
+}
+
+/**
+ * 計算動畫起點：
+ * = 按鍵右邊界 + 10px
+ * 再換算成「相對於 table 的 left」
+ */
+const calcTransportLeft = () => {
+  if (!sendButton.value || !tableWrapRef.value) return
+
+  const btnRect = sendButton.value.$el
+    ? sendButton.value.$el.getBoundingClientRect()   // Vuetify v-btn
+    : sendButton.value.getBoundingClientRect()
+
+  const tableRect = tableWrapRef.value.getBoundingClientRect()
+
+  // 起點 = 按鍵右側 + 10px（轉成 table 內座標）
+  transportLeft.value = Math.max(
+    0,
+    Math.round(btnRect.right - tableRect.left + 10)
+  )
+}
+
+const calcTransportRange = () => {
+  if (!sendButton.value || !tableWrapRef.value) return
+
+  // v-btn 在 Vuetify 下要取 $el
+  const btnEl = sendButton.value.$el ?? sendButton.value
+  const btnRect = btnEl.getBoundingClientRect()
+  const tableRect = tableWrapRef.value.getBoundingClientRect()
+
+  const GAP = 10
+
+  // 起點（相對於 table）
+  const startX = btnRect.right - tableRect.left + GAP
+
+  // 終點（相對於 table）
+  const endX = tableRect.right - tableRect.left
+
+  transportLeft.value = Math.round(startX)
+  transportWidth.value = Math.max(0, Math.round(endX - startX))
 }
 
 const initialize = async () => {
@@ -2153,12 +2159,6 @@ const checkReceiveQty = (item) => {
   const totalQty = Number(item.total_delivery_qty);     //應領數量
 
   console.log("deliveryQty > totalQty:", deliveryQty, totalQty)
-
-  //if (deliveryQty != totalQty && deliveryQty != 0) {
-  //  let temp_str = item.order_num + '領料數量不能改變！'
-  //  showSnackbar(temp_str, 'red accent-2');
-  //  return; // 不改變選擇狀態
-  //}
 
   // 檢查是否超過需求數量
   if (deliveryQty > totalQty) {
@@ -2461,7 +2461,7 @@ async function handleClose(dlg) {
 async function handleConfirm(dlg) {
   //await dlg.proc.updateProcess();   // 先把目前時間回寫(不結束)
   if (!dlg?.proc) return;
-  console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
+  console.log("timer 結束....closeProcess(), qty:", editedRecord.value.delivery_qty)
   await dlg.proc.closeProcess({ receive_qty: editedRecord.value.delivery_qty});   // 停表 + 回寫 + reset
   dlg.dialogVisible = false;
 
@@ -2560,6 +2560,8 @@ const updateItem2 = async (item) => {
   } else {
     deliveryQty = Number(item.delivery_qty) || 0;
   }
+
+  console.log("enter鍵, deliveryQty值:", deliveryQty)
 
   let payload = {};
 
@@ -2734,17 +2736,18 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
-const onClickTrans = () => {
-  if (toggle_exclusive.value == 1) {
-    callForklift();
-  } else {
-    callAGV();
-  }
-};
+const onClickTrans = async () => {
+  await nextTick()      // 確保 DOM 是最新位置
+  //updateTableWidth()
+  //calcTransportLeft()
+  calcTransportRange()
 
-const select_transportation_method = () => {
+  //isCallForklift.value = true
+
   //if (toggle_exclusive.value == 1) {
     callForklift();
+  //} else {
+  //  callAGV();
   //}
 };
 
@@ -3009,13 +3012,12 @@ const readAllExcelFun = async () => {
 
     fileCount.value = 0;
     if (excel_file_data.status) {
-      //fileCount.value = 0;
       await deleteAssemblesWithNegativeGoodQty();
 
-      //listMaterials();
       await fetchMaterials();
 
-      // 自動 focus, 2025-06-03
+      showSnackbar("Excel工單下載完成!", 'green darken-1');
+
       if (barcodeInput.value) {
         barcodeInput.value.focus();
       }
@@ -3251,9 +3253,9 @@ const removelocalStorage = () => {
   width: 200px;
 }
 
-:deep(.v-data-table-footer__items-per-page) {
-  display: none;
-}
+//:deep(.v-data-table-footer__items-per-page) {
+//  display: none;
+//}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -3750,5 +3752,25 @@ p {
 
 .seperator h5 span {
   padding: 0 2em;
+}
+
+:deep(.employee-select .v-field input) {
+  color: #1976d2 !important;
+}
+
+:deep(.employee-select .v-field input::placeholder) {
+  color: #1976d2 !important;
+  opacity: 1;
+}
+
+.table-area{
+  position: relative; /* 讓 overlay 以這個區塊為定位基準 */
+}
+
+/* 讓 TransportLoading 浮起來，不佔 layout */
+.table-area :deep(.wrap){
+  position: absolute !important;
+  z-index: 50;
+  pointer-events: none; /* 避免擋住 table 點擊 */
 }
 </style>

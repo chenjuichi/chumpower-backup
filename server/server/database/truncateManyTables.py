@@ -15,15 +15,14 @@ def truncate_table(table_name):
 
 s.execute(text('SET FOREIGN_KEY_CHECKS = 0'))
 
-truncate_table('bom')
-truncate_table('assemble')
-truncate_table('material')
+truncate_table('p_bom')
+truncate_table('p_assemble')
+truncate_table('p_product')
+truncate_table('p_process')
 
-truncate_table('process')
-
-truncate_table('user')        # 員工table
-truncate_table('permission')  # 權限table
-truncate_table('setting')     # 部門table
+truncate_table('p_association_material_abnormal')
+truncate_table('p_material')
+truncate_table('p_abnormal_cause')
 
 s.execute(text('SET FOREIGN_KEY_CHECKS = 1'))
 

@@ -34,7 +34,6 @@
     :value="selectedItems"
     class="elevation-10 custom-table"
   >
-
     <!-- 客製化 '選擇框' 欄位表頭 -->
     <template v-slot:header.data-table-select>
       <span class="custom-header">送料</span>
@@ -319,7 +318,7 @@
           </div>
 
           <!--客製化 員工選單-->
-          <div style="position: relative; right: 160px; width: 160px;">
+          <div class="employee-select" style="position: relative; right: 160px; width: 160px;">
             <v-text-field
               v-model="selectedEmployee"
               @keyup.enter="handleEmployeeSearch"
@@ -1036,10 +1035,15 @@ const isConfirmed = ref(false);
 
 const editedRecord = ref(null);       // 點擊詳情按鍵的目前紀錄
 
+//const pagination = reactive({
+//  itemsPerPage: 5,  // 預設值, rows/per page
+//  page: 1           // 第1頁
+//});
+
 const pagination = reactive({
-  itemsPerPage: 5, // 預設值, rows/per page
-  page: 1
+  itemsPerPage: -1, // 預設值, rows/per page
 });
+
 
 // 定義 facet 列表
 //const allFacets = ref(['Facet 2', 'Facet 3', 'Facet 5']);
@@ -3461,6 +3465,11 @@ const callForklift = async () => {
     return;
   }
 
+  if (!selectedEmployee.value) {
+    showSnackbar('請先選擇領料送出的員工!', 'red accent-2');
+    return;
+  }
+
   isCallForklift.value = true;
   try {
     console.log('trans_end 處理步驟1...');
@@ -4164,9 +4173,9 @@ const removelocalStorage = () => {
   width: 200px;
 }
 
-:deep(.v-data-table-footer__items-per-page) {
-  display: none;
-}
+//:deep(.v-data-table-footer__items-per-page) {
+//  display: none;
+//}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -4870,5 +4879,14 @@ p {
   visibility: visible;
 
   vertical-align: text-top;
+}
+
+:deep(.employee-select .v-field input) {
+  color: #1976d2 !important;
+}
+
+:deep(.employee-select .v-field input::placeholder) {
+  color: #1976d2 !important;
+  opacity: 1;
 }
 </style>

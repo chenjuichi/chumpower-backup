@@ -171,9 +171,9 @@ export function useProcessTimer(getTimerRef) {
         userId.value    = data?.started_user_id ?? uId;
         hasStarted.value = data?.has_started ?? false;
 
-        // 同步到 TimerDisplay, 把狀態喂進子元件
-        timer()?.setState(seconds, paused);
-        isPaused.value = paused;
+        //// 同步到 TimerDisplay, 把狀態喂進子元件
+        //timer()?.setState(seconds, paused);
+        //isPaused.value = paused;
 
         // 若後端狀態是「暫停」，凍結當下秒數；否則清空
         _frozenElapsedOnPause = isPaused.value ? (data?.elapsed_time ?? 0) : null;
@@ -190,6 +190,21 @@ export function useProcessTimer(getTimerRef) {
             _startAutoUpdate();
         }
         */
+
+        // --- 先同步 hook 狀態（讓 props.isPaused 先對） ---
+        elapsedMs.value = Math.max(0, seconds * 1000);
+        isPaused.value  = paused;
+
+        // ✅ 等 <TimerDisplay> render 完、ref 掛上後，再把秒數灌進去（避免 refresh 從 0 跑）
+        await nextTick();
+
+        const td = timer();
+        if (td?.setState) {
+        td.setState(seconds, paused);
+        } else if (td?.setElapsedTime) {
+        td.setElapsedTime(seconds * 1000);
+        }
+
         if (paused) {
             timer()?.pause();
             _stopLocalTicker();

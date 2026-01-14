@@ -56,6 +56,7 @@ export const order_count = ref(0);
 export const prepare_count = ref(0);
 export const assemble_count = ref(0);
 export const warehouse_count = ref(0);
+export const order_num_list = ref([]);
 
 // for getBoms
 export const boms = ref([]);
@@ -196,7 +197,7 @@ export const p_apiOperation = (operation, path, payload) => {
             assembles_active_user_count.value = res.data.assemble_active_users;
           }
 
-          if (path == '/listInformations') {
+          if (path == '/listInformationsP') {
             informations.value = [...res.data.informations];
           }
 
@@ -221,11 +222,12 @@ export const p_apiOperation = (operation, path, payload) => {
             //end_count.value = res.data.end_count;
           }
 
-          if (path == '/listWorkingOrderStatus') {
+          if (path == '/listWorkingOrderStatusP') {
             order_count.value = res.data.order_count;
             prepare_count.value = res.data.prepare_count;
             assemble_count.value = res.data.assemble_count;
             warehouse_count.value = res.data.warehouse_count;
+            order_num_list.value = res.data.order_num_list;
           }
 
           if (path == '/listUsers') {
@@ -262,7 +264,7 @@ export const p_apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/readAllExcelFilesP' ||
-              path == '/deleteAssemblesWithNegativeGoodQty') {
+              path == '/deleteAssemblesWithNegativeGoodQtyP') {
             //console.log("get, path is", path)
             return res.data;
           }
@@ -281,7 +283,7 @@ export const p_apiOperation = (operation, path, payload) => {
           if (path == '/register' || path == '/updateUser' || path == '/removeUser' ||
               path == '/updateSetting' || path == '/updateBoms' || path == '/updateAGV' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
-              path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+
               path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2') {
             return res.data.status;
           }
@@ -290,6 +292,8 @@ export const p_apiOperation = (operation, path, payload) => {
               path == '/updateAssembleMustReceiveQtyByMaterialIDP' ||
               path == '/updateAssmbleDataByMaterialIDP' ||
               path== '/updateProcessDataByMaterialIDP' ||
+              path == '/updateAssembleProcessStepP' ||
+              path == '/updateModifyMaterialAndBomsP'||
               path == '/updateMaterialRecordP' ||
               path == 'updateBomXorReceiveP' ||
               path == '/updateProcessDataP' ||
@@ -331,10 +335,9 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data
           }
 
-          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable' ||
+          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTableP' ||
               path == '/updateMaterialFields' ||
               path == '/getActiveCountMap') {
-            //console.log(path, "crud:", res.data);
             return res.data;
           }
 
@@ -418,8 +421,8 @@ export const p_apiOperation = (operation, path, payload) => {
             warehouses.value = [...res.data.warehouse_for_assemble];
           }
 
-          if (path == '/getProcessesByOrderNum') {
-            console.log("hello, test")
+          if (path == '/getProcessesByOrderNumP') {
+            //console.log("hello, test")
             processes.value = [...res.data.processes];
           }
           /*
@@ -497,11 +500,11 @@ export const p_apiOperation = (operation, path, payload) => {
             assemble_copy_ids.value = res.data.assemble_data;
           }
 
-          if (path == '/copyAssembleForDifference') {
+          if (path == '/copyAssembleForDifferenceP') {
             return res.data;
           }
 
-          if (path == '/copyNewAssemble') {
+          if (path == '/copyNewAssembleP') {
             assemble_new_copy_ids.value = res.data.assemble_data;
           }
 
@@ -509,12 +512,11 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
-          if (path == '/getMaterialsAndAssemblesByUser') {
-            //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
+          if (path == '/getMaterialsAndAssemblesByUserP') {
             materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
           }
 
-          if (path == '/getCountMaterialsAndAssemblesByUser') {
+          if (path == '/getCountMaterialsAndAssemblesByUserP') {
             end_count.value = res.data.end_count;
           }
 

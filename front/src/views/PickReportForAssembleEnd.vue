@@ -84,7 +84,7 @@
             <v-divider class="mx-2" inset vertical></v-divider>
 
             <!--客製化 員工選單-->
-            <div style="position:relative; width:160px; right: 5px;">
+            <div class="employee-select" style="position:relative; width:160px; right: 5px;">
               <v-text-field
                 v-model="selectedEmployee"
                 @keyup.enter="handleEmployeeSearch"
@@ -629,7 +629,7 @@ const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 // 結束已領料工單對話框相關
-const endTitle = ref('結束已領料工單');
+const endTitle = ref('完成組裝生產工單');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
@@ -2487,7 +2487,7 @@ const updateItem2 = async (item) => {
   const completed = Number(item.total_completed_qty_num)  //已完成總數量
 
   //item.receive_qty = temp - completed
-  item.receive_qty = temp
+  //item.receive_qty = temp
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -3303,6 +3303,15 @@ const removelocalStorage = () => {
 
 :deep(.v-switch .v-label) {
   font-weight: 600;
+}
+
+:deep(.employee-select .v-field input) {
+  color: #1976d2 !important;
+}
+
+:deep(.employee-select .v-field input::placeholder) {
+  color: #1976d2 !important;
+  opacity: 1;
 }
 </style>
 

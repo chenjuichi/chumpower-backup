@@ -162,10 +162,10 @@
       </div>
     </template>
 
-    <!-- 客製化 '已入庫登記總數量' (total_allOk_qty) 欄位的表頭 -->
+    <!-- 客製化 '已入庫總數量' (total_allOk_qty) 欄位的表頭 -->
     <template v-slot:header.total_allOk_qty="{ column }">
       <div style="text-align: center;">
-        <div style="height:21px;">已入庫登記</div>
+        <div style="height:21px;">已入庫</div>
         <div>總數量</div>
       </div>
     </template>
@@ -181,6 +181,16 @@
     <!-- 自訂 index 欄位的資料欄位 -->
     <template v-slot:item.index="{ item }">
       <!-- 空白顯示 -->
+    </template>
+
+    <!-- 自訂 line 欄位的資料欄位 -->
+    <template v-slot:item.line="{ item }">
+      <space v-if="item.line == 'process'" style="color:blue; font-weight:600;">
+        加工線
+      </space>
+      <space v-else  style="color:black; font-weight:600;">
+        組裝線
+      </space>
     </template>
 
     <!-- 自訂 '訂單編號' 欄位 -->
@@ -376,14 +386,15 @@ const footerOptions = [
 
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 0, class: 'hidden-column' },
+  { title: '  ', sortable: false, key: 'line', width:80 },
   { title: '訂單編號', sortable: true, key: 'order_num', width:110 },
   { title: '物料編號', sortable: true, key: 'material_num', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:80 },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
-  { title: '交期', align: 'center', sortable: false, key: 'date', width:110 },
+  { title: '交期', align: 'center', sortable: false, key: 'date', width:120 },
   { title: '到庫數量', sortable: false, key: 'delivery_qty', width:80 },
   { title: '應入庫總數量', align: 'center', sortable: false, key: 'must_allOk_qty', width:100 },
-  { title: '已入庫登記總數量', sortable: false, key: 'total_allOk_qty', width:100 },
+  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width:100 },
 
   { title: '入庫數量', sortable: false, key: 'allOk_qty', width:80 },
 ];
@@ -718,7 +729,7 @@ const checkQtyField = (item) => {
 
   // 檢查是否超過需求數量
   if ((inputQty + total_allOk_qty) > mustQty) {
-    over_qty_alarm.value = '入庫數量與已入庫登記總數量的和太大!';
+    over_qty_alarm.value = '入庫數量與已入庫總數量的和太大!';
     item.tooltipVisible = true;
 
     setTimeout(() => {
@@ -1178,9 +1189,9 @@ const showSnackbar = (message, color) => {
   width: 200px;
 }
 
-:deep(.v-data-table-footer__items-per-page) {
-  display: none;
-}
+//:deep(.v-data-table-footer__items-per-page) {
+//  display: none;
+//}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;

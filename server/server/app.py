@@ -39,7 +39,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2025-12-23' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2026-01-14' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -82,7 +82,11 @@ app.config['excel_bom_sheet'] = env_vars["excel_bom_sheet"]   #excel檔案內的
 _excel_bom_sheet = app.config['excel_bom_sheet']
 app.config['excel_work_time_sheet'] = env_vars["excel_work_time_sheet"]   #excel檔案內的工作表名稱
 _excel_work_time_sheet = app.config['excel_work_time_sheet']
-print("Excel 工作表名稱 為:", _excel_product_sheet, _excel_bom_sheet, _excel_work_time_sheet)
+
+app.config['p_excel_product_sheet'] = env_vars["p_excel_product_sheet"]   #excel檔案內的工作表名稱
+_p_excel_product_sheet = app.config['p_excel_product_sheet']
+
+print("Excel 工作表名稱 為:", _excel_product_sheet, _excel_bom_sheet, _excel_work_time_sheet, _p_excel_product_sheet)
 
 app.config['startRow'] = env_vars["startRow"]       #excel工作表的起始列
 _startRow = app.config['startRow']

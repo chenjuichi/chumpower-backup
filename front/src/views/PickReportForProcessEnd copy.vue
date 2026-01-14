@@ -133,7 +133,7 @@
                   'visibility': isCallForklift ? 'visible' : 'hidden',
                 }"
               >
-                人工送料中
+                人工入庫進行中
               </span>
 
               <!--客製化搜尋-->
@@ -195,7 +195,7 @@
         <div style="left:20px; position:relative;">{{ column.title }}</div>
       </template>
 
-      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 -->
+      <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 -->
       <template v-slot:header.req_qty="{ column }">
         <div style="text-align: center;">
           <div>需求</div>
@@ -211,7 +211,7 @@
         </div>
       </template>
 
-      <!-- 客製化 '應完成數量' (must_receive_end_qty) 欄位的表頭 -->
+      <!-- 客製化 '應完成總數量' (must_receive_end_qty) 欄位的表頭 -->
       <template v-slot:header.must_receive_end_qty="{ column }">
         <div style="text-align: center;">
           <div>應完成</div>
@@ -219,7 +219,7 @@
         </div>
       </template>
 
-      <!-- 客製化 '已完成總數' (total_completed_qty_num) 欄位的表頭 -->
+      <!-- 客製化 '已完成總數量' (total_completed_qty_num) 欄位的表頭 -->
       <template v-slot:header.total_completed_qty_num="{ column }">
         <div style="text-align: center;">
           <div>已完成</div>
@@ -235,10 +235,10 @@
         </div>
       </template>
 
-      <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 -->
+      <!-- 客製化 '廢品數量' (abnormal_qty) 欄位的表頭 -->
       <template v-slot:header.abnormal_qty="{ column }">
         <div style="text-align: center;">
-          <div>異常</div>
+          <div>廢品</div>
           <div>數量</div>
         </div>
       </template>
@@ -365,7 +365,7 @@
         </div>
       </template>
 
-      <!-- 自訂 '異常數量' 輸入欄位 -->
+      <!-- 自訂 '廢品數量' 輸入欄位 -->
       <template v-slot:item.abnormal_qty = "{ item }">
         <div style="position: relative; display: inline-block;">
           <v-text-field

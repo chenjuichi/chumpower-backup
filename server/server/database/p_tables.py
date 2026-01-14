@@ -43,10 +43,12 @@ class P_Material(BASE):
     material_date = Column(String(12), nullable=False)
     material_delivery_date = Column(String(12), nullable=False)
 
-    isBom = Column(Boolean, default=False)              # True:在領料中, 不要顯示詳情(bom表), False:要顯示詳情
+    isBom = Column(Boolean, default=False)      # True:在領料中, 不要顯示詳情(bom表), False:要顯示詳情
 
-    isTakeOk = Column(Boolean, default=False)
-    isShow = Column(Boolean, default=False)
+    isTakeOk = Column(Boolean, default=False)   # True:檢料區檢料完成,指定訂單可以派車
+
+    isShow = Column(Boolean, default=False)     # true:檢料完成且已call AGV, 就disable詳情按鍵
+
     isAssembleAlarm = Column(Boolean, default=True)
 
     isAssembleAlarmRpt = Column(Boolean, default=False)
@@ -81,7 +83,7 @@ class P_Material(BASE):
     sd_time_B108 = Column(String(30))
 
     move_by_automatic_or_manual = Column(Boolean, default=False)
-    move_by_process_type = Column(Integer, default=4)               # 2:工單給組裝線, 4:工單給加工線
+    move_by_process_type = Column(Integer, default=4)     # 2:工單給組裝線, 4:工單給加工線
 
     isOpen = Column(Boolean, default=False)                         #True: dialog open, False: dialog close
     isOpenEmpId = Column(String(8), default="")       # 工單已經開始備料的員工
@@ -235,7 +237,7 @@ class P_Assemble(BASE):
     isAssembleStationShow = Column(Boolean, default=False)
     isWarehouseStationShow = Column(Boolean, default=False)
 
-    isStockIn = Column(Boolean, default=False)          # 是否入庫, True: 必須入庫(作業短文以Z開頭)
+    isStockIn = Column(Boolean, default=True)          # 是否入庫, True: 必須入庫(作業短文以Z開頭)
     isSimultaneously = Column(Boolean, default=False)   # True: 各個加工製程同步(平行製程), False: 各個加工製程是有順序性
     isShowBomGif = Column(Boolean, default=False)       # True: 在報工開始的模組, 不顯示Bom動態gif圖示
 
@@ -316,6 +318,18 @@ class P_Process(BASE):
     allOk_qty = Column(Integer, default=0)                        # 成品, 入庫數量
     isAllOk = Column(Boolean, default=False)                      # true: 已入庫
     normal_work_time = Column(Integer, default=1)                 # 最後1筆工序(1:yes, 0:no), 正常工序(1:正常工時, 0:異常整修工時)
+                                                                  #bit0: 正常工序(1:正常工時, 0:異常整修工時)
+                                                                  #bit1: 最後1筆工序(1:yes, 0:no)
+                                                                  #bit2: 已入庫(1:yes, 0:no)
+
+                                                                  #bit3 bit2, bit1, bit0
+                                                                  #0      0     0     1  =1 (default), 正常工時
+                                                                  #0      0     1     1  =3, 正常工時, 且是最後工序
+                                                                  #0      0     0     0  =0, 異常工時
+                                                                  #0      0     1     0  =2, 異常工時, 且是最後工序
+                                                                  #0      1     x     x  >=4
+
+
     abnormal_cause_message = Column(String(30), default='')       # 異常原因訊息
     create_at = Column(DateTime, server_default=func.now())
 

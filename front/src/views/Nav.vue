@@ -42,7 +42,7 @@
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[2].isEnabled}]"
 
                 @click="closeDropdown()"
-                style="display:none;"
+
               >
                 {{ localNavLinks[2].text }}
               </router-link>
@@ -241,6 +241,7 @@
                 :class="['dropdown-item', 'my-dropdown-item', {'disabled-linkk': !localNavLinks[19].isEnabled}]"
 
                 @click="closeDropdown()"
+                style="display: none;"
               >
                 {{ localNavLinks[19].text }}
               </router-link>

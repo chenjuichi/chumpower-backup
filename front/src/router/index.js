@@ -8,7 +8,7 @@ import About from '../views/AboutView.vue'
 import Animation from '../views/Animation3.vue';
 
 import A from '../views/a.vue';
-import B from '../views/b.vue';
+import B from '../views/InformationForProcess.vue';
 import C from '../views/InformationForAssem.vue';
 import D from '../views/d.vue';
 

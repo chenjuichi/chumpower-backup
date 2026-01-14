@@ -208,7 +208,7 @@
     <template v-slot:item.material_num="{ item }">
       <div>
         <div>{{ item.material_num }}</div>
-        <div :style="getStatusStyle(item.assemble_process_num)">{{ str2[item.assemble_process_num] }}</div>
+        <div :style="getStatusStyle(item.assemble_process_num)">{{ item.assemble_process }}</div>
       </div>
     </template>
 
@@ -505,8 +505,12 @@ const footerOptions = [
   { value: -1, title: '全部' }
 ];
 
-//             0        1        2            3              4                5                6              7            8
-const str2=['未領料', '領料中',  '領料已完成', '等待加工作業', '加工作業進行中', '加工作業已完成', '等待入庫作業', '入庫進行中', '入庫完成']
+//            0         1        2          3        4            5           6            7           8            9
+//const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
+//const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
+//             0        1              2                3               4                 5              6              7            8
+const str2=['未領料', '領料中',      '領料已完成',       '等待加工作業',  '加工作業進行中',  '加工作業已完成', '等待入庫作業', '入庫進行中', '入庫完成']
+
 
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:220 },
@@ -562,15 +566,14 @@ const abnormalDialog_display = ref(true);
 const abnormalDialog_record = ref(null);
 
 const timerMap = new Map();
-const timerCache = new Map()
 
 let __disposedAll = false;
 
-//const PROCESS_TYPES = ['21', '22', '23']
-//const countsByType = ref({ '21': {}, '22': {}, '23': {} })
-//const activeMap = reactive({
-//  '21': {}, '22': {}, '23': {}
-//})
+const PROCESS_TYPES = ['21', '22', '23']
+const countsByType = ref({ '21': {}, '22': {}, '23': {} })
+const activeMap = reactive({
+  '21': {}, '22': {}, '23': {}
+})
 
 const selectedAsmId = ref(null);
 
@@ -872,18 +875,7 @@ const KEY = 'material' // 'material' 或 'assemble'
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${uId}`
 
-const timerKey = (row) =>
-  `${row.id}:${row.assemble_id}:${row.process_step_code}:${currentUser.value.empID}`
-
-const getT = (row) => {
-  const k = timerKey(row)
-  if (!timerCache.has(k)) {
-    timerCache.set(k, useRowTimer(row, currentUser.value.empID))
-  }
-  return timerCache.get(k)
-}
-
-//const getT = (row) => useRowTimer(row, currentUser.value.empID)
+const getT = (row) => useRowTimer(row, currentUser.value.empID)
 
 function setTimerEl(row, el) {
   if (!row || !row.id) {
@@ -1216,11 +1208,7 @@ const onClickBegin =  async (row) => {
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
-    //await t.startProcess(row.id, row.process_step_code, currentUser.value.empID, row.assemble_id)
-    const pid = await t.startProcess(row.id, row.process_step_code, currentUser.value.empID, row.assemble_id)
-
-    // ✅ 如果你的 startProcess 有回傳 processId，這裡強制補上（避免 t.processId 還是空的）
-    if (pid && !t.processId.value) t.processId.value = pid
+    await t.startProcess(row.id, row.process_step_code, currentUser.value.empID, row.assemble_id)
   }
   // 2) 立刻做一次 “恢復”（unpause, 以觸發後端寫入 begin_time
   console.log("t.isPaused:", t.isPaused.value)
@@ -1230,13 +1218,9 @@ const onClickBegin =  async (row) => {
     t.isPaused.value =false;
   }
 
-  // ✅ 3) 前端也要明確標記已開始（讓你第二次按立刻命中「已領料」判斷）
-  t.hasStarted.value = true
-
   await updateItem(row);
 
   //2025-11-18 await refreshActiveCounts();
-  await listMaterialsAndAssembles()
 }
 
 const updateItem = async (item) => {
@@ -1287,7 +1271,7 @@ const updateItem = async (item) => {
   await updateAssemble(payload);
 
   item.total_receive_qty ='(' + total.toString().trim() + ')';
-  //item.total_receive_qty_num = total;
+  item.total_receive_qty_num = total;
 
   // 5.記錄當前領取人員工號
   payload = {
@@ -1323,8 +1307,8 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  //item.assemble_process = str2[4]   // 加工作業進行中
-  //item.assemble_process_num = 4     // 加工作業進行中
+  item.assemble_process = str2[4]   // 加工作業進行中
+  item.assemble_process_num = 4     // 加工作業進行中
 
   let temp = Number(item.req_qty)
   // 確認 已領取數量總數=需求數量(訂單數量)
@@ -1338,23 +1322,15 @@ const updateItem = async (item) => {
       record_data: true,
     };
     await updateAssemble(payload);
-    //item.input_disable = true;
+    item.input_disable = true;
   }
-
-  // 用 Vue 的方式確保觸發響應式更新
-  materials_and_assembles.value[targetIndex] = {
-    ...materials_and_assembles.value[targetIndex],
-    total_receive_qty_num: total,
-    assemble_process_num: 4,     // 加工作業進行中
-    input_disable: true,
-  };
 
   const key = `${item.id}:${item.assemble_id}:${item.process_step_code}:${currentUser.value.empID}`
   localStorage.setItem(`PROCESS_PR_END_SYNC_${currentUser.value.empID}`, `${key}|${Date.now()}`)
   console.log("key key:",`PROCESS_PR_END_SYNC_${currentUser.value.empID}`, key)
 
   //待待
-  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 function startDisabled(row) {
@@ -1644,7 +1620,6 @@ const getStatusStyle = (status) =>{
     5: '#86007d',
     6: '#ffa52c',
     7: '#008018',
-    8: '#776472',
   };
 
   return {

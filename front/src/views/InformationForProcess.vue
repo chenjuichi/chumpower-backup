@@ -12,7 +12,7 @@
 
   <v-row>
     <v-col cols="6" class="d-flex justify-center align-center pb-0">
-      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">組裝區在製品生產資訊</span>
+      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">加工區在製品生產資訊</span>
     </v-col>
     <v-col cols="2" class="d-flex justify-end align-center pb-0">
       <v-btn
@@ -181,7 +181,6 @@
   </v-row>
 
   <v-data-table
-
     :headers="headers"
     :items="filteredInformations"
     :row-props="getRowProps"
@@ -256,7 +255,7 @@
             <v-dialog v-model="process_dialog" min-width="1260px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  裝配報工紀錄 -
+                  加工報工紀錄 -
                   <span style="font-size: 20px;">{{ current_order_num }}</span>
                   <v-fade-transition mode="out-in">
                     <v-btn
@@ -278,7 +277,7 @@
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">備料/組裝</th>
+                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">領料/加工</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
                         <th class="text-left" style="padding-left:0px; padding-right:0px;">數量</th>
@@ -316,7 +315,7 @@
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
                         <!--<td>{{ process_item.total_delivery_qty }}</td>-->
                         <td>{{ process_item.process_work_time_qty }}</td>
-                        <td>{{ process_item.period_time }}</td>
+                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
                         <td style="font-size:12px; font-weight: 600;">{{ process_item.user_comment }}</td>
@@ -407,27 +406,36 @@
       >
         <span>{{ column.title }}</span>
       </div>
+      <!--
       <div
         style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
       >
         組裝/檢驗/雷射
       </div>
+    	-->
     </template>
 
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: start;">
-        <div style="margin-right: 20px;">
+        <div style="margin-right: 20px;" :class="{ 'text-red': isOrderInList(item.order_num) }">
           {{ item.order_num }}
         </div>
       </div>
     </template>
 
+    <!-- 自訂 '交期' 欄位 -->
+		<template v-slot:item.delivery_date="{ item }">
+			<span :class="{ 'text-red': isOrderInList(item.order_num) }">
+				{{ item.delivery_date }}
+			</span>
+		</template>
+
     <!-- 自訂 '現況進度' 欄位 -->
     <template v-slot:item.show1_ok="{ item }">
       <div>
         <div style="font-weight:600;">{{ item.show1_ok }}</div>
-        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
+        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok }}</div>
       </div>
     </template>
 
@@ -452,7 +460,7 @@
 
     <template v-slot:item.action="{ item }">
       <v-btn
-        :disabled="!item.isTakeOk && item.whichStation == 1"
+        :disabled="(item.isBom && !item.isTakeOk) || item.total_process_records == 0"
         size="small"
         variant="tonal"
         style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
@@ -488,8 +496,8 @@ import { myMixin } from '../mixins/common.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { informations, boms, fileCount }  from '../mixins/crud.js';
-import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
+import { boms, fileCount }  from '../mixins/crud.js';
+//import { order_count, prepare_count, assemble_count, warehouse_count }  from '../mixins/crud.js';
 //import { users_and_deps_and_process }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
@@ -499,23 +507,32 @@ import { apiOperationB } from '../mixins/crudB.js';
 // 使用 apiOperation 函式來建立 API 請求
 const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
 const countExcelFiles = apiOperation('get', '/countExcelFiles');
-const listInformations = apiOperation('get', '/listInformations');
-const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
 
 const getBoms = apiOperation('post', '/getBoms');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
-const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
+//const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
 const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
+//=== p_tables維護用 api ==
+import { p_apiOperation }  from '../mixins/p_crud.js';
+
+import { informations }  from '../mixins/p_crud.js';
+import { processes }  from '../mixins/p_crud.js';
+import { order_count, prepare_count, assemble_count, warehouse_count, order_num_list }  from '../mixins/p_crud.js';
+
+const listInformations = p_apiOperation('get', '/listInformationsP');
+const listWorkingOrderStatus = p_apiOperation('get', '/listWorkingOrderStatusP');
+
+const getProcessesByOrderNum = p_apiOperation('post', '/getProcessesByOrderNumP');
 
 //=== component name ==
-defineComponent({ name: 'InformationForAssem' });
+defineComponent({ name: 'InformationForProcess' });
 
 // === mix ==
 const { initAxios } = myMixin();
@@ -524,8 +541,8 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-let intervalId = null;                    // 10秒, 倒數計時器
-let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
+let intervalId = null;                    // 5分鐘, 倒數計時器
+let intervalIdForProgressCircle = null;   // 5分鐘, 倒數計時器
 const route = useRoute();                 // Initialize router
 
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
@@ -576,11 +593,11 @@ const footerOptions = [
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:150 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:170 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:220 },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
-  { title: '說明', align: 'start', sortable: false, key: 'comment' },
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:230 },
   { title: '', sortable: false, key: 'action' },
 ];
 
@@ -801,8 +818,8 @@ onMounted(async () => {
   //fileCount.value = countExcelFiles();
   //console.log("fileCount:", fileCount.value);
 
-  intervalId = setInterval(listInformationsFun, 10 * 1000);  // 每 10秒鐘調用一次 API
-  intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 1000);  // 每 5秒鐘調用一次 API
+  intervalId = setInterval(listInformationsFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API
+  intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API
 
   //window.addEventListener('resize', () => {
   //  screenWidth.value = window.innerWidth;
@@ -974,6 +991,10 @@ const fmt = (d) => {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+const isOrderInList = (orderNum) => {
+  return order_num_list.value.includes(orderNum)
 }
 
 const initialize = async () => {
@@ -1504,6 +1525,7 @@ const showSnackbar = (message, color) => {
 }
 
 :deep(.v-overlay__content) {
+    //overflow: hidden !important;
   overflow-y: hidden !important;
   top: 20px !important;
   border-radius: 40px;
@@ -1523,7 +1545,7 @@ const showSnackbar = (message, color) => {
 }
 
 .v-input--custom-text-input-density .v-field--variant-underlined {
-  --v-input-control-height: 30px;
+  --v-input-control-height: 30px; //change here
   --v-field-padding-top: 0px;
   --v-field-padding-bottom: 0px;
 }
@@ -1547,11 +1569,6 @@ const showSnackbar = (message, color) => {
 //:deep(.v-table.outer .v-table__wrapper) {
 //  overflow-y: hidden;
 //  max-height: 320px;
-//}
-
-//:deep(.v-table.outer .v-table__wrapper) {
-//  overflow-y: auto;
-//  max-height: none;
 //}
 
 :deep(.v-table.outer .v-table__wrapper) {
@@ -1801,5 +1818,10 @@ const showSnackbar = (message, color) => {
 
 :deep(.dp__outer_menu_wrap) {
   width: 140%;
+}
+
+:deep(.text-red) {
+  color: #2196F3 !important;
+  font-weight: 600 !important;
 }
 </style>

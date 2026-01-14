@@ -1361,9 +1361,11 @@ async function onDelete(item) {
   })
   if (ok) {
     removeMaterialsAndRelationTableFun(item.id);
+
+    //待待
+    window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   }
 }
-
 
 const removeMaterialsAndRelationTableFun = async (id) => {
   console.log("removeMaterialsAndRelationTableFun()...");
@@ -1593,6 +1595,8 @@ const getStatusStyle = (status) =>{
     5: '#86007d',
     6: '#ffa52c',
     7: '#008018',
+    8: '#776472',
+    9: '#85CB33',
   };
 
   return {
@@ -1920,7 +1924,7 @@ const handleGifClick = async (item, index) => {
   isTableVisible.value = true;    // 設置表格可見
 
   await getBoms({id: item.id});
-  console.log('Current hovered item index:', hoveredItemIndex.value);
+  //console.log('Current hovered item index:', hoveredItemIndex.value);
   //console.log("bom[]:", boms.value)
 };
 

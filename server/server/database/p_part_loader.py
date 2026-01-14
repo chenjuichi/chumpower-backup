@@ -226,7 +226,8 @@ def import_p_part_from_excel(base_dir: str | None = None):
                 step = key_to_step.get(item["key_code"], 0)
 
                 part = P_Part(
-                    process_step_code=step,
+                    #process_step_code=step ,
+                    process_step_code = step + 1000,
                     part_code=item["part_code"],
                     part_comment=item["part_comment"],
                     work_code=item["work_code"],

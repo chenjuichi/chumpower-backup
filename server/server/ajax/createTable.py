@@ -34,6 +34,57 @@ def _normalize_int(value, default=0):
         return default
 
 
+def read_all_p_part_process_code_p():
+    """
+    從 p_part 資料表讀取所有製程資料，組出：
+
+        code_to_assembleStep = { '100-01': step_code, '100-02': step_code, ... }
+
+    規則：
+      - 使用 P_Part.part_code 當 key 的來源，例如 'B100-01'
+      - 若 part_code 以 'B' 開頭，就去掉 'B'，變成 '100-01' 當 dict 的 key
+      - value 直接使用 P_Part.process_step_code
+    """
+
+    session = Session()
+    code_to_assembleStep = {}
+
+    try:
+        parts = session.query(P_Part).order_by(P_Part.id).all()
+        print(f"read_all_p_part_process_code_p(): 從 p_part 讀到 {len(parts)} 筆資料")
+
+        for part in parts:
+            raw_code = (part.part_code or "").strip()
+            if not raw_code:
+                continue
+
+            # 去掉開頭 'B'，跟原本 Excel 版的行為一致
+            if raw_code.startswith("B"):
+                key = raw_code[1:]   # 'B100-01' -> '100-01'
+            else:
+                key = raw_code
+
+            step = part.process_step_code or 0
+            if not step:
+                # 若 process_step_code 為 0 或 None，就略過（必要時可以改成保留）
+                continue
+
+            # 若同一個 key 被多筆覆蓋，印出提示（最後一筆會生效）
+            if key in code_to_assembleStep and code_to_assembleStep[key] != step:
+                print(
+                    f"  ⚠️ key={key} 已有 step={code_to_assembleStep[key]}，"
+                    f"這筆 part_code={raw_code} 的 step={step} 會覆蓋前一筆"
+                )
+
+            code_to_assembleStep[key] = step
+
+    finally:
+        session.close()
+
+    print("read_all_p_part_process_code_p(), 從 p_part 組完，總筆數:", len(code_to_assembleStep))
+    return code_to_assembleStep
+
+
 # ------------------------------------------------------------------
 
 
@@ -528,7 +579,6 @@ def create_process_p():
   print("step3...")
 
   s.add(new_process)
-  print("step4...")
 
   s.flush()  # ← 立刻送出 INSERT 並回填自增 id（未提交交易）
 
@@ -536,7 +586,6 @@ def create_process_p():
   print("new_process_id:", new_process_id)
 
   s.commit()
-  print("step5...")
 
   s.close()
 
@@ -761,6 +810,162 @@ def copy_assemble_for_difference():
   })
 
 
+
+@createTable.route("/copyAssembleForDifferenceP", methods=['POST'])
+def copy_assemble_for_difference_p():
+  print("copyAssembleForDifferenceP....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _must_qty = request_data.get('must_receive_qty')
+  _pre_must_qty = request_data.get('pre_must_receive_qty')
+
+  print("_copy_id, _must_qty", _copy_id, _must_qty)
+
+  return_value = True
+  s = Session()
+
+  # 根據 copy_id 尋找現有的 Material 資料
+  #exist = s.query(Assemble).filter_by(id = _copy_id).first()
+
+
+  # 1. 取得原始 assemble 記錄
+  source_assemble = s.query(P_Assemble).get(_copy_id)
+
+  """
+  # 2. 找出符合複製條件的所有 assemble 記錄
+  matching_assembles = s.query(Assemble).filter(
+      Assemble.material_id == source_assemble.material_id,
+      Assemble.must_receive_qty == source_assemble.must_receive_qty,
+      #Assemble.process_step_code <= source_assemble.process_step_code
+  ).all()
+  """
+  k = _copy_id
+  h = k + 1
+  m = k + 2  # 若之後也要用，可以一起放進 IN
+
+  ids = [k, h]            # 只要 k、h
+  matching_assembles = (
+    s.query(P_Assemble)
+     .filter(
+        P_Assemble.material_id == source_assemble.material_id,
+        P_Assemble.update_time == source_assemble.update_time,
+        P_Assemble.id.in_(ids)          # 「包含 k 或 h」
+     )
+     .order_by(P_Assemble.id.asc())
+     .all()
+  )
+  print("matching_assembles:",matching_assembles)
+
+  # 2-1. 先更新這些舊紀錄的 must_receive_end_qty = pre_must_receive_qty
+  #      （如果 pre_must_receive_qty 有帶進來）
+  if _pre_must_qty is not None:
+    try:
+      pre_must_val = int(_pre_must_qty)
+    except (TypeError, ValueError):
+      pre_must_val = 0
+
+    for rec in matching_assembles:
+      print(f"update old rec(id={rec.id}) must_receive_end_qty ->", pre_must_val)
+      rec.must_receive_end_qty = pre_must_val
+
+  # 3. 複製這些記錄（排除 id）並新增到 DB
+  print("len(matching_assembles):", len(matching_assembles))
+  new_ids = []
+  for record in matching_assembles:
+    #abnormal_field=False
+    """
+    if record.work_num == 'B109':
+      process_step_code =3
+      ok2=3
+      ok3=3
+    if record.work_num == 'B110':
+      process_step_code =2
+      ok2=5
+      ok3=5
+    if record.work_num == 'B106':
+      process_step_code =1
+      ok2=7
+      ok3=7
+    else:
+      # 如果不是這三種工作中心，就略過，不新增
+      print("skip record.id =", record.id, "work_num =", record.work_num)
+      continue
+    """
+    #code_to_assembleStep = read_all_p_part_process_code_p()
+    #process_step_code = code_to_assembleStep
+    process_step_code = record.process_step_code
+    ok2 = 0
+    ok3 = 0
+
+    """
+    if record.work_num == 'B109':
+        process_step_code = 3
+        ok2 = 3
+        ok3 = 3
+    elif record.work_num == 'B110':
+        process_step_code = 2
+        ok2 = 5
+        ok3 = 5
+    elif record.work_num == 'B106':
+        process_step_code = 1
+        ok2 = 7
+        ok3 = 7
+    else:
+        # 如果不是這三種工作中心，就略過，不新增
+        print("skip record.id =", record.id, "work_num =", record.work_num)
+        continue
+    """
+    abnormal_field=False
+
+    new_record = P_Assemble(
+      material_id=record.material_id,
+      material_num=record.material_num,
+      material_comment=record.material_comment,
+      seq_num=record.seq_num,
+      work_num=record.work_num,
+      process_step_code=process_step_code,
+      must_receive_qty = _must_qty,     #應領取數量
+      must_receive_end_qty=_must_qty,
+      input_disable =False,
+      input_end_disable =False,
+      input_abnormal_disable = abnormal_field,
+      completed_qty = 0,                    #完成數量
+      total_completed_qty = 0,
+      ask_qty=0,
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      is_copied_from_id=record.id,
+      show2_ok=ok2,
+      show3_ok=ok3,
+
+      isShowBomGif=record.isShowBomGif,
+      isStockIn = record.isStockIn,
+      isSimultaneously = record.isSimultaneously,
+    )
+    s.add(new_record)
+    s.flush()  # 先 flush 以取得新 ID
+    print("new_record.id:", new_record.id)
+    new_ids.append(new_record.id)
+  # end for loop
+
+  try:
+    s.commit()
+    print("Process data create successfully.")
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return_message = '錯誤! 資料新增複製沒有成功...'
+    return_value = False
+
+  s.close()
+
+  return jsonify({
+    'assemble_data': new_ids,
+  })
+
+
 # copy assemble data table
 @createTable.route("/copyNewAssemble", methods=['POST'])
 def copy_new_assemble():
@@ -860,6 +1065,140 @@ def copy_new_assemble():
       is_copied_from_id=record.id,
       show2_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
       show3_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
+    )
+    s.add(new_record)
+    s.flush()  # 先 flush 以取得新 ID
+    new_ids.append(new_record.id)
+  # end for loop
+
+  try:
+    s.commit()
+    print("Process data create successfully.")
+  except Exception as e:
+    s.rollback()
+    print("Error:", str(e))
+    return_message = '錯誤! 資料新增複製沒有成功...'
+    return_value = False
+
+  s.close()
+
+  return jsonify({
+    'assemble_data': new_ids,
+  })
+
+
+@createTable.route("/copyNewAssembleP", methods=['POST'])
+def copy_new_assemble_p():
+  print("copyNewAssembleP....")
+
+  request_data = request.get_json()
+  print("request_data:", request_data)
+
+  _copy_id = request_data['copy_id']
+  _must_qty = request_data.get('must_receive_qty')
+
+  print("_copy_id, _must_qty", _copy_id, _must_qty)
+
+  return_value = True
+  s = Session()
+
+  # 根據 copy_id 尋找現有的 Material 資料
+  #exist = s.query(Assemble).filter_by(id = _copy_id).first()
+
+  # 1. 取得原始 assemble 記錄
+  source_assemble = s.query(P_Assemble).get(_copy_id)
+
+  matching_assembles = []
+  """
+  bb = source_assemble
+  while True:
+      aa = s.get(Assemble, bb.id + 1)  # 下一筆（相鄰 id）
+      if not aa:
+          break
+      if (aa.material_id == source_assemble.material_id) and (aa.update_time == source_assemble.update_time):
+        matching_assembles.append(aa)
+        bb = aa   # 往下一筆繼續找
+      else:
+        break
+  """
+
+  """
+    # 2. 找出符合複製條件的所有 assemble 記錄
+    matching_assembles = s.query(Assemble).filter(
+        Assemble.material_id == source_assemble.material_id,
+        Assemble.must_receive_qty == source_assemble.must_receive_qty,
+        #Assemble.process_step_code <= source_assemble.process_step_code
+    ).all()
+  """
+
+
+  k = _copy_id
+  h = k - 1
+  m = k + 1  # 若之後也要用，可以一起放進 IN
+
+  ids = [k, h, m]            # 只要 k、h
+  matching_assembles = (
+    s.query(P_Assemble)
+     .filter(
+        P_Assemble.material_id == source_assemble.material_id,
+        #Assemble.is_copied_from_id == source_assemble.update_time,
+        P_Assemble.id.in_(ids)          # 「包含 k 或 h」
+     )
+     #.order_by(Assemble.id.asc())
+     .all()
+  )
+
+  print("matching_assembles:",matching_assembles)
+
+  # 3. 複製這些記錄（排除 id）並新增到 DB
+  new_ids = []
+  for record in matching_assembles:
+    abnormal_field=False
+    #code_to_assembleStep = read_all_p_part_process_code_p()
+    #process_step_code = code_to_assembleStep
+    process_step_code = record.process_step_code
+    ok2 = 0
+    ok3 = 0
+
+    """
+    if record.work_num == 'B109':
+      process_step_code =3
+    if record.work_num == 'B110':
+      process_step_code =2
+    if record.work_num == 'B106':
+      process_step_code =1
+    """
+
+    new_record = P_Assemble(
+      material_id=record.material_id,
+      material_num=record.material_num,
+      material_comment=record.material_comment,
+      seq_num=record.seq_num,
+      work_num=record.work_num,
+      process_step_code=process_step_code,
+      isAssembleStationShow=False,
+      must_receive_qty = _must_qty,         #應領取數量
+      must_receive_end_qty = _must_qty,     #應完成數量
+      input_disable =False,
+      input_end_disable =False,
+
+      alarm_enable=False,
+      isAssembleFirstAlarm=False,
+
+      input_abnormal_disable = abnormal_field,
+      completed_qty = 0,                    #完成數量
+      total_completed_qty = 0,
+      ask_qty=0,
+      update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      is_copied_from_id=record.id,
+      #show2_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
+      #show3_ok=3 if (record.work_num=='109') else (5 if (record.work_num=='110') else 7),
+      show2_ok=ok2,
+      show3_ok=ok3,
+
+      isShowBomGif=record.isShowBomGif,
+      isStockIn = record.isStockIn,
+      isSimultaneously = record.isSimultaneously,
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID

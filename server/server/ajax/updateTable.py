@@ -527,7 +527,6 @@ def update_assemble_process_step():
                 #if r.update_time == assemble_record.update_time]
 
   # 如果同組至少有一筆，判斷是否全部都是 step=0
-  #all_process_step_zero = bool(same_group) and all(r.process_step_code == 0 for r in same_group)
   all_process_step_zero = bool(assemble_records) and all(r.process_step_code == 0 for r in assemble_records)
 
   # 如果條件滿足，更新 material 表
@@ -567,6 +566,76 @@ def update_assemble_process_step():
 
     return_value = False
     #return jsonify({"message": "Not all process_step_code are zero"}), 200
+  s.commit()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+@updateTable.route('/updateAssembleProcessStepP', methods=['POST'])
+def update_assemble_process_step_p():
+  print("updateAssembleProcessStepP....")
+
+  data = request.json
+
+  if not data or 'id' not in data or 'assemble_id' not in data:
+    return jsonify({"error": "Missing parameters 'id' or 'assemble_id'"}), 400
+
+  material_id = data['id']
+  assemble_id = data['assemble_id']
+  return_value = False
+
+  s = Session()
+
+  material_record = s.query(P_Material).filter_by(id=material_id).first()
+  if not material_record:
+    return jsonify({"error": f"P_Material with id {material_id} not found"}), 404
+
+  assemble_record = s.query(P_Assemble).filter_by(id=assemble_id, material_id=material_id).first()
+  if not assemble_record:
+    return jsonify({"error": f"P_Assemble with id {assemble_id} and material_id {material_id} not found"}), 404
+
+  target_create_at = normalize_create_at(assemble_record.create_at)
+
+  assemble_records = (s.query(P_Assemble)
+    .filter(and_(P_Assemble.material_id == material_id, P_Assemble.create_at == target_create_at))
+    .all()
+  )
+
+  # 如果同組至少有一筆，判斷是否全部都是 process_step_code=0
+  all_process_step_zero = bool(assemble_records) and all(r.process_step_code == 0 for r in assemble_records)
+
+  # 如果條件滿足，更新 material 表
+  if all_process_step_zero:
+    print("updateAssembleProcessStepP , all_process_step_zero", all_process_step_zero)
+
+    material_record.isAssembleStation3TakeOk = True
+    assemble_record.isAssembleStationShow = True
+
+    return_value = True
+  else:
+    print("updateAssembleProcessStepP , not all_process_step_zero")
+
+    material_record.isAssembleStation3TakeOk = False
+    assemble_record.isAssembleStationShow = False
+
+    # 把同一批加工製程排好順序，找出『現在做的是第幾道』，然後抓『下一道製程』出來。
+
+    # assemble.seq_num 越小 → 越前面的製程
+    sorted_records = sorted(assemble_records, key=lambda r: r.seq_num)
+
+    # 現在在哪一個製程
+    current_index = next((i for i, r in enumerate(sorted_records) if r.id == assemble_id), None)
+
+    print("current_index, current_index + 1, len(sorted_records:",current_index, current_index + 1, len(sorted_records))
+    if current_index is not None and current_index + 1 < len(sorted_records):
+      next_record = sorted_records[current_index + 1]
+      print(f"next_assemble_id 已設為 {next_record.id}")
+
+      next_record.completed_qty = 0
+
+    return_value = False
   s.commit()
 
   return jsonify({
@@ -650,6 +719,42 @@ def update_modify_material_and_Boms():
   })
 
 
+@updateTable.route("/updateModifyMaterialAndBomsP", methods=['POST'])
+def update_modify_material_and_Boms_p():
+  print("updateModifyMaterialAndBoms....")
+
+  data = request.json
+  _id = data.get("id")
+  _date = data.get("date")
+  _qty = data.get("qty")
+
+  return_value = True
+
+  update_data = {}
+  if _date is not None:
+      update_data["material_delivery_date"] = _date   #訂單日期
+  if _qty is not None:
+      update_data["material_qty"] = _qty              #需求數量(訂單數量)
+      update_data["total_delivery_qty"] = _qty        #應備數量
+
+  s = Session()
+
+  if update_data:
+    rows_updated = s.query(P_Material).filter(P_Material.id == _id).update(update_data)
+
+  if rows_updated == 0:
+    return_value = False
+    raise ValueError("Update failed: no rows affected")
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
+
 @updateTable.route("/updateAssmbleDataByMaterialID", methods=['POST'])
 def update_assemble_data_by_material_id():
   print("updateAssmbleDataByMaterialID....")
@@ -702,7 +807,6 @@ def update_assemble_data_by_material_id():
   return jsonify({
     'status': return_value
   })
-
 
 
 @updateTable.route("/updateAssmbleDataByMaterialIDP", methods=['POST'])
@@ -780,14 +884,23 @@ def update_process_data_by_material_id():
         return jsonify({'status': False, 'msg': 'Material not found'})
       print("step2")
 
+      target_process = (s.query(Process).filter(
+          Process.material_id == _material_id,
+          Process.assemble_id == 0,
+          Process.has_started == True,
+          Process.begin_time != '',
+          Process.end_time != '',)
+          .first())
+
       # 確保 _seq 不超過範圍
-      if _seq < 0 or _seq > len(material._process):
+      #if _seq < 0 or _seq > len(material._process):
+      if not target_process:
         return jsonify({'status': False, 'msg': 'seq out of range'})
 
       print("step3")
 
       # 取出對應的 Process
-      target_process = material._process[_seq-1]
+      #target_process = material._process[_seq-1]
       print("target_process:", target_process)
       # 更新欄位
       if _record_name1 and _record_data1 is not None:
@@ -809,7 +922,6 @@ def update_process_data_by_material_id():
   })
 
 
-
 @updateTable.route("/updateProcessDataByMaterialIDP", methods=['POST'])
 def update_process_data_by_material_id_p():
   print("updateProcessDataByMaterialIDP....")
@@ -826,19 +938,30 @@ def update_process_data_by_material_id_p():
 
   try:
       material = s.query(P_Material).get(_material_id)
-      print("step1")
+      #print("step1")
       if not material:
         return jsonify({'status': False, 'msg': 'Material not found'})
-      print("step2")
+      #print("step2")
+
+      target_process = (s.query(P_Process).filter(
+                P_Process.material_id == _material_id,
+                P_Process.assemble_id == 0,
+                P_Process.has_started == True,
+                P_Process.begin_time != '',
+                P_Process.end_time != '',)
+                .first())
 
       # 確保 _seq 不超過範圍
-      if _seq < 0 or _seq > len(material._process):
+      #temp_len = len(material._process)
+      #if _seq < 0 or _seq > temp_len:
+      if not target_process:
+        print("step2-0 ")
         return jsonify({'status': False, 'msg': 'seq out of range'})
 
       print("step3")
 
       # 取出對應的 Process
-      target_process = material._process[_seq-1]
+      #target_process = material._process[_seq-1]
       print("target_process:", target_process)
       # 更新欄位
       if _record_name1 and _record_data1 is not None:
@@ -1392,8 +1515,6 @@ def update_process_data_p():
   _process_id = request_data['process_id']
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
-
-  #print("_record_name:", _record_name)
 
   return_value = True  # true: 資料正確, 註冊成功
   s = Session()

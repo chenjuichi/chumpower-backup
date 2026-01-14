@@ -2,7 +2,9 @@
 import { ref, defineComponent, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 
 //=== component name ==
-defineComponent({ name: 'TimerDisplayProcess' });
+defineComponent({
+  name: 'TimerDisplayProcess'
+});
 
 /**
  * Props
@@ -177,12 +179,24 @@ onBeforeUnmount(() => {
 //  setState, setElapsedTime, getElapsedMs,
 //})
 
+//defineExpose({
+//  //start, stop, pause: stop, resume: start, reset,
+//  //setState, setElapsedTime, getElapsedMs
+//  start, stop, pause, stop, resume, start, reset,
+//  setState, setElapsedTime, getElapsedMs,
+//})
+
 defineExpose({
-  //start, stop, pause: stop, resume: start, reset,
-  //setState, setElapsedTime, getElapsedMs
-  start, stop, pause, stop, resume, start, reset,
-  setState, setElapsedTime, getElapsedMs,
+  start,
+  stop,
+  pause,
+  resume,
+  reset,
+  setState,
+  setElapsedTime,
+  getElapsedMs,
 })
+
 </script>
 
 <template>

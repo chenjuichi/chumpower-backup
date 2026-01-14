@@ -521,7 +521,6 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/getMaterialsAndAssemblesByUser') {
-            //console.log("res.data.materials_and_assembles_by_user:", res.data.materials_and_assembles_by_user);
             materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
           }
 

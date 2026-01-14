@@ -25,17 +25,26 @@ import { ref, watch, computed, onMounted, onUnmounted, defineComponent, definePr
 
 //=== component name ==
 defineComponent({
-  name: 'TimerDisplay'
+  name: 'TimerDisplayMP'
 });
 
 const props = defineProps({
   autoStart: { type: Boolean, default: false },
-  isPaused: { type: Boolean, default: true },
   show: { type: Boolean, default: true },
   fontSize:  { type: [Number, String], default: 18 },
+
+  isPaused: { type: Boolean, default: true },
+  modelValue: { type: Boolean, default: undefined },
 });
 //const emit = defineEmits(["update:time", "pause", "resume", "update:modelValue", 'update:isPaused']);
-const emit = defineEmits(["update:time", "pause", "resume", 'update:isPaused']);
+const emit = defineEmits([
+  "update:time",
+  "pause",
+  "resume",
+
+  "update:isPaused",
+  "update:modelValue",
+]);
 
 const displayTime = ref("00:00:00");
 //const isPaused = ref(props.modelValue);
@@ -64,6 +73,7 @@ function start() {
   paused.value = false;
   //emit("update:modelValue", false);
   emit("update:isPaused", false);
+  emit("update:modelValue", false)
 
   emit("resume", elapsed);
   update();
@@ -84,6 +94,8 @@ function pause() {
   //elapsed += Date.now() - startTime;
   //emit("update:modelValue", true);
   emit("update:isPaused", true);
+  emit("update:modelValue", true);
+
   emit("pause", elapsed);
   // 停下來也刷新一次
   displayTime.value = format(elapsed);
@@ -96,7 +108,9 @@ function resume() {
   startTime = Date.now();
   intervalId = setInterval(update, 1000);
   //emit("update:modelValue", false);
-  emit("'update:isPaused'", false);
+  //emit("'update:isPaused'", false);
+  emit("update:isPaused", false);
+  emit("update:modelValue", false);
 
   emit("resume", elapsed);
   update();
@@ -111,6 +125,8 @@ function reset() {
   displayTime.value = "00:00:00";
   //emit("update:modelValue", true);
   emit("update:isPaused", true);
+  emit("update:modelValue", true);
+
   emit("update:time", 0);
 }
 

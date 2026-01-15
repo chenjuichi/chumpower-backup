@@ -36,7 +36,7 @@ class P_Material(BASE):
     material_num = Column(String(20), nullable=False)
     material_comment = Column(String(70), nullable=False)
     material_qty = Column(Integer, nullable=False)
-    delivery_qty = Column(Integer, default=0)
+    delivery_qty = Column(Integer, default=0)                 #送料數量(現況數量), 領料數量
     total_delivery_qty = Column(Integer, default=0)
     input_disable = Column(Boolean, default=False)
 

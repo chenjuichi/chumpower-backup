@@ -266,15 +266,15 @@
               </span>
             -->
 
-      <TransportLoading
-        v-show="isCallForklift"
-        mode="forklift"
-        status="sending"
-
-        :width="transportWidth"
-        :top="20"
-        :left="transportLeft"
-      />
+  <TransportLoading
+    v-show="isCallForklift"
+    mode="forklift"
+    status="sending"
+    :width="transportWidth"
+    :top="transportTop"
+    :left="transportLeft"
+    :durationSec="6"
+  />
 
               <!--客製化搜尋-->
               <v-text-field
@@ -717,6 +717,7 @@ const sendButton = ref(null);
 const tableWidth = ref(0);
 const transportLeft = ref(0);
 const transportWidth = ref(0);
+const transportTop   = ref(0);
 
 let resizeObserver = null;
 
@@ -1306,8 +1307,6 @@ onMounted(async () => {
 
   // ###
   await nextTick()           // 等 DOM 真正 render 完
-  //updateTableWidth()
-  //calcTransportLeft()
   calcTransportRange()
 
   resizeObserver = new ResizeObserver(() => {
@@ -1904,6 +1903,7 @@ const calcTransportLeft = () => {
   )
 }
 
+/*
 const calcTransportRange = () => {
   if (!sendButton.value || !tableWrapRef.value) return
 
@@ -1922,6 +1922,49 @@ const calcTransportRange = () => {
 
   transportLeft.value = Math.round(startX)
   transportWidth.value = Math.max(0, Math.round(endX - startX))
+}
+*/
+
+const calcTransportRange = () => {
+  if (!sendButton.value || !tableWrapRef.value) return
+
+  const btnEl = sendButton.value.$el ?? sendButton.value      // 取得 DOM 實體
+  const btnRect = btnEl.getBoundingClientRect()               // 取得整個畫面（viewport）座標
+  const wrapRect = tableWrapRef.value.getBoundingClientRect() // 取得「動畫定位容器（table-area）」的位置
+
+  /*
+  btnRect = {
+    left, right, top, bottom, width, height
+  }
+
+  wrapRect = {
+    left, top, width, height
+  }
+
+  這些座標都是「相對於瀏覽器視窗（viewport）」，不是相對於 v-data-table
+  */
+
+  const GAP_X = 10
+  const ICON_H = 44         // forklift / agv 的高度
+  const TRACK_OFFSET = 16
+
+  // 起點：按鍵右側 + 10（換算成 table-area 內座標）
+  // 從 table-area 的左邊開始算 → 到「按鍵右邊 + 10px」
+  const startX = btnRect.right - wrapRect.left + GAP_X
+  // 終點：table-area 的右邊界（用 width 即可）
+  const endX   = wrapRect.width
+
+  const topY =
+    btnRect.top
+    + btnRect.height
+    - ICON_H
+    - TRACK_OFFSET
+    - wrapRect.top
+
+  transportLeft.value  = Math.round(startX)
+  transportWidth.value = Math.max(0, Math.round(endX - startX))
+  transportTop.value   = Math.max(0, Math.round(topY))
+
 }
 
 const initialize = async () => {
@@ -2738,17 +2781,9 @@ const formatDateTime = (date) => {
 
 const onClickTrans = async () => {
   await nextTick()      // 確保 DOM 是最新位置
-  //updateTableWidth()
-  //calcTransportLeft()
   calcTransportRange()
 
-  //isCallForklift.value = true
-
-  //if (toggle_exclusive.value == 1) {
-    callForklift();
-  //} else {
-  //  callAGV();
-  //}
+  callForklift();
 };
 
 const callForklift = async () => {
@@ -2760,6 +2795,7 @@ const callForklift = async () => {
     showSnackbar('請選擇送料的工單!', 'red accent-2');
     return;
   }
+
   if (isCallForklift.value) {
     showSnackbar('請不要重複按鍵!', 'red accent-2');
     return;
@@ -2771,10 +2807,11 @@ const callForklift = async () => {
   }
 
   isCallForklift.value = true;
+
   try {
     console.log('trans_end 處理步驟1...');
 
-    // 步驟 1：更新 material/assemble 顯示狀態 + 紀錄搬運方式
+    // 更新 material/assemble 顯示狀態 + 紀錄搬運方式
     for (const id of selectedIds) {
       const m = materials.value.find(x => x.id == id);
       if (!m) {
@@ -2785,22 +2822,21 @@ const callForklift = async () => {
       // 組裝站 / 未組裝 / 等待組裝中 / 目標途程
       await updateMaterialRecord({
         id: m.id,
-        show1_ok: 2,     // 組裝站
-        show2_ok: 3,     // 未組裝
-        show3_ok: 3,     // 等待組裝中
-        //whichStation: 2, // 目標途程: 組裝站
+        show1_ok: 2,     // 加工站
+        show2_ok: 3,     // 等待加工
+        show3_ok: 3,
       });
 
       // 同步更新 assemble
       await updateAssmbleDataByMaterialID({
         material_id: m.id,
-        delivery_qty: 0,
+        delivery_qty: m.delivery_qty,
         record_name1: 'show1_ok',
         record_data1: 2,
         record_name2: 'show2_ok',
         record_data2: 3,
-        record_name3: 'show3_ok',
-        record_data3: 3,
+        //record_name3: 'show3_ok',
+        //record_data3: 3,
       });
 
       // 搬運方式：false = 手動(堆高機)
@@ -3764,13 +3800,13 @@ p {
 }
 
 .table-area{
-  position: relative; /* 讓 overlay 以這個區塊為定位基準 */
+  position: relative; // 讓 overlay 以這個區塊為定位基準
 }
 
-/* 讓 TransportLoading 浮起來，不佔 layout */
+// 讓 TransportLoading 浮起來，不佔 layout
 .table-area :deep(.wrap){
   position: absolute !important;
   z-index: 50;
-  pointer-events: none; /* 避免擋住 table 點擊 */
+  pointer-events: none; // 避免擋住 table 點擊
 }
 </style>

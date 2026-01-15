@@ -181,7 +181,6 @@
   </v-row>
 
   <v-data-table
-
     :headers="headers"
     :items="filteredInformations"
     :row-props="getRowProps"
@@ -1043,6 +1042,7 @@ const exportToExcelFun = async () => {
   // 確保欄位名稱與 obj 一致
   let updatedData = filteredData.map(item => ({
     order_num: item.order_num ?? '',
+    material_num: item.material_num ?? '',
     comment: item.comment ?? '',
     delivery_date: item.delivery_date ?? '',
     req_qty: item.req_qty ?? '',
@@ -1056,8 +1056,6 @@ const exportToExcelFun = async () => {
 
   let payload = {
     blocks: updatedData,
-    //blocks: object_Desserts,
-    //count: object_Desserts.length,
     name: currentUser.value.name,
   };
 

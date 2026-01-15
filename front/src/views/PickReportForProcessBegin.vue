@@ -1235,7 +1235,6 @@ const onClickBegin =  async (row) => {
 
   await updateItem(row);
 
-  //2025-11-18 await refreshActiveCounts();
   await listMaterialsAndAssembles()
 }
 

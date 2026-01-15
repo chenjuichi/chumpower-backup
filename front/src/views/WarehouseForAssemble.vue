@@ -185,12 +185,12 @@
 
     <!-- 自訂 line 欄位的資料欄位 -->
     <template v-slot:item.line="{ item }">
-      <space v-if="item.line == 'process'" style="color:blue; font-weight:600;">
+      <span v-if="item.line == 'process'" style="color:blue; font-weight:600;">
         加工線
-      </space>
-      <space v-else  style="color:black; font-weight:600;">
+      </span>
+      <span v-else  style="color:black; font-weight:600;">
         組裝線
-      </space>
+      </span>
     </template>
 
     <!-- 自訂 '訂單編號' 欄位 -->

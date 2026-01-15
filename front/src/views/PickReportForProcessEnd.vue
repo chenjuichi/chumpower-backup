@@ -147,34 +147,15 @@
                   加工完成人工送出進行中...
                 </span>
               -->
-  <!--
-  <ForkliftLoading
-    v-if="isCallForklift"
-    :width="200"
-    :top="40"
-    :left="180"
-  />
-  -->
-
-  <!--
-  <TransportLoading
-    v-if="isCallForklift"
-    mode="forklift"
-    status="sending"
-    :width="280"
-    :top="40"
-    :left="180"
-  />
-  -->
 
   <TransportLoading
     v-show="isCallForklift"
     mode="forklift"
     status="sending"
-
     :width="transportWidth"
-    :top="27"
+    :top="transportTop"
     :left="transportLeft"
+    :durationSec="6"
   />
 
                 <!--客製化搜尋-->
@@ -569,6 +550,7 @@ const sendButton = ref(null);
 const tableWidth = ref(0);
 const transportLeft = ref(0);
 const transportWidth = ref(0);
+const transportTop   = ref(0);
 
 let resizeObserver = null;
 
@@ -1212,6 +1194,7 @@ const calcTransportLeft = () => {
   )
 }
 
+/*
 const calcTransportRange = () => {
   if (!sendButton.value || !tableWrapRef.value) return
 
@@ -1230,6 +1213,49 @@ const calcTransportRange = () => {
 
   transportLeft.value = Math.round(startX)
   transportWidth.value = Math.max(0, Math.round(endX - startX))
+}
+*/
+
+const calcTransportRange = () => {
+  if (!sendButton.value || !tableWrapRef.value) return
+
+  const btnEl = sendButton.value.$el ?? sendButton.value      // 取得 DOM 實體
+  const btnRect = btnEl.getBoundingClientRect()               // 取得整個畫面（viewport）座標
+  const wrapRect = tableWrapRef.value.getBoundingClientRect() // 取得「動畫定位容器（table-area）」的位置
+
+  /*
+  btnRect = {
+    left, right, top, bottom, width, height
+  }
+
+  wrapRect = {
+    left, top, width, height
+  }
+
+  這些座標都是「相對於瀏覽器視窗（viewport）」，不是相對於 v-data-table
+  */
+
+  const GAP_X = 10
+  const ICON_H = 44         // forklift / agv 的高度
+  const TRACK_OFFSET = 6
+
+  // 起點：按鍵右側 + 10（換算成 table-area 內座標）
+  // 從 table-area 的左邊開始算 → 到「按鍵右邊 + 10px」
+  const startX = btnRect.right - wrapRect.left + GAP_X
+  // 終點：table-area 的右邊界（用 width 即可）
+  const endX   = wrapRect.width
+
+  const topY =
+    btnRect.top
+    + btnRect.height
+    - ICON_H
+    - TRACK_OFFSET
+    - wrapRect.top
+
+  transportLeft.value  = Math.round(startX)
+  transportWidth.value = Math.max(0, Math.round(endX - startX))
+  transportTop.value   = Math.max(0, Math.round(topY))
+
 }
 
 //== timerDisplay用 ==
@@ -2185,7 +2211,7 @@ const onClickEnd = async (item) => {
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'show2_ok',
-    record_data: 5,             //等待入庫作業
+    record_data: 5,             //加工作業已完成
   };
   await updateAssemble(payload);
 
@@ -2902,10 +2928,10 @@ const removelocalStorage = () => {
 }
 
 .table-area{
-  position: relative; /* 讓 overlay 以這個區塊為定位基準 */
+  position: relative;   // 讓 overlay 以這個區塊為定位基準
 }
 
-/* 讓 TransportLoading 浮起來，不佔 layout */
+// 讓 TransportLoading 浮起來，不佔 layout
 .table-area :deep(.wrap){
   position: absolute !important;
   z-index: 50;

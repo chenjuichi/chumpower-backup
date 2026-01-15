@@ -1,79 +1,91 @@
 <template>
   <div class="wrap" :style="wrapStyle" aria-live="polite">
-    <!-- 依 mode 切動畫主體 -->
+    <!-- width=0 時先不要渲染動畫，避免計算異常 -->
     <div
+      v-if="safeWidth > 0"
       class="moving"
       :class="movingClass"
       :style="{ color: mainColor }"
     >
-      <!-- 貨物 / 料箱（在前面） -->
-      <v-icon class="cargo" :size="cargoSize">
-        {{ cargoIcon }}
-      </v-icon>
+      <!-- 車體 SVG（Forklift / AGV） -->
+      <img
+        class="vehicle"
+        :src="vehicleSrc"
+        :style="{ width: vehicleSize + 'px', height: vehicleSize + 'px' }"
+        alt="vehicle"
+        draggable="false"
+      />
 
-      <!-- 交通工具 icon（在後面） -->
-      <v-icon class="vehicle" :size="vehicleSize">
-        {{ vehicleIcon }}
-      </v-icon>
-
-      <!-- 警示燈（AGV 特有，可選） -->
-      <span v-if="mode === 'agv'" class="beacon" :style="{ background: accentColor }"></span>
+      <!-- AGV 警示燈（可選） -->
+      <span
+        v-if="mode === 'agv'"
+        class="beacon"
+        :style="{ background: accentColor }"
+      ></span>
     </div>
 
     <!-- 軌道 -->
-    <div class="track" :style="{ background: mainColor }"></div>
+    <div v-if="safeWidth > 0" class="track" :style="{ background: mainColor }"></div>
 
     <!-- 右側小文字（可選） -->
-    <span v-if="showText" class="hint" :style="{ color: mainColor }">
+    <span v-if="safeWidth > 0 && showText" class="hint" :style="{ color: mainColor }">
       {{ textByStatus }}
     </span>
   </div>
 </template>
 
 <script setup>
-import { ref, defineComponent, defineProps, computed, watch, onMounted, onBeforeUnmount, onUnmounted, onBeforeMount, onDeactivated } from 'vue';
+import { computed } from 'vue'
 
-//=== component name ==
-defineComponent({
-  name: 'TransportLoading'
-});
+// ✅ 用你專案 assets 的路徑（請把 svg 放到 src/assets/）
+import forkliftSvg from '@/assets/icon-forklift.svg?url'
+// 如果你有 AGV 的 svg，再放一份；沒有就先沿用 forklift
+// import agvSvg from '@/assets/icon-agv.svg?url'
 
 const props = defineProps({
-  /** 'forklift' | 'agv' */
-  mode: { type: String, default: 'forklift' },
-
-  /** 'idle' | 'sending' | 'success' | 'error' */
-  status: { type: String, default: 'sending' },
-
-  /** 位置/尺寸 */
+  mode: { type: String, default: 'forklift' },              // 'forklift' | 'agv'
+  status: { type: String, default: 'sending' },             // 'idle' | 'sending' | 'success' | 'error'
   width: { type: Number, default: 220 },
   top: { type: Number, default: 30 },
-  left: { type: Number, default: 180 },
-
-  // 是否顯示文字提示
+  left: { type: Number, default: 0 },
   showText: { type: Boolean, default: true },
+
+  // ✅ 新增：幾秒跑完一趟（越大越慢）
+  durationSec: { type: Number, default: 6 },
 })
 
+const safeWidth = computed(() => Math.max(0, Number(props.width) || 0))
 
-// icon 選擇（你也可以改成更符合你現場的 mdi）
-const vehicleIcon = computed(() => (props.mode === 'agv' ? 'mdi-robot-industrial' : 'mdi-forklift'))
-const cargoIcon = computed(() => (props.mode === 'agv' ? 'mdi-package-variant-closed' : 'mdi-package-variant'))
+// 你放大後的車體尺寸
+const vehicleSize = computed(() => 44)
 
-const vehicleSize = computed(() => (props.mode === 'agv' ? 22 : 22))
-const cargoSize = computed(() => 18)
+// Forklift / AGV 的圖片來源
+const vehicleSrc = computed(() => {
+  if (props.mode === 'agv') {
+    // 沒有 agv svg 時，先用 forklift 頂著
+    return forkliftSvg
+    // return agvSvg
+  }
+  return forkliftSvg
+})
 
-// 顏色依狀態切換（可依你喜好改色名/色碼）
+// ✅ 容器高度：車體 + padding
+const wrapH = computed(() => vehicleSize.value + 16)
+
+// ✅ 軌道離底部距離
+const trackBottom = computed(() => 6)
+
+// 顏色依狀態切換
 const mainColor = computed(() => {
   switch (props.status) {
-    case 'success': return '#2e7d32' // 綠
-    case 'error':   return '#c62828' // 紅
-    case 'idle':    return '#546e7a' // 灰藍
+    case 'success': return '#2e7d32'
+    case 'error':   return '#c62828'
+    case 'idle':    return '#546e7a'
     case 'sending':
-    default:        return '#1976d2' // 藍
+    default:        return '#1976d2'
   }
 })
 
-// 強調色（AGV 燈號用）
 const accentColor = computed(() => {
   switch (props.status) {
     case 'error':   return '#ff5252'
@@ -82,7 +94,6 @@ const accentColor = computed(() => {
   }
 })
 
-// 文字依狀態
 const textByStatus = computed(() => {
   if (props.status === 'success') return '已送出'
   if (props.status === 'error') return '送出失敗'
@@ -90,7 +101,6 @@ const textByStatus = computed(() => {
   return '堆高機搬運中...'
 })
 
-// 動畫 class
 const movingClass = computed(() => ({
   'moving-forklift': props.mode === 'forklift',
   'moving-agv': props.mode === 'agv',
@@ -100,74 +110,76 @@ const movingClass = computed(() => ({
   'state-sending': props.status === 'sending',
 }))
 
+// ✅ duration 用 prop 控制（秒）
+const safeDuration = computed(() => {
+  const v = Number(props.durationSec)
+  return Number.isFinite(v) ? Math.max(0.2, v) : 6
+})
+
 const wrapStyle = computed(() => ({
   position: 'relative',
-  width: props.width + 'px',
+  width: safeWidth.value + 'px',
   height: wrapH.value + 'px',
   top: props.top + 'px',
   left: props.left + 'px',
 
-  '--move-end': `${props.width - 10}px`,            // 動畫終點 = width - 一點緩衝
   '--wrap-h': `${wrapH.value}px`,
   '--track-bottom': `${trackBottom.value}px`,
+  '--move-end': `${Math.max(0, safeWidth.value - 10)}px`,
+  '--duration': `${safeDuration.value}s`,
 }))
-
-// ✅ 容器高度：用最大 icon + padding
-const wrapH = computed(() => Math.max(vehicleSize.value, cargoSize.value) + 14)
-
-// ✅ 軌道高度位置：在底部再往上幾 px
-const trackBottom = computed(() => 6) // 離底部的距離
 </script>
 
-<style lang="scss" scoped>
-.wrap {
+<style scoped>
+.wrap{
   overflow: hidden;
-  height: var(--wrap-h);    // ✅ 自動高度
+  height: var(--wrap-h);
 }
 
-// ✅ 軌道永遠在底部附近
-.track {
-  position: absolute;
-  left: 0;
-  right: 0;
+/* 軌道 */
+.track{
+  position:absolute;
+  left:0;
+  right:0;
   bottom: var(--track-bottom);
   height: 2px;
-  opacity: 0.22;
+  opacity: .22;
 }
 
-// ✅ 移動群組：用 bottom 對齊，避免 icon 放大後切到
-.moving {
-  position: absolute;
-  left: 0;
-  bottom: calc(var(--track-bottom) + 2px); 	// ✅ 貼著軌道上方
-  display: flex;
-  align-items: flex-end;   	// ✅ icon 底部對齊
-  gap: 8px;
-  animation: move-x 2.6s linear infinite;
-  animation-duration: calc(var(--move-end) / 140 * 1s);
-}
-
-// 右側提示文字
+/* 右側提示文字 */
 .hint{
   position:absolute;
-  right: 0;
-  top: -2px;
+  right:0;
+  top:-2px;
   font-size: 12px;
   opacity: .85;
   white-space: nowrap;
 }
 
-// 貨物微晃
-.cargo{
-  animation: cargo-bounce .6s ease-in-out infinite alternate;
+/* 移動容器 */
+.moving{
+  position:absolute;
+  left:0;
+  bottom: calc(var(--track-bottom) + 2px);
+  width: 70px;
+  height: 60px;
+
+  animation-name: move-x;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-duration: var(--duration);
 }
 
-// 車體微震
+/* 車體 */
 .vehicle{
-  animation: vehicle-bump .4s linear infinite;
+  position:absolute;
+  left:0;
+  bottom:0;
+  user-select:none;
+  pointer-events:none;
 }
 
-/* AGV 警示燈 */
+/* AGV 燈號 */
 .beacon{
   position:absolute;
   width: 6px;
@@ -179,47 +191,20 @@ const trackBottom = computed(() => 6) // 離底部的距離
   animation: beacon-blink .55s ease-in-out infinite;
 }
 
-// Forklift：較快一點
-.moving-forklift{
-  animation-duration: 1.45s;
-}
-
-// AGV：稍慢一點 + 更平穩
-.moving-agv{
-  animation-duration: 1.85s;
-}
-.moving-agv .vehicle{
-  animation: none; 	// AGV 更穩：不抖
-}
-
-/* success / error：如果想「停住」*/
+/* 成功/失敗停住（你要停住就保留） */
 .state-error{
-    animation: none;
+  animation: none;
 }
-
 .state-success{
   animation: none;
   transform: translateX(var(--move-end));
 }
 
-// 由左到右（translateX 的終點和 width 配合）, 預設 width=220
-
 @keyframes move-x{
-  0%   { transform: translateX(-70px); opacity: 0; }
+  0%   { transform: translateX(-90px); opacity: 0; }
   10%  { opacity: 1; }
   90%  { opacity: 1; }
   100% { transform: translateX(var(--move-end)); opacity: 0; }
-}
-
-@keyframes cargo-bounce{
-  from { transform: translateY(2px); }
-  to   { transform: translateY(0); }
-}
-
-@keyframes vehicle-bump{
-  0% { transform: translateY(0); }
-  50%{ transform: translateY(1px); }
-  100%{ transform: translateY(0); }
 }
 
 @keyframes beacon-blink{

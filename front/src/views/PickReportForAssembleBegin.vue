@@ -190,7 +190,12 @@
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div>
-        <div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">
+        <!--<div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">-->
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-if="(String(item.shortage_note || '').includes('缺料') || item.isLackMaterial != 99) &&
+          item.has_receive_true < item.has_bom" >
+
           <v-icon
             style="color: green;"
             @click.stop="onDelete(item)"
@@ -499,6 +504,7 @@ import { useSocketio } from '../mixins/SocketioService.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { materials_and_assembles, assembles_active_user_count, boms, socket_server_ip }  from '../mixins/crud.js';
+import { temp_isLackMaterial }  from '../mixins/crud.js';
 import { begin_count, end_count }  from '../mixins/crud.js';
 import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 
@@ -515,6 +521,9 @@ const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
+
+const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
+
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
 const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
@@ -704,7 +713,7 @@ const adjustTablePosition = computed(() => ({
   //top: `${mouseY.value + 10}px`,
   //left: `${mouseX.value - 150}px`,
 
-  top: '80px',      // 固定上邊距離
+  top: '130px',      // 固定上邊距離
   right: '225px',   // 固定左邊距離
 
   backgroundColor: 'white',
@@ -1407,11 +1416,11 @@ const initialize = async () => {
   try {
     console.log("initialize()...");
 
-    // 1) 先撈表格資料
+    // 1. 先撈表格資料
     await listMaterialsAndAssembles();
     //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
-    // 2) 補上欄位（這會影響渲染）
+    // 2. 補上欄位（這會影響渲染）
     // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
     materials_and_assembles.value.forEach(item => {
       item.pickBegin = [];
@@ -1923,9 +1932,24 @@ const handleGifClick = async (item, index) => {
   hoveredItemIndex.value = index;
   isTableVisible.value = true;    // 設置表格可見
 
-  await getBoms({id: item.id});
+  //await getBoms({id: item.id});
+  await fetchBoms(item)
+  //await getOrderPickedBoms({ order_num: item.order_num });
   //console.log('Current hovered item index:', hoveredItemIndex.value);
   //console.log("bom[]:", boms.value)
+};
+
+const fetchBoms = async (item) => {
+  if (!item?.order_num) {
+    boms.value = [];
+    return;
+  }
+
+  const res = await getOrderPickedBoms({
+    order_num: item.order_num,
+  });
+
+  boms.value = res.data?.boms || [];
 };
 
 // 滑鼠移入表格時，保持表格顯示

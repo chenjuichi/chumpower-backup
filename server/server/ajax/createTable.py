@@ -534,11 +534,11 @@ def create_process_p():
   _has_started = bool(request_data.get('has_started'))
 
   _user_id = request_data['user_id']
-  _id = request_data['id']
+  _material_id = request_data['id']
   _process_type= request_data['process_type']
 
   print("process_type:", _process_type)
-  print("id:", _id)
+  print("id:", _material_id)
   print("assemble_id:", _assemble_id)
   print("has_started:", _has_started)
   print("begin_time:", _begin_time)
@@ -546,8 +546,9 @@ def create_process_p():
 
   s = Session()
 
-  material = s.query(P_Material).filter(P_Material.id == _id).first()
+  material = s.query(P_Material).filter_by(id = _material_id).first()
 
+  print("material:", material)
   if not material:
     print("error, order_num 不存在!")
     return jsonify({"error": "order_num 不存在"}), 400  # 找不到對應的 Material 記錄
@@ -564,7 +565,7 @@ def create_process_p():
 
   # 3️⃣ 直接新增 P_Process 記錄（無論是否已存在）
   new_process = P_Process(
-    material_id = _id,
+    material_id = _material_id,
     assemble_id = _assemble_id,
     has_started = _has_started,
     user_id = _user_id,
@@ -1289,6 +1290,12 @@ def copy_material_and_bom():
       )
       s.add(new_bom)
 
+    # ✅ 方案 B：已複製到新單後，把舊單的缺料 BOM 刪掉
+    s.query(Bom)\
+    .filter(Bom.material_id == existing_material.id)\
+    .filter(Bom.receive.is_(False))\
+    .delete(synchronize_session=False)
+
     # 複製 Assemble
     for asm in existing_material._assemble:
       new_asm = Assemble(
@@ -1611,6 +1618,113 @@ def create_product():
            "status": True,
            "created": len(items),
            "items": items
+        })
+        #}) , 201
+
+    except SQLAlchemyError as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    except Exception as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    finally:
+        s.close()
+
+
+@createTable.route("/createProductP", methods=["POST"])
+def create_product_p():
+    """
+    支援：
+    1) 單筆：JSON 直接是一個物件
+    2) 多筆：{"items": [ {...}, {...} ]}
+    欄位（每筆 item）：
+      - material_id (必填, int, 必須存在於 material)
+      - delivery_qty (選填, int, default 0)
+      - assemble_qty (選填, int, default 0)
+      - allOk_qty (選填, int, default 0)
+      - good_qty (選填, int, default 0)
+      - non_good_qty (選填, int, default 0)
+      - reason (選填, str)
+      - confirm_comment (選填, str)
+    批次語意：任何一筆驗證錯誤 → 整批 rollback。
+    回傳：{ status, created, items: [ {id, material_id, ...} ] }
+    """
+    s = Session()
+    try:
+        #payload = request.get_json(silent=True) or {}
+        payload = request.get_json()
+
+        # 兼容兩種型態：物件 or {items: [..]}
+        raw_items = payload.get("items", None)
+        if raw_items is None:
+            # 當作單筆物件
+            raw_items = [payload]
+
+        # 基本型態檢查
+        if not isinstance(raw_items, list) or len(raw_items) == 0:
+            return jsonify({"status": False, "error": "payload 應為物件或 {items: [...]}，且不可為空"}), 400
+
+        # 先做前置驗證（material 存在性），有任何錯誤→直接 400
+        errors = []
+        material_ids = [it.get("material_id") for it in raw_items]
+        # 必須都是 int
+        try:
+            material_ids_int = [int(mid) for mid in material_ids]
+        except (TypeError, ValueError):
+            return jsonify({"status": False, "error": "material_id 必須是整數"}), 400
+
+        # 查詢存在的 materials
+        exist_mid_set = set([m.id for m in s.query(P_Material.id).filter(P_Material.id.in_(material_ids_int)).all()])
+        for idx, it in enumerate(raw_items):
+            mid = it.get("material_id")
+            if mid is None:
+                errors.append({"index": idx, "error": "material_id 為必填"})
+                continue
+            if int(mid) not in exist_mid_set:
+                errors.append({"index": idx, "error": f"material_id {mid} 不存在"})
+
+        if errors:
+            return jsonify({"status": False, "errors": errors}), 400
+
+        # 通過驗證 → 建立資料
+        created_rows = []
+        for it in raw_items:
+          p = P_Product(
+            material_id      = int(it.get("material_id")),
+            process_id       = int(it.get("process_id")),
+            delivery_qty     = _normalize_int(it.get("delivery_qty"), 0),
+            assemble_qty     = _normalize_int(it.get("assemble_qty"), 0),
+            allOk_qty        = _normalize_int(it.get("allOk_qty"), 0),
+            good_qty         = _normalize_int(it.get("good_qty"), 0),
+            non_good_qty     = _normalize_int(it.get("non_good_qty"), 0),
+            reason           = (it.get("reason") or None),
+            confirm_comment  = (it.get("confirm_comment") or None),
+          )
+          s.add(p)
+          created_rows.append(p)
+
+        s.commit()
+
+        # 組回傳（expire_on_commit=False，id 可直接讀）
+        items = []
+        for p in created_rows:
+          items.append({
+            "id": p.id,
+            "material_id": p.material_id,
+            "delivery_qty": p.delivery_qty,
+            "assemble_qty": p.assemble_qty,
+            "allOk_qty": p.allOk_qty,
+            "good_qty": p.good_qty,
+            "non_good_qty": p.non_good_qty,
+            "reason": p.reason,
+            "confirm_comment": p.confirm_comment,
+            "create_at": getattr(p, "create_at", None).isoformat() if getattr(p, "create_at", None) else None,
+          })
+
+        return jsonify({
+          "status": True,
+          "created": len(items),
+          "items": items
         })
         #}) , 201
 

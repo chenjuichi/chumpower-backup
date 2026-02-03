@@ -23,8 +23,56 @@ listTable = Blueprint('listTable', __name__)
 #logger = setup_logger(__name__)  # 每個模組用自己的名稱
 #
 
+
 # ------------------------------------------------------------------
 
+
+def order_has_lack(session, order_num: str) -> bool:
+    """
+    訂單層級缺料判斷：
+    - Bom.receive == False 或 Bom.receive is NULL 都算缺料
+    """
+    if not order_num:
+        return False
+
+    q = (
+        session.query(Bom.id)
+        .join(Material, Material.id == Bom.material_id)
+        .filter(Material.order_num == order_num)
+        .filter(or_(Bom.receive.is_(False), Bom.receive.is_(None)))
+        .limit(1)
+    )
+    return session.query(q.exists()).scalar() is True
+
+
+def shortage_note_by_order(session, order_num: str) -> str:
+    return "(缺料)" if order_has_lack(session, order_num) else ""
+
+
+def calc_shortage_note_by_material(session, material_id: int) -> str:
+    has_lack = (
+        session.query(Bom)
+        .filter(Bom.material_id == material_id)
+        .filter(or_(Bom.receive.is_(False), Bom.receive.is_(None)))
+        .count() > 0
+    )
+    return "(缺料)" if has_lack else ""
+"""
+def calc_shortage_note_by_order(s, order_num: str) -> str:
+    if not order_num:
+        return ""
+
+    # 只要同 order_num 任一 BOM.receive == False，就算缺料
+    has_lack = (
+        s.query(Bom.id)
+         .join(Material, Bom.material_id == Material.id)
+         .filter(Material.order_num == order_num)
+         .filter(Bom.receive.is_(False))
+         .first()
+        is not None
+    )
+    return "(缺料)" if has_lack else ""
+"""
 
 def read_all_p_part_process_code_p():
     """
@@ -506,112 +554,105 @@ def list_materials_p():
 # list all materials
 @listTable.route("/listMaterials", methods=['GET'])
 def list_materials():
-    print("listMaterials....")
+  print("listMaterials....")
 
-    _results = []
-    return_value = True
+  _results = []
+  return_value = True
 
-    s = Session()
-    try:
-      with s.begin():
-        #_objects = s.query(Material).all()
-        _objects = s.query(Material).filter(Material.move_by_process_type == 2).all()
-        materials = [u.__dict__ for u in _objects]
-        processed_order_nums = set()  # 用於追踪已處理過的 order_num
-        for record in materials:
-          #if not record['isTakeOk']:   # 檢查 isTakeOk 是否為 False
-          #if not record['isShow'] and record['isLackMaterial'] != 0 and record['isBatchFeeding'] != 0:   # 檢查 isShow 是否為 False
-          if not record['isShow']:   # 檢查 isShow 是否為 False
-            cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
-            #temp_data = record['order_num']             # 訂單編號
-            temp_data = record['id']                    # 該筆訂單編號的table id
-            if temp_data in processed_order_nums:       # 如果這個 order_num 已經處理過，跳過本次處理
-              continue
-            # 計算 temp_delivery 的值
-            #order_num = record['order_num']
-            #order_num = temp_data
-            order_num_id = temp_data
-            material_qty = record['material_qty']
-            delivery_qty = record['delivery_qty']
-            '''
-            # 找出所有具有相同 order_num 的資料
-            same_order_records = [r for r in materials if r['order_num'] == order_num]
+  s = Session()
+  try:
+    # 先一次算出：每個 order_num 在 Material 表中的筆數（同樣套 move_by_process_type == 2）
+    order_num_cnt_map = dict(
+      s.query(
+        Material.order_num,
+        func.count(Material.id)
+      )
+      .filter(Material.move_by_process_type == 2)
+      .group_by(Material.order_num)
+      .all()
+    )
 
-            if all(r['delivery_qty'] == 0 for r in same_order_records):  # 若所有相同 order_num 的 delivery_qty 都為 0
-              temp_delivery = material_qty
-            else:  # 若有相同 order_num 的資料且 delivery_qty 都不為 0
-              total_delivery_qty_sum = sum(r['total_delivery_qty'] for r in same_order_records)
-              #temp_delivery = material_qty - total_delivery_qty_sum
-              #if temp_delivery == 0:
-              #  temp_delivery = total_delivery_qty_sum
-              temp_delivery = total_delivery_qty_sum if material_qty - total_delivery_qty_sum == 0 else material_qty - total_delivery_qty_sum
-            '''
-            temp_delivery=record['total_delivery_qty']
+    _objects = s.query(Material).filter(Material.move_by_process_type == 2).all()
+    materials = [u.__dict__ for u in _objects]
 
-            # 標記這個 order_num 已處理過
-            #processed_order_nums.add(order_num)
-            processed_order_nums.add(order_num_id)
-            #print("record['Incoming0_Abnormal']:", record['order_num'], record['Incoming0_Abnormal'], record['Incoming0_Abnormal'] == '')
-            _object = {
-              'id': record['id'],
-              'order_num': record['order_num'],                   #訂單編號
-              'material_num': record['material_num'],             #物料編號
-              'req_qty': material_qty,                            #需求數量(訂單數量)
-              'delivery_qty': delivery_qty,                       #備料數量
-              'total_delivery_qty': temp_delivery,                #應備數量
-              'input_disable': record['input_disable'],
-              'date': record['material_date'],                    #(建立日期)
-              'delivery_date':record['material_delivery_date'],   #交期
-              'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
-              'comment': cleaned_comment,                         #說明
+    processed_order_nums = set()  # 用於追踪已處理過的 order_num
 
-              'isOpen': record['isOpen'],
-              'isOpenEmpId': record['isOpenEmpId'],
-              'hasStarted': record['hasStarted'],
-              'startStatus': record['startStatus'],
+    for record in materials:
+      if not record['isShow']:                                # 檢查 isShow 是否為 False
+        cleaned_comment = record['material_comment'].strip()  # 刪除 material_comment 字串前後的空白
+        temp_data = record['id']                              # 該筆訂單編號的table id
 
-              'isTakeOk' : record['isTakeOk'],
-              'isLackMaterial' : record['isLackMaterial'],
-              'isBatchFeeding' :  record['isBatchFeeding'],
-              'isShow' : record['isShow'],
-              'whichStation' : record['whichStation'],
-              'show1_ok' : record['show1_ok'],
-              'show2_ok' : record['show2_ok'],
-              'show3_ok' : record['show3_ok'],
-              'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
-              'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
-              'is_copied': bool(record['is_copied_from_id'] and record['is_copied_from_id'] > 0),
-            }
+        if temp_data in processed_order_nums:   # 如果這個 order_num 已經處理過，跳過本次處理
+          continue
 
-            #print("materials => i, isOpen:", record['id'], record['order_num'], record['isOpen'])
+        order_num_id = temp_data
+        material_qty = record['material_qty']
+        delivery_qty = record['delivery_qty']
 
-            _results.append(_object)
+        temp_delivery=record['total_delivery_qty']
 
-    except Exception:
-        #s.rollback()
-        current_app.logger.exception("list_wait_for_assemble failed")
-        return jsonify(success=False), 500
-    #finally:
-    #    # 若在 app.py 有 @app.teardown_appcontext -> Session.remove()，這裡可省略
-    #    Session.remove()
-    ##s.close()
+        processed_order_nums.add(order_num_id)    # 標記這個 order_num 已處理過
 
-    temp_len = len(_results)
-    print("listMaterials, 總數: ", temp_len)
-    if (temp_len == 0):
-        return_value = False
+        merge_cnts=int(order_num_cnt_map.get(record['order_num'], 0))
 
-    ## 根據 isTakeOk 屬性的值進行排序
-    #_results = sorted(_results, key=lambda x: not x['isTakeOk'])
-    ## 根據 'order_num' 排序
-    #_results = sorted(_results, key=lambda x: x['order_num'])
-    # 根據 order_num 升序，再根據 isTakeOk 降序 (True > False)
-    _results.sort(key=lambda x: (x['order_num'], not x['isTakeOk']))
+        _object = {
+          'id': record['id'],
+          'order_num': record['order_num'],                   #訂單編號
+          'material_num': record['material_num'],             #物料編號
+          'req_qty': material_qty,                            #需求數量(訂單數量)
+          'delivery_qty': delivery_qty,                       #備料數量
+          'total_delivery_qty': temp_delivery,                #應備數量
+          'input_disable': record['input_disable'],
+          'date': record['material_date'],                    #(建立日期)
+          'delivery_date':record['material_delivery_date'],   #交期
+          'shortage_note': record['shortage_note'],           #缺料註記 '元件缺料'
+          'comment': cleaned_comment,                         #說明
 
-    return jsonify({
-      'status': return_value,
-      'materials': _results
-    })
+          'isOpen': record['isOpen'],
+          'isOpenEmpId': record['isOpenEmpId'],
+          'hasStarted': record['hasStarted'],
+          'startStatus': record['startStatus'],
+
+          'isTakeOk' : record['isTakeOk'],
+          'isLackMaterial' : record['isLackMaterial'],
+          'isBatchFeeding' :  record['isBatchFeeding'],
+          'isShow' : record['isShow'],
+          'whichStation' : record['whichStation'],
+          'show1_ok' : record['show1_ok'],
+          'show2_ok' : record['show2_ok'],
+          'show3_ok' : record['show3_ok'],
+          'Incoming0_Abnormal': record['Incoming0_Abnormal'] == '',
+          'Incoming0_Abnormal_message': record['Incoming0_Abnormal'],
+          #'is_copied': bool((record['is_copied_from_id'] and record['is_copied_from_id'] > 0) or merge_cnts > 1),
+          'is_copied': bool((record['is_copied_from_id'] and record['is_copied_from_id'] > 0)),
+          'same_order_num_cnts': merge_cnts,
+          'merge_enabled': record['merge_enabled'],
+
+          'merge_radio_disable': record['is_copied_from_id'] is None
+        }
+
+        _results.append(_object)
+
+  except Exception:
+      current_app.logger.exception("list_wait_for_assemble failed")
+      return jsonify(success=False), 500
+
+  temp_len = len(_results)
+  print("listMaterials, 總數: ", temp_len)
+  if (temp_len == 0):
+      return_value = False
+
+  ## 根據 isTakeOk 屬性的值進行排序
+  #_results = sorted(_results, key=lambda x: not x['isTakeOk'])
+  ## 根據 'order_num' 排序
+  #_results = sorted(_results, key=lambda x: x['order_num'])
+  # 根據 order_num 升序，再根據 isTakeOk 降序 (True > False)
+  _results.sort(key=lambda x: (x['order_num'], not x['isTakeOk']))
+
+  return jsonify({
+    'status': return_value,
+    'materials': _results
+  })
 
 
 # list working order status in the material table
@@ -1455,7 +1496,7 @@ def list_materials_and_assembles_p():
             'assemble_active_users': [],
         }), 200
 
-
+"""
 # list all materials and assemble data
 @listTable.route("/listMaterialsAndAssembles", methods=['GET'])
 def list_materials_and_assembles():
@@ -1472,9 +1513,9 @@ def list_materials_and_assembles():
             return default
 
     def safe_status_str(num, base_str, completed_qty, pos):
-        """
-        只在 num ∈ {5,7,9} 且 pos ∈ {1,2,3} 時，安全替換 '00/00/00' 的其中一段。
-        """
+        #
+        #只在 num ∈ {5,7,9} 且 pos ∈ {1,2,3} 時，安全替換 '00/00/00' 的其中一段。
+        #
         try:
             if num in (5, 7, 9) and pos in (1, 2, 3):
                 parts = (base_str or '00/00/00').split('/')
@@ -1485,7 +1526,20 @@ def list_materials_and_assembles():
             pass
         return base_str or '00/00/00'
 
+    def calc_shortage_note_by_material(s, material_id: int) -> str:
+      # 依BOM 欄位調整：只看符合 material_id 的 BOM
+      has_lack = (
+        s.query(Bom)
+        .filter(Bom.material_id == material_id)
+        #.filter(Bom.isLackMaterial == 1)   # 或 lack_qty > 0 / shortage_qty > 0
+        .filter(Bom.lack_qty > 0)   # 或 lack_qty > 0 / shortage_qty > 0
+        .count() > 0
+      )
+      return "(缺料)" if has_lack else ""
+    # end
+
     try:
+
         _objects = s.query(Material).all()
         material_ids_all = [m.id for m in _objects]
 
@@ -1503,7 +1557,7 @@ def list_materials_and_assembles():
         code_to_pt = {'106': 23, '109': 21, '110': 22}
 
         index = 0
-        test_index = 0
+        #test_index = 0
         pre_p_id=0
         for material_record in _objects:
             if not material_record.isShow:
@@ -1571,16 +1625,7 @@ def list_materials_and_assembles():
                   #   show_name  = 該筆的 p.user_id
 
                   print("1.##hello:pre_p_id", pre_p_id)
-                  """
-                  for p in target_procs:
-                    print("2.##hello:pre_p_id, p.id", pre_p_id, p.id)
-                    if pre_p_id != p.id and p.assemble_id == assemble_record.id and bool(p.begin_time and str(p.begin_time).strip()):
-                      pre_p_id=p.id
-                      show_timer = True
-                      show_name = p.user_id or ''
-                      print("3.##hello:p.id", p.id, show_name)
-                      break
-                  """
+
                   if target_procs:
                     latest_p = max(target_procs, key=lambda x: x.id)  # 或 key=lambda x: x.begin_time
                     show_timer = True
@@ -1683,10 +1728,12 @@ def list_materials_and_assembles():
                     'show_name': show_name,
 
                     'begin_records' : begin_records,
+
+                    #'shortage_note' :calc_shortage_note_by_material(s, material_record.id)
                 }
                 _results.append(_object)
 
-        print("kkkkaaa _results length:", len(_results))
+        #print("kkkkaaa _results length:", len(_results))
         # 只有在前面的 _results 成功建好後，才去算使用中人數
         #from sqlalchemy import or_ as _or
         counts_by_type = active_count_map_by_material_multi(
@@ -1700,6 +1747,7 @@ def list_materials_and_assembles():
         def _contains_code(s: str, code: str) -> bool:
             # 嚴謹判斷，避免 '1109' 被當成 '109'
             return re.search(rf'(?<!\d){re.escape(code)}(?!\d)', str(s or "")) is not None
+        # end
 
         def _to_qty_str(v):
             if v is None: return "0"
@@ -1709,12 +1757,14 @@ def list_materials_and_assembles():
                 return str(v)
             except Exception:
                 return str(v)
+        # end
 
         def _to_int_or_none(x):
             try:
                 return int(x)
             except Exception:
                 return None
+        # end
 
         # ① 預取：k=row.assemble_id 的「前一筆 h=k-1 是否存在且 step==0」
         def prepare_prev_step0_flags(session, rows):
@@ -1733,6 +1783,7 @@ def list_materials_and_assembles():
             id_to_step = {aid: step for aid, step in recs}
             # 回傳：k -> (ok, h)
             return {k: ((id_to_step.get(k - 1) == 0), (k - 1)) for k in ks}
+        # end
 
         # ② 預取：(assemble_id=h, material_id=mid) → 最新 qty
         def prepare_latest_qty_by_pair_h_mid(session, rows, prev_ok_map):
@@ -1780,51 +1831,52 @@ def list_materials_and_assembles():
                     items.sort(key=lambda t: t[1], reverse=True)           # id DESC
                     latest_qty[key] = _to_qty_str(items[0][2])
             return latest_qty
+        # end
 
         # ③ 主修補：符合條件時，把 aa/bb/cc 改為 (h, mid) 的最新 qty
         def patch_assemble_process_from_h_mid(session, rows):
-            prev_ok_map = prepare_prev_step0_flags(session, rows)
-            qty_map     = prepare_latest_qty_by_pair_h_mid(session, rows, prev_ok_map)
-            print("prev_ok_map:",prev_ok_map)
-            print("qty_map:",qty_map)
-            for row in rows:
-                k   = _to_int_or_none(row.get('assemble_id'))  # k = m = row.assemble_id
-                mid = _to_int_or_none(row.get('id'))           # mid = row.id
-                if k is None or mid is None:
-                    continue
+          prev_ok_map = prepare_prev_step0_flags(session, rows)
+          qty_map     = prepare_latest_qty_by_pair_h_mid(session, rows, prev_ok_map)
+          print("prev_ok_map:",prev_ok_map)
+          print("qty_map:",qty_map)
+          for row in rows:
+            k   = _to_int_or_none(row.get('assemble_id'))  # k = m = row.assemble_id
+            mid = _to_int_or_none(row.get('id'))           # mid = row.id
+            if k is None or mid is None:
+              continue
 
-                ok, h = prev_ok_map.get(k, (False, None))
-                if not ok or h is None:
-                    continue  # h=k-1 不存在或 step!=0 → 不處理
+            ok, h = prev_ok_map.get(k, (False, None))
+            if not ok or h is None:
+              continue  # h=k-1 不存在或 step!=0 → 不處理
 
-                num = row.get('assemble_work') or ""               # num = assemble.work_num
-                ap  = row.get('assemble_process') or ""
-                print("k, mid:", k, mid)
-                print("ok, h:", ok, h)
+            num = row.get('assemble_work') or ""               # num = assemble.work_num
+            ap  = row.get('assemble_process') or ""
+            print("k, mid:", k, mid)
+            print("ok, h:", ok, h)
 
-                print("ap:", ap)
-                parts = ap.split('/') if ap else []
-                print("parts:",parts)
-                while len(parts) < 3:
-                    parts.append('0')
+            print("ap:", ap)
+            parts = ap.split('/') if ap else []
+            print("parts:",parts)
+            while len(parts) < 3:
+              parts.append('0')
 
-                pair_qty = qty_map.get((k-1, mid), "0")        # (assemble_id=h, material_id=mid)
-                print("pair_qty:",pair_qty)
-                print("num:",num)
-                # 109 → aa(0), 110 → bb(1), 106 → cc(2)
-                if _contains_code(num, '109'):
-                    parts[2] = pair_qty
-                    print("parts[0]:", parts[0])
-                if _contains_code(num, '110'):
-                    parts[0] = pair_qty
-                    print("parts[1]:", parts[1])
-                if _contains_code(num, '106'):
-                    parts[1] = pair_qty
-                    print("parts[2]:", parts[2])
+            pair_qty = qty_map.get((k-1, mid), "0")        # (assemble_id=h, material_id=mid)
+            print("pair_qty:",pair_qty)
+            print("num:",num)
+            # 109 → aa(0), 110 → bb(1), 106 → cc(2)
+            if _contains_code(num, '109'):
+              parts[2] = pair_qty
+              print("parts[0]:", parts[0])
+            if _contains_code(num, '110'):
+              parts[0] = pair_qty
+              print("parts[1]:", parts[1])
+            if _contains_code(num, '106'):
+              parts[1] = pair_qty
+              print("parts[2]:", parts[2])
 
-                row['assemble_process'] = '/'.join(parts[:3])
-                print("row['assemble_process'] :", row['assemble_process'])
-
+            row['assemble_process'] = '/'.join(parts[:3])
+            print("row['assemble_process'] :", row['assemble_process'])
+        # end
         ###
 
         #print("_results:",_results)
@@ -1833,47 +1885,16 @@ def list_materials_and_assembles():
 
         # 安全讀值的 map_pt / get_val 已在檔案上方定義
         for row in _results:
-            try:
-                pt = str(map_pt(row))                  # '21'/'22'/'23'
-                mid = str(get_val(row, 'id'))         # material_id
-                temp_count = counts_by_type.get(pt, {}).get(mid, 0)
-                row['active_user_count'] = temp_count
-                _assemble_active_users.append(temp_count)
+          try:
+            pt = str(map_pt(row))                  # '21'/'22'/'23'
+            mid = str(get_val(row, 'id'))         # material_id
+            temp_count = counts_by_type.get(pt, {}).get(mid, 0)
+            row['active_user_count'] = temp_count
+            _assemble_active_users.append(temp_count)
+          except Exception as e:
+            print("listMaterialsAndAssembles: skip bad row =>", e, row)
+            continue
 
-            except Exception as e:
-                print("listMaterialsAndAssembles: skip bad row =>", e, row)
-                continue
-
-        """
-        # 1) 找出需剔除的 material_id 清單
-        mids_to_remove = {
-            mid for (mid,) in (
-                s.query(Process.material_id)
-                .filter(Process.normal_work_time == 3)
-                .filter(Process.end_time.isnot(None))
-                .filter(Process.end_time != '')
-                .distinct()
-                .all()
-            )
-        }
-
-        if mids_to_remove:
-            mids_to_remove_str = {str(m) for m in mids_to_remove}
-
-            # 2) _results 與 _assemble_active_users 一起過濾，保持索引一致
-            _results_kept = []
-            _counts_kept  = []
-            for i, row in enumerate(_results):
-                rid = str(row.get('id'))
-                if rid not in mids_to_remove_str:
-                    _results_kept.append(row)
-                    # 這裡假設 _assemble_active_users 與 _results 先前是一一對應 append 的
-                    if i < len(_assemble_active_users):
-                        _counts_kept.append(_assemble_active_users[i])
-
-            _results = _results_kept
-            _assemble_active_users = _counts_kept
-        """
         s.close()
 
         # 先依 id（升冪）排一次
@@ -1890,6 +1911,410 @@ def list_materials_and_assembles():
 
     except Exception as e:
         # 任何資料不乾淨都不讓它 500；記 log + 回傳空清單，避免前端炸掉
+        import traceback
+        print("listMaterialsAndAssembles ERROR:", repr(e))
+        traceback.print_exc()
+        try:
+            current_app.logger.exception("listMaterialsAndAssembles failed")
+        except Exception:
+            pass
+        s.close()
+        return jsonify({
+            'status': False,
+            'materials_and_assembles': [],
+            'assemble_active_users': [],
+        }), 200
+"""
+
+# list all materials and assemble data
+@listTable.route("/listMaterialsAndAssembles", methods=['GET'])
+def list_materials_and_assembles():
+    print("listMaterialsAndAssembles.")
+    s = Session()
+    _results = []
+    _assemble_active_users = []
+
+    def safe_str(v, default=''):
+        try:
+            return '' if v is None else str(v)
+        except Exception:
+            return default
+
+    def safe_status_str(num, base_str, completed_qty, pos):
+        """
+        只在 num ∈ {5,7,9} 且 pos ∈ {1,2,3} 時，安全替換 '00/00/00' 的其中一段。
+        """
+        try:
+            if num in (5, 7, 9) and pos in (1, 2, 3):
+                parts = (base_str or '00/00/00').split('/')
+                if len(parts) == 3:
+                    parts[pos - 1] = safe_str(completed_qty, '00')
+                    return '/'.join(parts)
+        except Exception:
+            pass
+        return base_str or '00/00/00'
+
+    # ✅ 新增：用「訂單(order_num)」判斷是否缺料（跨拆單 A1/A2/A3）
+    def calc_shortage_note_by_order(s, order_num: str) -> str:
+        if not order_num:
+            return ""
+
+        # 找出該訂單所有 material.id（包含拆單）
+        mids = [
+            r[0] for r in (
+                s.query(Material.id)
+                 .filter(Material.order_num == order_num)
+                 .all()
+            )
+        ]
+        if not mids:
+            return ""
+
+        # 只要任一 BOM 還缺料，就算缺料
+        # 兼容你現場的兩種狀態：receive=False 或 lack_qty > 0
+        has_lack = (
+            s.query(Bom)
+              .filter(Bom.material_id.in_(mids))
+              #.filter(
+              #  (Bom.receive == False) | (Bom.lack_qty > 0)
+              #)
+              .filter(
+                or_(
+                   Bom.receive.is_(False), Bom.receive.is_(None), Bom.lack_qty > 0
+                )
+              )
+             .count() > 0
+        )
+        return "(缺料)" if has_lack else ""
+
+    try:
+        _objects = s.query(Material).all()
+        material_ids_all = [m.id for m in _objects]
+
+        # 每個 material 的最大 step_code
+        max_step_code_per_order = {}
+        for material_record in _objects:
+            for assemble_record in material_record._assemble:
+                step_code = assemble_record.process_step_code
+                order_num_id = material_record.id
+                cur = max_step_code_per_order.get(order_num_id)
+                max_step_code_per_order[order_num_id] = step_code if cur is None else max(cur, step_code)
+
+        code_to_name = {'106': '雷射', '109': '組裝', '110': '檢驗'}
+        str2 = ['未備料','備料中','備料完成','等待組裝作業','組裝進行中','00/00/00','檢驗進行中','00/00/00','雷射進行中','00/00/00','等待入庫作業','入庫進行中','入庫完成']
+        code_to_pt = {'106': 23, '109': 21, '110': 22}
+
+        index = 0
+        pre_p_id = 0
+
+        ###
+        order_nums = {m.order_num for m in _objects if m.order_num}
+        roots = (
+          s.query(Material.order_num, Material.merge_enabled)
+          .filter(Material.is_copied_from_id.is_(None))
+          .filter(Material.order_num.in_(order_nums))
+          .all()
+        )
+        merge_map = {on: bool(me) for on, me in roots}
+        ###
+
+        for material_record in _objects:
+            """
+            ###
+            # 找這張訂單的 root（或你也可先建 map）
+            root = (
+                s.query(Material)
+                .filter(Material.order_num == material_record.order_num)
+                .filter(Material.is_copied_from_id.is_(None))
+                .order_by(Material.id.asc())
+                .first()
+            )
+            merge_enabled = True if (root is None) else bool(getattr(root, "merge_enabled", True))
+
+            # ✅ 併單模式：不顯示 copied
+            if merge_enabled and material_record.is_copied_from_id is not None:
+                continue
+            ###
+            """
+            merge_enabled = merge_map.get(material_record.order_num, True)
+            if merge_enabled and material_record.is_copied_from_id is not None:
+              continue
+
+            if not material_record.isShow:
+              continue
+
+            # ✅ P6：只顯示 root(A1)，拆單(A2/A3)不顯示
+            #if material_record.is_copied_from_id is not None:
+            #    continue
+
+            process_records = material_record._process
+            total_records = len([
+                p for p in process_records
+                if (p.material_id == material_record.id and p.assemble_id != 0)
+            ])
+            begin_records = len([
+                p for p in process_records
+                if (p.material_id == material_record.id and p.assemble_id != 0 and p.has_started)
+            ])
+
+            assemble_records = material_record._assemble
+
+            # 先算出：在同一個 material_id 裡，每個 update_time 的 max_step_code
+            max_by_ut = {}  # { update_time -> max_step_code }
+            for a in assemble_records:
+                step = int(a.process_step_code or 0)
+                if step == 0:
+                    continue
+                ut = a.update_time
+                cur = max_by_ut.get(ut)
+                if cur is None or step > cur:
+                    max_by_ut[ut] = step
+
+            for assemble_record in material_record._assemble:
+                if assemble_record.must_receive_qty <= 0:
+                    continue
+
+                step = int(assemble_record.process_step_code or 0)
+
+                # 依 work_num 判斷對應的 process_type
+                work = assemble_record.work_num or ''
+                target_pt = None
+                if 'B109' in work:
+                    target_pt = 21
+                elif 'B110' in work:
+                    target_pt = 22
+                elif 'B106' in work:
+                    target_pt = 23
+
+                matched_count = 0
+                total_work_qty = 0
+                show_timer = False
+                show_name = ''
+
+                if target_pt is not None:
+                    target_procs = [
+                      p for p in process_records
+                      if (
+                        p.material_id == assemble_record.material_id
+                        and p.process_type == target_pt
+                        and p.assemble_id == assemble_record.id
+                        and p.begin_time
+                        and str(p.begin_time).strip()
+                      )
+                    ]
+                    matched_count = len(target_procs)
+                    total_work_qty = sum((p.process_work_time_qty or 0) for p in target_procs)
+
+                    if target_procs:
+                        latest_p = max(target_procs, key=lambda x: x.id)
+                        show_timer = True
+                        show_name = latest_p.user_id or ''
+
+                # a_statement: step != 0 且有對應 process，且已報工數量 >= 交期數量
+                a_statement = (
+                  step != 0
+                  and total_records != 0
+                  and matched_count > 0
+                  and total_work_qty >= (material_record.delivery_qty or 0)
+                )
+
+                # 你原本這段邏輯保留
+                if step == 0 and not a_statement:
+                    continue
+
+                cleaned_comment = safe_str(material_record.material_comment).strip()
+                work_num = safe_str(assemble_record.work_num)
+                code = work_num[1:] if len(work_num) >= 2 else work_num
+                name = code_to_name.get(code, '')
+                pt = code_to_pt.get(code, 0)
+
+                ok, process_total = need_more_process_qty(
+                    k1=assemble_record.material_id,
+                    a1=assemble_record.id,
+                    t1=pt,
+                    must_qty=assemble_record.must_receive_end_qty,
+                    s=s
+                )
+
+                ut = assemble_record.update_time
+                max_step_code = max_by_ut.get(ut)
+                if max_step_code is None:
+                    continue
+                if step != max_step_code:
+                    continue
+
+                num = int(getattr(assemble_record, 'show2_ok', 0) or 0)
+                base = str2[num] if 0 <= num < len(str2) else '00/00/00'
+                total_ask_end = getattr(assemble_record, 'total_ask_qty_end', None)
+                completed_qty = getattr(assemble_record, 'completed_qty', 0)
+                temp_temp_show2_ok_str = safe_status_str(num, base, completed_qty, total_ask_end)
+
+                format_name = f"{work_num}({name})" if name else work_num
+
+                index += 1
+
+                # ✅ shortage_note 改用「order_num」跨拆單判斷
+                shortage_note = calc_shortage_note_by_order(s, material_record.order_num)
+
+                """
+                material_id = material_record.id
+
+                # 1) 這筆 material_id 底下 BOM 總數
+                has_bom = (
+                    s.query(Bom.id)
+                    .filter(Bom.material_id == material_id)
+                    .count()
+                )
+
+                # 2) 這筆 material_id 底下 receive=True 的 BOM 數
+                has_receive_true = (
+                    s.query(Bom.id)
+                    .filter(Bom.material_id == material_id)
+                    .filter(Bom.receive.is_(True))
+                    .count()
+                )
+
+                print("has_bom, has_receive_true:", has_bom, has_receive_true)
+                """
+
+                ###
+                order_num = material_record.order_num
+                material_id = material_record.id
+
+                # ✅ merge_enabled=True：用「訂單」統計（跨 A1/A2/A3）
+                # ✅ merge_enabled=False：用「單筆 material」統計
+                if merge_enabled:
+                    mids = [
+                        r[0] for r in (
+                            s.query(Material.id)
+                            .filter(Material.order_num == order_num)
+                            .all()
+                        )
+                    ]
+
+                    if mids:
+                        has_bom = (
+                            s.query(Bom.id)
+                            .filter(Bom.material_id.in_(mids))
+                            .count()
+                        )
+                        has_receive_true = (
+                            s.query(Bom.id)
+                            .filter(Bom.material_id.in_(mids))
+                            .filter(Bom.receive.is_(True))
+                            .count()
+                        )
+                        # 缺料數（可選：debug 用）
+                        has_receive_false_or_null = (
+                            s.query(Bom.id)
+                            .filter(Bom.material_id.in_(mids))
+                            .filter(or_(Bom.receive.is_(False), Bom.receive.is_(None)))
+                            .count()
+                        )
+                    else:
+                        has_bom = 0
+                        has_receive_true = 0
+                        has_receive_false_or_null = 0
+
+                else:
+                    # 不併單：只算這筆 material 自己的 BOM
+                    has_bom = (
+                        s.query(Bom.id)
+                        .filter(Bom.material_id == material_id)
+                        .count()
+                    )
+                    has_receive_true = (
+                        s.query(Bom.id)
+                        .filter(Bom.material_id == material_id)
+                        .filter(Bom.receive.is_(True))
+                        .count()
+                    )
+                    has_receive_false_or_null = (
+                        s.query(Bom.id)
+                        .filter(Bom.material_id == material_id)
+                        .filter(or_(Bom.receive.is_(False), Bom.receive.is_(None)))
+                        .count()
+                    )
+
+                print("order:", order_num,
+                      "merge_enabled:", merge_enabled,
+                      "mid:", material_id,
+                      "has_bom:", has_bom,
+                      "has_receive_true:", has_receive_true,
+                      "has_receive_false_or_null:", has_receive_false_or_null)
+                ###
+
+                temp_isLackMaterial = material_record.isLackMaterial
+                """
+                if has_bom==has_receive_true:
+                  temp_isLackMaterial = 99
+                """
+                _object = {
+                    'index': index,
+                    'id': material_record.id,                 # 只會是 root(A1)
+                    'order_num': material_record.order_num,
+                    'assemble_work': format_name,
+                    'material_num': material_record.material_num,
+                    'assemble_process': '' if num > 2 else temp_temp_show2_ok_str,
+
+                    'assemble_process_num': num,
+                    'assemble_id': assemble_record.id,
+                    'req_qty': material_record.material_qty,
+                    'delivery_qty': material_record.delivery_qty,
+                    'total_receive_qty': f"({getattr(assemble_record, 'total_ask_qty', 0)})",
+                    'total_receive_qty_num': getattr(assemble_record, 'total_ask_qty', 0),
+
+                    'must_receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    'receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
+                    'must_receive_end_qty': getattr(assemble_record, 'must_receive_end_qty', 0),
+
+                    'delivery_date': material_record.material_delivery_date,
+                    'comment': cleaned_comment,
+                    'isTakeOk': material_record.isTakeOk,
+                    'whichStation': material_record.whichStation,
+                    'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,
+                    'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,
+                    'isAssembleStation3TakeOk': material_record.isAssembleStation3TakeOk,
+                    'currentStartTime': getattr(assemble_record, 'currentStartTime', None),
+                    'tooltipVisible': False,
+                    'input_disable': getattr(assemble_record, 'input_disable', False),
+
+                    'process_step_code': max_step_code,
+                    'isLackMaterial': temp_isLackMaterial,
+                    'Incoming1_Abnormal': getattr(assemble_record, 'Incoming1_Abnormal', '') == '',
+                    'is_copied_from_id': getattr(assemble_record, 'is_copied_from_id', None),
+                    'create_at': assemble_record.create_at,
+
+                    'show_timer': show_timer,
+                    'show_name': show_name,
+                    'begin_records': begin_records,
+
+                    'has_bom': has_bom,
+                    'has_receive_true': has_receive_true,
+
+                    # ✅ 讓前端能直接顯示 (缺料)
+                    'shortage_note': shortage_note,
+                    #'shortage_note': calc_shortage_note_by_order(s, material_record.order_num),
+                    #'shortage_note': shortage_note_by_order(s, material_record.order_num),
+
+                    'merge_enabled': merge_enabled,
+                }
+                _results.append(_object)
+
+        s.close()
+
+        # 原本排序保留
+        _results.sort(key=lambda x: x.get('id') or 0)
+        _results.sort(key=lambda x: x.get('create_at') or datetime.min, reverse=True)
+
+        return jsonify({
+            'status': bool(_results),
+            'materials_and_assembles': _results or [],
+            'assemble_active_users': _assemble_active_users or [],
+            'temp_isLackMaterial': temp_isLackMaterial,
+        })
+
+    except Exception as e:
         import traceback
         print("listMaterialsAndAssembles ERROR:", repr(e))
         traceback.print_exc()
@@ -1998,8 +2423,8 @@ def list_informations_p():
     _results = []
     return_value = True
     str1=['領料站', '加工站', '成品站']
-    #      0        1              2                3               4                 5              6              7            8
-    str2=['未領料', '領料中',      '領料已完成',       '等待加工作業',  '加工作業進行中',  '加工作業已完成', '等待入庫作業', '入庫進行中', '入庫完成']
+    #      0        1         2            3              4                5               6              7            8
+    str2=['未領料', '領料中', '領料已完成', '等待加工作業', '加工作業進行中', '加工作業已完成', '等待入庫作業', '入庫進行中', '入庫完成']
 
     _objects = s.query(P_Material).all()  # 取得所有 Material 物件
 
@@ -2012,7 +2437,6 @@ def list_informations_p():
             'comment': (p.part_comment or '').strip(),
             'process_step_code': int(p.process_step_code or 0)
         }
-    #print("part_info_map:",part_info_map)
 
     for record in _objects:
       assemble_records = record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件

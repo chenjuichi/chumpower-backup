@@ -3060,6 +3060,9 @@ const readAllExcelFun = async () => {
 
     } else {
       showSnackbar(excel_file_data.message, 'red accent-2');
+      await delay(3000);
+      //待待
+      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
     }
   } catch (error) {
     console.error("Error during execution:", error);

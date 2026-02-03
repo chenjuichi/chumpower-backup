@@ -323,7 +323,7 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
-          if (path == '/createProduct') {
+          if (path == '/createProductP') {
             return res.data
           }
 

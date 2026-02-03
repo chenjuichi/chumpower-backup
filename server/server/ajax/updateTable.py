@@ -38,6 +38,92 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+def order_has_lack(session, order_num: str) -> bool:
+    # 只要同一張訂單底下（包含 A1/A2/A3）任何 BOM.receive == False，就算缺料
+    return (
+        session.query(Bom.id)
+        .join(Material, Bom.material_id == Material.id)
+        .filter(Material.order_num == order_num)
+        .filter(Bom.receive.is_(False))
+        .limit(1)
+        .count()
+        > 0
+    )
+
+
+def refresh_root_shortage_note(session, order_num: str) -> None:
+    root = (
+        session.query(Material)
+        .filter(Material.order_num == order_num)
+        .filter(Material.is_copied_from_id.is_(None))  # root = A1
+        .order_by(Material.id.asc())
+        .first()
+    )
+    if not root:
+        return
+
+    has_lack = order_has_lack(session, order_num)
+    root.shortage_note = "(缺料)" if has_lack else ""
+
+
+def refresh_root_status(session, order_num: str) -> None:
+    # 1) 找 root(A1)
+    root = (
+        session.query(Material)
+        .filter(Material.order_num == order_num)
+        .filter(Material.is_copied_from_id.is_(None))  # root = A1
+        .order_by(Material.id.asc())
+        .first()
+    )
+    if not root:
+        return
+
+    # 2) 找同訂單所有 material.id（含 A1/A2/A3）
+    mids = [
+        r[0] for r in (
+            session.query(Material.id)
+            .filter(Material.order_num == order_num)
+            .all()
+        )
+    ]
+    if not mids:
+        return
+
+    # 3) 統計 BOM 總數 / receive=True 數
+    total_bom = (
+        session.query(Bom.id)
+        .filter(Bom.material_id.in_(mids))
+        .count()
+    )
+
+    received_bom = (
+        session.query(Bom.id)
+        .filter(Bom.material_id.in_(mids))
+        .filter(Bom.receive.is_(True))
+        .count()
+    )
+
+    # 4) 決定是否還缺料
+    #    - total_bom == 0：通常視為「仍未建 BOM」→ 你可視需求當缺料或不缺料
+    all_received = (total_bom > 0 and total_bom == received_bom)
+
+    # 5) 更新 root 欄位
+    if all_received:
+        root.shortage_note = ""
+        root.isLackMaterial = 99
+    else:
+        root.shortage_note = "(缺料)"
+        root.isLackMaterial = 0
+
+
+def order_has_lack(s, order_num):
+    return s.query(Bom)\
+        .join(Material, Bom.material_id == Material.id)\
+        .filter(Material.order_num == order_num)\
+        .filter(Bom.receive.is_(False))\
+        .first() is not None
+
+
 def normalize_cause_message_list(cause_message_list):
     # 如果是 list → 保持不變
     if isinstance(cause_message_list, list):
@@ -268,162 +354,129 @@ def terminate_active():
 
 
 # from bom table update some data
-"""
 @updateTable.route("/updateBoms", methods=['POST'])
 def update_boms():
-    print("updateBoms....")
-    request_data = request.get_json()
-    print("request_data =", request_data)
+  print("updateBoms....")
 
-    return_value = True
-    s = Session()
+  request_data = request.get_json()
+  print("request_data =", request_data, type(request_data))
 
-    try:
-        for key, bom_data in request_data.items():
-            print(f"key={key}, type(bom_data)={type(bom_data)}, bom_data={bom_data}")
+  s = Session()
+  return_value = True
 
-            if isinstance(bom_data, dict):
-                bom_id = bom_data.get('id')
-                receive_val = bom_data.get('receive')
+  try:
+      # 1️⃣ 把 request_data 統一轉成「list of dict」
+      if isinstance(request_data, dict):
+          bom_list = list(request_data.values())
+      elif isinstance(request_data, list):
+          bom_list = request_data
+      else:
+          bom_list = []
+          print("updateBoms: unsupported payload type")
 
-                # 查找並更新對應資料
-                bom_record = s.query(Bom).filter_by(id=bom_id).first()
-                if bom_record:
-                    print(f"Before update: id={bom_id}, receive={bom_record.receive}")
-                    bom_record.receive = receive_val
-                    print(f"After update: id={bom_id}, receive={bom_record.receive}")
-            else:
-                print(f"Warning: bom_data 不是 dict，跳過 key={key}")
+      print("bom_list:", bom_list, "筆數:", len(bom_list))
 
-        s.commit()
+      print("bom_data:")
+      for bom_data in bom_list:
+          if not isinstance(bom_data, dict):
+            continue
+          bom_id = bom_data.get('id')
+          if not bom_id:
+            continue
 
-    except Exception as e:
-        s.rollback()
-        print(f"Error: {e}")
-        return_value = False
+          bom = s.query(Bom).get(bom_id)
+          if not bom:
+            print(f"updateBoms: Bom id={bom_id} not found")
+            continue
 
+          print(bom_data)
+
+          # 目前 dialog 主要在改的是 receive / lack / lack_bom_qty / isPickOK
+          if 'receive' in bom_data:
+              a=bom.receive
+              b=bom_data['receive']
+              c1=bom.seq_num
+              if a != b:
+                bom.receive = b
+                s.query(Bom)\
+                    .filter(Bom.seq_num == c1)\
+                    .update({Bom.receive: b}, synchronize_session=False)
+
+              #bom.receive = bom_data['receive']
+          if 'lack' in bom_data:
+              a=bom.lack
+              b=bom_data['lack']
+              c1=bom.seq_num
+              if a != b:
+                bom.lack = b
+                s.query(Bom)\
+                    .filter(Bom.seq_num == c1)\
+                    .update({Bom.lack: b}, synchronize_session=False)
+              #bom.lack = bom_data['lack']
+          if 'lack_bom_qty' in bom_data:
+              a=bom.lack_bom_qty
+              b=bom_data['lack_bom_qty']
+              c1=bom.seq_num
+              if a != b:
+                bom.lack_bom_qty = b
+                s.query(Bom)\
+                    .filter(Bom.seq_num == c1)\
+                    .update({Bom.lack_bom_qty: b}, synchronize_session=False)
+              #bom.lack_bom_qty = bom_data['lack_bom_qty']
+          if 'isPickOK' in bom_data:
+              a=bom.isPickOK
+              b=bom_data['isPickOK']
+              c1=bom.seq_num
+              if a != b:
+                bom.isPickOK = b
+                s.query(Bom)\
+                    .filter(Bom.seq_num == c1)\
+                    .update({Bom.isPickOK: b}, synchronize_session=False)
+              #bom.isPickOK = bom_data['isPickOK']
+
+          # 如果還有其他欄位未來要改，也可以一併加上
+
+      # 找出這次被更新的 BOM 屬於哪些訂單 →
+      # 針對每張訂單，重新計算並更新 root  的 shortage_note
+
+      # 把這次 request 裡「有 id 的 BOM」全部抓出來
+      touched_bom_ids = [
+        bd.get("id") for bd in bom_list
+        if isinstance(bd, dict) and bd.get("id")
+      ]
+
+      if touched_bom_ids:
+        order_nums = [
+            x[0] for x in (
+              s.query(Material.order_num)
+              .join(Bom, Bom.material_id == Material.id)
+              .filter(Bom.id.in_(touched_bom_ids))        # 只篩選這次被更新的 BOM
+              .distinct()                                 # 避免同一張訂單被拿到多次
+              .all()
+            )
+        ]
+
+        # 對每一張被影響的訂單，重算缺料狀態
+        for on in order_nums:
+          # # 找出這張訂單的 root material（material.is_copied_from_id = NULL）
+          #refresh_root_shortage_note(s, on)
+          refresh_root_status(s, on)
+      ###
+
+      s.commit()
+
+  except Exception as e:
+    s.rollback()
+    return_value = False
+    print("Error in updateBoms:", e)
+
+  finally:
     s.close()
 
-    return jsonify({
-        'status': return_value
-    })
-"""
+  return jsonify({
+      'status': return_value
+  })
 
-
-@updateTable.route("/updateBoms", methods=['POST'])
-def update_boms():
-    print("updateBoms....")
-    request_data = request.get_json()
-    print("request_data =", request_data, type(request_data))
-
-    s = Session()
-    return_value = True
-
-    try:
-        # 1️⃣ 把 request_data 統一轉成「list of dict」
-        if isinstance(request_data, dict):
-            # 如果改成 { "101": {...}, "102": {...} } 也ok
-            bom_list = list(request_data.values())
-        elif isinstance(request_data, list):
-            bom_list = request_data
-        else:
-            bom_list = []
-            print("updateBoms: unsupported payload type")
-
-        for bom_data in bom_list:
-            if not isinstance(bom_data, dict):
-                continue
-
-            bom_id = bom_data.get('id')
-            if not bom_id:
-                continue
-
-            bom = s.query(Bom).get(bom_id)
-            if not bom:
-                print(f"updateBoms: Bom id={bom_id} not found")
-                continue
-
-            # 目前 dialog 主要在改的是 receive / lack / lack_bom_qty / isPickOK
-            if 'receive' in bom_data:
-                bom.receive = bom_data['receive']
-            if 'lack' in bom_data:
-                bom.lack = bom_data['lack']
-            if 'lack_bom_qty' in bom_data:
-                bom.lack_bom_qty = bom_data['lack_bom_qty']
-            if 'isPickOK' in bom_data:
-                bom.isPickOK = bom_data['isPickOK']
-
-            # 如果還有其他欄位未來要改，也可以一併加上
-
-        s.commit()
-
-    except Exception as e:
-        s.rollback()
-        return_value = False
-        print("Error in updateBoms:", e)
-
-    finally:
-        s.close()
-
-    return jsonify({
-        'status': return_value
-    })
-
-
-'''
-@updateTable.route("/updateBomsInMaterial", methods=['POST'])
-def update_bom(material_id):
-  session = Session()
-  try:
-      # 取得請求的 BOM 資料
-      data = request.json
-      material_id = data.get("material_id")
-      bom_items = data.get("bom_items", [])
-
-      # 確認 `Material` 是否存在
-      material = session.query(Material).filter_by(id=material_id).first()
-      if not material:
-          return jsonify({"error": f"Material id {material_id} not found"}), 404
-
-      # 取得現有的 BOM 資料
-      existing_boms = session.query(Bom).filter_by(material_id=material_id).all()
-      existing_ids = {bom.id for bom in existing_boms}
-
-      # 從請求資料中分離出來的 ID
-      request_ids = {item["id"] for item in bom_items if "id" in item}
-
-      # 刪除不在請求中的 BOM 資料
-      boms_to_delete = [bom for bom in existing_boms if bom.id not in request_ids]
-      for bom in boms_to_delete:
-          session.delete(bom)
-
-      # 更新或新增 BOM
-      for item in bom_items:
-          if "id" in item and item["id"] in existing_ids:
-              # 更新現有的 BOM
-              bom = session.query(Bom).filter_by(id=item["id"]).first()
-              bom.material_num = item["material_num"]
-          else:
-              # 新增新的 BOM
-              new_bom = Bom(
-                  material_id=material_id,
-                  material_num=item["material_num"],
-                  seq_num="",
-                  material_comment="",
-                  req_qty=0
-              )
-              session.add(new_bom)
-
-      # 提交事務
-      session.commit()
-      return jsonify({"message": "BOM updated successfully"}), 200
-
-  except SQLAlchemyError as e:
-      session.rollback()
-      return jsonify({"error": str(e)}), 500
-  finally:
-      session.close()
-'''
 
 @updateTable.route("/updateBomsInMaterial", methods=['POST'])
 def update_bom(material_id):
@@ -868,54 +921,51 @@ def update_process_data_by_material_id():
   print("updateProcessDataByMaterialID....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _seq = request_data.get('seq')
   _record_name1 = request_data.get('record_name1')
   _record_data1 = request_data.get('record_data1')
-  print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
+  #print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
 
   s = Session()
 
   try:
-      material = s.query(Material).get(_material_id)
-      print("step1")
-      if not material:
-        return jsonify({'status': False, 'msg': 'Material not found'})
-      print("step2")
+    material = s.query(Material).get(_material_id)
+    #print("step1")
+    if not material:
+      return jsonify({'status': False, 'msg': 'Material not found'})
+    #print("step2")
 
-      target_process = (s.query(Process).filter(
-          Process.material_id == _material_id,
-          Process.assemble_id == 0,
-          Process.has_started == True,
-          Process.begin_time != '',
-          Process.end_time != '',)
-          .first())
+    target_process = (s.query(Process).filter(
+      Process.material_id == _material_id,
+      Process.assemble_id == 0,
+      Process.has_started == True,
+      Process.begin_time != '',
+      Process.end_time != '',)
+      .first())
 
-      # 確保 _seq 不超過範圍
-      #if _seq < 0 or _seq > len(material._process):
-      if not target_process:
-        return jsonify({'status': False, 'msg': 'seq out of range'})
+    # 確保 _seq 不超過範圍
+    #if _seq < 0 or _seq > len(material._process):
+    if not target_process:
+      return jsonify({'status': False, 'msg': 'seq out of range'})
 
-      print("step3")
+    #print("step3")
 
-      # 取出對應的 Process
-      #target_process = material._process[_seq-1]
-      print("target_process:", target_process)
-      # 更新欄位
-      if _record_name1 and _record_data1 is not None:
-        setattr(target_process, _record_name1, _record_data1)
-      print("step4")
+    # 更新欄位
+    if _record_name1 and _record_data1 is not None:
+      setattr(target_process, _record_name1, _record_data1)
+    #print("step4")
 
-      # 提交更新
-      s.commit()
-      print("target_process:", target_process)
-      print(f"更新成功!")
-      return_value = True
+    # 提交更新
+    s.commit()
+    #print("target_process:", target_process)
+    print(f"更新成功!")
+    return_value = True
   except Exception as e:
-      s.rollback()
-      print("更新失敗:", str(e))
-      return_value = False
+    s.rollback()
+    print("更新失敗:", str(e))
+    return_value = False
 
   return jsonify({
     'status': return_value
@@ -1858,6 +1908,9 @@ def update_bom_xor_receive():
             #    updated = True
 
     if updated:
+        ###
+        refresh_root_shortage_note(s, source_material.order_num)
+        ###
         s.commit()
 
     s.close()

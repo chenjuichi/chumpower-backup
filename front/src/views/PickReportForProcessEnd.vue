@@ -962,9 +962,9 @@ onMounted(async () => {
           // Material：成品站/等待入庫/等待組裝中/目標途程=成品站
           await updateMaterialRecord({
             id: current_material_id,
-            show1_ok: 3,   // 成品站
-            show2_ok: 10,  // 等待入庫
-            show3_ok: 3,   // 等待組裝中
+            show1_ok: 3,    // 成品站
+            show2_ok: 6,    // 等待入庫作業
+            show3_ok: 3,    // 等待組裝中
             //whichStation: 3,
           });
 
@@ -1934,7 +1934,7 @@ const callForklift = async () => {
       await updateMaterialRecord({
         id: mid,
         show1_ok: 3,    // 成品站
-        show2_ok: 10,   // 等待入庫
+        show2_ok: 6,    // 等待入庫作業
         show3_ok: 3,    // 等待組裝中
         //whichStation: 3 // 目標途程: 成品站
       });
@@ -2888,7 +2888,15 @@ const removelocalStorage = () => {
   padding-right: 4px !important;
 }
 
+:deep(.v-table__wrapper > table > thead th:nth-child(3)) {
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+}
 
+:deep(.v-table__wrapper > table > tbody td:nth-child(3)) {
+  padding-left: 0px !important;
+  padding-right: 0px !important;
+}
 
 :deep(.v-table__wrapper > table > thead th:first-child > span) {
   position: relative;

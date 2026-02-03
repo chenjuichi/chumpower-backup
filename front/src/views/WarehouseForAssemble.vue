@@ -323,21 +323,20 @@ const countExcelFiles = apiOperation('get', '/countExcelFiles');
 const listUsers2 = apiOperation('get', '/listUsers2');
 const listProducts = apiOperation('get', '/listProducts');
 
-const getBoms = apiOperation('post', '/getBoms');
-const getAGV = apiOperation('post', '/getAGV');
-//const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateAssemble = apiOperation('post', '/updateAssemble');
-const copyMaterial = apiOperation('post', '/copyMaterial');
-const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
-const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
-const modifyExcelFiles = apiOperation('post', '/modifyExcelFiles');
-const updateModifyMaterialAndBoms = apiOperation('post', '/updateModifyMaterialAndBoms');
 const getWarehouseForAssembleByHistory = apiOperation('post', '/getWarehouseForAssembleByHistory');
-const updateProcessData = apiOperation('post', '/updateProcessData');
+const createProcess = apiOperation('post', '/createProcess');
 const createProduct = apiOperation('post', '/createProduct');
-const updateProduct = apiOperation('post', '/updateProduct');
+
+//=== p_tables維護用 api ==
+import { p_apiOperation }  from '../mixins/p_crud.js';
+
+const createProcessP = p_apiOperation('post', '/createProcessP');
+const createProductP = p_apiOperation('post', '/createProductP');
+const updateAssembleP = p_apiOperation('post', '/updateAssembleP');
+const updateMaterialP = p_apiOperation('post', '/updateMaterialP');
 
 //=== component name ==
 defineComponent({ name: 'WarehouseForAssemble' });
@@ -738,7 +737,7 @@ const checkQtyField = (item) => {
   } else {
     item.tooltipVisible = false;
     item.isError = false;
-    over_qty_alarm.value = '';    // 清除警告
+    over_qty_alarm.value = '';        // 清除警告
   }
 };
 
@@ -820,15 +819,13 @@ const addAbnormalInMaterial = (item) => {
   abnormalDialog.value = true;
 }
 
+const pick = (line, normalFn, processFn) => (line === 'process' ? processFn : normalFn)
+
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
-  //* material table: 就目前工單, 更新該筆的顯示訊息
-  //* assemble table: 就目前工單, 更新該筆的入庫數量
-  // product table: 就目前工單,  新增一筆
-  // process table: 就目前工單,  新增一筆
-
   let allOk_qty = 0;
+
   // 檢查是否輸入了空白或 0
   if (!item.allOk_qty || Number(item.allOk_qty) === 0) {
     allOk_qty = Number(item.delivery_qty) || 0;
@@ -836,57 +833,42 @@ const updateItem2 = async (item) => {
     allOk_qty = Number(item.allOk_qty) || 0;
   }
 
-  const targetIndex = warehouses.value.findIndex(
-    (kk) => kk.index === item.index
-  );
+  const targetIndex = warehouses.value.findIndex((kk) => kk.index === item.index);
+
   let current_assemble_id = warehouses.value[targetIndex].assemble_id
   let current_material_id = warehouses.value[targetIndex].id
-  //let current_process_id = warehouses.value[targetIndex].process_id
+
+  const updateAssem = pick(item.line, updateAssemble, updateAssembleP)
+  const updateMat   = pick(item.line, updateMaterial, updateMaterialP)
 
   let payload = {};
-  /* 要轉換
-  // 記錄當前入庫數量
-  payload = {
-    process_id: current_process_id,
-    record_name: 'allOk_qty',
-    record_data: allOk_qty,
-  };
-  await updateProcessData(payload);
-
-  payload = {
-    process_id: current_process_id,
-    record_name: 'isAllOk',
-    record_data: true
-  };
-  await updateProcessData(payload);
-  */
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'input_allOk_disable',
     record_data: true,
   };
-  await updateAssemble(payload);
+  await updateAssem(payload)
 
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'allOk_qty',
     record_data: allOk_qty,
   };
-  await updateAssemble(payload);
+  await updateAssem(payload);
 
   payload = {
     id: current_material_id,
     record_name: 'show2_ok',
     record_data: 11             // 設為 11，入庫進行中
   };
-  await updateMaterial(payload);
+  await updateMat(payload);
 
   payload = {
     id: current_material_id,
     record_name: 'show3_ok',
     record_data: 12             // 設為 12，入庫進行中
   };
-  await updateMaterial(payload);
+  await updateMat(payload);
 
   // 用 Vue 的方式確保觸發響應式更新
   warehouses.value[targetIndex] = {
@@ -900,6 +882,7 @@ const updateItem2 = async (item) => {
     barcodeInput.value.focus();
   }
 };
+
 /*
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
   const diffMs = end - start;                     // 差異時間（毫秒）
@@ -928,47 +911,41 @@ const formatDateTime = (date) => {
 };
 
 const onClickWarehouseIn = async () => {
-  console.log("onClickWarehouseIn()...")
+  console.log("onClickWarehouseIn...")
 
   const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
+
   if (selectedIds.length === 0) {
     showSnackbar('請選擇入庫的工單!', 'red accent-2');
     return;
   }
 
-  //* material table: 就目前工單, 更新該筆的顯示訊息
-  // assemble table: 就目前工單, 更新該筆的入庫數量
-  //* product table: 就目前工單,  新增一筆
-  //* process table: 就目前工單,  新增一筆
-
   try {
     let successCount = 0;
 
     for (const id of selectedIds) {
-      const targetIndex = warehouses.value.findIndex(
-        (kk) => kk.index === id
-      );
-      let current_material_id = warehouses.value[targetIndex].id;
-      let current_assemble_id = warehouses.value[targetIndex].assemble_id
-      let current_allOk_qty = warehouses.value[targetIndex].allOk_qty
-      let current_must_qty = warehouses.value[targetIndex].must_allOk_qty
-      let current_total_qty = warehouses.value[targetIndex].total_allOk_qty
+      const targetIndex = warehouses.value.findIndex((kk) => kk.index === id);
+      if (targetIndex === -1)
+        continue;
 
-      /*
-      let current_process_id=warehouses.value[targetIndex].process_id;
-      let payload = {
-        process_id: current_process_id,
-        record_name: 'normal_work_time',
-        record_data: 4,           // 入庫 process
-      };
-      await updateProcessData(payload);
-      */
+      const row = warehouses.value[targetIndex];
+
+      const current_material_id = row.id;
+      const current_assemble_id = row.assemble_id;
+      const current_allOk_qty   = row.allOk_qty;
+      const current_must_qty    = row.must_allOk_qty;
+      const current_total_qty   = row.total_allOk_qty;
+      const current_line        = row.line;
+
+      const updateAssem = pick(current_line, updateAssemble, updateAssembleP);
+      const updateMat = pick(current_line, updateMaterial, updateMaterialP);
 
       let payload = {}
       let d0 = Number(current_must_qty)
       let d1 = Number(current_total_qty)
       let d2 = Number(current_allOk_qty)
       let difference = d0 - d1 - d2
+
       if (difference != 0) {
         console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
 
@@ -977,15 +954,14 @@ const onClickWarehouseIn = async () => {
           record_name: 'input_allOk_disable',
           record_data: false,
         };
-        await updateAssemble(payload);
+        await updateAssem(payload);
 
         payload = {
           assemble_id: current_assemble_id,
           record_name: 'allOk_qty',
-          //record_data: allOk_qty,
           record_data: 0,
         };
-        await updateAssemble(payload);
+        await updateAssem(payload);
 
         // 用 Vue 的方式確保觸發響應式更新
         warehouses.value[targetIndex] = {
@@ -995,45 +971,48 @@ const onClickWarehouseIn = async () => {
           input_allOk_disable: false,
           isWarehouseStationShow: false
         };
-      } else {
 
-        await updateMaterial({
+        //continue; // ✅ 不要做入庫建立
+
+      } else {
+        payload = {
           id: current_material_id,
           record_name: 'show2_ok',
           record_data: 12,          // 入庫完成
-        });
+        };
+        await updateMat(payload);
 
-        await updateMaterial({
+        payload = {
           id: current_material_id,
           record_name: 'show3_ok',
           record_data: 13,          // 入庫完成
-        });
+        };
+        await updateMat(payload);
 
         payload = {
           assemble_id: current_assemble_id,
           record_name: 'input_allOk_disable',
           record_data: true,
         };
-        await updateAssemble(payload);
+        await updateAssem(payload);
 
         payload = {
           assemble_id: current_assemble_id,
           record_name: 'allOk_qty',
           record_data: current_allOk_qty,
         };
-        await updateAssemble(payload);
+        await updateAssem(payload);
 
         payload = {
           assemble_id: current_assemble_id,
           record_name: 'isWarehouseStationShow',
           record_data: true,
         };
-        await updateAssemble(payload);
+        await updateAssem(payload);
 
         // 用 Vue 的方式確保觸發響應式更新
         warehouses.value[targetIndex] = {
           ...warehouses.value[targetIndex],
-          //allOk_qty: allOk_qty,
           allOk_qty: current_allOk_qty,
           isError: true,
           input_allOk_disable: true,
@@ -1043,26 +1022,30 @@ const onClickWarehouseIn = async () => {
 
       // 建立「成品入庫」流程（process_type: 31）
       const nowStr = formatDateTime(new Date());
-      const myProcess=await createProcess({
+      const createProc = (current_line === 'process') ? createProcessP : createProcess
+      const createProd = (current_line === 'process') ? createProductP : createProduct
+
+      payload = {
         begin_time: nowStr,
         end_time: nowStr,
         periodTime: '',
-        order_num: warehouses.value[targetIndex].order_num,
+        order_num: row.order_num,
         user_id: currentUser.value?.empID ?? '',
         process_type: 31,         // 成品入庫
         id: current_material_id,
         assemble_id: current_assemble_id,
         has_started: true,
         process_work_time_qty: d2,
-      });
-      console.log("myProcess:", myProcess)
+      };
+      const procResp = await createProc(payload);
 
-      const myProduct=await createProduct({
+      const productPayload = {
         material_id: current_material_id,
-        process_id: myProcess.process_id,
+        process_id: procResp?.process_id,
         allOk_qty: d2,
         good_qty: current_allOk_qty,
-      });
+      };
+      await createProd(productPayload);
 
       successCount++;
     }
@@ -1071,45 +1054,40 @@ const onClickWarehouseIn = async () => {
     if (successCount > 0) {
       await updateAGV({
         id: 1,
-        status: 0,  // ready
-        station: 3, // 在成品區
+        status: 0,        // ready
+        station: 3,       // 在成品區
       });
-      console.log('step10...');
-    } else {
-      console.warn('沒有任何記錄成功更新，略過 AGV 狀態更新');
     }
 
-    // 插入延遲 3 秒
-    await delay(3000);
+    await delay(3000);    // 延遲 3 秒
 
     // 清理選取與歷史
     selectedItems.value = [];
-    if (localStorage.getItem('selectedItems')) localStorage.removeItem('selectedItems');
+    if (localStorage.getItem('selectedItems'))
+      localStorage.removeItem('selectedItems');
 
     history.value = false;
-    if (localStorage.getItem('history')) localStorage.removeItem('history');
+    if (localStorage.getItem('history'))
+      localStorage.removeItem('history');
   } catch (err) {
     console.error('入庫流程發生例外：', err);
     showSnackbar('入庫流程執行失敗，請稍後再試', 'red accent-2');
-  } finally {
-    // 一定要解鎖，避免按鈕被卡住
-    //isWarehouseIn.value = false;
   }
   //待待
-  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 // 改變拖曳功能
-const toggleDrag = () => {
-  panel_flag.value = !panel_flag.value
-}
+//const toggleDrag = () => {
+//  panel_flag.value = !panel_flag.value
+//}
 
 // 控制面板樣式，包括邊框顏色和層級 (z-index)
-const panelStyle = computed(() => ({
-  cursor: panel_flag.value ? 'move' : 'default',
-  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
-  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
-}))
+//const panelStyle = computed(() => ({
+//  cursor: panel_flag.value ? 'move' : 'default',
+//  border: panel_flag.value ? '2px solid blue' : '2px solid transparent',
+//  zIndex: panel_flag.value ? 9999 : 1, // 當可拖曳時，將面板提升至最上層
+//}))
 
 const showSnackbar = (message, color) => {
   snackbar_info.value = message;

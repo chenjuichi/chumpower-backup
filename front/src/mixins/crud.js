@@ -31,6 +31,7 @@ export const processes = ref([]);
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
 export const assembles_active_user_count = ref([]);
+export const temp_isLackMaterial = ref(99);
 
 // for getMaterialsAndAssemblesByUser
 export const materials_and_assembles_by_user = ref([]);
@@ -207,6 +208,7 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/listMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
+            temp_isLackMaterial.value = res.data.temp_isLackMaterial;
           }
 
           if (path == '/listInformations') {
@@ -483,6 +485,12 @@ export const apiOperation = (operation, path, payload) => {
 
           if (path == '/getBoms') {
             //console.log("res.data.boms:", res.data.boms);
+            temp_boms.value = [...res.data.boms];
+            currentBoms.value = res.data.boms;
+            list_table_is_ok.value = true;
+          }
+
+          if (path == '/getOrderPickedBoms') {
             temp_boms.value = [...res.data.boms];
             currentBoms.value = res.data.boms;
             list_table_is_ok.value = true;

@@ -245,6 +245,9 @@ class Material(BASE):
     total_allOk_qty = Column(Integer, default=0)                    # (成品）完成總數量
     isLackMaterial = Column(Integer, default=99)                    # 0:缺料且檢料完成(還沒拆單),  1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單),       1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
+
+    merge_enabled = Column(Boolean, nullable=False, default=True)   # 2026-2-2新增, true:預設值, 併單
+
     # 組裝線
     sd_time_B109 = Column(String(30))
     sd_time_B106 = Column(String(30))
@@ -347,7 +350,8 @@ class Bom(BASE):
     pick_qty = Column(Integer, default=0)       #領料數量
     non_qty = Column(Integer, default=0)        #未結數量
     lack_qty = Column(Integer, default=0)       #數量
-    receive = Column(Boolean)     # False: 不領料 checkbox
+    #receive = Column(Boolean)     # False: 不領料 checkbox
+    receive = Column(Boolean, nullable=False, default=False)  # 2026-1-30修改
     lack = Column(Boolean, default=False)
     isPickOK = Column(Boolean, default=False)               # true:檢料完成
     lack_bom_qty = Column(Integer, default=0)

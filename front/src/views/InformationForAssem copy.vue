@@ -20,7 +20,6 @@
         :active="history"
         color="#c39898"
         variant="outlined"
-
       >
         <v-icon left color="#664343">mdi-history</v-icon>
         歷史紀錄
@@ -47,46 +46,53 @@
     <!--日期範圍-->
     <v-col cols="4" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
       <Transition name="slide">
-        <div v-if="showFields" style="min-width:290px; width:290px;">
-          <v-dialog v-model="pick_date_dialog" width="auto">
+        <div v-if="showFields" style="min-width:290px;">
+          <v-menu
+            v-model="menuOpen"
+            :close-on-content-click="false"
+            location="bottom start"
+            origin="top start"
+            :offset="[0, 8]"
+            :width="480"
+            :min-width="480"
+            transition="fade-transition"
+            :open-on-focus="false"
+            :open-on-hover="false"
+          >
             <template #activator="{ props }">
               <v-text-field
                 v-bind="props"
                 label="日期範圍"
                 v-model="formattedDateRange"
-                :value="formattedDateRange"
                 readonly
                 variant="underlined"
                 density="compact"
                 style="margin-top:20px;"
                 placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
                 prepend-icon="mdi-calendar-check"
+                class="dateicon"
                 clearable
-                @click="pick_date_dialog = true"
+                @click="menuOpen = true"
                 @click:clear="clearDates"
               />
             </template>
+              <div class="dp-stretch">
+              <VueDatePicker
+                :key="menuKey"
+                :start-date="today"
+                v-model="dpRange2"
+                :enable-time-picker="false"
+                range
+                :inline="true"
 
-            <v-card>
-              <v-card-text>
-                <v-locale-provider locale="zhHant">
-                  <v-date-picker
-                    v-model="tempRange"
-                    multiple
-                    hide-actions
-                    hide-header
-                    title="選擇日期範圍"
-
-                    :allowed-dates="() => true"
-                  />
-                </v-locale-provider>
-              </v-card-text>
-              <v-card-actions class="justify-end">
-                <v-btn variant="text" color="grey" @click="onCancel">取消</v-btn>
-                <v-btn variant="flat" color="primary" @click="onConfirm">確定</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-dialog>
+                :auto-apply="true"
+                locale="zh-TW"
+                week-num-name=""
+                :week-numbers="false"
+                :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+              />
+              </div>
+          </v-menu>
         </div>
       </Transition>
     </v-col>
@@ -103,6 +109,7 @@
             maxlength="25"
             inputmode="numeric"
             density="compact"
+            class="papericon"
             prepend-icon="mdi-archive-check-outline"
             placeholder="xxxxxxxxxxxx-xxxxxxxxxxxx"
             @input="formatCreditCard"
@@ -136,6 +143,40 @@
           </v-btn>
         </div>
       </div>
+
+      <!-- 在線員工按鍵 -->
+    <!--
+      <v-btn
+        class="ml-4 mt-1"
+        color="indigo-darken-4"
+        variant="outlined"
+        style="
+        position: relative;
+        left: 50px;
+        top: 5px;
+        min-width: 110px; max-height: 34px; border-radius: 6px;"
+        prepend-icon="mdi-account-details-outline"
+        @click="onClickOnlineUsers"
+        :disable="1==1"
+      >
+        在線員工
+      </v-btn>
+    -->
+      <v-btn
+        class="ml-4 mt-1"
+        color="indigo-darken-4"
+        variant="outlined"
+        style="
+        position:relative;
+        left:50px;
+        top:5px;
+        min-width:110px; max-height:34px; border-radius:6px;"
+        prepend-icon="mdi-account-details-outline"
+        @click="onClickOnlineUsers"
+      >
+        在線員工
+      </v-btn>
+
     </v-col>
   </v-row>
 
@@ -160,14 +201,16 @@
             <v-col cols="9">
               <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span style="font-size: 16px;">{{ todayDate }}</span>
+                  <span style="font-size: 16px;">~ 至 {{ twoWeeksAgoDate }}</span>
+                  <!--<span style="font-size: 16px;">{{ todayDate }} 至 {{ twoWeeksAgoDate }}</span>-->
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span>工單數</span>
                   <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>備料送出</span>
+                  <!--<span>備料送出</span>-->
+                  <span>備料準備中</span>
                   <v-progress-circular
                     :model-value="progress_value2"
                     :rotate="360"
@@ -180,7 +223,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝送出</span>
+                  <span>組裝進行中</span>
                   <v-progress-circular
                     :model-value="progress_value3"
                     :rotate="360"
@@ -193,7 +236,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>入庫登記</span>
+                  <span>等待入庫中</span>
                   <v-progress-circular
                     :model-value="progress_value4"
                     :rotate="360"
@@ -209,7 +252,7 @@
             <v-col cols="3" />
           </v-row>
           <div class="pa-4 text-center">
-            <v-dialog v-model="process_dialog" max-width="1280px">
+            <v-dialog v-model="process_dialog" min-width="1260px">
               <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配報工紀錄 -
@@ -234,14 +277,24 @@
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left" style="width:300px; padding-left:0px; padding-right:8px;">備料/組裝</th>
+                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
-                        <th class="text-left">數量</th>
-                        <th class="text-left">實際耗時(分)</th>
-                        <th class="text-left">實際工時(分)</th>
-                        <th class="text-left">單件標工(分)</th>
-                        <th class="text-left">人員註記</th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">數量</th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          實際耗時
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          <div style="line-height: 1.2; text-align: left;">
+                          實際工時<br />(分/PCS)
+                          </div>
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">
+                          <div style="line-height: 1.2; text-align: left;">
+                          單件標工<br />(分/PCS)
+                          </div>
+                        </th>
+                        <th class="text-left" style="padding-left:0px; padding-right:0px;">人員註記</th>
                       </tr>
                     </thead>
 
@@ -265,11 +318,73 @@
                         <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
-                        <td>{{ process_item.user_comment }}</td>
+                        <td style="font-size:12px; font-weight: 600;">{{ process_item.user_comment }}</td>
                       </tr>
                     </tbody>
                   </v-table>
                 </v-card-text>
+              </v-card>
+            </v-dialog>
+
+            <!-- 在線員工 dialog -->
+            <v-dialog v-model="onlineDialog" max-width="800px">
+              <v-card>
+                <v-card-title class="d-flex justify-space-between align-center">
+                  <span class="text-h6">在線員工</span>
+                  <v-btn icon="mdi-close" variant="text" @click="onlineDialog = false" />
+                </v-card-title>
+
+                <v-card-text>
+                  <v-data-table
+                    :headers="onlineHeaders"
+                    :items="filteredOnlineUsers"
+                    density="compact"
+                    class="elevation-1"
+                  >
+                    <!-- Dept 欄位 header + combobox -->
+                    <template v-slot:header.dep_name = "{ column }">
+                      <div class="d-flex align-center">
+                        <span class="mr-2">{{ column.title }}</span>
+                        <v-combobox
+                          v-model="selectedDeptForOnline"
+                          :items="deptOptionsForOnline"
+                          density="compact"
+                          hide-details
+                          variant="underlined"
+                          style="max-width: 150px;"
+                        />
+                      </div>
+                    </template>
+
+                    <!-- workHours 欄位 header + combobox -->
+                    <template #header.workHours="{ column }">
+                      <div class="d-flex align-center justify-end">
+                        <span class="mr-2">{{ column.title }}</span>
+                        <v-combobox
+                          v-model="selectedWorkHours"
+                          :items="workHourOptions"
+                          item-title="label"
+                          item-value="value"
+                          density="compact"
+                          hide-details
+                          variant="underlined"
+                          style="max-width: 180px;"
+                        />
+                      </div>
+                    </template>
+
+                    <!-- onLine 欄位，依值改背景色 -->
+                    <template v-slot:item.online="{ item }">
+                      <div class="text-center pa-1" :style="getOnlineCellStyle(item.online)">
+                        {{ item.online }}
+                      </div>
+                    </template>
+                  </v-data-table>
+                </v-card-text>
+
+                <v-card-actions class="justify-end">
+                  <v-btn color="primary" @click="onlineDialog = false">關閉</v-btn>
+                </v-card-actions>
               </v-card>
             </v-dialog>
           </div>
@@ -281,10 +396,13 @@
     <template v-slot:header.show1_ok = "{ column }">
       <div
         style="line-height: 1;
-        margin: 0; padding: 0;
+        margin: 0;
+        padding: 0;
+        padding-left: 18px;
         display: flex;
         cursor: pointer;
-        position: relative; left: 8px;"
+        position: relative;
+        left: 8px;"
       >
         <span>{{ column.title }}</span>
       </div>
@@ -360,16 +478,18 @@ import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 dayjs.extend(isSameOrBefore);             //啟用 plugin
 
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
 import { useRoute } from 'vue-router';
 
 import { myMixin } from '../mixins/common.js';
-
-//import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
 import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
+//import { users_and_deps_and_process }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
@@ -387,10 +507,11 @@ const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
-
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
+
 
 //=== component name ==
 defineComponent({ name: 'InformationForAssem' });
@@ -407,9 +528,17 @@ let intervalIdForProgressCircle = null;   // 5秒, 倒數計時器
 const route = useRoute();                 // Initialize router
 
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
-const pick_date_dialog = ref(false);      // 控制 v-pick-date Dialog 顯示
+const menuOpen = ref(false)
+const today = new Date()
+const menuKey = ref(0)
+
 const selectedRange = ref([])             // 最終選定日期範圍
-const tempRange = ref([])                 // 選單中暫存日期範圍
+//const tempRange = ref([])                 // 選單中暫存日期範圍
+
+const dpRange = ref(null)        // 外部值（清空用 null，不要 []）
+const dpRange2 = ref(null)        // 外部值（清空用 null，不要 []）
+const dpInternal = ref(null)     // 內部值：選取當下就會更新
+const formattedDateRange = ref('')// 綁給 <v-text-field>
 
 const fromDateStart = ref("");
 const fromDateValStart = ref([]);
@@ -421,10 +550,26 @@ const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
 const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
 
+const formatDate = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}/${m}/${d}`
+}
+
+const getTwoWeeksAgoFromString = (dateStr) => {
+  const [y, m, d] = dateStr.split('/').map(Number)
+  const base = new Date(y, m - 1, d)
+  base.setDate(base.getDate() + 12)
+  return formatDate(base)
+}
+
+const twoWeeksAgoDate = ref(getTwoWeeksAgoFromString(todayDate.value))
+
 const footerOptions = [
   { value: 5, title: '5' },
-  //{ value: 10, title: '10' },
-  //{ value: -1, title: '全部' }
+  { value: 10, title: '10' },
+  { value: -1, title: '全部' }
 ];
 
 const headers = [
@@ -437,6 +582,34 @@ const headers = [
   { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '', sortable: false, key: 'action' },
 ];
+
+const onlineHeaders = [
+  { title: '  ',  sortable: false, key: 'id', width: '2px' },
+  { title: '部門',     key: 'dep_name' },
+  { title: '員工姓名', key: 'emp_name' },
+  { title: '工時合計', key: 'workHours', align: 'end' },
+  { title: '在線資訊', key: 'online', align: 'end' },
+];
+
+// 工時篩選（0=當天工時，1=前一天，3=前三天總和，7=一星期總和）
+const selectedWorkHours = ref(0)  // 預設值 select = 0 => 當天工時
+
+const workHourOptions = ref([
+  { label: '當天',       value: 0 },
+  { label: '前一天',     value: 1 },
+  { label: '前三天內', value: 3 },
+  { label: '一星期內', value: 7 },
+])
+
+// 在線員工 dialog
+const onlineDialog = ref(false)
+
+// 原始員工資料（等你從後端拿）
+const allOnlineUsers = ref([])
+
+// 部門下拉選單 + 目前選取的部門
+const selectedDeptForOnline = ref('全部')
+const deptOptionsForOnline = ref(['全部'])
 
 //const localIp = 'localhost';
 //const serverIp = process.env.VUE_SOCKET_SERVER_IP || '192.168.32.50';
@@ -478,6 +651,21 @@ const selectedFileName = ref('');						                // 用於追蹤目前選�
 //=== watch ===
 setupGetBomsWatcher();
 
+watch(menuOpen, (open) => {
+  // 只有在尚未選到任何日期時才重掛，避免覆蓋使用者已選的月份
+  if (open && !dpRange2.value?.[0] && !dpRange2.value?.[1]) {
+    menuKey.value++           // 變更 key 觸發重掛
+  }
+})
+
+// 兩個日期都選到時，回填並關閉 menu
+watch(dpRange2, ([start, end]) => {
+  if (start && end) {
+    formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+    menuOpen.value = false
+  }
+})
+/*
 watch(tempRange, (newVal) => {
   console.log('目前選取型別與狀態：',
     newVal.map(d => ({
@@ -488,17 +676,7 @@ watch(tempRange, (newVal) => {
   );
   console.log('✅ 是否為 Date：', newVal.map(d => d instanceof Date));
 })
-
-watch(pick_date_dialog, (isOpen) => {
-  if (isOpen) {
-    if (selectedRange.value.length >= 2) {
-      const sorted = [...selectedRange.value].sort((a, b) => new Date(a) - new Date(b))
-      tempRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
-    } else {
-      tempRange.value = [...selectedRange.value]
-    }
-  }
-})
+*/
 
 watch(
   () => informations.value || [],
@@ -525,6 +703,13 @@ watch(selectedFile, (newVal) => {
     downloadFileFun();
   }
 });
+
+watch([dpInternal, dpRange], () => {
+  const src = dpInternal.value ?? dpRange.value
+  if (!src || !Array.isArray(src) || !src[0]) return
+  const [start, end] = src
+  formattedDateRange.value = end ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+}, { deep: true })
 
 //=== computed ===
 const tableStyle = computed(() => ({
@@ -555,6 +740,7 @@ const progress_value3 = computed(() => order_count.value !=0 ? (assemble_count.v
 const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.value / order_count.value)* 100 : 0 );
 
 // 顯示格式：yyyy-mm-dd ~ yyyy-mm-dd
+/*
 const formattedDateRange = computed(() => {
   const list = selectedRange.value
   if (list.length === 0) return ''
@@ -563,7 +749,7 @@ const formattedDateRange = computed(() => {
   const end = dayjs(sorted[sorted.length - 1]).format('YYYY-MM-DD')
   return start === end ? start : `${start} ~ ${end}`
 })
-
+*/
 const isInformationEmpty = computed(() => {
   return informations.value.length === 0;
 });
@@ -625,15 +811,6 @@ onMounted(async () => {
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
 
-  /*
-  console.log('取得本機ip...');
-  try {
-    localIP.value = await getLocalIP();
-    console.error('本機ip:', localIP.value);
-  } catch (err) {
-    console.error(err);
-  }
-  */
   /*
   console.log('等待socket連線...');
   try {
@@ -726,7 +903,78 @@ onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 
+
+// 根據部門過濾後，給 v-data-table 的 items
+const filteredOnlineUsers = computed(() => {
+  if (selectedDeptForOnline.value === '全部') {
+    return allOnlineUsers.value
+  }
+  return allOnlineUsers.value.filter(
+    (u) => u.dep_name === selectedDeptForOnline.value
+  )
+})
+
+// onLine 欄位背景顏色：0=淡綠, 1=淡紅, 2=淡黃
+const getOnlineCellStyle = (status) => {
+  const v = Number(status)
+  if (v === 0) {
+    return { backgroundColor: '#d5f5e3' } // 淡綠
+  }
+  if (v === 1) {
+    return { backgroundColor: '#f5b7b1' } // 淡紅
+  }
+  if (v === 2) {
+    return { backgroundColor: '#fcf3cf' } // 淡黃
+  }
+  return {}
+}
+
+const onClickOnlineUsers = async () => {
+  // 先開 dialog，避免資料還沒回來就看不到反應
+  onlineDialog.value = true
+
+  // 你可以先用假資料測，排除 template / reactivity 問題
+  const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
+  allOnlineUsers.value = resp || [];
+  /*
+  allOnlineUsers.value = [
+    { id: 1, emp_name: '王小明', dep_name: '裝配一課', online: 0 },
+    { id: 2, emp_name: '李小華', dep_name: '裝配二課', online: 1 },
+    { id: 3, emp_name: '陳大同', dep_name: '品保課',   online: 2 },
+  ]
+  */
+  // 再從 allOnlineUsers 裡面抓 dep_name 做選單
+  const src = allOnlineUsers.value || [];
+  const depts = Array.from(
+    new Set(src.map(u => u.dep_name).filter(Boolean))
+  );
+  deptOptionsForOnline.value = ['全部', ...depts];
+  /*
+  const depts = Array.from(
+    new Set(allOnlineUsers.value.map((u) => u.dep_name).filter(Boolean))
+  )
+  deptOptionsForOnline.value = ['全部', ...depts]
+  */
+
+  // ✅ 之後要串後端時，可以改成：
+  // const resp = await listOnlineUsers()
+  // allOnlineUsers.value = resp.data.users.map((u, idx) => ({
+  //   id: idx + 1,
+  //   name: u.emp_name,
+  //   dep_name: u.dep_name,
+  //   online: u.online,   // 0 / 1 / 2
+  // }))
+}
+
 //=== method ===
+const fmt = (d) => {
+  if (!d) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...")
@@ -734,6 +982,16 @@ const initialize = async () => {
     await listInformations();
 
     await listWorkingOrderStatus();
+    /*
+    //allOnlineUsers.value = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    allOnlineUsers.value = resp || [];
+
+    const depts = Array.from(
+      new Set(src.map(u => u.dep_name).filter(Boolean))
+    );
+    deptOptionsForOnline.value = ['全部', ...depts];
+    */
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -784,6 +1042,7 @@ const exportToExcelFun = async () => {
   // 確保欄位名稱與 obj 一致
   let updatedData = filteredData.map(item => ({
     order_num: item.order_num ?? '',
+    material_num: item.material_num ?? '',
     comment: item.comment ?? '',
     delivery_date: item.delivery_date ?? '',
     req_qty: item.req_qty ?? '',
@@ -797,8 +1056,6 @@ const exportToExcelFun = async () => {
 
   let payload = {
     blocks: updatedData,
-    //blocks: object_Desserts,
-    //count: object_Desserts.length,
     name: currentUser.value.name,
   };
 
@@ -1200,38 +1457,10 @@ const formatCreditCard = () => {
   orderNumRange.value = dashedNumber || ["", ""];
 };
 
-
 const clearDates = () => {
-  selectedRange.value = []
-  tempRange.value = []
-}
-
-// 點「確定」按鈕
-const onConfirm = () => {
-  const rawDates = tempRange.value.map(d => dayjs(d))
-  if (rawDates.length === 1) {
-    selectedRange.value = [rawDates[0].toDate()]
-  } else if (rawDates.length >= 2) {
-    const sorted = rawDates.sort((a, b) => a.unix() - b.unix())
-    selectedRange.value = generateDateRange(sorted[0], sorted[sorted.length - 1])
-  }
-  pick_date_dialog.value = false
-}
-
-// 點「取消」按鈕
-const onCancel = () => {
-  console.log('❌ 取消選擇');
-
-  if (selectedRange.value.length >= 1) {
-    const [start, end] = selectedRange.value.length === 1
-      ? [selectedRange.value[0], selectedRange.value[0]]
-      : [selectedRange.value[0], selectedRange.value[1]]
-
-    tempRange.value = generateDateRange(start, end)
-  } else {
-    tempRange.value = []
-  }
-  pick_date_dialog.value = false
+  dpRange2.value = [null, null]
+  formattedDateRange.value = ''
+  menuOpen.value = false  // 面板關掉
 }
 
 const showSnackbar = (message, color) => {
@@ -1273,7 +1502,6 @@ const showSnackbar = (message, color) => {
 }
 
 :deep(.v-overlay__content) {
-    //overflow: hidden !important;
   overflow-y: hidden !important;
   top: 20px !important;
   border-radius: 40px;
@@ -1293,7 +1521,7 @@ const showSnackbar = (message, color) => {
 }
 
 .v-input--custom-text-input-density .v-field--variant-underlined {
-  --v-input-control-height: 30px; //change here
+  --v-input-control-height: 30px;
   --v-field-padding-top: 0px;
   --v-field-padding-bottom: 0px;
 }
@@ -1313,9 +1541,20 @@ const showSnackbar = (message, color) => {
   //right: 0;
   width: 200px;
 }
+
+//:deep(.v-table.outer .v-table__wrapper) {
+//  overflow-y: hidden;
+//  max-height: 320px;
+//}
+
+//:deep(.v-table.outer .v-table__wrapper) {
+//  overflow-y: auto;
+//  max-height: none;
+//}
+
 :deep(.v-table.outer .v-table__wrapper) {
-  overflow-y: hidden;
-  max-height: 320px;
+  max-height: none;
+  overflow-y: visible;
 }
 
 //:deep(.v-data-table-footer__items-per-page) {
@@ -1503,4 +1742,62 @@ const showSnackbar = (message, color) => {
   transform: rotateX(90deg) translateZ(20px);
 }
 
+
+:deep(.dp__calendar_header .dp__calendar_header_item) {
+  font-size: 0.8em;
+}
+
+// ------- 沒有週數欄（共 7 欄）：一～五綠，六日紅 -------
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(-n+5)) {
+  background: #2e7d32; color: #fff;
+}
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(6)),
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(7)) {
+  background: #c62828; color: #fff;
+}
+
+// ------- 有週數欄（第 1 欄是週數）：星期從第 2～8 欄 -------
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(n+2):nth-child(-n+6)) {
+
+  background: #2e7d32; color: #fff;   // 第 2～6 欄 = 一～五 → 綠
+}
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(7)),
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(8)) {
+
+  background: #c62828; color: #fff;   // 第 7、8 欄 = 六、日 → 紅
+}
+
+// 如果週數欄（W）有開啟，不要上色它
+:deep(.dp-colored .dp__calendar_header_item_week) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+:deep(.dp__month_year_select) {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+:deep(.dateicon > .v-input__prepend .v-icon) {
+  color: #F48FB1 !important;
+}
+
+:deep(.papericon > .v-input__prepend .v-icon) {
+  color: #90CAF9 !important;
+}
+
+// 讓 DatePicker 撐滿 v-menu 設定的寬度
+:deep(.dp-stretch .dp__main) {
+  width: 100%;
+}
+
+:deep(.dp__outer_menu_wrap) {
+  width: 140%;
+}
 </style>

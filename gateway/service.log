@@ -843,3 +843,18 @@
 連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
 連線失敗: connect ECONNREFUSED 192.168.68.111:6600, mode: false, RUN_MODE: false
 連線時間: Thu Jan 15 2026 10:10:55 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Fri Jan 16 2026 15:27:36 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Jan 19 2026 14:31:18 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Jan 26 2026 11:28:34 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Tue Jan 27 2026 09:40:33 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Wed Jan 28 2026 11:29:27 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Thu Jan 29 2026 09:18:51 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Fri Jan 30 2026 11:59:30 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Sat Jan 31 2026 11:05:44 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Mon Feb 02 2026 10:06:08 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Tue Feb 03 2026 11:06:25 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false

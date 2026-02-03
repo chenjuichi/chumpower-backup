@@ -984,80 +984,6 @@ async function restoreAllMyTimers() {
   }
 }
 
-/* //2025-11-18
-async function refreshActiveCounts() {
-  console.log("@@@refreshActiveCounts...")
-
-  const rows = materials_and_assembles.value || []
-  if (!rows.length) return
-
-  // 準備查詢分組
-  const groups = { '21': [], '22': [], '23': [] }
-  for (const row of rows) {
-
-    console.log("row: ", row)
-
-    const pt = String(processTypeOf(row))
-    console.log("pt: ", pt)
-    if (row.id != null) groups[pt].push(Number(row.id))
-  }
-
-  // 呼叫 API
-  const res = await getActiveCountMap({
-    key: 'material',
-    groups
-  })
-  console.log('getActiveCountMap:', res)
-
-  // 正規化回傳
-  const incoming = (res && res.counts) ? res.counts : {}
-
-  // ✅ 重點：維持每個 activeMap[pt] 的「同一個物件引用」，
-  // 先清空，再覆蓋新資料
-  for (const pt of PROCESS_TYPES) {
-    const dst = activeMap[pt]            // 既有 reactive 物件
-    const src = incoming[pt] || {}       // 新資料（可能不存在）
-
-    // 1) 清空舊 key
-    for (const k of Object.keys(dst)) delete dst[k]
-
-    // 2) 覆蓋新 key
-    for (const [id, cnt] of Object.entries(src)) {
-      dst[String(id)] = Number(cnt) || 0
-    }
-  }
-
-  //（可選）如果你還在每列上放快取欄位，這裡同步一下：
-  for (const row of rows) {
-    const pt = String(processTypeOf(row))
-    const id = String(row.id)
-    row.active_user_count = Number(activeMap[pt][id] || 0)
-  }
-
-  await listMaterialsAndAssembles();
-
-  let payload = {
-    user_id: currentUser.value.empID,
-  };
-  await getCountMaterialsAndAssemblesByUser(payload);
-}
-*/
-
-/*
-async function restoreMyTimers() {
-  const uid = currentUser.value.empID
-  if (!uid) return
-  for (const row of materials_and_assembles.value || []) {
-    const t = getT(row)
-    try {
-      await t.startProcess(row.material_id ?? row.id, processTypeOf(row), uid, row.assemble_id)
-      // 不 toggle，避免誤開暫停的工單
-    } catch(e) {
-      console.debug('restore timer skip', row.id, e);
-    }
-  }
-}
-*/
 function makeStub() {
   const isPaused = ref(true)
   return {
@@ -1160,17 +1086,13 @@ function badgeProps(row) {
 
   const targetIndex = materials_and_assembles.value.findIndex(
     (kk) => kk.index === row.index
-    //(kk) => kk.index === selectedAsmId.value
   );
-  console.log("targetIndex:", targetIndex)
+  //console.log("targetIndex:", targetIndex)
 
-  console.log("count:", count)
-  //if (materials_and_assembles.value[targetIndex].index==selectedAsmId.value && selectedAsmId.value ==null ) {
+  //console.log("count:", count)
   materials_and_assembles.value[targetIndex].count=count
-  //selectedAsmId.value =null;
-  //}
 
-  console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
+  //console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
 
   return {
     modelValue: started, // 對應 :model-value
@@ -1340,6 +1262,10 @@ const updateItem = async (item) => {
     //item.input_disable = true;
   }
 
+  const targetIndex = materials_and_assembles.value.findIndex(
+    (kk) => kk.index === item.index
+  );
+
   // 用 Vue 的方式確保觸發響應式更新
   materials_and_assembles.value[targetIndex] = {
     ...materials_and_assembles.value[targetIndex],
@@ -1396,7 +1322,6 @@ async function onDelete(item) {
     window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   }
 }
-
 
 const removeMaterialsAndRelationTableFun = async (id) => {
   console.log("removeMaterialsAndRelationTableFun()...");

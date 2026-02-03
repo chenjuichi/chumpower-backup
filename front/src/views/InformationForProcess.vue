@@ -210,7 +210,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <!--<span>備料送出</span>-->
-                  <span>備料準備中</span>
+                  <span>領料準備中</span>
                   <v-progress-circular
                     :model-value="progress_value2"
                     :rotate="360"
@@ -223,7 +223,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝進行中</span>
+                  <span>加工進行中</span>
                   <v-progress-circular
                     :model-value="progress_value3"
                     :rotate="360"

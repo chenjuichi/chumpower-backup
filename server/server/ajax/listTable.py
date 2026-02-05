@@ -2446,8 +2446,31 @@ def list_informations_p():
       #print("total_process_records:", total_process_records)
       cleaned_comment = record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
 
-      temp_show2_ok = int(record.show2_ok)
-      temp_show2_ok_str = str2[temp_show2_ok]
+      #temp_show2_ok = int(record.show2_ok)
+      #temp_show2_ok_str = str2[temp_show2_ok]
+      raw = getattr(record, "show2_ok", None)
+      num = -1
+      try:
+          num = int(raw)
+      except Exception as e:
+          print("❌ show2_ok parse failed",
+                "material_id:", record.id,
+                "order_num:", record.order_num,
+                "raw:", raw,
+                "err:", repr(e))
+          num = -1
+
+      # ✅ 兼容兩種：0-based(0~8) / 1-based(1~9)
+      if 0 <= num < len(str2):
+          temp_show2_ok_str = str2[num]
+      elif 1 <= num <= len(str2):
+          temp_show2_ok_str = str2[num - 1]
+      else:
+          print("❌ show2_ok OUT OF RANGE", "num:", num, "len(str2):", len(str2))
+          temp_show2_ok_str = f"未知狀態({raw})"
+
+      temp_show2_ok = num  # 後面 if temp_show2_ok == 5 ... 才不會用到舊值
+      print("[DEBUG listInformationsP] id:", record.id, "order:", record.order_num, "show2_ok:", raw, "mapped:", temp_show2_ok_str)
 
       # 處理 show2_ok 的情況
       if temp_show2_ok == 5 or temp_show2_ok == 7 or temp_show2_ok == 9:
@@ -2475,7 +2498,7 @@ def list_informations_p():
           None
         )
 
-        if material_obj and material_obj._assemble:
+        if material_obj and material_obj._assemble: # if_loop_a
           # seq_num 轉 int，比大小才安全
           valid_assembles = [
             a for a in material_obj._assemble
@@ -2486,7 +2509,7 @@ def list_informations_p():
             )
           ]
 
-          if valid_assembles:
+          if valid_assembles:   # if_loop_b
             min_assemble_record = min(
               valid_assembles,
               key=lambda a: int(a.seq_num)
@@ -2495,7 +2518,15 @@ def list_informations_p():
 
             part_info = part_info_map.get(show3_ok)
             show_comment = part_info['comment']
+          # end if_loop_b
+        # end if_loop_a
 
+      # ✅ 入庫(成品)現況數量：用 p_product 累加比較準
+      stockin_total = (
+          s.query(func.coalesce(func.sum(P_Product.allOk_qty), 0))
+          .filter(P_Product.material_id == record.id)
+          .scalar()
+      ) or 0
 
       _object = {
         'id': record.id,                                #訂單編號的table id
@@ -2505,7 +2536,8 @@ def list_informations_p():
         'whichStation': record.whichStation,
         'req_qty': record.material_qty,                 #需求數量
         'delivery_date':record.material_delivery_date,  #交期
-        'delivery_qty':record.delivery_qty,             #現況數量
+        #'delivery_qty':record.delivery_qty,             #現況數量
+        'delivery_qty': int(stockin_total) if int(stockin_total) > 0 else record.delivery_qty,
         'comment': cleaned_comment,                     #說明
         'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度(上面文字說明)
         'show2_ok' : temp_show2_ok_str,                 #現況進度(下面文字說明)

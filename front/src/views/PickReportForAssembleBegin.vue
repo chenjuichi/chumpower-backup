@@ -1945,9 +1945,17 @@ const fetchBoms = async (item) => {
     return;
   }
 
-  const res = await getOrderPickedBoms({
-    order_num: item.order_num,
-  });
+  if (item.merge_enabled) {
+    const res = await getOrderPickedBoms({
+      order_num: item.order_num,
+      //id: item.id,
+    });
+  } else {
+    const res = await getOrderPickedBoms({
+      //order_num: item.order_num,
+      id: item.id,
+    });
+  }
 
   boms.value = res.data?.boms || [];
 };

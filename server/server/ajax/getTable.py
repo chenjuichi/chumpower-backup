@@ -681,11 +681,11 @@ def active_user_ids_by_material_multi_p(
     sep=', '
 ):
     result = {str(pt): {} for pt in process_types}
-    print("active_user_ids_by_material_multi_p(), result", result)
+    #print("active_user_ids_by_material_multi_p(), result", result)
 
     if not material_ids:
         return result
-    print("active_user_ids_by_material_multi_p()....",only_user_id, include_paused,has_started,)
+    #print("active_user_ids_by_material_multi_p()....",only_user_id, include_paused,has_started,)
 
     q = build_active_process_query_p(
         s, material_ids, process_types,
@@ -700,7 +700,7 @@ def active_user_ids_by_material_multi_p(
         P_Process.material_id,
         P_Process.user_id
     ).all()
-    print("active_user_ids_by_material_multi_p(), rows:", rows)
+    #print("active_user_ids_by_material_multi_p(), rows:", rows)
 
     buckets = {}                  # (pt_str, mid_str) -> set(uids)
     for pt, mid, uid in rows:
@@ -982,11 +982,64 @@ def login2():
 @getTable.route("/getOrderPickedBoms", methods=["POST"])
 def get_order_picked_boms():
     data = request.get_json() or {}
-    order_num = data.get("order_num")
-    if not order_num:
-        return jsonify(status=False, boms=[]), 400
+    order_num = (data.get("order_num") or "").strip()
+    _id = data.get("id")  # ✅ 允許用 material_id
+
+    # ✅ 兩個至少要有一個
+    if not order_num and _id in (None, "", 0, "0"):
+      return jsonify(status=False, boms=[], error="missing order_num or id"), 400
 
     s = Session()
+    try:
+        # ✅ case 1: 用 order_num 查
+        if order_num:
+            mids = [r[0] for r in s.query(Material.id).filter(Material.order_num == order_num).all()]
+            if not mids:
+                return jsonify(status=False, boms=[])
+
+        # ✅ case 2: 用 id 查（material_id）
+        else:
+            try:
+                mid = int(_id)
+            except (TypeError, ValueError):
+                return jsonify(status=False, boms=[], error="id must be int"), 400
+
+            m = s.query(Material).filter(Material.id == mid).one_or_none()
+            if not m:
+                return jsonify(status=False, boms=[])
+            order_num = (m.order_num or "").strip()
+            mids = [mid]
+
+        # 只回「已領料」(receive=True) 的 BOM，並合併 A1/A2/A3
+        boms = (
+            s.query(Bom)
+             .filter(Bom.material_id.in_(mids))
+             .filter(Bom.receive.is_(True))
+             .all()
+        )
+
+        # 去重：同料號+序號視為同一筆（你也可改成只用 material_num）
+        merged = {}
+        for bom in boms:
+            key = (bom.material_num, bom.seq_num)
+            if key not in merged:
+                merged[key] = {
+                    "id": bom.id,
+                    "order_num": order_num,          # ✅ 確保 id 模式也能回 order_num
+                    "seq_num": bom.seq_num,
+                    "material_num": bom.material_num,
+                    "mtl_comment": bom.material_comment,
+                    "qty": bom.req_qty,
+                    "receive": bom.receive,
+                    "lack": bom.lack,
+                    "isPickOK": bom.isPickOK,
+                }
+
+        return jsonify(status=True, boms=list(merged.values()))
+    finally:
+        s.close()
+
+"""
     try:
         mids = [r[0] for r in s.query(Material.id).filter(Material.order_num == order_num).all()]
         if not mids:
@@ -1020,6 +1073,7 @@ def get_order_picked_boms():
         return jsonify(status=True, boms=list(merged.values()))
     finally:
         s.close()
+"""
 
 
 # list all bom
@@ -2952,7 +3006,7 @@ def get_users_deps_processes():
 
         start_str = f"{start_day.strftime('%Y-%m-%d')} 00:00:00"
         end_str   = f"{end_day.strftime('%Y-%m-%d')} 23:59:59"
-        print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
+        #print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
 
         s = Session()
 
@@ -2960,50 +3014,50 @@ def get_users_deps_processes():
         users = [u.__dict__ for u in _objects]
         index=0
         for user in users:
-            # 依你原本邏輯：只留下 isRemoved == True 的使用者
-            if user['isRemoved'] == False:
-                continue
+          # 依你原本邏輯：只留下 isRemoved == True 的使用者
+          if user['isRemoved'] == False:
+              continue
 
-            emp_id = user['emp_id']
+          emp_id = user['emp_id']
 
-            # 計算這段日期內的 elapsedActive_time 總和
-            total_elapsed = (
-                s.query(func.coalesce(func.sum(Process.elapsedActive_time), 0))
-                .filter(
-                    Process.user_id == emp_id,
-                    Process.begin_time != '',
-                    Process.end_time != '',
-                    Process.begin_time >= start_str,
-                    Process.begin_time <= end_str,
-                    Process.end_time >= start_str,
-                    Process.end_time <= end_str,
-                )
-                .scalar()
-            ) or 0
+          # 計算這段日期內的 elapsedActive_time 總和
+          total_elapsed = (
+              s.query(func.coalesce(func.sum(Process.elapsedActive_time), 0))
+              .filter(
+                  Process.user_id == emp_id,
+                  Process.begin_time != '',
+                  Process.end_time != '',
+                  Process.begin_time >= start_str,
+                  Process.begin_time <= end_str,
+                  Process.end_time >= start_str,
+                  Process.end_time <= end_str,
+              )
+              .scalar()
+          ) or 0
 
-            total_elapsed = int(total_elapsed)
-            #print("total_elapsed:", total_elapsed)
-            # 轉成 hh:mm:ss 文字
-            h = total_elapsed // 3600
-            m = (total_elapsed % 3600) // 60
-            sec = total_elapsed % 60
-            total_str = f"{h:02d}:{m:02d}:{sec:02d}"
-            index = index + 1
-            _user_object = {
-              'id': index,
-              'emp_id': emp_id,
-              'emp_name': user['emp_name'],
-              'dep_name': user['dep_name'].split('-', 1)[1],
+          total_elapsed = int(total_elapsed)
+          #print("total_elapsed:", total_elapsed)
+          # 轉成 hh:mm:ss 文字
+          h = total_elapsed // 3600
+          m = (total_elapsed % 3600) // 60
+          sec = total_elapsed % 60
+          total_str = f"{h:02d}:{m:02d}:{sec:02d}"
+          index = index + 1
+          _user_object = {
+            'id': index,
+            'emp_id': emp_id,
+            'emp_name': user['emp_name'],
+            'dep_name': user['dep_name'].split('-', 1)[1],
 
-              #'elapsedActive_range_secs':  total_elapsed,
-              #'elapsedActive_range_str':  total_str,
-              #'elapsedActive_select':  select_days,
-              'workHours': total_str,
-              'online': random.randint(0, 2),
-            }
+            #'elapsedActive_range_secs':  total_elapsed,
+            #'elapsedActive_range_str':  total_str,
+            #'elapsedActive_select':  select_days,
+            'workHours': total_str,
+            'online': random.randint(0, 2),
+          }
 
-            _user_results.append(_user_object)
-
+          _user_results.append(_user_object)
+        # end for_loop
 
         temp_len = len(_user_results)
         print("getUsersDepsProcesses, 總數: ", temp_len)
@@ -3024,13 +3078,128 @@ def get_users_deps_processes():
         s.close()
 
 
+
+@getTable.route("/getUsersDepsProcessesP", methods=['POST'])
+def get_users_deps_processes_p():
+    print("getUsersDepsProcessesP....")
+
+    _user_results = []
+    return_value = True
+    raw_select = 0
+    """
+    if request.method == 'GET':
+        # 從 query 取
+        raw_select = request.args.get('select', 0)
+    else:
+    """
+        # 從 JSON 取
+    #data = request.get_json(silent=True) or {}
+    data = request.get_json()
+
+    raw_select = data.get('select', 0)
+
+    try:
+        # 取得 select 參數（0, 1, 3, 7），預設 0
+        raw_select = request.args.get('select', '0')
+        try:
+            select_days = int(raw_select)
+        except ValueError:
+            select_days = 0
+
+        # 只允許 0,1,3,7，其它當 0
+        if select_days not in (0, 1, 3, 7):
+            select_days = 0
+
+        today = dt.now().date()
+
+        if select_days <= 0:
+            # select = 0 → 只算今天
+            start_day = today
+            end_day = today
+        else:
+            # select = 1/3/7 → 算「前 N 天」，不含今天
+            # 例如 select=3：今天 11/23，範圍是 11/20 ~ 11/22
+            start_day = today - timedelta(days=select_days)
+            end_day = today - timedelta(days=1)
+
+        start_str = f"{start_day.strftime('%Y-%m-%d')} 00:00:00"
+        end_str   = f"{end_day.strftime('%Y-%m-%d')} 23:59:59"
+        #print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
+
+        s = Session()
+
+        _objects = s.query(User).all()
+        users = [u.__dict__ for u in _objects]
+        index=0
+        for user in users:
+          # 依你原本邏輯：只留下 isRemoved == True 的使用者
+          if user['isRemoved'] == False:
+              continue
+
+          emp_id = user['emp_id']
+
+          # 計算這段日期內的 elapsedActive_time 總和
+          total_elapsed = (
+              s.query(func.coalesce(func.sum(P_Process.elapsedActive_time), 0))
+              .filter(
+                  P_Process.user_id == emp_id,
+                  P_Process.begin_time != '',
+                  P_Process.end_time != '',
+                  P_Process.begin_time >= start_str,
+                  P_Process.begin_time <= end_str,
+                  P_Process.end_time >= start_str,
+                  P_Process.end_time <= end_str,
+              )
+              .scalar()
+          ) or 0
+
+          total_elapsed = int(total_elapsed)
+          #print("total_elapsed:", total_elapsed)
+          # 轉成 hh:mm:ss 文字
+          h = total_elapsed // 3600
+          m = (total_elapsed % 3600) // 60
+          sec = total_elapsed % 60
+          total_str = f"{h:02d}:{m:02d}:{sec:02d}"
+          index = index + 1
+          _user_object = {
+            'id': index,
+            'emp_id': emp_id,
+            'emp_name': user['emp_name'],
+            'dep_name': user['dep_name'].split('-', 1)[1],
+
+            'workHours': total_str,
+            'online': random.randint(0, 2),
+          }
+
+          _user_results.append(_user_object)
+        # end for_loop
+
+        temp_len = len(_user_results)
+        print("getUsersDepsProcessesP, 總數: ", temp_len)
+
+        return jsonify({
+          'status': return_value,
+          'users_and_deps_and_process': _user_results,
+        })
+
+    except Exception as e:
+      s.rollback()
+      print("list_users_deps_processes_p error:", e)
+      return jsonify({
+        'status': False,
+        'error': str(e),
+      })
+    finally:
+      s.close()
+
+
 @getTable.route("/getProcessesByOrderNum", methods=['POST'])
 def get_processes_by_order_num():
   print("getProcessesByOrderNum....")
 
   request_data = request.get_json()
   _order_num = request_data['order_num']
-  print("order_num:", _order_num)
+  #print("order_num:", _order_num)
 
   code_to_name = {
       1:  '備料',
@@ -3101,7 +3270,7 @@ def get_processes_by_order_num():
 
         seq_num += 1
         status = code_to_name.get(record.process_type, '空白')
-        print("step1...", status)
+        #print("step1...", status)
 
         # ---- 使用者名稱附註（若有） ----
         name_core = (record.user_id or "").lstrip("0")
@@ -3209,13 +3378,11 @@ def get_processes_by_order_num():
         }
         _results.append(_object)
 
-
   s.close()
 
   # 依 create_at 排序
   #_results = sorted(_results, key=lambda x: x['create_at'])
   _results = sorted(_results, key=lambda x: x['seq_num'])
-
 
   return jsonify({'processes': _results})
 
@@ -3226,7 +3393,7 @@ def get_processes_by_order_num_p():
 
     request_data = request.get_json()
     _order_num = request_data['order_num']
-    print("order_num:", _order_num)
+    #print("order_num:", _order_num)
 
     code_to_name = {
         1:  '領料',
@@ -3248,20 +3415,20 @@ def get_processes_by_order_num_p():
     part_info_map = {}
     step_to_part_code_map = {}
     for p in s.query(P_Part).all():
-        code = (p.part_code or '').strip()
-        if not code:
-            continue
-        step = int(p.process_step_code or 0)
+      code = (p.part_code or '').strip()
+      if not code:
+        continue
+      step = int(p.process_step_code or 0)
 
-        part_info_map[code] = {
-            'comment': (p.part_comment or '').strip(),
-            'process_step_code': step
-        }
+      part_info_map[code] = {
+        'comment': (p.part_comment or '').strip(),
+        'process_step_code': step
+      }
 
-        # 反查：step_code -> part_code
-        # 若同 step_code 有多筆，你可以決定要不要覆蓋
-        if step and step not in step_to_part_code_map:
-            step_to_part_code_map[step] = code
+      # 反查：step_code -> part_code
+      # 若同 step_code 有多筆，你可以決定要不要覆蓋
+      if step and step not in step_to_part_code_map:
+        step_to_part_code_map[step] = code
 
 
     material = s.query(P_Material).filter(P_Material.order_num == _order_num).first()
@@ -3279,6 +3446,11 @@ def get_processes_by_order_num_p():
         alarm_proc_record = [a for a in assemble_records if (a.material_id == record.material_id and a.id == record.assemble_id and record.has_started)]
         #print("1.alarm_proc_record:", alarm_proc_record)
         #print("2.alarm_proc_record:", alarm_proc_record.process_step_code)
+        print("1.alarm_proc_record:", alarm_proc_record)
+        if alarm_proc_record:
+            print("2.alarm_proc_record:", alarm_proc_record[0].process_step_code if alarm_proc_record else None)
+        else:
+            print("2.alarm_proc_record: None")
 
         if len(alarm_proc_record) == 1:
             alarm_msg_enable = alarm_proc_record[0].alarm_enable
@@ -3288,8 +3460,6 @@ def get_processes_by_order_num_p():
             else:
               alarm_msg_string = ''
 
-            #if record.process_type == 21:
-            #  alarm_msg_string = alarm_proc_record[0].Incoming1_Abnormal
         else:
             alarm_msg_enable = True
             alarm_msg_isAssembleFirstAlarm = True
@@ -3313,10 +3483,11 @@ def get_processes_by_order_num_p():
 
         status = code_to_name.get(record.process_type, '空白')
         show_code = 0
-        if record.assemble_id != 0:   # assemble_id_if
+        #if record.assemble_id != 0:   # assemble_id_if
+        if record.assemble_id != 0 and record.process_type not in {1, 5, 6, 31}:
           assm_list = [a for a in assemble_records if (a.material_id == record.material_id and a.id == record.assemble_id)]
           assm = assm_list[0] if assm_list else None
-          print("assm:", assm)
+          #print("assm:", assm)
 
           if assm:
               # ✅ part_info_map 的 key 是 P_Part.part_code（字串，如 'B100-03'），不是 assemble.process_step_code
@@ -3333,7 +3504,7 @@ def get_processes_by_order_num_p():
               show_code = 0
         # end assemble_id_if
 
-        print("hello, step1...", status, show_code)
+        #print("hello, step1...", status, show_code)
         # ---- 使用者名稱附註（若有） ----
         name_core = (record.user_id or "").lstrip("0")
         #if record.process_type in {1, 5, 6, 21, 22, 23, 31}:
@@ -3346,7 +3517,7 @@ def get_processes_by_order_num_p():
         temp_period_time = ""
         work_time_str = ""
         single_std_time_str = ""
-        print("record.process_type:", record.process_type)
+        #print("record.process_type:", record.process_type)
         if record.process_type not in {5, 6}:
             start_time = parse_dt_maybe_aw(record.begin_time)
             end_time   = parse_dt_maybe_aw(record.end_time)
@@ -3354,7 +3525,7 @@ def get_processes_by_order_num_p():
             if show_code > 1000:
               status = part_info['comment']
 
-            print("status: ", status)
+            #print("status: ", status)
             single_std_time_str = ""  # 預設空字串
 
             # 1) 找到對應這筆製程的 part_code
@@ -3377,7 +3548,7 @@ def get_processes_by_order_num_p():
                 #    直接從 material 動態取值
                 val = getattr(material, col_name, None)
                 single_std_time_str = "" if val in (None, "") else str(val)
-            print("single_std_time_str: ", single_std_time_str)
+            #print("single_std_time_str: ", single_std_time_str)
 
             if start_time:
                 if end_time:
@@ -3458,11 +3629,9 @@ def get_processes_by_order_num_p():
 
     s.close()
 
-    print("_results:", _results)
-
+    #print("_results:", _results)
     # 依 create_at 排序
     _results = sorted(_results, key=lambda x: x['create_at'])
-
     return jsonify({'processes': _results})
 
 
@@ -3473,7 +3642,7 @@ def get_abnormal_causes_by_history():
 
     data = request.json
     _history_flag = data.get('history_flag', False)
-    print("history_flag:", _history_flag)
+    #print("history_flag:", _history_flag)
 
     s = Session()
     _results = []
@@ -3492,7 +3661,18 @@ def get_abnormal_causes_by_history():
 
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
-    print("getWarehouseForAssembleByHistory()...")
+    print("getWarehouseForAssembleByHistory...")
+
+    data = request.json
+    #history_flag = data.get('history_flag')
+    history_flag = bool(data.get('history_flag', False))
+    print("history_flag:", history_flag)
+
+    def to_int01(v, default=0):
+      try:
+          return 1 if int(v) == 1 else 0
+      except Exception:
+          return default
 
     s = Session()
     try:
@@ -3524,6 +3704,7 @@ def get_Warehouse_For_assemble_by_history():
         rows = []
         rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
         rows.extend([(m, a, p, "process")  for (m, a, p) in p_q.all()])
+        print("rows:", len(rows))
 
         """
         for m, a in q.all():
@@ -3560,13 +3741,37 @@ def get_Warehouse_For_assemble_by_history():
         index=0
         #for m, a, p in rows:
         for m, a, p, line in rows:
-            isWarehouseStationShow = bool(g(a, "isWarehouseStationShow", 0))
+            #isWarehouseStationShow = bool(g(a, "isWarehouseStationShow", 0))
+            #isStockIn = bool(g(a, "isStockIn", 1))  # ✅ default 改成 0（未入庫）
+            isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
+            isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
+
+            isStockIn_abnormal_qty = bool(g(a, "abnormal_qty", 0))
+            isStockIn_allOk_qty = bool(g(a, "allOk_qty", 0))
+            print("history_flag, isWarehouseStationShow, isStockIn:", history_flag, isWarehouseStationShow, isStockIn)
+
+            # history_flag=False：只顯示 未入庫（isStockIn==0）
+            # history_flag=True：只顯示 已入庫（isStockIn==1）
+
+            # 不需要入庫的，兩種清單都不顯示
+            if not isStockIn or (isStockIn_abnormal_qty !=0 and isStockIn_allOk_qty == 0):
+                continue
+
+            if history_flag:
+                # ✅ 歷史：已入庫(或定義為歷史顯示) 的才顯示
+                if not isWarehouseStationShow:
+                    continue
+            else:
+                # 若你也想用 isWarehouseStationShow 控制等待清單，可保留
+                if isWarehouseStationShow:
+                    continue
+
             if isWarehouseStationShow:
               continue
 
-            isStockIn = bool(g(a, "isStockIn", True))
-            if not isStockIn:
-              continue
+            #isStockIn = bool(g(a, "isStockIn", True))
+            #if not isStockIn:
+            #  continue
 
             cleaned_comment = (g(m, "material_comment", "") or "").strip()
             material_id=g(m, "id")
@@ -3613,13 +3818,10 @@ def get_Warehouse_For_assemble_by_history():
 
                 "process_id":           g(p, "id"),
                 "assemble_id":          assemble_id,
-                "delivery_qty":         g(p, "process_work_time_qty"),    # 到庫數量
-                #"must_allOk_qty":       g(p, "must_allOk_qty", 0),        # 應入庫總數量
-                "must_allOk_qty":       g(m, "must_allOk_qty", 0),
-                #"total_allOk_qty":      process_total,                    # 已入庫登記總數量
-                "total_allOk_qty":      total_allOk_qty,                    # 已入庫登記總數量
-                #"allOk_qty":            g(p, "allOk_qty", 0),             # 入庫數量
-                "allOk_qty":            g(a, "allOk_qty", 0),             # 入庫數量
+                "delivery_qty":         g(p, "process_work_time_qty"),  # 到庫數量
+                "must_allOk_qty":       g(m, "must_allOk_qty", 0),      # 應入庫總數量
+                "total_allOk_qty":      total_allOk_qty,                # 已入庫總數量
+                "allOk_qty":            g(a, "allOk_qty", 0),           # 入庫數量
                 "isWarehouseStationShow": isWarehouseStationShow,
 
                 "normal_work_time":     g(p, "normal_work_time", 0),

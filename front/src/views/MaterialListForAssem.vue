@@ -269,31 +269,22 @@
                     <v-col cols="12" md="6">
                       <div class="example ex1" :style="{ display: group1_radio_btn_disable ? 'none' : '' }">
                         <span class="ex1-title">備料是否併單</span>
-                          <div class="radio-group">
+                        <div class="radio-group">
                           <label class="radio red">
-                            <input
-                              type="radio"
-                              name="group1"
-                              :value="'red'"
-                              v-model="group1"
-                            />
+                            <input type="radio" name="group1" :value="'red'" v-model="group1" />
                             <span>不併單</span>
                           </label>
                           <label class="radio blue">
-                            <input
-                              type="radio"
-                              name="group1"
-                              :value="'blue'"
-                              v-model="group1"
-                            />
+                            <input type="radio" name="group1" :value="'blue'" v-model="group1" />
                             <span>併單</span>
                           </label>
                         </div>
                       </div>
+
+                      <div class="example ex1" v-show="group1_radio_btn_disable">
+                        <span class="ex1-title">備註: 備料缺件預設為併單</span>
+                      </div>
                     </v-col>
-
-
-
                   </v-row>
                   <!--第 3 列-->
                   <v-row>
@@ -2670,7 +2661,7 @@ const editOrderNum = async (item) => {
   console.log("editOrderNum(),", item);
 
   group1.value = item.merge_enabled ? 'blue' : 'red';
-  group1_radio_btn_disable.value = !item.merge_radio_disable;
+  group1_radio_btn_disable.value = !item.merge_radio_disable || item.isTakeOk;
 
   selectedId.value = item.id;
   selectedOrderNum.value = item.order_num;
@@ -3110,6 +3101,14 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
 
   await fetchMaterials();
 
+  payload = {                   // 2. 更新 materials 資料，isLackMaterial = 99
+    id: editedRecord.value.id,
+    record_name: 'isLackMaterial',
+    record_data: 99,            // 不缺料flag
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isLackMaterial = 99;
+
   if (!take_out) {                     // 該筆訂單檢料完成且缺料
     payload = {
       copy_id: editedRecord.value.id,
@@ -3125,9 +3124,11 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       id: material_copy.value.id,
       record_name: 'isLackMaterial',
       record_data: 0,          //缺料flag
+      //record_data: 99,          //沒有缺料flag
     };
     await updateMaterial(payload);
     material_copy.value.isLackMaterial = 0;
+    //material_copy.value.isLackMaterial = 99;
 
     materials.value.push(material_copy.value);
 
@@ -3141,6 +3142,15 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       return a.order_num.localeCompare(b.order_num);
     });
   } // end if
+  ////} else {
+  //  payload = {                   // 2. 更新 materials 資料，isLackMaterial = 99
+  //    id: editedRecord.value.id,
+  //    record_name: 'isLackMaterial',
+  //    record_data: 99,            // 不缺料flag
+  //  };
+  //  await updateMaterial(payload);
+  //  editedRecord.value.isLackMaterial = 99;
+  ////}
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回

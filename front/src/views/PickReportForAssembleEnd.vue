@@ -2865,7 +2865,7 @@ const onClickAbnormal = async (rawItem) => {
       setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
     }
 
-    // ===== 3) UI 樂觀更新（一次到位，避免前後不一致）=====
+    // ===== 3) UI更新，避免前後不一致 =====
     const optimisticRow = {
       ...(targetIndex !== -1 ? list[targetIndex] : rawItem),
       alarm_enable: false,                  // 異常 → 鈴鐺關

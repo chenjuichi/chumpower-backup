@@ -514,8 +514,7 @@ const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 //const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
-const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
-const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
+//const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
@@ -529,7 +528,9 @@ import { order_count, prepare_count, assemble_count, warehouse_count, order_num_
 const listInformations = p_apiOperation('get', '/listInformationsP');
 const listWorkingOrderStatus = p_apiOperation('get', '/listWorkingOrderStatusP');
 
+const exportToExcelForProcessInformation = p_apiOperation('post', '/exportToExcelForProcessInformation');
 const getProcessesByOrderNum = p_apiOperation('post', '/getProcessesByOrderNumP');
+const getUsersDepsProcesses = p_apiOperation('post', '/getUsersDepsProcessesP');
 
 //=== component name ==
 defineComponent({ name: 'InformationForProcess' });
@@ -1064,6 +1065,7 @@ const exportToExcelFun = async () => {
   // 確保欄位名稱與 obj 一致
   let updatedData = filteredData.map(item => ({
     order_num: item.order_num ?? '',
+    material_num: item.material_num ?? '',
     comment: item.comment ?? '',
     delivery_date: item.delivery_date ?? '',
     req_qty: item.req_qty ?? '',
@@ -1083,7 +1085,7 @@ const exportToExcelFun = async () => {
   };
 
   try {
-    const export_file_data = await exportToExcelForAssembleInformation(payload);
+    const export_file_data = await exportToExcelForProcessInformation(payload);
     console.log("export_file_dat:", export_file_data);
 
     if (export_file_data.status) {

@@ -38,6 +38,15 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+def _to_int_or_none(v):
+  if v is None or v == "":
+    return None
+  try:
+    return int(v)
+  except (TypeError, ValueError):
+    raise ValueError("必須是整數或空字串/Null")
+
+
 def order_has_lack(session, order_num: str) -> bool:
     # 只要同一張訂單底下（包含 A1/A2/A3）任何 BOM.receive == False，就算缺料
     return (
@@ -359,7 +368,7 @@ def update_boms():
   print("updateBoms....")
 
   request_data = request.get_json()
-  print("request_data =", request_data, type(request_data))
+  #print("request_data =", request_data, type(request_data))
 
   s = Session()
   return_value = True
@@ -374,9 +383,9 @@ def update_boms():
           bom_list = []
           print("updateBoms: unsupported payload type")
 
-      print("bom_list:", bom_list, "筆數:", len(bom_list))
+      #print("bom_list:", bom_list, "筆數:", len(bom_list))
 
-      print("bom_data:")
+      #print("bom_data:")
       for bom_data in bom_list:
           if not isinstance(bom_data, dict):
             continue
@@ -389,7 +398,7 @@ def update_boms():
             print(f"updateBoms: Bom id={bom_id} not found")
             continue
 
-          print(bom_data)
+          #print(bom_data)
 
           # 目前 dialog 主要在改的是 receive / lack / lack_bom_qty / isPickOK
           if 'receive' in bom_data:
@@ -813,7 +822,7 @@ def update_assemble_data_by_material_id():
   print("updateAssmbleDataByMaterialID....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _delivery_qty = request_data.get('delivery_qty')
   _record_name1 = request_data.get('record_name1')
@@ -867,7 +876,7 @@ def update_assemble_data_by_material_id_p():
   print("updateAssmbleDataByMaterialIDP....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _delivery_qty = request_data.get('delivery_qty')
   _record_name1 = request_data.get('record_name1')
@@ -977,12 +986,12 @@ def update_process_data_by_material_id_p():
   print("updateProcessDataByMaterialIDP....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _seq = request_data.get('seq')
   _record_name1 = request_data.get('record_name1')
   _record_data1 = request_data.get('record_data1')
-  print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
+  #print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
 
   s = Session()
 
@@ -1084,7 +1093,7 @@ def update_assembleMustReceiveQty_by_MaterialID():
   print("updateAssembleMustReceiveQtyByMaterialID....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
@@ -1133,7 +1142,7 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
   print("updateAssembleMustReceiveQtyByMaterialIDP....")
 
   request_data = request.get_json()
-  print("request_data", request_data)
+  #print("request_data", request_data)
   _material_id = request_data.get('material_id')
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
@@ -1174,7 +1183,7 @@ def update_assembleMustReceiveQty_by_materialID_and_date():
     print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
 
     request_data = request.get_json()
-    print("request_data", request_data)
+    #print("request_data", request_data)
 
     _material_id   = request_data.get('material_id')
     _raw_create_at = request_data.get('create_at')
@@ -1246,15 +1255,15 @@ def update_assembleMustReceiveQty_by_materialID_and_date_p():
     print("updateAssembleMustReceiveQtyByMaterialIDAndDateP....")
 
     request_data = request.get_json()
-    print("request_data", request_data)
+    #print("request_data", request_data)
 
     _material_id   = request_data.get('material_id')
     _raw_create_at = request_data.get('create_at')
     _record_name   = request_data['record_name']
     _record_data   = request_data['record_data']
 
-    print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
-    print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
+    #print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+    #print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
 
     return_value = True
     s = Session()
@@ -1505,7 +1514,7 @@ def update_assemble_p():
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
 
-  print("_record_name:", _record_name)
+  #print("_record_name:", _record_name)
 
   return_value = True  # true: 資料正確, 註冊成功
   s = Session()
@@ -1730,42 +1739,6 @@ def update_agv():
     'status': True
   })
 
-"""
-@updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
-def update_assemble_alarm_message():
-  print("updateAssembleAlarmMessage....")
-
-  data = request.get_json()
-
-  assemble_id = data.get("assemble_id")
-  print("assemble_id:",assemble_id)
-  cause_message_list = data.get("cause_message")  # 預期是一個 list，例如 ["異常1", "異常2"]
-  print("cause_message_list:",cause_message_list)
-  cause_user = data.get("cause_user")
-  print("cause_user:",cause_user)
-
-  s = Session()
-
-  try:
-    # 取得 Assemble 資料
-    assemble_record = s.query(Assemble).get(assemble_id)
-
-    # 儲存進資料庫
-    assemble_record.alarm_message = cause_message_list
-    assemble_record.writer_id = cause_user
-    assemble_record.write_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-    s.commit()
-
-    return jsonify({"status": True, "message": "Alarm message updated successfully"})
-
-  except Exception as e:
-    s.rollback()
-    return jsonify({"status": False, "message": str(e)}), 500
-
-  finally:
-    s.close()
-"""
-
 
 @updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
 def update_assemble_alarm_message():
@@ -1921,14 +1894,13 @@ def update_bom_xor_receive():
     })
 
 
-
 @updateTable.route("/updateBomXorReceiveP", methods=["POST"])
 def update_bom_xor_receive_p():
     print("updateBomXorReceiveP....")
 
     data = request.get_json()
     copied_id = data.get("copied_material_id")
-    print("copied_id", copied_id)
+    #print("copied_id", copied_id)
 
     s = Session()
 
@@ -1936,13 +1908,13 @@ def update_bom_xor_receive_p():
     copied_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_id).first()
     if not copied_material or not copied_material.is_copied_from_id:
         return jsonify({"error": "Invalid copied p_material table or missing source ID"}), 400
-    print("copied_material:",copied_material)
+    #print("copied_material:",copied_material)
 
     # 找到原始資料
     source_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_material.is_copied_from_id).first()
     if not source_material:
         return jsonify({"error": "Source p_material not found"}), 404
-    print("source p_material:",source_material)
+    #print("source p_material:",source_material)
 
     # 條件限制：兩者其中之一 isLackMaterial 必須為 0 才繼續
     if source_material.isLackMaterial != 0 and copied_material.isLackMaterial != 0:
@@ -1976,16 +1948,10 @@ def update_bom_xor_receive_p():
     })
 
 
-def _to_int_or_none(v):
-    if v is None or v == "":
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        raise ValueError("必須是整數或空字串/Null")
-
 @updateTable.route("/updateProduct", methods=["POST"])
 def update_product():
+    print("updateProduct....")
+
     s = Session()
     try:
         data = request.get_json(silent=True) or {}
@@ -2088,6 +2054,8 @@ def update_product():
 
 @updateTable.route("/updateAssembleTableData", methods=["POST"])
 def update_assemble_table_data():
+    print("updateAssembleTableData....")
+
     s = Session()
     try:
         data = request.get_json(force=True) or {}
@@ -2144,4 +2112,3 @@ def update_assemble_table_data():
         return jsonify({"status": False, "message": f"伺服器錯誤: {str(e)}"}), 500
     finally:
         s.close()
-

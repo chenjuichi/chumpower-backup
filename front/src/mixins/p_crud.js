@@ -139,7 +139,6 @@ export const p_apiOperation = (operation, path, payload) => {
           console.log("get, path is", path)
 
           if (path == '/listDepartments') {
-            //departments.value = [...res.data.departments];
             // 檢查 res.data 是否包含 'departments' 或 'data'
             if (res.data.departments) {
               //console.log("listDepartments, test solution a...")
@@ -159,7 +158,6 @@ export const p_apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/listMaterialsP') {
-            //materials.value = [...res.data.materials];
             //console.log("materials.value:", materials.value)
             const serverRows = res.data.materials || [];
 
@@ -168,17 +166,7 @@ export const p_apiOperation = (operation, path, payload) => {
 
             materials.value = serverRows.map(r => {
               const old = oldMap.get(r.id)
-              /*
-              // ✅ 如果這列正在編輯：保留舊的 delivery_qty（使用者剛打的）
-              if (editingRowId.value === r.id && old) {
-                return {
-                  ...r,
-                  delivery_qty: old.delivery_qty,
-                  // 如果你還有其他「輸入中要保留」的欄位，也可一起保留
-                  // e.g. some_ui_flag: old.some_ui_flag,
-                }
-              }
-              */
+
               if (old?._editing_delivery) {
                 return { ...r, delivery_qty: old.delivery_qty, _editing_delivery: true }
               }
@@ -269,10 +257,6 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
-          //if (path == '/modifyExcelFiles') {
-          //  return res.data;
-          //}
-
           if (path == '/countExcelFilesP') {
             fileCount.value = res.data.count;
           }
@@ -302,12 +286,9 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data.status;
           }
 
-          if (path == '/getUsersDepsProcesses') {
-            console.log("/getUsersDepsProcesses()...")
+          if (path == '/getUsersDepsProcessesP') {
+            //console.log("/getUsersDepsProcesses()...")
             let temp = res.data.users_and_deps_and_process || [];
-            console.log("temp:", temp)
-            //users_and_deps_and_process.value = temp;
-            //console.log("users_and_deps_and_process:", users_and_deps_and_process.value)
             return temp;
           }
 
@@ -335,49 +316,26 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data
           }
 
-          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTableP' ||
+          if (path == '/modifyExcelFiles' ||
+              path == '/removeMaterialsAndRelationTableP' ||
               path == '/updateMaterialFields' ||
               path == '/getActiveCountMap') {
             return res.data;
           }
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
-              path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
-  path == '/dialog2StartProcessMP'      || path == '/dialog2UpdateProcessMP'      || path == '/dialog2ToggleProcessMP'      || path == '/dialog2CloseProcessMP' ||
-  path == '/dialog2StartProcessProcess' || path == '/dialog2UpdateProcessProcess' || path == '/dialog2ToggleProcessProcess' || path == '/dialog2CloseProcessProcess') {
+              path == '/exportToExcelForError' ||
+              path == '/exportToExcelForProcessInformation' ||
+          path == '/dialog2StartProcessMP'        ||
+          path == '/dialog2UpdateProcessMP'       ||
+          path == '/dialog2ToggleProcessMP'       ||
+          path == '/dialog2CloseProcessMP'        ||
+          path == '/dialog2StartProcessProcess'   ||
+          path == '/dialog2UpdateProcessProcess'  ||
+          path == '/dialog2ToggleProcessProcess'  ||
+          path == '/dialog2CloseProcessProcess') {
            return res.data;
           }
-          /*
-          if (path == '/getInformationsForAssembleErrorByHistory') {
-            informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];
-          }
-          */
-         /*
-          if (path == "/getInformationsForAssembleErrorByHistory") {
-            informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
-              // 找出舊資料中相同 `order_num` 的資料
-              const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
-
-              return {
-                ...newItem,
-                cause_message: oldItem ? oldItem.cause_message : newItem.cause_message, // 保留原值
-              };
-            });
-          }
-          */
-          /*
-          if (path == "/getInformationsForAssembleErrorByHistory") {
-            informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
-              // 找出舊資料中相同 `order_num` 的資料
-              const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
-
-              return {
-                ...newItem,
-                cause_message: oldItem && oldItem.cause_message ? oldItem.cause_message : (newItem.cause_message || ""), // 避免 undefined/null
-              };
-            });
-          }
-          */
 
           if (path == "/getSchedulesForAssembleError") {
             schedules_for_assemble_error.value = [...res.data.schedules_for_assemble_error];
@@ -385,36 +343,12 @@ export const p_apiOperation = (operation, path, payload) => {
 
           if (path == "/getInformationsForAssembleErrorByHistory") {
             alarm_objects_list.value = [...res.data.alarm_objects_list];
-            //console.log("alarm_objects_list.value:",alarm_objects_list.value);
-
 
             // 更新資訊，保留原來的 cause_message
             informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(item => ({
               ...item,
               cause_message: item.cause_message,  // 確保 cause_message 不會被覆蓋
             }));
-
-
-          //  informations_for_assemble_error.value = res.data.informations_for_assemble_error.map(newItem => {
-          //    // 找出舊資料中相同 `order_num` 的資料
-          //    const oldItem = informations_for_assemble_error.value.find(old => old.order_num === newItem.order_num);
-          //
-          //    return {
-          //      ...newItem,
-                /*
-                cause_message: oldItem && Array.isArray(oldItem.cause_message)
-                  ? oldItem.cause_message
-                  : (Array.isArray(newItem.cause_message) ? newItem.cause_message : []), // 確保是陣列
-
-                cause_message: oldItem && Array.isArray(oldItem.cause_message)
-                  ? JSON.parse(JSON.stringify(oldItem.cause_message))
-                  : (Array.isArray(newItem.cause_message) ? JSON.parse(JSON.stringify(newItem.cause_message)) : []),
-                */
-          //      cause_message: oldItem && Array.isArray(oldItem.cause_message)
-          //        ? [...oldItem.cause_message]  // 創建新的陣列副本
-          //        : (Array.isArray(newItem.cause_message) ? [...newItem.cause_message] : []),
-          //      };
-          //  });
           }
 
           if (path == '/getWarehouseForAssembleByHistory') {
@@ -425,50 +359,7 @@ export const p_apiOperation = (operation, path, payload) => {
             //console.log("hello, test")
             processes.value = [...res.data.processes];
           }
-          /*
-          if (path === '/saveFile') {
-            console.log(res.data instanceof Blob); // 應該顯示 true
 
-            if (res.data instanceof Blob) {
-              fileName = 'NEW_FILE_NAME.pdf';
-              console.log('儲存的檔案名稱:', fileName);
-
-              const url = window.URL.createObjectURL(res.data);
-              const link = document.createElement('a');
-              link.href = url;
-              link.setAttribute('download', fileName);
-              link.style.display = 'none';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              window.URL.revokeObjectURL(url);
-              return true;  // 下載完成後返回成功狀態
-            }
-            return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
-          }
-          */
-
-          /*
-          if (path === '/downloadFile') {
-            //console.log(res.data instanceof Blob); // 應該顯示 true
-            console.log(res.data instanceof Blob); // 應該顯示 true
-            console.log("=====");
-            console.log(res instanceof Blob); // 應該顯示 true
-            console.log("=====");
-            console.log(res); // 應該顯示 true
-            console.log("step1");
-
-            if (res instanceof Blob) {
-              console.log("step2");
-
-              console.log("step2-1");
-
-              return res;  // 下載完成後返回成功狀態
-            }
-            console.log("step3");
-            return res.data; // 對於非 Blob 類型的操作，直接返回回應資料
-          }
-          */
           if (path == '/readFile') {
             //console.log("/readFile(), res.data:", res.data.content)
             return res.data.content;
@@ -493,7 +384,6 @@ export const p_apiOperation = (operation, path, payload) => {
             //console.log("copyMaterial(), material_copy_id:", res.data.material_data.id)
             material_copy_id.value = res.data.material_data.id;
           }
-
 
           if (path == '/copyAssemble') {
             //console.log("copyAssemble(), assemble_copy_ids:", res.data.assemble_data)

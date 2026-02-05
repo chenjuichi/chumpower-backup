@@ -1594,6 +1594,400 @@ def export_to_excel_for_assemble_information():
         s.close()
 
 
+@excelTable.route("/exportToExcelForProcessInformation", methods=['POST'])
+def export_to_excel_for_process_information():
+    print("exportToExcelForProcessInformation....")
+
+    request_data = request.get_json(force=True) or {}
+    _blocks = request_data.get('blocks', [])
+    _name = request_data.get('name', '')
+
+    now = datetime.datetime.now()
+    today = now.strftime('%Y-%m-%d-%H%M')
+    file_name = f'加工區在製品生產資訊查詢_{today}.xlsx'
+    export_dir = r'C:\vue\chumpower\excel_export'
+    os.makedirs(export_dir, exist_ok=True)
+    current_file = os.path.join(export_dir, file_name)
+
+    code_to_name = {
+        1 : '領料',
+        #19: '等待AGV(備料區)',
+        #2 : 'AGV運行(備料區->組裝區)',
+        #20: 'AGV運行到組裝區',
+        #21: '組裝',
+        #22: '檢驗',
+        #23: '雷射',
+        #29: '等待AGV(組裝區)',
+        #3 : 'AGV運行(組裝區->成品區)',
+        #30: 'AGV運行到成品區',
+        31: '成品入庫',
+        5 : '堆高機運行(領料區->加工區)',
+        6 : '堆高機運行(加工區->成品區)',
+    }
+
+    # process_type -> Material 標工欄位
+    ptype_to_sd_field = {
+        21: "sd_time_B109",  # 組裝
+        22: "sd_time_B110",  # 檢驗
+        23: "sd_time_B106",  # 雷射(雷刻)
+    }
+
+    ### for process add block ###
+    part_info_map = {}
+    step_to_part_code_map = {}
+    for p in s.query(P_Part).all():
+      code = (p.part_code or '').strip()
+      if not code:
+        continue
+      step = int(p.process_step_code or 0)
+
+      part_info_map[code] = {
+        'comment': (p.part_comment or '').strip(),
+        'process_step_code': step
+      }
+
+      # 反查：step_code -> part_code
+      # 若同 step_code 有多筆，你可以決定要不要覆蓋
+      if step and step not in step_to_part_code_map:
+        step_to_part_code_map[step] = code
+    ### end block ###
+
+    # AGV 名稱規則（含括號/不含括號都視為要清空姓名）
+    AGV_NAMES = {"AGV1-1", "AGV1-2", "AGV2-1", "AGV2-2",
+                 "(AGV1-1)", "(AGV1-2)", "(AGV2-1)", "(AGV2-2)"}
+
+    def to_dt(val):
+        if not val:
+            return None
+        if isinstance(val, datetime.datetime):
+            return val
+        if isinstance(val, datetime.date):
+            return datetime.datetime.combine(val, datetime.time.min)
+        if isinstance(val, str):
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M"):
+                try:
+                    return datetime.datetime.strptime(val, fmt)
+                except ValueError:
+                    continue
+        return None
+
+    def fmt(dt):
+        return dt.strftime("%Y-%m-%d %H:%M:%S") if isinstance(dt, datetime.datetime) else ""
+
+    def _to_float(v, default=0.0):
+      try:
+        if v is None:
+          return default
+        s = str(v).strip()
+        if s == "" or s.lower() == "nan":
+          return default
+        return float(s)
+      except Exception:
+        return default
+
+    def _seconds_from_elapsed(val):
+        """
+        將 elapsed / pause 可能的值轉成秒數：
+        - 數值可能是秒或毫秒（過大視為毫秒）
+        - 字串可能是 HH:MM:SS 或 MM:SS
+        """
+        if val is None:
+          return None
+
+        if isinstance(val, (int, float)):
+          x = float(val)
+          return x / 1000.0 if x > 1e7 else x
+
+        if isinstance(val, str):
+          s = val.strip()
+          if not s:
+            return None
+          if ":" in s:
+            parts = s.split(":")
+            try:
+              parts = [float(p) for p in parts]
+              if len(parts) == 3:
+                h, m, sec = parts
+                return h * 3600 + m * 60 + sec
+              if len(parts) == 2:
+                m, sec = parts
+                return m * 60 + sec
+            except Exception:
+              return None
+          try:
+            x = float(s)
+            return x / 1000.0 if x > 1e7 else x
+          except Exception:
+            return None
+
+        #end if_loop
+        return None
+
+    def get_active_seconds(process, start_dt, end_dt, effective_end):
+        """
+        實際有效秒數（排除暫停）：
+        1) 優先用 elapsedActive_time / elapsed_active_time
+        2) 次用 (end-start) - pause_time
+        3) 都沒有就 (end-start)
+        """
+        for k in ("elapsedActive_time", "elapsed_active_time"):
+            v = getattr(process, k, None)
+            sec = _seconds_from_elapsed(v)
+            if sec is not None and sec >= 0:
+                return sec
+
+        if start_dt and effective_end:
+            total_sec = (effective_end - start_dt).total_seconds()
+            if total_sec < 0:
+                total_sec = 0
+
+            pause_sec = None
+            for k in ("pause_time", "paused_time", "pause_seconds", "paused_seconds"):
+                v = getattr(process, k, None)
+                pause_sec = _seconds_from_elapsed(v)
+                if pause_sec is not None and pause_sec >= 0:
+                    break
+
+            if pause_sec:
+                total_sec = max(total_sec - pause_sec, 0)
+
+            return total_sec
+
+        return None
+
+    if os.path.exists(current_file):
+      try:
+        os.remove(current_file)
+      except PermissionError:
+        return jsonify({"status": False, "message": "請關閉 Excel 檔案後重試", "file_name": ""}), 200
+
+    wb = Workbook()
+    ws = wb.worksheets[0]
+    ws.title = '加工區在製品生產資訊查詢-' + _name
+    ws.sheet_properties.tabColor = '7da797'
+
+    # ✅ 加入「員工」欄位（工序/員工分開）
+    header = [
+        '訂單編號','物料', '說明', '交期', '訂單數量', '現況數量',
+        '工序', '員工',
+        '開始時間', '結束時間',
+        '實際耗時(分)', '實際工時(分/PCS)', '單件標工(分/PCS)', '註記'
+    ]
+    ws.append(header)
+
+    for idx, _ in enumerate(header, start=1):
+        cell = ws.cell(row=1, column=idx)
+        cell.font = Font(name='微軟正黑體', color='FF0000', bold=True)
+        cell.alignment = Alignment(horizontal='center')
+        ws.column_dimensions[cell.column_letter].width = 16
+
+    s = Session()
+    temp_file = current_file.replace(".xlsx", "_temp.xlsx")
+
+    try:
+        ###
+        ORDER_COL = header.index('訂單編號') + 1  # 目前就是 1
+        prev_order_num = None
+        group_idx = -1
+
+        fill_white = PatternFill("solid", fgColor="FFFFFFFF")
+        fill_gray  = PatternFill("solid", fgColor="FFEDF2F4")  # #edf2f4
+        ###
+        for obj in _blocks:
+            order_num = obj.get('order_num', '')
+            if not order_num:
+              continue
+
+            ###
+            # ✅ 訂單群組切換：同一張訂單的多列要同色，不同訂單間交錯
+            if order_num != prev_order_num:
+              group_idx += 1
+              prev_order_num = order_num
+
+            group_fill = fill_white if (group_idx % 2 == 0) else fill_gray
+            ###
+
+            material = s.query(P_Material).filter(P_Material.order_num == order_num).first()
+
+            work_qty = 0
+            if material and getattr(material, "total_delivery_qty", None):
+              work_qty = _to_float(material.total_delivery_qty, 0)
+            else:
+              work_qty = _to_float(obj.get("req_qty", 0), 0)
+
+            processes = material._process if (material and getattr(material, "_process", None)) else []
+            assemble_records = material._assemble if (material and getattr(material, "_assemble", None)) else []
+
+            if not processes:
+                ws.append([
+                    order_num,
+                    obj.get('material_num', ''),
+                    obj.get('comment', ''),
+                    obj.get('delivery_date', ''),
+                    obj.get('req_qty', ''),
+                    obj.get('delivery_qty', ''),
+                    '', '',       # 工序 / 員工
+                    '', '',       # 開始 / 結束
+                    '', '', '',   # 實際耗時 / 實際工時 / 單件標工
+                    ''            # 註記
+                ])
+
+                ###
+                r = ws.max_row
+                c = ws.cell(row=r, column=ORDER_COL)
+                c.number_format = '@'
+                c.value = str(order_num)
+                c.fill = group_fill
+                ###
+
+                continue
+
+            for process in processes:
+                ###
+                alarm_proc_record = [a for a in assemble_records if ((a.id == process.assemble_id and process.has_started))]
+                if len(alarm_proc_record) == 1:
+                    alarm_msg_enable = alarm_proc_record[0].alarm_enable
+                    alarm_msg_isAssembleFirstAlarm = alarm_proc_record[0].isAssembleFirstAlarm
+                    if not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm:
+                      alarm_msg_string = (alarm_proc_record[0].alarm_message or '').strip()
+                    else:
+                      alarm_msg_string = ''
+
+                    if process.process_type == 21:
+                      alarm_msg_string = alarm_proc_record[0].Incoming1_Abnormal
+                else:
+                    alarm_msg_enable = True
+                    alarm_msg_isAssembleFirstAlarm = True
+                    alarm_msg_string = ''
+
+                    if (
+                      material.Incoming0_Abnormal != '' and
+                      process.end_time !='' and
+                      process.begin_time !='' and
+                      process.assemble_id==0 and
+                      process.process_type in [1, 5]
+                    ):
+                      alarm_msg_string = material.Incoming0_Abnormal
+                ###
+
+                ptype = getattr(process, "process_type", None)
+
+                # ✅ 工序欄：只放工序名稱
+                #process_name = code_to_name.get(ptype, '空白')
+                process_name_base = code_to_name.get(ptype, '空白')
+
+                process_name_display = process_name_base + (" - 異常整修" if (not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm) else "")
+
+                # ✅ 員工欄：({員工編號}{員工姓名})，AGV 規則姓名清空
+                emp_col = ""
+                emp_id = (getattr(process, "user_id", "") or "").strip()
+
+                # ✅ 若「員工編號」本身就是 AGV1-1/AGV1-2/AGV2-1/AGV2-2（含括號也支援）→ 整格員工欄空白
+                AGV_IDS = {"AGV1-1", "AGV1-2", "AGV2-1", "AGV2-2", "(AGV1-1)", "(AGV1-2)", "(AGV2-1)", "(AGV2-2)"}
+                if emp_id in AGV_IDS:
+                    emp_col = ""
+                elif emp_id:
+                    user = s.query(User).filter_by(emp_id=emp_id).first()
+                    emp_short = emp_id.lstrip("0") if isinstance(emp_id, str) else str(emp_id)
+
+                    emp_name = (getattr(user, "emp_name", "") or "").strip() if user else ""
+
+                    # 這條你原本的規則仍保留：若姓名是 AGV… → 姓名清空（但不會影響 AGV 編號，因為上面已攔截）
+                    AGV_NAMES = {"AGV1-1", "AGV1-2", "AGV2-1", "AGV2-2", "(AGV1-1)", "(AGV1-2)", "(AGV2-1)", "(AGV2-2)"}
+                    if emp_name in AGV_NAMES:
+                        emp_name = ""
+
+                    emp_col = f"({emp_short}{emp_name})"
+
+                start_dt = to_dt(getattr(process, "begin_time", None))
+                end_dt = to_dt(getattr(process, "end_time", None)) if ptype != 31 else None
+                effective_end = end_dt if end_dt is not None else (now if start_dt else None)
+
+                active_sec = get_active_seconds(process, start_dt, end_dt, effective_end)
+                actual_minutes = ""
+                actual_per_pcs = ""
+                if active_sec is not None:
+                    actual_minutes = round(active_sec / 60.0, 2)
+                    if work_qty and work_qty > 0:
+                        actual_per_pcs = round(actual_minutes / work_qty, 4)
+
+                std_per_pcs = ""
+                sd_field = ptype_to_sd_field.get(ptype)
+                if sd_field and material and hasattr(material, sd_field):
+                    std_total_min = _to_float(getattr(material, sd_field, 0), 0)
+                    if work_qty and work_qty > 0 and std_total_min:
+                        std_per_pcs = round(std_total_min / work_qty, 4)
+
+                ###
+                ws.append([
+                    order_num,
+                    obj.get('material_num', ''),
+                    obj.get('comment', ''),
+                    obj.get('delivery_date', ''),
+                    obj.get('req_qty', ''),
+                    obj.get('delivery_qty', ''),
+                    process_name_display,
+                    emp_col,        # ✅ 員工
+                    fmt(start_dt),
+                    fmt(end_dt),
+                    actual_minutes,
+                    actual_per_pcs,
+                    std_per_pcs,
+                    alarm_msg_string
+                ])
+
+                ###
+                r = ws.max_row
+                c = ws.cell(row=r, column=ORDER_COL)
+                c.number_format = '@'
+                c.value = str(order_num)
+                c.fill = group_fill
+                ###
+
+                ###
+                if not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm:
+                  r = ws.max_row  # 剛寫入的那一列
+                  PROCESS_COL = header.index('工序') + 1  # header 你已經有了 :contentReference[oaicite:4]{index=4}
+                  cell = ws.cell(row=r, column=PROCESS_COL)
+
+                  rt = CellRichText()
+                  rt.append(TextBlock(InlineFont(rFont='微軟正黑體', sz=11), process_name_base))
+                  rt.append(TextBlock(InlineFont(rFont='微軟正黑體', sz=11, color='FFFF0000'), " - 異常整修"))
+                  cell.value = rt
+                ###
+
+        ###
+        ORDER_COL   = header.index('訂單編號') + 1
+        PROCESS_COL = header.index('工序') + 1
+        EMP_COL     = header.index('員工') + 1
+
+        oL = get_column_letter(ORDER_COL)
+        eL = get_column_letter(EMP_COL)
+
+        # ✅ 訂單編號、工序、員工 的標頭都會有下拉篩選（範圍含中間所有欄）
+        ws.auto_filter.ref = f"{oL}1:{eL}{ws.max_row}"
+        ###
+
+        wb.save(temp_file)
+        os.replace(temp_file, current_file)
+
+        return jsonify({'status': True, 'message': current_file, 'file_name': file_name}), 200
+
+    except Exception as e:
+        s.rollback()
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except Exception:
+            pass
+        print("export_to_excel_for_process_information EXCEPTION:", repr(e))
+        return jsonify({'status': False, 'message': f'匯出失敗: {e}', 'file_name': ''}), 500
+
+    finally:
+        s.close()
+
+
 # 上傳.xlsx工單檔案的 API
 @excelTable.route('/uploadExcelFile', methods=['POST'])
 def upload_excel_file():

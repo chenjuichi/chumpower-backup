@@ -13,7 +13,6 @@
     <ConfirmDialog ref="confirmRef" />
 
     <div ref="tableWrapRef" class="table-area">
-
       <!-- data table -->
       <v-data-table
         :headers="headers"
@@ -47,7 +46,7 @@
         <template v-slot:item.data-table-select="{ internalItem }">
           <v-checkbox-btn
             :model-value="isSelected(internalItem)"
-            :disabled="(!internalItem.raw.isAssembleStationShow || internalItem.raw.receive_qty == 0) && warehouse_in_all_pass=='待完工'"
+            :disabled="(!internalItem.raw.isAssembleStationShow || (internalItem.raw.receive_qty == 0 && internalItem.raw.abnormal_qty == 0)) && warehouse_in_all_pass=='待完工'"
             color="primary"
             @update:model-value="toggleSelect(internalItem)"
             :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
@@ -588,13 +587,11 @@ const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:260 },
   { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
-  //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
   { title: '領取數量', sortable: false, key: 'ask_qty', width:70 },
   { title: '應完成總數量', sortable: false, key: 'must_receive_end_qty', width:70 },       // 2025-06-13 add, 改順序
   { title: '已完成總數量', sortable: false, key: 'total_completed_qty_num', width:70 },
   { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
   { title: '廢料數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
-  //{ title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '交期', sortable: false, key: 'delivery_date', width:120 },
   { title: '', sortable: false, key: 'action', width:300 },
 ];
@@ -1693,8 +1690,8 @@ const checkReceiveQty = (item) => {
   const total = Number(item.receive_qty) || 0;            //完成數量
 
   const temp = Number(item.must_receive_end_qty)          //應完成總數量
-  const completed = Number(item.total_completed_qty_num)  //已完成總數量
-  const diff = Number(item.abnormal_qty)                  //廢料數量
+  //const completed = Number(item.total_completed_qty_num)  //已完成總數量
+  //const diff = Number(item.abnormal_qty)                  //廢料數量
   const tmp = temp
 
   if (total > tmp) {
@@ -2075,7 +2072,8 @@ const onClickEnd = async (item) => {
   item.receive_qty = Number(item.receive_qty || 0);
 
   // 檢查完成數量欄位是否為空白或輸入了0
-  if (!item.receive_qty || Number(item.receive_qty) === 0) {
+  if ((!item.receive_qty || Number(item.receive_qty) === 0) &&
+      ( item.abnormal_qty!=item.ask_qty)) {   //ask_qty:領取數量 ,2026-2-4新增
     receive_qty_alarm.value = '完成數量不可為空白或0!'
     item.tooltipVisible = true;     // 顯示 Tooltip 提示
     setTimeout(() => {
@@ -2110,6 +2108,8 @@ const onClickEnd = async (item) => {
     receive_qty: q,
     alarm_enable: item.alarm_enable,
     isAssembleFirstAlarm: item.isAssembleFirstAlarm,
+
+    //abnormal_qty: item.abnormal_qty,          // 2026-2-4 add
 
     alarm_message: test_alarm_message,
     assemble_id: item.assemble_id,
@@ -2152,9 +2152,9 @@ const onClickEnd = async (item) => {
   await updateAssemble(payload);
 
   // 新增完成數量與完成數量不同時, 新紀錄的應領取數量
-  let d0 = Number(item.must_receive_end_qty)
-  let d1 = Number(item.receive_qty)
-  let d2 = Number(item.abnormal_qty)
+  let d0 = Number(item.must_receive_end_qty)    // 應完成總數量
+  let d1 = Number(item.receive_qty)             // 完成數量
+  let d2 = Number(item.abnormal_qty)            // 廢料數量
   //let d2 = 0
   //if (item.input_abnormal_disable)
   //  d2 = Number(item.abnormal_qty)
@@ -2326,7 +2326,7 @@ const onClickEnd = async (item) => {
   }
 
   //待待
-  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 const reloadEndRowsAndRestoreTimers = async () => {

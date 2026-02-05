@@ -246,7 +246,8 @@ class Material(BASE):
     isLackMaterial = Column(Integer, default=99)                    # 0:缺料且檢料完成(還沒拆單),  1:拆單1, 2:拆單2, ... 99: 備料正常, 沒缺料
     isBatchFeeding =  Column(Integer, default=99)                   # 0:分批送料(必須拆單),       1:拆單1, 2:拆單2, ... 99: 正常送料, 單次送料
 
-    merge_enabled = Column(Boolean, nullable=False, default=True)   # 2026-2-2新增, true:預設值, 併單
+    #merge_enabled = Column(Boolean, nullable=False, default=True)   # 2026-2-2新增, true:預設值, 併單
+    merge_enabled = Column(Boolean, nullable=False, server_default=text("1"))
 
     # 組裝線
     sd_time_B109 = Column(String(30))
@@ -351,7 +352,8 @@ class Bom(BASE):
     non_qty = Column(Integer, default=0)        #未結數量
     lack_qty = Column(Integer, default=0)       #數量
     #receive = Column(Boolean)     # False: 不領料 checkbox
-    receive = Column(Boolean, nullable=False, default=False)  # 2026-1-30修改
+    #receive = Column(Boolean, nullable=False, default=False)  # 2026-1-30修改
+    receive = Column(Boolean, nullable=False, default=False, server_default=text("0"))  # 2026-2-4修改
     lack = Column(Boolean, default=False)
     isPickOK = Column(Boolean, default=False)               # true:檢料完成
     lack_bom_qty = Column(Integer, default=0)
@@ -494,7 +496,8 @@ class Process(BASE):
     id = Column(Integer, primary_key=True, autoincrement=True)
     material_id = Column(Integer, ForeignKey('material.id'))          #material table id
     assemble_id = Column(Integer, default=0)                          #assemble table id, 0:備料
-    has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
+    #has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
+    has_started = Column(Boolean, nullable=False, default=False, server_default=text("0"))  # 2026-2-4 修改
     user_id = Column(String(20), nullable=False)                      #員工編號
     user_delegate_id = Column(String(20), default='')                             #代理人員工編號
     begin_time = Column(String(30))                                   #開始時間

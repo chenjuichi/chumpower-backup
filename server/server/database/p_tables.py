@@ -3,6 +3,7 @@
 from datetime import datetime
 from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
+from sqlalchemy import text
 
 
 # 共用 tables.py 裡的 BASE
@@ -299,7 +300,9 @@ class P_Process(BASE):
     id = Column(Integer, primary_key=True, autoincrement=True)
     material_id = Column(Integer, ForeignKey('p_material.id'))
     assemble_id = Column(Integer, default=0)                          #assemble table id, 0:備料
-    has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
+    #has_started = Column(Boolean, nullable=False, default=False)      # 標記「這筆工單是否已經按過開始」, true:已經按過開始鍵
+    has_started = Column(Boolean, nullable=False, default=False, server_default=text("0"))  # 2026-2-4 修改
+
     user_id = Column(String(20), nullable=False)
     user_delegate_id = Column(String(20), default='')                             #代理人員工編號
 

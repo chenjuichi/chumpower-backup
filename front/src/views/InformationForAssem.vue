@@ -512,7 +512,6 @@ const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
-
 //=== component name ==
 defineComponent({ name: 'InformationForAssem' });
 

@@ -944,7 +944,16 @@ const onClickWarehouseIn = async () => {
       let d0 = Number(current_must_qty)
       let d1 = Number(current_total_qty)
       let d2 = Number(current_allOk_qty)
+
+      // ✅ qty=0 不允許建立入庫（避免 0 還一直建立）
+      if (d2 <= 0) {
+        showSnackbar('入庫數量不可為 0', 'red accent-2');
+        continue;
+      }
+
       let difference = d0 - d1 - d2
+      console.log("##### difference:", difference);
+      console.log("##### current_line:", current_line);
 
       if (difference != 0) {
         console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
@@ -972,20 +981,20 @@ const onClickWarehouseIn = async () => {
           isWarehouseStationShow: false
         };
 
-        //continue; // ✅ 不要做入庫建立
+        continue; // ✅ 不要做入庫建立
 
       } else {
         payload = {
           id: current_material_id,
           record_name: 'show2_ok',
-          record_data: 12,          // 入庫完成
+          record_data: current_line === 'process' ? 8 : 12,          // 入庫完成
         };
         await updateMat(payload);
 
         payload = {
           id: current_material_id,
           record_name: 'show3_ok',
-          record_data: 13,          // 入庫完成
+          record_data: current_line === 'process' ? 8 : 13,          // 入庫完成
         };
         await updateMat(payload);
 
@@ -1010,13 +1019,21 @@ const onClickWarehouseIn = async () => {
         };
         await updateAssem(payload);
 
+        payload = {
+          assemble_id: current_assemble_id,
+          record_name: 'isStockIn',
+          record_data: true,
+        };
+        await updateAssem(payload);
+
         // 用 Vue 的方式確保觸發響應式更新
         warehouses.value[targetIndex] = {
           ...warehouses.value[targetIndex],
           allOk_qty: current_allOk_qty,
           isError: true,
           input_allOk_disable: true,
-          isWarehouseStationShow: true
+          isWarehouseStationShow: true,
+          isStockIn: true,
         };
       }
 

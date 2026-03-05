@@ -273,7 +273,7 @@
     :width="transportWidth"
     :top="transportTop"
     :left="transportLeft"
-    :durationSec="6"
+    :durationSec="3"
   />
 
               <!--客製化搜尋-->
@@ -924,62 +924,7 @@ watch(
       const wasOpen   = !!oldVals[i];
 
       // === dialog 剛打開 ===
-      /*
-      if (isOpenNow && !wasOpen) {
-        console.log("🟢 Dialog opened");
 
-        // 先確保前一次的資源已釋放（若有殘留）
-        //try { dlg.proc?.dispose?.(); } catch(_) {}
-        //dlg.proc = null;
-
-        // 設 isOpen = true（寫回資料庫）
-        try {
-
-          await updateMaterial({
-            id: dlg.material_id,
-            record_name: "isOpen",
-            record_data: true,
-          });
-
-          await updateMaterial({
-            id: dlg.material_id,
-            record_name: "isOpenEmpId",
-            record_data: currentUser.value.empID,
-          });
-
-        } catch (e) {
-          console.warn("update isOpen(true) or isOpenEmpId 失敗:", e);
-        }
-
-        // 在 table 中把該筆標成 isOpen=true（響應式）
-        const targetIndex = materials.value.findIndex(kk => kk.id === dlg.material_id);
-        if (targetIndex !== -1) {
-          materials.value[targetIndex] = {
-            ...materials.value[targetIndex],
-            isOpen: true,
-            isOpenEmpId: currentUser.value.empID,
-          };
-        }
-
-        // 等待 DOM 渲染完成，TimerDisplay 的 ref 才能使用
-        await nextTick();
-
-        try {
-          // 確保每個 dlg 都有自己的 useProcessTimer 實例（⚠ 要傳函式！）
-          if (!dlg.proc) {
-            dlg.proc = useProcessTimer(() => dlg.timerRef);
-          }
-
-          // 每次打開都用新的 useProcessTimer，避免舊 interval 殘留
-          //dlg.proc = useProcessTimer(() => dlg.timerRef);
-
-          // 每次打開都向後端取最新狀態並還原
-          await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
-        } catch (e) {
-          console.error("startProcess 失敗：", e);
-        }
-      }
-      */
       if (isOpenNow && !wasOpen) {
         console.log("🟢 Dialog opened");
 

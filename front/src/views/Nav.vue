@@ -127,7 +127,7 @@
                 @click="closeDropdown()"
               >
                 {{ localNavLinks[9].text }}
-                <v-badge color="info" :content="begin_count" inline v-show="begin_count != 0"  />
+                <!-- <v-badge color="info" :content="begin_count" inline v-show="begin_count != 0"  /> -->
               </router-link>
 
               <!--menu 11-->
@@ -138,7 +138,7 @@
                 @click="closeDropdown()"
               >
                 {{ localNavLinks[10].text }}
-                <v-badge color="info" :content="end_count" inline v-show="end_count != 0" />
+                <!-- <v-badge color="info" :content="end_count" inline v-show="end_count != 0" />-->
               </router-link>
 
               <!--menu 12-->
@@ -397,15 +397,14 @@ import eventBus from '../mixins/enentBus.js';
 
 import { myMixin } from '../mixins/common.js';
 
-import { begin_count, end_count }  from '../mixins/crud.js';
-//import { begin_count }  from '../mixins/crud.js';
+//import { begin_count, end_count }  from '../mixins/crud.js';
 
 import { apiOperation, }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
+//const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
-const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+//const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
 //const getCountMaterialsAndAssemblesByUser2 = apiOperation('post', '/getCountMaterialsAndAssemblesByUser2');
 const updateSetting = apiOperation('post', '/updateSetting');
 
@@ -465,11 +464,8 @@ const countdown = ref({
 });
 
 const router = useRouter(); // Initialize router
-//const route = useRoute(); // Initialize router
 
-//const end_count = ref(0);
-//let alive = true;
-//const controller = new AbortController()
+const isFetchingWait = ref(false);
 
 //=== mounted ===
 onMounted(() => {
@@ -599,24 +595,35 @@ watch(localShowFooter, (newValue) => {
 });
 
 //=== method ===
+
+async function safeListWaitForAssemble() {
+  if (isFetchingWait.value) return
+  isFetchingWait.value = true
+  try {
+    await listWaitForAssemble()
+  } finally {
+    isFetchingWait.value = false
+  }
+}
+
 const initialize = async () => {
   try {
     console.log("initialize()...");
 
-    await listWaitForAssembleFun();
-    console.log("begin_count, end_count:", begin_count, end_count);
+    //await listWaitForAssembleFun();
+    //console.log("begin_count, end_count:", begin_count, end_count);
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
 const listWaitForAssembleFun = async () => {
-  await listWaitForAssemble();
+  //await listWaitForAssemble();
 
-  let payload = {
-    user_id: currentUser.value.empID,
-  };
-  await getCountMaterialsAndAssemblesByUser(payload);
+  //let payload = {
+  //  user_id: currentUser.value.empID,
+  //};
+  //await getCountMaterialsAndAssemblesByUser(payload);
   //await fetchEndCount();
 }
 
@@ -644,7 +651,7 @@ const fetchEndCount = async () => {
 const onHover = (index) => {
   hoveredItems[index] = true;
   console.log("onHover:", index, hoveredItems[index]);
-  console.log("begin_count, end_count:", begin_count.value, end_count.value);
+  //console.log("begin_count, end_count:", begin_count.value, end_count.value);
 };
 
 const onLeave = (index) => {

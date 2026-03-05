@@ -14,12 +14,12 @@ from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, func, 
 from sqlalchemy import text
 from sqlalchemy.orm import relationship, backref, scoped_session, sessionmaker, declarative_base  #for 2.0版
 
-#import p_tables             # 讓 P_* 類別被載入並註冊到 BASE.metadata
-
 BASE = declarative_base()   # 宣告一個映射, 建立一個基礎類別
 
 
 # ------------------------------------------------------------------
+
+
 # 確保 P_* tables 也會註冊到同一個 BASE.metadata
 try:
     # package 模式 (例如 from database import tables)

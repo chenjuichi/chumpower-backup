@@ -96,7 +96,8 @@ function resume() {
   startTime = Date.now();
   intervalId = setInterval(update, 1000);
   //emit("update:modelValue", false);
-  emit("'update:isPaused'", false);
+  //emit("'update:isPaused'", false);
+  emit("update:isPaused", false);
 
   emit("resume", elapsed);
   update();

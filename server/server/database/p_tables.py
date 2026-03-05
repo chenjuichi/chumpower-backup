@@ -236,7 +236,7 @@ class P_Assemble(BASE):
     input_abnormal_disable = Column(Boolean, default=False)
 
     isAssembleStationShow = Column(Boolean, default=False)
-    isWarehouseStationShow = Column(Boolean, default=False)
+    isWarehouseStationShow = Column(Boolean, default=False)   # true:已經進入 倉儲
 
     isStockIn = Column(Boolean, default=True)          # 是否入庫, True: 必須入庫(作業短文以Z開頭)
     isSimultaneously = Column(Boolean, default=False)   # True: 各個加工製程同步(平行製程), False: 各個加工製程是有順序性

@@ -1202,10 +1202,21 @@ def start_process():
     material_record = s.query(Material).filter_by(id=material_id).first()
 
     # 1) 先找「同工單(同製程)、尚未結束」的最後一筆（不帶 user 條件）
+    """
     log = (
         s.query(Process)
         # .filter_by(material_id=material_id, process_type=process_type, user_id=user_id)
         .filter_by(material_id=material_id, process_type=process_type, user_id=user_id)
+        .filter(Process.end_time.is_(None))
+        .order_by(Process.id.desc())
+        .first()
+    )
+    """
+
+    log = (
+        s.query(Process)
+        .filter(Process.material_id == material_id)
+        .filter(Process.process_type == process_type)
         .filter(Process.end_time.is_(None))
         .order_by(Process.id.desc())
         .first()
@@ -3429,7 +3440,7 @@ def get_processes_by_order_num_p():
       # 若同 step_code 有多筆，你可以決定要不要覆蓋
       if step and step not in step_to_part_code_map:
         step_to_part_code_map[step] = code
-
+    # end for_loop
 
     material = s.query(P_Material).filter(P_Material.order_num == _order_num).first()
     if not material:
@@ -3444,9 +3455,8 @@ def get_processes_by_order_num_p():
     seq_num = 0
     for record in material._process:
         alarm_proc_record = [a for a in assemble_records if (a.material_id == record.material_id and a.id == record.assemble_id and record.has_started)]
-        #print("1.alarm_proc_record:", alarm_proc_record)
-        #print("2.alarm_proc_record:", alarm_proc_record.process_step_code)
         print("1.alarm_proc_record:", alarm_proc_record)
+        #print("2.alarm_proc_record:", alarm_proc_record.process_step_code)
         if alarm_proc_record:
             print("2.alarm_proc_record:", alarm_proc_record[0].process_step_code if alarm_proc_record else None)
         else:
@@ -3503,6 +3513,23 @@ def get_processes_by_order_num_p():
           else:
               show_code = 0
         # end assemble_id_if
+
+        # ✅ 先取得該筆 process 對應的 assemble（若 assemble_id=0 就是 None）
+        assm = None
+        if record.assemble_id and int(record.assemble_id) != 0:
+            assm = next(
+                (a for a in assemble_records
+                if a.material_id == record.material_id and a.id == record.assemble_id),
+                None
+            )
+
+        # 預設空字串
+        abnormal_qty = ''
+        completed_qty = ''
+        # 只有真正加工製程才顯示數量
+        if record.process_type not in {1, 5, 6, 31}:
+          abnormal_qty = int(getattr(assm, "abnormal_qty", 0) or 0) if assm else 0
+          completed_qty = int(getattr(assm, "completed_qty", 0) or 0) if assm else 0
 
         #print("hello, step1...", status, show_code)
         # ---- 使用者名稱附註（若有） ----
@@ -3598,6 +3625,27 @@ def get_processes_by_order_num_p():
                 temp_period_time = record.period_time or ""
         # else: 5/6 不計時長
 
+        # ✅ 取得該筆 process 對應的 assemble（同一筆）
+        assm = None
+        if record.assemble_id and int(record.assemble_id) != 0:
+            assm = next((a for a in assemble_records if a.id == record.assemble_id), None)
+
+        # ✅ 規則：
+        # - 入庫數量：只有 process_type == 31 才顯示
+        # - 廢品數量：若 0 則不顯示（空白）
+        abnormal_qty = ''
+        completed_qty = ''
+
+        if assm:
+            # 廢品：0 -> ''，>0 才顯示
+            aq = int(getattr(assm, "abnormal_qty", 0) or 0)
+            abnormal_qty = aq if aq > 0 else ''
+
+            # 入庫：只在 31 顯示（你要顯示 0 還是空白？通常 0 也顯示沒意義）
+            if record.process_type == 31:
+                cq = int(getattr(assm, "completed_qty", 0) or 0)
+                completed_qty = cq if cq != 0 else ''   # 若你想 0 也顯示就改成：completed_qty = cq
+
         _object = {
             'seq_num': seq_num,
             'id': material.id,
@@ -3607,6 +3655,10 @@ def get_processes_by_order_num_p():
                 if record.process_type not in {19, 29, 2, 3, 5, 6}
                 else ''
             ),
+
+            'abnormal_qty': abnormal_qty,
+            'completed_qty': completed_qty,
+
             'sd_time_B100': material.sd_time_B100,
             'sd_time_B102': material.sd_time_B102,
             'sd_time_B103': material.sd_time_B103,
@@ -3632,7 +3684,30 @@ def get_processes_by_order_num_p():
     #print("_results:", _results)
     # 依 create_at 排序
     _results = sorted(_results, key=lambda x: x['create_at'])
-    return jsonify({'processes': _results})
+    """
+    # ✅ 追加：同一張加工工單(material_id)的報廢/入庫總數
+    def _to_int(v, default=0):
+        try:
+            if v is None:
+                return default
+            return int(v)
+        except Exception:
+            return default
+
+    scrap_qty_total = sum(_to_int(getattr(a, "abnormal_qty", 0), 0) for a in assemble_records if getattr(a, "material_id", None) == material.id)
+    stockin_qty_total = sum(_to_int(getattr(a, "completed_qty", 0), 0) for a in assemble_records if getattr(a, "material_id", None) == material.id)
+    """
+
+    #s.close()
+
+    _results = sorted(_results, key=lambda x: x['create_at'])
+    return jsonify({
+      'processes': _results,
+      #'scrap_qty': scrap_qty_total,
+      #'stockin_qty': stockin_qty_total
+    })
+
+    #return jsonify({'processes': _results})
 
 
 # # get all all Warehouse For Assemble
@@ -3666,7 +3741,7 @@ def get_Warehouse_For_assemble_by_history():
     data = request.json
     #history_flag = data.get('history_flag')
     history_flag = bool(data.get('history_flag', False))
-    print("history_flag:", history_flag)
+    #print("history_flag:", history_flag)
 
     def to_int01(v, default=0):
       try:
@@ -3704,7 +3779,7 @@ def get_Warehouse_For_assemble_by_history():
         rows = []
         rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
         rows.extend([(m, a, p, "process")  for (m, a, p) in p_q.all()])
-        print("rows:", len(rows))
+        #print("rows:", len(rows), rows)
 
         """
         for m, a in q.all():
@@ -3741,8 +3816,6 @@ def get_Warehouse_For_assemble_by_history():
         index=0
         #for m, a, p in rows:
         for m, a, p, line in rows:
-            #isWarehouseStationShow = bool(g(a, "isWarehouseStationShow", 0))
-            #isStockIn = bool(g(a, "isStockIn", 1))  # ✅ default 改成 0（未入庫）
             isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
             isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
 
@@ -3753,26 +3826,75 @@ def get_Warehouse_For_assemble_by_history():
             # history_flag=False：只顯示 未入庫（isStockIn==0）
             # history_flag=True：只顯示 已入庫（isStockIn==1）
 
-            # 不需要入庫的，兩種清單都不顯示
-            if not isStockIn or (isStockIn_abnormal_qty !=0 and isStockIn_allOk_qty == 0):
-                continue
+            # ✅ 等待入庫 / 歷史的正確篩選
+            # history_flag=False：等待入庫 → 只顯示 未入庫(isStockIn==0) 且未進歷史(isWarehouseStationShow==0)
+            # history_flag=True ：歷史    → 只顯示 已入庫(isStockIn==1) 且進歷史(isWarehouseStationShow==1)
 
+            # ✅ 若目前這筆是「報廢拆單筆」（abnormal_qty>0 且 allOk_qty==0）
+            #    就改抓同 material_id 的「良品筆」（must_receive_end_qty 最大那筆）
+            abn_qty = int(g(a, "abnormal_qty", 0) or 0)
+            #a_allok = int(g(a, "allOk_qty", 0) or 0)
+            a_allok = int(g(a, "completed_qty", 0) or 0)
+            print("$$$$$ line, abn_qty, a_allok: ", line, abn_qty, a_allok)
+            """
+            if line == "process" and abn_qty > 0 and a_allok == 0:
+                print("process ok")
+                good_a = (
+                    s.query(P_Assemble)
+                    .filter(P_Assemble.material_id == g(a, "material_id"))
+                    .order_by(P_Assemble.must_receive_end_qty.desc(), P_Assemble.id.asc())
+                    .first()
+                )
+
+                if good_a:
+                    a = good_a  # ✅ 直接換成良品那筆再往下跑
+
+                    isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
+                    isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
+
+                    # ✅ 仍然排除「報廢拆單那筆」(避免只剩它被顯示)
+                    abn_qty = int(g(a, "abnormal_qty", 0) or 0)
+                    a_allok = int(g(a, "allOk_qty", 0) or 0)
+                    print("#####line, abn_qty, a_allok: ", line, abn_qty, a_allok)
+            """
+            print("line, abn_qty, a_allok: ", line, abn_qty, a_allok)
+            print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
+
+            if abn_qty > 0 and a_allok == 0:
+                continue
+            """
             if history_flag:
-                # ✅ 歷史：已入庫(或定義為歷史顯示) 的才顯示
+                # 歷史：已入庫 + 已進歷史
+                if not isWarehouseStationShow:
+                    continue
+                if not isStockIn:
+                    continue
+            else:
+                # 等待入庫：未入庫 + 未進歷史
+                if not isWarehouseStationShow:
+                    continue
+                if isStockIn:
+                    continue
+            """
+            if history_flag:
+                # 歷史：已入庫 + 已進歷史
+                if not isStockIn:
+                    continue
                 if not isWarehouseStationShow:
                     continue
             else:
-                # 若你也想用 isWarehouseStationShow 控制等待清單，可保留
-                if isWarehouseStationShow:
+                # 等待入庫：未入庫 + 未進歷史（⚠️ 這裡要用「isWarehouseStationShow == 0」）
+                #if line == "assemblr" and isStockIn:
+                #    continue
+                # 組裝線且已經入庫
+                if line == "assemble" and isWarehouseStationShow:
                     continue
+                # 加工線且不必入庫, 或者, 加工線且需要入庫且已經入庫
+                #if line == "process" and (not isStockIn or not isWarehouseStationShow):
+                if line == ("process" and not isStockIn) or ("process" and isStockIn and isWarehouseStationShow):
+                   continue
 
-            if isWarehouseStationShow:
-              continue
-
-            #isStockIn = bool(g(a, "isStockIn", True))
-            #if not isStockIn:
-            #  continue
-
+            print("all step ok...", line)
             cleaned_comment = (g(m, "material_comment", "") or "").strip()
             material_id=g(m, "id")
             assemble_id=g(a, "id")
@@ -3827,6 +3949,10 @@ def get_Warehouse_For_assemble_by_history():
                 "normal_work_time":     g(p, "normal_work_time", 0),
                 "tooltipVisible":       False,
                 "line": line,
+
+                "must_receive_end_qty": g(a, "must_receive_end_qty", 0),
+                "total_ask_qty_end":    g(a, "total_ask_qty_end", 0),
+                "abnormal_qty":         g(a, "abnormal_qty", 0),
             })
 
         results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
@@ -5316,7 +5442,8 @@ def get_materials_and_assembles_by_user_p():
       assemble_records = material_record._assemble
       process_records = material_record._process
 
-      for assemble_record in material_record._assemble:   # loop_a_rec
+      for assemble_record in assemble_records:   # loop_a_rec
+      #for assemble_record in material_record._assemble:   # loop_a_rec
         # 篩選登入者的製程紀錄
         user_proc_records = [p for p in process_records if (p.user_id == _user_id and not p.end_time or p.end_time !='')]
 
@@ -5343,6 +5470,10 @@ def get_materials_and_assembles_by_user_p():
 
         if matched_count == 0 and not assemble_record.isAssembleStationShow:
           continue
+
+        # 檢查是否入庫
+        if not assemble_record.isStockIn:
+           continue
 
         work_num_clean = (assemble_record.work_num or '').strip()
         part_info = part_info_map.get(work_num_clean)
@@ -5409,6 +5540,7 @@ def get_materials_and_assembles_by_user_p():
         # 處理 show2_ok 的情況
         #print("temp_show2_ok, temp_assemble_show2_ok:", temp_show2_ok, temp_assemble_show2_ok)
         #if temp_show2_ok in [5, 7, 9] or temp_assemble_show2_ok in [5, 7, 9]:
+        """
         if temp_show2_ok in [5, 7] or temp_assemble_show2_ok in [5, 7]:
           for temp2_assemble_record in assemble_records:
             if temp2_assemble_record.total_ask_qty_end in [1, 2, 3]:
@@ -5416,6 +5548,7 @@ def get_materials_and_assembles_by_user_p():
               date_parts = temp_assemble_process_str.split('/')                         # 分割 00/00/00 為 ['00', '00', '00']
               date_parts[temp2_assemble_record.total_ask_qty_end - 1] = completed_qty   # 替換對應位置
               temp_assemble_process_str = '/'.join(date_parts)                          # 合併回字串
+        """
         #
 
         work_num = safe_str(assemble_record.work_num)     # 可能為 ''（避免 None）
@@ -5476,7 +5609,7 @@ def get_materials_and_assembles_by_user_p():
           'abnormal_qty': assemble_record.abnormal_qty,                       ## 組裝區異常數量
 
           #'receive_qty': user_receive_qty,                                    ## 組裝區完成數量
-          'receive_qty': assemble_record.completed_qty,                       ## 組裝區完成數量
+          'receive_qty': assemble_record.completed_qty,                       ## 加工區完成數量
 
           'delivery_date': material_record.material_delivery_date,            # 交期
           'delivery_qty': material_record.delivery_qty,                       # 現況數量

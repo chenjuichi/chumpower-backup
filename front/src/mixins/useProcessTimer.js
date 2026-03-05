@@ -41,6 +41,11 @@ export function useProcessTimer(getTimerRef) {
   //const isPaused = ref(true);
   const hasStarted = ref(false);
 
+  function syncToTimer() {
+    const seconds = Math.floor((elapsedMs.value || 0) / 1000);
+    timer()?.setState(seconds, !!isPaused.value);
+  }
+
   function _startAutoUpdate() {
     _stopAutoUpdate();
     _autoUpd = setInterval(() => {

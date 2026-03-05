@@ -675,6 +675,10 @@ def update_assemble_process_step_p():
     material_record.isAssembleStation3TakeOk = True
     assemble_record.isAssembleStationShow = True
 
+    # ✅ 完工 → 進倉儲等待入庫
+    assemble_record.isWarehouseStationShow = True
+    assemble_record.isStockIn = False   # 尚未入庫（等待入庫清單要看這個）
+
     return_value = True
   else:
     print("updateAssembleProcessStepP , not all_process_step_zero")

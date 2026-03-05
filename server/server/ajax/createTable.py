@@ -1326,9 +1326,11 @@ def create_product():
         # 通過驗證 → 建立資料
         created_rows = []
         for it in raw_items:
+            pid = _normalize_int(it.get("process_id"), 0)  # 沒送/空字串/null -> 0
             p = Product(
                 material_id      = int(it.get("material_id")),
-                process_id       = int(it.get("process_id")),
+                process_id  = (pid or None),               # 0 -> None
+                #process_id       = int(it.get("process_id")),
                 delivery_qty     = _normalize_int(it.get("delivery_qty"), 0),
                 assemble_qty     = _normalize_int(it.get("assemble_qty"), 0),
                 allOk_qty        = _normalize_int(it.get("allOk_qty"), 0),
@@ -1431,6 +1433,7 @@ def create_product_p():
         if errors:
           return jsonify({"status": False, "errors": errors}), 400
 
+        """
         # 通過驗證 → 建立資料
         created_rows = []
         for it in raw_items:
@@ -1542,6 +1545,120 @@ def create_product_p():
                 a.isStockIn = True
                 a.isWarehouseStationShow = False
                 a.update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """
+
+        created_rows = []
+
+        for it in raw_items:
+            mid = _normalize_int(it.get("material_id"), 0)
+            if mid <= 0:
+                continue
+
+            # 本次入庫量（前端送 allOk_qty）
+            add_qty = _normalize_int(it.get("allOk_qty"), 0)
+            user_id = (it.get("user_id") or "").strip() or "system"
+            line_diff = _normalize_int(it.get("line_difference"), 1)
+
+            # assemble_id：優先用前端送的，否則用 DB 該 material 最新一筆 assemble 當 fallback
+            assemble_id = _normalize_int(it.get("assemble_id"), 0)
+            if assemble_id <= 0:
+                latest_a = (
+                    s.query(P_Assemble)
+                    .filter(P_Assemble.material_id == mid)
+                    .order_by(P_Assemble.id.desc())
+                    .first()
+                )
+                assemble_id = latest_a.id if latest_a else 0
+
+            # 前端送的 process_id（可能沒有/0）
+            process_id_to_use = _normalize_int(it.get("process_id"), 0)
+
+            # 若沒有 process_id，且本次入庫量 > 0 → 自動補一筆「成品入庫(process_type=31)」到 P_Process
+            if process_id_to_use <= 0 and add_qty > 0:
+                exist = (
+                    s.query(P_Process)
+                    .filter(P_Process.material_id == mid)
+                    .filter(P_Process.assemble_id == assemble_id)
+                    .filter(P_Process.process_type == 31)
+                    .filter(P_Process.process_work_time_qty == add_qty)
+                    .order_by(P_Process.id.desc())
+                    .first()
+                )
+                if exist:
+                    process_id_to_use = exist.id
+                else:
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    m_for_must = s.query(P_Material).filter(P_Material.id == mid).one_or_none()
+                    must_qty = _normalize_int(getattr(m_for_must, "must_allOk_qty", 0), 0) if m_for_must else 0
+
+                    stockin_proc = P_Process(
+                        material_id=mid,
+                        assemble_id=assemble_id,
+                        has_started=True,
+                        user_id=user_id,
+
+                        begin_time=now_str,
+                        end_time=now_str,
+                        period_time="00:00:00",
+
+                        pause_time=0,
+                        elapsedActive_time=0,
+                        str_elapsedActive_time="00:00:00",
+                        is_pause=True,
+
+                        process_type=31,               # 成品入庫
+                        process_work_time_qty=add_qty, # 本次入庫量
+                        must_allOk_qty=must_qty,
+                        allOk_qty=add_qty,
+                        isAllOk=True,
+                        normal_work_time=0,
+                    )
+                    s.add(stockin_proc)
+                    s.flush()  # 取得 stockin_proc.id
+                    process_id_to_use = stockin_proc.id
+
+            # 建立 P_Product（process_id 一定要用 process_id_to_use）
+            p = P_Product(
+                material_id=mid,
+                process_id=(process_id_to_use or None),
+                line_difference=line_diff,
+                delivery_qty=_normalize_int(it.get("delivery_qty"), 0),
+                assemble_qty=_normalize_int(it.get("assemble_qty"), 0),
+                allOk_qty=add_qty,
+                good_qty=_normalize_int(it.get("good_qty"), add_qty),  # 沒送就預設=入庫量
+                non_good_qty=_normalize_int(it.get("non_good_qty"), 0),
+                reason=(it.get("reason") or None),
+                confirm_comment=(it.get("confirm_comment") or None),
+            )
+            s.add(p)
+            created_rows.append(p)
+
+            # 回寫 P_Material：不然 refresh 會看到 total_allOk_qty=0
+            m = s.query(P_Material).filter(P_Material.id == mid).one_or_none()
+            if m is not None:
+                m.allOk_qty = add_qty
+                m.total_allOk_qty = _normalize_int(getattr(m, "total_allOk_qty", 0), 0) + add_qty
+
+                must_qty2 = _normalize_int(getattr(m, "must_allOk_qty", 0), 0)
+                if must_qty2 > 0 and m.total_allOk_qty >= must_qty2:
+                    m.isAllOk = True
+                    m.show2_ok = 8  # 入庫完成（依你的 listInformationsP 狀態碼）
+
+            # 同一次入庫：順便把 P_Assemble 標記成已入庫（避免 Warehouse 清單一直出現）
+            if assemble_id > 0:
+                a = (
+                    s.query(P_Assemble)
+                    .filter(P_Assemble.id == assemble_id, P_Assemble.material_id == mid)
+                    .one_or_none()
+                )
+                if a:
+                    a.isStockIn = True
+                    #a.isWarehouseStationShow = False
+                    a.isWarehouseStationShow = True
+                    a.update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 
         # end if_loop
         s.commit()

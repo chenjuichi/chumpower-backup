@@ -411,6 +411,28 @@ def read_all_excel_files_p():
         material_df.rename(columns={c: norm_col(c) for c in material_df.columns}, inplace=True)
         material_df.columns = dedupe_columns(material_df.columns)
 
+        # ---------- 防止加工表單號重複 ----------
+        order_col = pick_order_col(material_df, ("單號", "訂單", "工單"))
+
+        if order_col:
+            before_count = len(material_df)
+
+            material_df = material_df.drop_duplicates(
+                subset=[order_col],
+                keep="first"
+            )
+
+            after_count = len(material_df)
+
+            if before_count != after_count:
+                print(f"[加工表] 單號重複已過濾: {before_count} -> {after_count}")
+
+        dups = material_df[material_df.duplicated(subset=[order_col], keep=False)]
+        if not dups.empty:
+            print("⚠ 發現重複單號:")
+            print(dups[[order_col]])
+        # ---------------------------------------
+
         bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
 
         assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
@@ -1632,6 +1654,8 @@ def export_to_excel_for_process_information():
         23: "sd_time_B106",  # 雷射(雷刻)
     }
 
+    s = Session()
+
     ### for process add block ###
     part_info_map = {}
     step_to_part_code_map = {}
@@ -1769,7 +1793,8 @@ def export_to_excel_for_process_information():
 
     # ✅ 加入「員工」欄位（工序/員工分開）
     header = [
-        '訂單編號','物料', '說明', '交期', '訂單數量', '現況數量',
+        '訂單編號','物料', '說明', '交期', '訂單數量',
+        '數量', '廢品數量', '入庫數量',
         '工序', '員工',
         '開始時間', '結束時間',
         '實際耗時(分)', '實際工時(分/PCS)', '單件標工(分/PCS)', '註記'
@@ -1782,7 +1807,7 @@ def export_to_excel_for_process_information():
         cell.alignment = Alignment(horizontal='center')
         ws.column_dimensions[cell.column_letter].width = 16
 
-    s = Session()
+    #s = Session()
     temp_file = current_file.replace(".xlsx", "_temp.xlsx")
 
     try:
@@ -1794,6 +1819,10 @@ def export_to_excel_for_process_information():
         fill_white = PatternFill("solid", fgColor="FFFFFFFF")
         fill_gray  = PatternFill("solid", fgColor="FFEDF2F4")  # #edf2f4
         ###
+
+        SCRAP_COL   = header.index('廢品數量') + 1
+        STOCKIN_COL = header.index('入庫數量') + 1
+
         for obj in _blocks:
             order_num = obj.get('order_num', '')
             if not order_num:
@@ -1827,6 +1856,7 @@ def export_to_excel_for_process_information():
                     obj.get('delivery_date', ''),
                     obj.get('req_qty', ''),
                     obj.get('delivery_qty', ''),
+                    '', ''        # '廢品數量', '入庫數量'
                     '', '',       # 工序 / 員工
                     '', '',       # 開始 / 結束
                     '', '', '',   # 實際耗時 / 實際工時 / 單件標工
@@ -1835,6 +1865,23 @@ def export_to_excel_for_process_information():
 
                 ###
                 r = ws.max_row
+
+                # 廢品數量：>0 才紅
+                v = ws.cell(row=r, column=SCRAP_COL).value
+                try:
+                    if v is not None and float(v) > 0:
+                        ws.cell(row=r, column=SCRAP_COL).font = Font(name='微軟正黑體', color='FFFF0000', bold=True)
+                except Exception:
+                    pass
+
+                # 入庫數量：>0 才綠
+                v = ws.cell(row=r, column=STOCKIN_COL).value
+                try:
+                    if v is not None and float(v) > 0:
+                        ws.cell(row=r, column=STOCKIN_COL).font = Font(name='微軟正黑體', color='FF00B050', bold=True)  # Excel 常用綠
+                except Exception:
+                    pass
+
                 c = ws.cell(row=r, column=ORDER_COL)
                 c.number_format = '@'
                 c.value = str(order_num)
@@ -1844,6 +1891,18 @@ def export_to_excel_for_process_information():
                 continue
 
             for process in processes:
+
+                bt = (process.begin_time or "").strip() if isinstance(process.begin_time, str) else ("" if not process.begin_time else str(process.begin_time).strip())
+                # ✅ begin_time 空就略過（但 5/6 允許）
+                if (not bt or bt == "0000-00-00 00:00:00") and getattr(process, "process_type", None) not in {5, 6}:
+                    continue
+
+                # 先抓這筆 process 對應的 assemble（同一筆）
+                assm = next((a for a in assemble_records if a.id == process.assemble_id), None)
+
+                scrap_qty = getattr(assm, "abnormal_qty", None) if assm else None
+                stockin_qty = getattr(assm, "completed_qty", None) if assm else None
+
                 ###
                 alarm_proc_record = [a for a in assemble_records if ((a.id == process.assemble_id and process.has_started))]
                 if len(alarm_proc_record) == 1:
@@ -1876,6 +1935,17 @@ def export_to_excel_for_process_information():
                 # ✅ 工序欄：只放工序名稱
                 #process_name = code_to_name.get(ptype, '空白')
                 process_name_base = code_to_name.get(ptype, '空白')
+
+                # ✅ 非 1/5/6/31 且有 assemble_id 的工序：用 work_num 去 P_Part 找 comment
+                if process.assemble_id and ptype not in {1, 5, 6, 31}:
+                    assm = next((a for a in assemble_records if a.id == process.assemble_id), None)
+                    if assm:
+                        key = (assm.work_num or '').strip()        # P_Assemble.work_num，例如 'B107-02'
+                        part_info = part_info_map.get(key)
+                        if part_info and part_info.get('comment'):
+                            process_name_base = part_info['comment']   # ✅ 轉成中文工序名稱
+                        else:
+                            process_name_base = key or process_name_base
 
                 process_name_display = process_name_base + (" - 異常整修" if (not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm) else "")
 
@@ -1920,6 +1990,22 @@ def export_to_excel_for_process_information():
                         std_per_pcs = round(std_total_min / work_qty, 4)
 
                 ###
+
+                assm = None
+                if process.assemble_id and int(process.assemble_id) != 0:
+                    assm = next((a for a in assemble_records if a.id == process.assemble_id), None)
+
+                scrap_qty = ''
+                stockin_qty = ''
+
+                if assm:
+                    aq = int(getattr(assm, "abnormal_qty", 0) or 0)
+                    scrap_qty = aq if aq > 0 else ''
+
+                    if process.process_type == 31:
+                        cq = int(getattr(assm, "completed_qty", 0) or 0)
+                        stockin_qty = cq if cq != 0 else ''   # 若你想 0 也顯示就改成 stockin_qty = cq
+
                 ws.append([
                     order_num,
                     obj.get('material_num', ''),
@@ -1927,6 +2013,10 @@ def export_to_excel_for_process_information():
                     obj.get('delivery_date', ''),
                     obj.get('req_qty', ''),
                     obj.get('delivery_qty', ''),
+
+                    scrap_qty,          # ✅ 廢品數量
+                    stockin_qty,        # ✅ 入庫數量
+
                     process_name_display,
                     emp_col,        # ✅ 員工
                     fmt(start_dt),
@@ -1936,6 +2026,9 @@ def export_to_excel_for_process_information():
                     std_per_pcs,
                     alarm_msg_string
                 ])
+
+                last_col_letter = get_column_letter(ws.max_column)          # 例如 N
+                ws.auto_filter.ref = f"A1:{last_col_letter}{ws.max_row}"    # 例如 A1:N123
 
                 ###
                 r = ws.max_row

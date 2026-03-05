@@ -280,10 +280,11 @@
                           </label>
                         </div>
                       </div>
-
+                    <!--
                       <div class="example ex1" v-show="group1_radio_btn_disable">
                         <span class="ex1-title">備註: 備料缺件預設為併單</span>
                       </div>
+                    -->
                     </v-col>
                   </v-row>
                   <!--第 3 列-->
@@ -966,7 +967,8 @@ const inputSelectOrderNum = ref(null);
 
 let intervalId = null;                        // 10分鐘, 倒數計時器, for exce file 偵測
 let refreshTimerId = null;                    // 11秒, for refresh materials[]
-const refreshTimerMs = ref(11 * 1000);        // 11秒
+//const refreshTimerMs = ref(11 * 1000);        // 11秒
+const refreshTimerMs = ref(8* 60 * 60 * 1000);        // 8小時
 const lastRefreshed = ref(null);
 const tableLoading = ref(false);
 
@@ -1092,49 +1094,22 @@ const itemsWithIcons = [
   { id:3, text: '多筆備料', icon: 'mdi-clock-check'},
 ]
 
+// 用 material_id 當 key：每張工單各自一份草稿
+const bomDraftCache = reactive({})  // { [materialId]: BomRow[] }
+
+const isFetching = ref(false);
+
 //=== watch ===
 setupGetBomsWatcher();
 
-/*
-watch(group1,  async (newVal, oldVal) => {
-  // 第一次同步(初始化)不打 API
-  if (!hasInited.value) {
-    hasInited.value = true
-    lastGroup1.value = newVal
-    return
-  }
+watch(group1, async (newVal, oldVal) => {
+  if (newVal === oldVal) return
 
-  // 被 disable/隱藏時不打
-  if (group1_radio_btn_disable.value) return
+  const mergeEnabled = newVal === 'blue'
+  console.log("hello mergeEnabled:", mergeEnabled)
 
-  // 正在送出時，先擋掉（避免重入）
-  if (isUpdating.value) return
-
-  const mergeEnabled = (newVal === 'blue')
-
-  isUpdating.value = true
-  try {
-    await updateMaterial({
-      id: item.value.id,
-      record_name: "merge_enabled",
-      record_data: true,
-    });
-
-
-    // ✅ 成功後同步 item（讓畫面/資料一致）
-    item.value.merge_enabled = mergeEnabled
-    lastGroup1.value = newVal
-  } catch (err) {
-    console.error('updateMaterial failed:', err)
-
-    // ❗ 失敗就回復原選項，避免 UI 看起來已存但其實沒存到
-    group1.value = lastGroup1.value
-    // 你也可以在這裡 showSnackbar(...)
-  } finally {
-    isUpdating.value = false
-  }
+  await updateMergeEnabled(mergeEnabled)
 })
-*/
 
 // help menu每次打開都回到第 1 頁
 watch(show_dropdown, (open) => {
@@ -1151,7 +1126,6 @@ watch(materials, (mItems) => {
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
-    //console.log("watch(), newItems:", newItems)
     localStorage.setItem('selectedItems', JSON.stringify(newItems));
   },
   { deep: true }
@@ -1164,181 +1138,43 @@ watch(bar_code, (newVal) => {
   }
 })
 
-watch(
-  () => dialogs.value.map(d => d.dialogVisible),
-  async (newVals, oldVals = []) => {
-    for (let i = 0; i < newVals.length; i++) {
-      const dlg = dialogs.value[i];
-      if (!dlg) continue; // 安全防呆
+const dlgKey = (d) => `${d.material_id}:${d.user_id}`;
 
-      const isOpenNow = !!newVals[i];
-      const wasOpen   = !!oldVals[i];
+watch(
+  () => dialogs.value.map(d => ({ k: dlgKey(d), v: !!d.dialogVisible })),
+  async (newList, oldList = []) => {
+    const oldMap = new Map(oldList.map(x => [x.k, x.v]));
+    const toRemove = new Set(); // 存要移除的 key
+
+    for (const it of newList) {
+      const dlg = dialogs.value.find(d => dlgKey(d) === it.k);
+      if (!dlg) continue;
+
+      const isOpenNow = it.v;
+      const wasOpen = !!oldMap.get(it.k);
 
       // === dialog 剛打開 ===
       if (isOpenNow && !wasOpen) {
         console.log("🟢 Dialog opened");
+        await waitTimerRefReady(dlg);
 
-        // 先確保前一次的資源已釋放（若有殘留）
-        //try { dlg.proc?.dispose?.(); } catch(_) {}
-        //dlg.proc = null;
-
-        // 設 isOpen = true（寫回資料庫）
-        try {
-
-          await updateMaterial({
-            id: dlg.material_id,
-            record_name: "isOpen",
-            record_data: true,
-          });
-
-          await updateMaterial({
-            id: dlg.material_id,
-            record_name: "isOpenEmpId",
-            record_data: currentUser.value.empID,
-          });
-
-         /*
-          await updateMaterialFields({
-            id: dlg.material_id,
-            fields: {
-              isOpen: true,
-              isOpenEmpId: currentUser.value.empID,
-            }
-          });
-          */
-        } catch (e) {
-          console.warn("update isOpen(true) or isOpenEmpId 失敗:", e);
-        }
-
-        // 在 table 中把該筆標成 isOpen=true（響應式）
-        const targetIndex = materials.value.findIndex(kk => kk.id === dlg.material_id);
-        if (targetIndex !== -1) {
-          materials.value[targetIndex] = {
-            ...materials.value[targetIndex],
-            isOpen: true,
-            isOpenEmpId: currentUser.value.empID,
-          };
-        }
-
-        // 等待 DOM 渲染完成，TimerDisplay 的 ref 才能使用
-        await nextTick();
-
-        try {
-          // 確保每個 dlg 都有自己的 useProcessTimer 實例（⚠ 要傳函式！）
-          if (!dlg.proc) {
-            dlg.proc = useProcessTimer(() => dlg.timerRef);
-          }
-
-          // 每次打開都用新的 useProcessTimer，避免舊 interval 殘留
-          //dlg.proc = useProcessTimer(() => dlg.timerRef);
-
-          // 每次打開都向後端取最新狀態並還原
-          await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
-        } catch (e) {
-          console.error("startProcess 失敗：", e);
-        }
+        if (!dlg.proc) dlg.proc = useProcessTimer(() => dlg.timerRef);
+        await startProcessOnce(dlg);
       }
 
       // === dialog 剛關閉 ===
       if (!isOpenNow && wasOpen) {
         console.log("Dialog closed");
-
         const reason = dlg.closeReason;
-
-        if (dlg.proc.for_vue3_has_started) {  //工單已開始
-          try {
-
-            await updateMaterial({
-              id: dlg.material_id,
-              record_name: "hasStarted",
-              record_data: true,
-            });
-
-            await updateMaterial({
-              id: dlg.material_id,
-              record_name: "isOpenEmpId",
-              record_data: currentUser.value.empID,
-            });
-
-            /*
-            await updateMaterialFields({
-              id: dlg.material_id,
-              fields: {
-                hasStarted: true,
-                isOpenEmpId: currentUser.value.empID,
-              }
-            });
-            */
-          } catch (e) {
-            console.warn("update hasStarted(true) or isOpenEmpId 失敗:", e);
-          }
-
-          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
-          if (targetIndex2 !== -1) {
-            materials.value[targetIndex2] = {
-              ...materials.value[targetIndex2],
-              hasStarted: true,
-              isOpenEmpId: currentUser.value.empID,
-            };
-          }
-        } else {
-          try {
-            await updateMaterial({
-              id: dlg.material_id,
-              record_name: "isOpenEmpId",
-              record_data: "",
-              //record_data: currentUser.value.empID,
-            });
-          } catch (e) {
-            console.warn("update isOpenEmpId 失敗:", e);
-          }
-
-          const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
-          if (targetIndex2 !== -1) {
-            materials.value[targetIndex2] = {
-              ...materials.value[targetIndex2],
-              isOpenEmpId: "",
-              //isOpenEmpId: currentUser.value.empID,
-            };
-          }
-        }
-
-        if (dlg._closingOnce === undefined) dlg._closingOnce = false;
-
-        if (dlg._closingOnce) return;     // 已在關閉流程中 → 直接略過
-        dlg._closingOnce = true;
 
         try {
           if (reason === 'esc' || reason === 'outside') {
-            if (!dlg?.proc) return;   // ← 這裡加，避免 undefined 錯誤
-
-            console.log("$$ esc狀態 $$")
-            // ✅ ESC / 外點：流程保持運行，不暫停
-            /*
-            if (dlg?.proc?.updateActiveNoPause) {
-              await dlg.proc.updateActiveNoPause();
-            } else {
-              console.warn('ESC/Outside close → proc not ready, skip keep-running update');
-            }
-            */
-            // 根據當下狀態決定要維持暫停還是不中斷繼續
-            console.log("dlg?.proc?.isPaused:",dlg?.proc?.isPaused)
-            if (dlg?.proc?.isPaused) {
-              console.log("暫停的狀態")
-              // ✅ 現在是暫停 → 維持暫停離開
+            // ✅ ESC/外點：依當下狀態決定保持暫停 or 繼續
+            if (dlg.proc.isPaused) {
               await dlg.proc.updateKeepPaused();
-              //await dlg.proc.updateProcess();           // 存入最新 elapsed（暫停狀態）
-              // 同步表格列 → 紅
-              setRowState(dlg.material_id, {
-                is_paused: true,
-                startStatus: false,
-              });
+              setRowState(dlg.material_id, { is_paused: true, startStatus: false });
             } else {
-              console.log("開始的狀態")
-              // ✅ 現在在跑 → 不中斷離開
               await dlg.proc.updateActiveNoPause();
-              //await dlg.proc.updateProcess();           // 存入最新 elapsed（運行中）
-              // 同步表格列 → 綠
               setRowState(dlg.material_id, {
                 is_paused: false,
                 startStatus: true,
@@ -1346,75 +1182,31 @@ watch(
                 isOpenEmpId: String(currentUser.value.empID || ''),
               });
             }
-
-            dlg.dialogVisible = false;
-
           } else {
-            console.log("$$ 確定按鍵狀態 $$")
-
-            // 🛑 一般關閉：暫停 + 回寫
-            dlg?.timerRef?.pause?.(); // 視覺上暫停
-            if (dlg?.proc?.isPaused) dlg.proc.isPaused.value = true;
-            // 語法1, 容易了解
-            //if (dlg.proc.updateProcess) await dlg.proc.updateProcess();   // 把目前 elapsed + is_paused 回後端
-            //if (dlg.proc.closeProcess)  await dlg.proc.closeProcess();
-            // 語法2, 簡潔
-            // 用「可選鏈結呼叫」直接在存在時才呼叫；不存在就得到 undefined，await undefined 會立即通過，不丟錯。
+            // ✅ 確定：暫停 + 回寫 + close
+            dlg?.timerRef?.pause?.();
+            dlg.proc.isPaused = true;          // ✅ 不要 .value
             await dlg.proc.updateProcess?.();
-            console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
             await dlg.proc.closeProcess?.();
 
-            console.log("dialog , i:", i)
-            dialogs.value.splice(i, 1);
+            // ✅ 先標記，迴圈後再移除
+            toRemove.add(it.k);
           }
         } catch (e) {
           console.error("close-handling 失敗：", e);
         } finally {
-          // ✅ 不論哪種關閉，都釋放本地 interval/輪詢，避免背景偷跑
-          //try { dlg.proc?.dispose?.(); } catch (_) {}
-          //dlg.proc = null;             // 下次打開會重建
-
-          // 重置關閉原因，避免下次誤判
           dlg.closeReason = null;
-          // 這次流程結束，讓下一次可以再執行
           dlg._closingOnce = false;
         }
 
-        try {
-          await updateMaterial({
-            id: dlg.material_id,
-            record_name: "isOpen",
-            record_data: false,
-          });
-        } catch (e) {
-          console.warn("update isOpen(false) 失敗:", e);
-        }
-
-        const targetIndex2 = materials.value.findIndex(kk => kk.id === dlg.material_id);
-        if (targetIndex2 !== -1) {
-          materials.value[targetIndex2] = {
-            ...materials.value[targetIndex2],
-            isOpen: false,
-          };
-        }
-
-        // ✅ 從陣列移除該 dialog（放在 nextTick 後移除，避免索引變動干擾當前迭代）
-        //const idxToRemove = i;
-        //await nextTick();
-        //dialogs.value.splice(idxToRemove, 1);
-
-        // 清空條碼（只對當前 dlg）
-        bar_code.value = '';
-
-        // 聚焦欄位
-        await nextTick();
-        if (isConfirmed.value && editedRecord.value?.id != null) {
-          document.getElementById(`receiveQtyID-${editedRecord.value.id}`)?.focus();
-        } else {
-          barcodeInput.value?.focus();
-        }
-        isConfirmed.value = false; // 重置狀態
+        // isOpen=false 回寫等你原本流程（可留）
       }
+    }
+
+    // ✅ 迴圈結束後再移除，避免 index 位移害到隔壁
+    if (toRemove.size) {
+      const kept = dialogs.value.filter(d => !toRemove.has(dlgKey(d)));
+      dialogs.value = kept;
     }
   },
   { deep: true }
@@ -1447,10 +1239,6 @@ const formattedDate = computed(() => {
   return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
 });
 
-//const enableDialogBtnByReceive = computed(() => {
-//  // 如果 boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
-//  return boms.length === 0 || boms.every(b => b.receive === false);
-//});
 const isDialogConfirmDisabled = computed(() => {
   // 如果 enableDialogBtn為true, 或boms 陣列是空的，或所有 receive 都是 false，就 disable 按鈕
   //return enableDialogBtn.value || boms.value.length === 0 || boms.value.every(b => b.receive === false || b.receive === null);
@@ -1476,33 +1264,6 @@ const shouldBlockTimer = computed(() => {
 
   return allLack;
 });
-
-/*
-const isStarted = computed(() => {
-  return (item) => {
-    const dlg = dialogs.value.find(
-      d =>
-        d.material_id === item.id &&
-        d.user_id === currentUser.value.empID
-    );
-    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
-    console.log("dlg?.proc?.for_vue3_pause_or_start_status", dlg?.proc?.for_vue3_pause_or_start_status)
-    return Boolean(dlg?.proc?.for_vue3_pause_or_start_status);
-  };
-});
-
-const ishasWorked = computed(() => {
-  return (item) => {
-    const dlg = dialogs.value.find(
-      d =>
-        d.material_id === item.id &&
-        d.user_id === currentUser.value.empID
-    );
-    // 如果找到 dlg，就回傳它的 for_vue3_pause_or_start_status (轉成 Boolean)
-    return Boolean(dlg?.proc?.for_vue3_has_started);
-  };
-});
-*/
 
 //=== mounted ===
 onMounted(async () => {
@@ -1607,45 +1368,7 @@ onMounted(async () => {
 
   try {
     await setupSocketConnection();
-    /*
-    if (!savedItems) {
-      console.log('送出 agv_reset 指令');
-      socket.value.emit('agv_reset');
-    }
-    */
 
-    /*
-    socket.value.on('station1_agv_wait', async (data) => {   //注意, 已修改為async 函數
-      console.log('AGV開始, 收到 station1_agv_wait 訊息, 工單:', data);
-
-      const materialPayload0 = {
-        order_num: data,
-      };
-      const response0 = await getMaterial(materialPayload0);
-
-      if(response0) {
-        console.log('工單 '+ data + ' 已檢料完成!');
-        socket.value.emit('station1_order_ok');
-
-        //from_agv_input_order_num.value = data;
-        //order_num_on_agv_blink.value = "工單:" + data + "物料運送中...";
-        //isBlinking.value = true; // 開始按鍵閃爍
-
-        // 定義 materialPayload1
-        const materialPayload1 = {
-          order_num: from_agv_input_order_num.value, // 確保 my_material_orderNum 已定義
-          record_name: 'show3_ok',
-          record_data: 1    // 設為 1，等待agv
-        };
-        await updateMaterial(materialPayload1);
-      } else {
-        console.log('工單 '+ data + ' 還沒檢料完成!');
-        socket.value.emit('station1_order_ng');
-        order_num_on_agv_blink.value = '';
-      }
-    });
-    */
-    //socket.value.emit('station1_loading');
     socket.value.on('station1_error', async () => {
       console.log("receive station1_error socket...");
       activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
@@ -1735,7 +1458,6 @@ onMounted(async () => {
       console.log("AGV end time:", agv2EndTime.value);
 
       let payload = {};
-      let targetItem = {};
       console.log("selectedItems.value:", selectedItems.value);
 
       const selectedIds = Array.isArray(selectedItems.value)
@@ -1775,8 +1497,6 @@ onMounted(async () => {
           record_data3: 3,
         });
       }
-
-      //console.log('agv_end 處理步驟1...');
 
       let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
       let formattedStartTime = formatDateTime(agv2StartTime.value);
@@ -1869,15 +1589,17 @@ onMounted(async () => {
 
       activeColor.value='DarkOrange';   //物料送達組裝區
 
-      // 插入延遲 3 秒
-      //await delay(3000);
+      await delay(1000);  // 停 1 秒顯示送達
 
       selectedItems.value = [];
       if (localStorage.getItem('selectedItems')) {
         localStorage.removeItem('selectedItems');
       }
       //待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      await fetchMaterials();
+      // 🔥 刷新完資料後 → 回到閒置狀態
+      activeColor.value = 'green';   // 預設亮綠燈
     }); // end socket loop
 
     socket.value.on('station2_trans_end', async (data) => {
@@ -1960,7 +1682,8 @@ onMounted(async () => {
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: PeriodTime,
-          user_id: currentUser.value?.empID ?? '', // 操作人
+          //user_id: currentUser.value?.empID ?? '', // 操作人
+          user_id: String(currentUser.value.empID || ''), // 操作人
           order_num: m.order_num,
           process_type: 5, // forklift到組裝區
           id: m.id,
@@ -1973,7 +1696,8 @@ onMounted(async () => {
             begin_time: formattedStartTime,
             end_time: formattedEndTime,
             periodTime: PeriodTime,
-            user_id: currentUser.value?.empID ?? '',
+            //user_id: currentUser.value?.empID ?? '',
+            user_id: String(currentUser.value.empID || ''),
             process_type: 1, // 備料
             id: editedRecord.value.id,
             process_work_time_qty: editedRecord.value.req_qty, // 報工數量
@@ -2114,56 +1838,10 @@ onMounted(async () => {
 
         // UI 狀態
         background.value = '#ffff00';
-        //isFlashLed.value = true;
         activeColor.value = 'blue'; // 機器人進站
       } else {
         console.warn('沒有任何流程寫入成功，略過 AGV 狀態更新與 UI 變更');
       }
-
-
-      /*
-      order_num_on_agv_blink.value='';
-
-      // 記錄等待agv到站結束時間
-      agv1EndTime.value = new Date();
-      console.log("AGV End time:", agv1EndTime.value);
-
-      let agv1PeriodTime = calculatePeriodTime(agv1StartTime.value, agv1EndTime.value);  // 計算時間間隔
-      let formattedStartTime = formatDateTime(agv1StartTime.value);
-      let formattedEndTime = formatDateTime(agv1EndTime.value);
-      console.log("AGV 等待 Start Time:", formattedStartTime);
-      console.log("AGV 等待 End Time:", formattedEndTime);
-      console.log("AGV 等待 Period time:", agv1PeriodTime);
-
-      let payload = {};
-      // 記錄備料區途程資料, 等待agv時間
-      selectedItems.value.forEach(async (item) => {
-        let myMaterial = materials.value.find(kk => kk.id == item);
-
-        payload = {
-          begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: agv1PeriodTime,
-          user_id: 'AGV1-1',                          //在備料區('AGV1'), 呼叫AGV的等待時間('-1'), 即簡稱AGV1-1
-          order_num: myMaterial.order_num,
-          process_type: 19,                           //在備料區
-          id: item,
-        };
-        await createProcess(payload);
-      });
-      // 記錄AGV狀態資料
-      payload = {
-        id: 1,
-        status: 1,
-        station:  1,
-      };
-      await updateAGV(payload);
-
-      //startFlashing();
-      background.value='#ffff00'
-      isFlashLed.value = true;
-      activeColor.value='blue';   // 機器人進站
-      */
     });
 
     socket.value.on('kuka_server_not_ready', async (data) => {
@@ -2171,10 +1849,6 @@ onMounted(async () => {
       console.warn(temp_msg);
       showSnackbar(temp_msg, 'red accent-2');
     });
-
-    //socket.value.on('agv_ack', async () => {
-    //  console.log('收到 agv_ack 回應');
-    //});
 
     socket.value.on('triggerLogout', async (data) => {
       console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
@@ -2186,7 +1860,8 @@ onMounted(async () => {
           itemsPerPage: 0,
           seeIsOk: '0',
           lastRoutingName: 'Main',
-          empID: currentUser.value.empID,
+          //empID: currentUser.value.empID,
+          empID: String(currentUser.value.empID || ''),
         };
 
         try {
@@ -2226,16 +1901,17 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 });
 
 //=== created ===
-onBeforeMount(() => {
+onBeforeMount(async () => {
   console.log("Employer, created()...")
 
   pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
   initAxios();
-  initialize();
+  await initialize();
 
-  startAutoRefresh()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // 拿掉輪詢
+  //startAutoRefresh()
+  //document.addEventListener('visibilitychange', handleVisibilityChange)
 });
 
 /*
@@ -2252,8 +1928,9 @@ onBeforeUnmount(() => {
     console.warn('stopAutoRefresh failed:', e);
   }
 
+  // 拿掉輪詢
   // 2) DOM 事件
-  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  //document.removeEventListener('visibilitychange', handleVisibilityChange);
 
   // 5) 解除 socket 監聽（和 mounted 時註冊的事件一一對應）
   if (socket?.value) {
@@ -2277,6 +1954,19 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+function openDialog(materialId, bomsFromServer) {
+  editDialog.value = true
+  selectedMaterialId.value = materialId
+
+  // ✅ 只在第一次開啟時用後端資料初始化
+  if (!bomDraftCache[materialId]) {
+    bomDraftCache[materialId] = JSON.parse(JSON.stringify(bomsFromServer))  //deep copy, 值一樣, 但memory address不一樣
+  }
+
+  // dialog 內綁定用這份
+  dlg.bomsDraft = bomDraftCache[materialId]
+}
+
 function goPrev () {
   if (page.value <= 0) return
   transitionName.value = 'slide-prev'
@@ -2318,7 +2008,7 @@ function handleVisibilityChange() {
     fetchMaterials()
   }
 }
-
+/*
 async function fetchMaterials() {
   try {
     tableLoading.value = true
@@ -2330,6 +2020,80 @@ async function fetchMaterials() {
     tableLoading.value = false
   }
 }
+*/
+
+/*
+const startProcessOnce = async (dlg) => {
+  if (dlg._starting) return
+  if (dlg._started) {
+    // 已經啟動過（同一個 dlg 生命週期），只要同步回 UI 就好
+    //await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id)
+    await startProcessOnce(dlg);
+    return
+  }
+
+  dlg._starting = true
+  try {
+    await waitTimerRefReady(dlg)          // 下面第2點
+    await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id)
+    dlg._started = true
+  } finally {
+    dlg._starting = false
+  }
+}
+*/
+
+const startProcessOnce = async (dlg) => {
+  if (dlg._starting) return;
+
+  if (dlg._started) {
+    // ✅ 已啟動過：不要再 startProcess，一律只同步畫面即可
+    try { dlg?.proc?.syncToTimer?.(); } catch (_) {}
+    return;
+  }
+
+  dlg._starting = true;
+  try {
+    await waitTimerRefReady(dlg);
+    await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
+    dlg._started = true;
+  } finally {
+    dlg._starting = false;
+  }
+};
+
+const updateMergeEnabled = async (mergeEnabled) => {
+  try {
+    const payload = {
+      id: editedRecord.value.id,   // 你目前這頁的 material id
+      record_name: 'merge_enabled',
+      record_data: mergeEnabled
+    };
+    await updateMaterial(payload);
+
+    editedRecord.value.merge_enabled = mergeEnabled;
+
+    console.log('merge_enabled updated:', mergeEnabled)
+  } catch (err) {
+    console.error('update merge_enabled failed', err)
+    showSnackbar('更新併單狀態失敗', 'red accent-2')
+  }
+}
+
+async function fetchMaterials() {
+  if (isFetching.value) return
+  isFetching.value = true
+  try {
+    tableLoading.value = true
+    await listMaterials()
+    lastRefreshed.value = new Date()
+  } catch (err) {
+    console.error('fetchMaterials error:', err)
+  } finally {
+    tableLoading.value = false
+    isFetching.value = false
+  }
+}
 
 const initialize = async () => {
   try {
@@ -2339,7 +2103,8 @@ const initialize = async () => {
     //await listMaterials();
     await fetchMaterials();
 
-    console.log('## materials ##', materials)
+    //console.log('## materials ##', materials)
+    console.log('## materials length ##', materials.value?.length ?? 0)
 
     //await listUsers();
     await listUsers2();
@@ -2354,8 +2119,27 @@ const initialize = async () => {
 const setTimerRef = (dlg) => {
   return (el) => {
     dlg.timerRef = el;
+
+    // ✅ ref 掛上來時，如果 proc 已經有狀態，補一次還原
+    try {
+      if (el && dlg?.proc?.syncToTimer) {
+        dlg.proc.syncToTimer();
+      }
+    } catch (_) {}
   };
 }
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+const waitTimerRefReady = async (dlg, tries = 30) => {
+  for (let i = 0; i < tries; i++) {
+    await nextTick();
+    if (dlg.timerRef) return true;
+    await sleep(20); // 給 v-dialog transition 一點時間
+  }
+  console.warn("Timer ref not ready:", dlg.material_id);
+  return false;
+};
 
 const getIcon = (isPaused) => {
   return isPaused ? "mdi-play" : "mdi-pause"
@@ -2660,8 +2444,10 @@ const handleOutsideClick = (dlg) => {
 const editOrderNum = async (item) => {
   console.log("editOrderNum(),", item);
 
+  editedRecord.value = item;
+
   group1.value = item.merge_enabled ? 'blue' : 'red';
-  group1_radio_btn_disable.value = !item.merge_radio_disable || item.isTakeOk;
+  group1_radio_btn_disable.value = !item.merge_radio_disable && !item.isTakeOk;
 
   selectedId.value = item.id;
   selectedOrderNum.value = item.order_num;
@@ -2769,7 +2555,8 @@ const toggleExpand = async (item) => {
 
   dialog_order_num.value=item.order_num;
 
-  const user_id = currentUser.value.empID;
+  //const user_id = currentUser.value.empID;
+  const user_id = String(currentUser.value.empID || '');
   const process_type = 1;
   const material_id = item.id;
   const order_num = item.order_num;
@@ -2787,7 +2574,10 @@ const toggleExpand = async (item) => {
       proc: null,       // 每個 dialog 一個 useProcessTimer 實例
 
       _closing: false,  // ESC/外點防重入
-      closeReason: null // 關閉原因（'esc' | 'outside' | 'normal' ...）
+      closeReason: null, // 關閉原因（'esc' | 'outside' | 'normal' ...）
+
+      _starting: false,
+      _started: false,
     });
 
     dialogs.value.push(dlg);
@@ -2795,10 +2585,12 @@ const toggleExpand = async (item) => {
     // 立刻建立 proc（把 timerRef 傳進去）
     dlg.proc = useProcessTimer(() => dlg.timerRef);
 
-    await nextTick();
+    //await nextTick();
+    await waitTimerRefReady(dlg);
 
     // 啟動/還原（從後端拿 elapsed_time / is_paused）
-    await dlg.proc.startProcess(material_id, process_type, user_id);
+    //await dlg.proc.startProcess(material_id, process_type, user_id);
+    await startProcessOnce(dlg);
     console.log("Process ID:", dlg.proc.processId);
     currentProcessId.value = dlg.proc.processId;
 
@@ -3339,8 +3131,8 @@ const callForklift = async () => {
     localStorage.removeItem('selectedItems');
   }
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  await fetchMaterials();
 };
 
 const callAGV = async () => {
@@ -3547,7 +3339,8 @@ const readAllExcelFun = async () => {
       await delay(3000);
 
       //待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      await fetchMaterials();
     }
   } catch (error) {
     console.error("Error during execution:", error);

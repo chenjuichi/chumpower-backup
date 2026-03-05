@@ -526,7 +526,7 @@ const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
 
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
-const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+//const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
 const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 
 const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
@@ -654,8 +654,7 @@ const abnormalDialog_display = ref(true);
 
 const abnormalDialog_record = ref(null);
 
-//2025-11-18 let pollId = null;                                  // 每 10 秒輪詢
-//2025-11-18 const refreshPollIdTimerMs = ref(10 * 1000);        // 10秒
+const refreshing = ref(false);
 
 const timerMap = new Map();
 
@@ -670,11 +669,6 @@ const activeMap = reactive({
 const selectedAsmId = ref(null);
 
 //=== watch ===
-//watch(currentUser, (newUser) => {
-//  if (newUser.perm < 1) {
-//    permDialog.value = true;
-//  }
-//});
 setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
@@ -683,22 +677,6 @@ watch(bar_code, (newVal) => {
     handleBarCode();
   }
 })
-/*
-// 監控 station2_trans_ready
-watch(station2_trans_ready, (newVal) => {
-  if (newVal) {
-    // 開始閃爍
-    blinkInterval = setInterval(() => {
-      showText.value = !showText.value
-    }, 500)
-  } else {
-    // 停止閃爍
-    clearInterval(blinkInterval)
-    blinkInterval = null
-    showText.value = true
-  }
-})
-*/
 
 //=== computed ===
 const containerStyle = computed(() => ({
@@ -829,8 +807,14 @@ onMounted(async () => {
 
   //await initialize_for_mounted();
 
-  await listMaterialsAndAssembles()
-  //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
+  //await listMaterialsAndAssembles()
+  await safeRefresh();
+
+  materials_and_assembles.value.map(it => ({
+    ...it,
+    pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
+    count: typeof it.count === 'number' ? it.count : 0,
+  }));
 
   await nextTick()
   materials_and_assembles.value.forEach(r => getT(r))     // 先建好 t
@@ -878,7 +862,8 @@ onMounted(async () => {
       station2_trans_ready.value = true;
       forkliftNoticeFun();
 
-      await initialize_for_created();
+      await safeRefresh();
+      //await initialize_for_created();
       //initialize();
     })
 
@@ -960,11 +945,10 @@ onDeactivated(() => { disposeAllTimersOnce(); });
 onBeforeMount(() => {
   console.log("Employer, created()...")
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  //pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
   initAxios();
-  initialize_for_created();
-  //initialize();
+  //initialize_for_created();
 });
 
 onBeforeUnmount(() => {
@@ -1057,7 +1041,6 @@ function processTypeOf(row) {
 // 若後端已支援 assemble 粒度，改成 row.assemble_id 並把 key 換成 'assemble'
 function idOf(row) {
   return row.id;
-  //return KEY === 'assemble' ? (row.assemble_id ?? null) : (row.id ?? row.material_id ?? null)
 }
 
 async function restoreAllMyTimers() {
@@ -1077,80 +1060,6 @@ async function restoreAllMyTimers() {
   }
 }
 
-/* //2025-11-18
-async function refreshActiveCounts() {
-  console.log("@@@refreshActiveCounts...")
-
-  const rows = materials_and_assembles.value || []
-  if (!rows.length) return
-
-  // 準備查詢分組
-  const groups = { '21': [], '22': [], '23': [] }
-  for (const row of rows) {
-
-    console.log("row: ", row)
-
-    const pt = String(processTypeOf(row))
-    console.log("pt: ", pt)
-    if (row.id != null) groups[pt].push(Number(row.id))
-  }
-
-  // 呼叫 API
-  const res = await getActiveCountMap({
-    key: 'material',
-    groups
-  })
-  console.log('getActiveCountMap:', res)
-
-  // 正規化回傳
-  const incoming = (res && res.counts) ? res.counts : {}
-
-  // ✅ 重點：維持每個 activeMap[pt] 的「同一個物件引用」，
-  // 先清空，再覆蓋新資料
-  for (const pt of PROCESS_TYPES) {
-    const dst = activeMap[pt]            // 既有 reactive 物件
-    const src = incoming[pt] || {}       // 新資料（可能不存在）
-
-    // 1) 清空舊 key
-    for (const k of Object.keys(dst)) delete dst[k]
-
-    // 2) 覆蓋新 key
-    for (const [id, cnt] of Object.entries(src)) {
-      dst[String(id)] = Number(cnt) || 0
-    }
-  }
-
-  //（可選）如果你還在每列上放快取欄位，這裡同步一下：
-  for (const row of rows) {
-    const pt = String(processTypeOf(row))
-    const id = String(row.id)
-    row.active_user_count = Number(activeMap[pt][id] || 0)
-  }
-
-  await listMaterialsAndAssembles();
-
-  let payload = {
-    user_id: currentUser.value.empID,
-  };
-  await getCountMaterialsAndAssemblesByUser(payload);
-}
-*/
-
-/*
-async function restoreMyTimers() {
-  const uid = currentUser.value.empID
-  if (!uid) return
-  for (const row of materials_and_assembles.value || []) {
-    const t = getT(row)
-    try {
-      await t.startProcess(row.material_id ?? row.id, processTypeOf(row), uid, row.assemble_id)
-      // 不 toggle，避免誤開暫停的工單
-    } catch(e) {
-      console.debug('restore timer skip', row.id, e);
-    }
-  }
-}
-*/
 function makeStub() {
   const isPaused = ref(true)
   return {
@@ -1180,22 +1089,6 @@ function useRowTimer(row, currentUserId) {
     return makeStub()
   }
 
-  /*
-  const rowKey = row.id ?? row.assemble_id ?? row.material_id
-  if (rowKey == null) {
-    // 防守：渲染很早或資料異常時，回一個不會炸的空實例
-    return {
-      timerRef: { value: null },
-      isPaused: true,
-      onTick: () => {},
-      startProcess: async () => {},
-      toggleTimer: async () => {},
-      processId: { value: null },
-    }
-  }
-
-  const key = `${rowKey}:${currentUserId}`
-  */
   const key = keyOf(row, currentUserId)
   if (!timerMap.has(key)) {
     const timerRef = ref(null)
@@ -1281,15 +1174,6 @@ async function nudgeResume () {
   await new Promise(r => setTimeout(r, 30))
   timer()?.resume?.()
 }
-/*
-const showBadge = (item) => selectedAsmId.value === item.assemble_id;
-
-const countFromOldAPI = (item) => {
-  // 沿用舊的 by-material 計數結果（若有），只是只在聚焦列顯示
-  // return oldMaterialCount(...)
-  return 1
-}
-*/
 
 async function onClickBegin(row) {
   console.log("onClickBegin(), row", row);
@@ -1345,18 +1229,30 @@ const handleSetLinks = (links) => {
   updateNavLinks(links);
 };
 
+// 避免同時多次 refresh
+const safeRefresh = async () => {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await listMaterialsAndAssembles();
+    //await nextTick();
+    //await restoreAllMyTimers();
+  } finally {
+    refreshing.value = false;
+  }
+};
+
 const handleMaterialUpdate = async ()  => {
   console.log("handleMaterialUpdate 被觸發！")
 
-  await listMaterialsAndAssembles();
-  //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
-
-  // 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
-  await nextTick();
-
-  // 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
-  await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
-
+  await safeRefresh();
+  //
+  //await listMaterialsAndAssembles();
+  //// 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
+  //await nextTick();
+  //// 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
+  //await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
+  //
   // 再抓「有人開工」的綠點數（不只自己）
   //2025-11-18 await refreshActiveCounts();
 }
@@ -1401,7 +1297,9 @@ const removeMaterialsAndRelationTableFun = async (id) => {
   try {
     editDialog.value = false;
 
-    await listMaterialsAndAssembles();
+    //await listMaterialsAndAssembles();
+    await safeRefresh();
+
     //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
     showSnackbar("刪除工單完成!", 'green darken-1');
@@ -1417,7 +1315,9 @@ const initialize = async () => {
     console.log("initialize()...");
 
     // 1. 先撈表格資料
-    await listMaterialsAndAssembles();
+    //await listMaterialsAndAssembles();
+    await safeRefresh();
+
     //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
     // 2. 補上欄位（這會影響渲染）
@@ -1452,8 +1352,9 @@ const initialize = async () => {
 };
 
 const initialize_for_created = async () => {
-  await listMaterialsAndAssembles();
-  //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
+  //await listMaterialsAndAssembles();
+  await safeRefresh();
+
 
   materials_and_assembles.value.map(it => ({
     ...it,

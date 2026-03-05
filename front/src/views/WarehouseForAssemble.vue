@@ -859,14 +859,14 @@ const updateItem2 = async (item) => {
   payload = {
     id: current_material_id,
     record_name: 'show2_ok',
-    record_data: 11             // 設為 11，入庫進行中
+    record_data: 7             // 設為 7，入庫進行中
   };
   await updateMat(payload);
 
   payload = {
     id: current_material_id,
     record_name: 'show3_ok',
-    record_data: 12             // 設為 12，入庫進行中
+    record_data: 7             // 設為 7，入庫進行中
   };
   await updateMat(payload);
 
@@ -925,147 +925,171 @@ const onClickWarehouseIn = async () => {
 
     for (const id of selectedIds) {
       const targetIndex = warehouses.value.findIndex((kk) => kk.index === id);
-      if (targetIndex === -1)
-        continue;
+      if (targetIndex === -1) continue;
 
       const row = warehouses.value[targetIndex];
 
       const current_material_id = row.id;
       const current_assemble_id = row.assemble_id;
-      const current_allOk_qty   = row.allOk_qty;
-      const current_must_qty    = row.must_allOk_qty;
-      const current_total_qty   = row.total_allOk_qty;
-      const current_line        = row.line;
 
+      const current_process_id = row.process_id;
+
+      // ✅ 1) 應入庫良品數（已扣掉 abnormal_qty）
+      //    優先：must_receive_end_qty / total_ask_qty_end
+      const current_must_qty = Number(
+        row.must_receive_end_qty ?? row.total_ask_qty_end ?? row.must_allOk_qty ?? 0
+      );
+
+      // 已入庫總數
+      const current_total_qty = Number(row.total_allOk_qty ?? 0);
+
+      const current_line = String(row.line || '').trim().toLowerCase(); // 'process' / 'assemble'
       const updateAssem = pick(current_line, updateAssemble, updateAssembleP);
-      const updateMat = pick(current_line, updateMaterial, updateMaterialP);
+      const updateMat   = pick(current_line, updateMaterial, updateMaterialP);
 
-      let payload = {}
-      let d0 = Number(current_must_qty)
-      let d1 = Number(current_total_qty)
-      let d2 = Number(current_allOk_qty)
+      // ✅ 2) 本次入庫量 d2：沒輸入或為 0 → 預設用到庫數量
+      let d2 = 0;
+      if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
+        d2 = Number(row.delivery_qty) || 0;
+      } else {
+        d2 = Number(row.allOk_qty) || 0;
+      }
 
-      // ✅ qty=0 不允許建立入庫（避免 0 還一直建立）
+      // qty=0 不允許
       if (d2 <= 0) {
         showSnackbar('入庫數量不可為 0', 'red accent-2');
         continue;
       }
 
-      let difference = d0 - d1 - d2
-      console.log("##### difference:", difference);
-      console.log("##### current_line:", current_line);
+      // ✅ 3) 用良品 must 計算差額（允許分批入庫）
+      const new_total = current_total_qty + d2;
+      const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
 
-      if (difference != 0) {
-        console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
+      console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
 
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'input_allOk_disable',
-          record_data: false,
-        };
-        await updateAssem(payload);
-
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'allOk_qty',
-          record_data: 0,
-        };
-        await updateAssem(payload);
-
-        // 用 Vue 的方式確保觸發響應式更新
-        warehouses.value[targetIndex] = {
-          ...warehouses.value[targetIndex],
-          allOk_qty: 0,
-          isError: false,
-          input_allOk_disable: false,
-          isWarehouseStationShow: false
-        };
-
-        continue; // ✅ 不要做入庫建立
-
-      } else {
-        payload = {
-          id: current_material_id,
-          record_name: 'show2_ok',
-          record_data: current_line === 'process' ? 8 : 12,          // 入庫完成
-        };
-        await updateMat(payload);
-
-        payload = {
-          id: current_material_id,
-          record_name: 'show3_ok',
-          record_data: current_line === 'process' ? 8 : 13,          // 入庫完成
-        };
-        await updateMat(payload);
-
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'input_allOk_disable',
-          record_data: true,
-        };
-        await updateAssem(payload);
-
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'allOk_qty',
-          record_data: current_allOk_qty,
-        };
-        await updateAssem(payload);
-
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'isWarehouseStationShow',
-          record_data: true,
-        };
-        await updateAssem(payload);
-
-        payload = {
-          assemble_id: current_assemble_id,
-          record_name: 'isStockIn',
-          record_data: true,
-        };
-        await updateAssem(payload);
-
-        // 用 Vue 的方式確保觸發響應式更新
-        warehouses.value[targetIndex] = {
-          ...warehouses.value[targetIndex],
-          allOk_qty: current_allOk_qty,
-          isError: true,
-          input_allOk_disable: true,
-          isWarehouseStationShow: true,
-          isStockIn: true,
-        };
-      }
-
-      // 建立「成品入庫」流程（process_type: 31）
+      // ======================================
+      // A) 先寫入庫流程：建立 process(31) + product
+      // ======================================
       const nowStr = formatDateTime(new Date());
-      const createProc = (current_line === 'process') ? createProcessP : createProcess
-      const createProd = (current_line === 'process') ? createProductP : createProduct
-
-      payload = {
+      const createProc = (current_line === 'process') ? createProcessP : createProcess;
+      const createProd = (current_line === 'process') ? createProductP : createProduct;
+      /*
+      // 建立「成品入庫」process_type=31
+      let payload = {
         begin_time: nowStr,
         end_time: nowStr,
         periodTime: '',
         order_num: row.order_num,
         user_id: currentUser.value?.empID ?? '',
-        process_type: 31,         // 成品入庫
+        process_type: 31,
         id: current_material_id,
+        material_id: current_material_id,
         assemble_id: current_assemble_id,
         has_started: true,
         process_work_time_qty: d2,
+        allOk_qty: d2,
       };
       const procResp = await createProc(payload);
 
+      // 建 product（⚠️ allOk_qty / good_qty 一律用 d2）
       const productPayload = {
         material_id: current_material_id,
-        process_id: procResp?.process_id,
+        assemble_id: current_assemble_id,              // ✅ 後端可用來標記 P_Assemble.isStockIn
+        user_id: currentUser.value?.empID ?? '',
+        line_difference: (current_line === 'process') ? 1 : 0,
+        process_id: procResp?.process_id,              // 可能 undefined 也沒關係（後端 B 方案會補）
         allOk_qty: d2,
-        good_qty: current_allOk_qty,
+        good_qty: d2,
+        non_good_qty: 0,
+        delivery_qty: Number(row.delivery_qty) || 0,
+        assemble_qty: 0,
+      };
+      await createProd(productPayload);
+      */
+
+      const productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
+        process_id: current_process_id,
+        user_id: currentUser.value?.empID ?? '',
+        line_difference: (current_line === 'process') ? 1 : 0,
+
+        // ✅ 不送 process_id，讓後端 createProductP 自己補 31
+        // process_id: 0,
+
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+        delivery_qty: Number(row.delivery_qty) || 0,
+        assemble_qty: 0,
       };
       await createProd(productPayload);
 
+      // ======================================
+      // B) 更新 Assemble / Material 狀態
+      // ======================================
+
+      // 先把本次入庫量寫回 assemble.allOk_qty（供你畫面/報表用）
+      await updateAssem({
+        assemble_id: current_assemble_id,
+        record_name: 'allOk_qty',
+        record_data: d2,
+      });
+
+      // 未完成：保持可入庫（不要鎖住）
+      if (!is_done) {
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'input_allOk_disable',
+          record_data: false,
+        });
+
+        // 更新前端：累計加上去、清空輸入框
+        warehouses.value[targetIndex] = {
+          ...warehouses.value[targetIndex],
+          total_allOk_qty: new_total,
+          allOk_qty: 0,
+          input_allOk_disable: false,
+        };
+
+        // ✅ 分批入庫時不要 continue/不要移除，保留讓你下次再入庫
+        continue;
+      }
+
+      // ✅ 完成：才標記入庫完成 / isStockIn，並讓等待清單不再顯示
+      await updateMat({
+        id: current_material_id,
+        record_name: 'show2_ok',
+        record_data: current_line === 'process' ? 8 : 12,
+      });
+      await updateMat({
+        id: current_material_id,
+        record_name: 'show3_ok',
+        record_data: current_line === 'process' ? 8 : 13,
+      });
+
+      await updateAssem({
+        assemble_id: current_assemble_id,
+        record_name: 'input_allOk_disable',
+        record_data: true,
+      });
+      await updateAssem({
+        assemble_id: current_assemble_id,
+        record_name: 'isWarehouseStationShow',
+        record_data: true,
+      });
+      await updateAssem({
+        assemble_id: current_assemble_id,
+        record_name: 'isStockIn',
+        record_data: true,
+      });
+
+      // 更新前端並移除該筆（完成就不該再出現在等待清單）
+      warehouses.value.splice(targetIndex, 1);
+
       successCount++;
     }
+
 
     // 成功至少一筆才更新 AGV 狀態（在成品區、ready）
     if (successCount > 0) {
@@ -1091,7 +1115,7 @@ const onClickWarehouseIn = async () => {
     showSnackbar('入庫流程執行失敗，請稍後再試', 'red accent-2');
   }
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 // 改變拖曳功能

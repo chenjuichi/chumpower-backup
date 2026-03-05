@@ -97,7 +97,7 @@
                         <v-row no-gutters align="center" style="top: -40px; position: relative;" v-if="editedIndex != -1">
                           <v-col cols="12" md="3"></v-col>
                           <div style="margin-bottom: 0; font-size: 14px;">
-                            <span style="font-weight: bold;">重設密碼預設值</span>
+                            <span style="font-weight: bold;">重設密碼為預設值</span>
                             <span style="font-weight: normal;">(a12345)</span>
                           </div>
                           <v-radio-group v-model="password_reset" hide-details inline style="font-size: 14px;">

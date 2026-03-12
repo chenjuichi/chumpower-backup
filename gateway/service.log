@@ -898,3 +898,17 @@
 連線時間: Tue Mar 03 2026 10:28:34 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
 連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
 連線時間: Thu Mar 05 2026 16:10:13 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Fri Mar 06 2026 16:01:27 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Mar 09 2026 10:44:33 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線失敗: connect ECONNABORTED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Mon Mar 09 2026 13:19:13 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Mar 09 2026 21:50:29 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Tue Mar 10 2026 09:33:48 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Wed Mar 11 2026 09:37:56 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.68.111:6600, mode: false, RUN_MODE: false
+連線時間: Thu Mar 12 2026 09:25:35 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false

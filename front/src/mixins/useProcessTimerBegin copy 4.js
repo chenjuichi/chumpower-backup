@@ -12,12 +12,14 @@ const dialog2CloseProcess = apiOperation('post', '/dialog2CloseProcessBegin');
 
 const updateMaterial = apiOperation('post', '/updateMaterial');
 
-let _uiStarted = false;   // 🔹避免重複 start() 造成多組 interval
+//let _uiStarted = false;   // 🔹避免重複 start() 造成多組 interval
 
 // 允許的時間誤差（毫秒）：超過這個才把前端時間校正成後端
 const DRIFT_THRESHOLD_MS = 3000;   // 3 秒，可調整成 2000〜5000
 
 export function useProcessTimer(getTimerRef) {
+	let _uiStarted = false;
+
 	// 後端資料
 	const processId = ref(null);
 
@@ -69,10 +71,10 @@ export function useProcessTimer(getTimerRef) {
 
 		_stopLocalTicker();
 
-		if (timer()) {
-			// 有可用的 TimerDisplay，交給它的 @update:time 來驅動 elapsedMs
-			return;
-		}
+		//if (timer()) {
+		//	// 有可用的 TimerDisplay，交給它的 @update:time 來驅動 elapsedMs
+		//	return;
+		//}
 
 		_lastTs = Date.now();
 		_ticker = setInterval(() => {
@@ -117,19 +119,15 @@ export function useProcessTimer(getTimerRef) {
 		return startProcess(mId, pType, uId, aId, { restoreOnly: true })
 	}
 
+	function _kickoffPersistSoon() {
+		setTimeout(() => {
+			updateProcess().catch(() => {})
+		}, 800)
+	}
+
 	// 進入 dialog：後端建立/還原 + 同步 TimerDisplay
 	async function startProcess(mId, pType, uId, aId = 0, opts = {}) {
 		console.log("startProcess()...")
-
-		  if (!uId) {
-    console.error("[Timer][startProcess] user_id is empty", {
-      mId, pType, uId, aId, opts
-    })
-    return {
-      success: false,
-      message: "user_id is empty"
-    }
-  }
 
 		const assemble_id = Number(aId ?? 0);
 
@@ -210,33 +208,18 @@ export function useProcessTimer(getTimerRef) {
 		await nextTick();
 
 		const td = timer();
-
-		// refresh 後 table/render 可能慢一拍，再補等幾次
-		//for (let i = 0; i < 5 && !td; i++) {
-		//	await new Promise(resolve => setTimeout(resolve, 50));
-		//	await nextTick();
-		//	td = timer();
-		//}
-
-		console.log('[restore startProcess] seconds=', seconds, 'paused=', paused, 'td=', !!td);
-
 		if (td?.setState) {
 			td.setState(seconds, paused);
 		} else if (td?.setElapsedTime) {
 			td.setElapsedTime(seconds * 1000);
 		}
 
-		// ★ 若 restoreOnly 且正在執行中，再補一次顯示秒數
-		if (restoreOnly && !paused) {
-			elapsedMs.value = seconds * 1000;
-		}
-
-		/*
 		if (paused) {
 			timer()?.pause();
 			_stopLocalTicker();
 			_stopAutoUpdate();
 		} else {
+			/*
 			if (restoreOnly) {
 				// 還原模式：只讓 UI 動起來，不主動觸發 begin_time 寫入
 				// 還原模式（restoreOnly）：頁面重整或換頁回來時
@@ -249,37 +232,12 @@ export function useProcessTimer(getTimerRef) {
 				_startLocalTicker();
 			}
 			_startAutoUpdate();       // 保留原本的自動回寫（最小更動）；若想完全不寫，移到上面 else 區塊
+			*/
+			await nudgeResume();
+			_startLocalTicker();
+			_startAutoUpdate();
+			_kickoffPersistSoon();
 		}
-		*/
-		if (paused) {
-			timer()?.pause?.();
-			_stopLocalTicker();
-			_stopAutoUpdate();
-		} else {
-			if (restoreOnly) {
-				// ★ refresh / 換頁還原時，也走 nudgeResume
-				// 不直接 call toggle，避免重寫 begin_time
-				await nudgeResume();
-
-				// 再補一次 setState，避免 resume 後被元件內部初始值蓋掉
-				await nextTick();
-				const td2 = timer();
-				if (td2?.setState) {
-					td2.setState(seconds, false);
-				} else if (td2?.setElapsedTime) {
-					td2.setElapsedTime(seconds * 1000);
-				}
-
-				_startLocalTicker();
-				_startAutoUpdate();
-			} else {
-				// 一般開始：照舊
-				await nudgeResume();
-				_startLocalTicker();
-				_startAutoUpdate();
-			}
-		}
-
 
 		console.log("🔹 後端回傳 pause_time =", pauseTotal, "秒");
 
@@ -287,37 +245,51 @@ export function useProcessTimer(getTimerRef) {
 	}
 
 	// 暫停/恢復切換
-	/*
 	async function toggleTimer() {
 		if (!processId.value) return;
 
 		console.log("toggleTimer()...")
 		console.log("isPaused:",isPaused.value)
-
 		if (isPaused.value) {
 			console.log("toggleTimer() status: 開始", isPaused.value)
 
+			//_frozenElapsedOnPause = null;     // ← 清掉凍結值，恢復改用 live ms
+
+			// 開始
+			//timer()?.resume();						// - 2025-09-23 modify
+			//isPaused.value = false;				// -
 			_frozenElapsedOnPause = null;		// +
 			isPaused.value = false;					// +
-			timer()?.resume?.();							// +
+			//timer()?.resume?.();							// +
+			await nudgeResume();
+			/*
+			if (!for_vue3_has_started.value) {
+				for_vue3_has_started.value = true;
 
-			// 先同步前端 row 狀態
-  			hasStarted.value = true;
+				await updateMaterial({
+					id: materialId.value,
+					record_name: "hasStarted",
+					record_data: true,
+				});
 
-			await updateMaterial({
-				id: materialId.value,
-				record_name: "hasStarted",
-				record_data: true,
-			});
+				await updateMaterial({
+					id: materialId.value,
+					record_name: "isOpenEmpId",
+					record_data: userId.value,
+				});
 
-			await updateMaterial({
-				id: materialId.value,
-				record_name: "isOpenEmpId",
-				record_data: userId.value,
-			});
+				// 記錄當前途程狀態
+				const payload = {
+					id: materialId.value,
+					record_name: 'show2_ok',
+					record_data: 1                //備料中
+				};
+				await updateMaterial(payload);
+			}
 
+			for_vue3_pause_or_start_status.value =true;
+			*/
 			console.log("toggle pause")
-
 			await updateMaterial({
 				id: materialId.value,
 				record_name: "startStatus",
@@ -328,22 +300,29 @@ export function useProcessTimer(getTimerRef) {
 			if (idx !== -1) {
 				materials.value[idx] = {
 					...materials.value[idx],
+					//is_paused: false,
+					//startStatus: true,
 					hasStarted: true,
-					startStatus: true,
-					isOpenEmpId: userId.value,
 				};
 			}
 
 			_startLocalTicker();
 			_startAutoUpdate();
+
+			_kickoffPersistSoon();
 		} else {
 			console.log("toggleTimer() status: 暫停", isPaused.value)
 
 			// 暫停
+			//timer()?.pause();						// - 2025-09-23 modify
+			//isPaused.value = true;			// -
 			isPaused.value = true;				// +
 			timer()?.pause?.();							// +
+			/*
+			for_vue3_pause_or_start_status.value =false;
+			*/
 
-			// 暫停當下凍結秒數
+			// ★ 暫停當下凍結秒數
 			_frozenElapsedOnPause = Math.floor((timer()?.getElapsedMs?.() ?? elapsedMs.value) / 1000);
 
 			console.log("toggle pause")
@@ -380,112 +359,6 @@ export function useProcessTimer(getTimerRef) {
 
 		pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
 		pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
-	}
-	*/
-	// 暫停/恢復切換
-	async function toggleTimer() {
-		if (!processId.value) return;
-
-		console.log("toggleTimer()...");
-		console.log("isPaused(before):", isPaused.value);
-
-		const willPause = !isPaused.value; // 目前不是 paused -> 這次要暫停
-		const nextPaused = willPause;
-
-		try {
-			// 先同步後端 process 狀態
-			const res = await dialog2ToggleProcess({
-				process_id: processId.value,
-				is_paused: nextPaused,
-			});
-			const data = res?.data ?? res ?? {};
-
-			// 以後端結果為準
-			isPaused.value = Boolean(data?.is_paused ?? nextPaused);
-			hasStarted.value = Boolean(data?.has_started ?? hasStarted.value);
-
-			const pauseTotal = Number(data?.pause_time ?? 0);
-			console.log("🔸 累計暫停時間:", pauseTotal, "秒");
-
-			pauseTime.value = Number(data?.pause_time ?? pauseTime.value);
-			pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
-
-			// 如果後端有回 elapsed_time，就順便校正前端顯示
-			if (data?.elapsed_time != null) {
-				const secs = Number(data.elapsed_time || 0);
-				elapsedMs.value = secs * 1000;
-				timer()?.setState?.(secs, isPaused.value);
-			}
-
-			if (!isPaused.value) {
-				console.log("toggleTimer() status: 恢復");
-
-				_frozenElapsedOnPause = null;
-				timer()?.resume?.();
-
-				await updateMaterial({
-					id: materialId.value,
-					record_name: "hasStarted",
-					record_data: true,
-				});
-
-				await updateMaterial({
-					id: materialId.value,
-					record_name: "isOpenEmpId",
-					record_data: userId.value,
-				});
-
-				await updateMaterial({
-					id: materialId.value,
-					record_name: "startStatus",
-					record_data: true,
-				});
-
-				const idx = materials.value.findIndex(r => r.id === materialId.value);
-				if (idx !== -1) {
-					materials.value[idx] = {
-						...materials.value[idx],
-						hasStarted: true,
-						startStatus: true,
-						isOpenEmpId: userId.value,
-					};
-				}
-
-				_startLocalTicker();
-				_startAutoUpdate();
-			} else {
-				console.log("toggleTimer() status: 暫停");
-
-				timer()?.pause?.();
-
-				// ★ 暫停當下凍結秒數
-				_frozenElapsedOnPause = Math.floor(
-					(timer()?.getElapsedMs?.() ?? elapsedMs.value) / 1000
-				);
-
-				await updateMaterial({
-					id: materialId.value,
-					record_name: "startStatus",
-					record_data: false,
-				});
-
-				const idx = materials.value.findIndex(r => r.id === materialId.value);
-				if (idx !== -1) {
-					materials.value[idx] = {
-						...materials.value[idx],
-						startStatus: false,
-					};
-				}
-
-				_stopLocalTicker();
-				_stopAutoUpdate();
-			}
-
-			await nextTick();
-		} catch (err) {
-			console.error("toggleTimer failed:", err);
-			showSnackbar?.("計時器切換失敗，請稍後再試", "red-darken-2");
-		}
 	}
 
 	// 週期性/關閉前更新（把目前毫秒回傳）
@@ -662,13 +535,19 @@ export function useProcessTimer(getTimerRef) {
 		if (!t) return;
 
 		// 第一次才呼叫 start()，之後只呼叫 resume()
-		if (!_uiStarted && typeof t.start === 'function') {
-			_uiStarted = true;
-			t.start();
+		//if (!_uiStarted && typeof t.start === 'function') {
+		//	_uiStarted = true;
+		//	t.start();
+		//}
+
+		if (typeof t.start === 'function') {
+			t.start()
 		}
 
 		// resume 讓畫面繼續跑（若已經在跑，TimerDisplay 內部會自己忽略）
 		t.resume?.();
+
+		_uiStarted = true;
 
 		// 2025-1120 mark // 若元件需要 start() 才真正跑，補打一槍
 		// 2025-1120 mark if (t.start && (t.isRunning === false || typeof t.isRunning === 'undefined')) {

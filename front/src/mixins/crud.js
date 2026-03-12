@@ -372,12 +372,18 @@ export const apiOperation = (operation, path, payload) => {
             return res.data
           }
 
-          if (path == '/modifyExcelFiles' || path == '/removeMaterialsAndRelationTable' ||
+          if (path == '/modifyExcelFiles' ||
+              path == '/removeMaterialsAndRelationTable' ||
               path == '/updateMaterialFields' ||
               path == '/getActiveCountMap') {
             //console.log(path, "crud:", res.data);
             return res.data;
           }
+
+          if (path =='/removeMaterialsAndRelationTableByDeliveryDateRange') {
+            return res.data;
+          }
+
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||

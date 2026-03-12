@@ -9,11 +9,11 @@
       </v-btn>
     </template>
   </v-snackbar>
-
+<!--
   <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
-
+-->
   <ConfirmDialog ref="confirmRef" />
 
   <v-data-table
@@ -27,12 +27,14 @@
     density="comfortable"
     style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
     :items-per-page-options="footerOptions"
-    item-key="name"
-    items-per-page="5"
+
+    item-value="row_key"
+
+    v-model:items-per-page="pagination.itemsPerPage"
+    v-model:page="pagination.page"
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
-
   >
     <!-- 客製化 top 區域 -->
     <template v-slot:top>
@@ -42,53 +44,7 @@
           <v-divider class="mx-4" inset vertical></v-divider>
           <v-spacer></v-spacer>
 
-          <!--客製化 堆高機送料中按鍵-->
-          <!--
-          <v-btn
-            :disabled="!station2_trans_ready"
-            color="primary"
-            variant="outlined"
-            :style="{
-              position: 'relative',
-              right: screenSizeInInches > 20 ? '600px' : '570px',
-              top: '0px',
-              fontWeight: '700',
-              width: '120px',
-              background: '#e67e22',
-              background: station2_trans_ready ? '#e67e22' : '#e7e9eb',
-            }"
-            @click="forkliftNoticeFun"
-          >
-
-            <div v-if="station2_trans_ready" class="blink" style="display: flex; align-items: center;">
-              <v-icon left color="#fff">mdi-forklift</v-icon>
-              <span style="color: #fff;">堆高機送料中</span>
-            </div>
-            <div v-else style="display: flex; align-items: center;">
-              <v-icon left color="#000">mdi-forklift</v-icon>
-              <span style="color: #000;">堆高機送料中</span>
-            </div>
-          </v-btn>
-
-          <div style="display: flex; flex-direction: column; align-items: center;">
-            <div style="position:relative;right: 550px; font-size: 16px;">{{ station2_trans_empName }}</div>
-          </div>
-          -->
-
-          <!--
-          <v-btn
-            v-if="materials_and_assembles.length > 0"
-            color="primary"
-            variant="outlined"
-            style="position: relative; right: 500px; top: 0px;"
-            @click="refreshComponent"
-          >
-            <v-icon left color="blue">mdi-refresh</v-icon>
-            更新訂單
-          </v-btn>
-          -->
-
-          <!-- 組裝區來料異常備註 -->
+           <!-- 組裝區來料異常備註 -->
           <div class="pa-4 text-center">
             <v-dialog v-model="abnormalDialog" max-width="500">
               <!--取消最大高度限制，讓卡片內容可以顯示完整-->
@@ -149,35 +105,148 @@
             </v-dialog>
           </div>
 
-          <div style="display: flex; flex-direction: column; align-items: center;">
-            <!--客製化搜尋-->
-            <v-text-field
-              id="bar_code"
+          <v-row
+            class="ma-0 toolbar-row"
+            align="center"
+            no-gutters
+            style="position:relative; left:-45px; top:22px; height:48px;"
+          >
+            <!--日期範圍-->
+            <v-col cols="auto">
+              <div class="date-slot">
+              <Transition name="slide">
+                <!--<div v-if="showFields" class="date-box">-->
+                <div class="date-box">
+                  <v-menu
+                    v-model="menuOpen"
+                    :close-on-content-click="false"
+                    location="bottom start"
+                    origin="top start"
+                    :offset="[0, 8]"
+                    :width="480"
+                    :min-width="480"
+                    transition="fade-transition"
+                    :open-on-focus="false"
+                    :open-on-hover="false"
+                  >
+                    <template #activator="{ props }">
+                      <v-text-field
+                        v-bind="props"
+                        label="交期範圍"
+                        v-model="formattedDateRange"
+                        readonly
+                        variant="underlined"
+                        density="compact"
 
-              v-model="search"
+                        :placeholder="dateFieldActive ? 'yyyy-mm-dd ~ yyyy-mm-dd' : ''"
+                        prepend-icon="mdi-calendar-check"
 
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              hide-details
-              single-line
-              style="position: relative; top: 45px; right: 250px; min-width: 150px;"
-              density="compact"
-            />
+                        class="dateicon date-range-field"
+                        clearable
+                        hide-details
 
-            <!-- 客製化barcode輸入 -->
-            <v-text-field
-              id="bar_code"
-              v-model="bar_code"
-              :value="bar_code"
-              ref="barcodeInput"
-              @keyup.enter="handleBarCode"
-              hide-details="auto"
-              prepend-icon="mdi-barcode"
-              style="min-width:200px; position: relative; top: 15px; right: 50px;"
-              class="align-center"
-              density="compact"
-            />
-          </div>
+                        @click="openDateMenu"
+                        @focus="dateFieldActive = true"
+                        @blur="dateFieldActive = false"
+                        @click:clear="clearDates"
+                      />
+                    </template>
+
+                    <div class="dp-stretch">
+                      <VueDatePicker
+                        :key="menuKey"
+                        :start-date="today"
+                        v-model="dpRange2"
+                        :enable-time-picker="false"
+                        range
+                        :inline="true"
+                        :auto-apply="true"
+                        locale="zh-TW"
+                        week-num-name=""
+                        :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+                      />
+                    </div>
+                  </v-menu>
+                </div>
+              </Transition>
+              </div>
+            </v-col>
+
+            <!--整批刪除 按鍵-->
+            <v-col cols="auto">
+              <div class="batch-slot" :class="{ 'is-disabled': isInformationEmpty }">
+              <!-- 翻轉效果 -->
+              <div class="flip_btn fixed-flip-btn">
+                <v-btn
+                  style="background:#E3F2FD !important;"
+
+                  class="side default-side thin"
+                  :disabled="isInformationEmpty"
+                  @mouseenter="!isInformationEmpty && (showFields = true)"
+                  @click="!isInformationEmpty && (showFields = true)"
+                >
+                  <v-icon left color="green" style="font-weight:700;">mdi-sticker-remove-outline</v-icon>
+                  <span style="color:black; font-weight:600;">整批刪除</span>
+                </v-btn>
+
+                <div class="side hover-side hover-actions">
+                  <!-- 取消按鍵 -->
+                  <v-btn
+                    class="action-btn"
+                    :disabled="isInformationEmpty"
+                    @click="!isInformationEmpty && (showFields = false)"
+                  >
+                    <v-icon left color="#ff0000">mdi-window-close</v-icon>
+                    <span style="color:black; font-weight:600;">取消</span>
+                  </v-btn>
+
+                  <!-- 確定按鍵 -->
+                  <v-btn
+                    class="action-btn"
+                    :disabled="isInformationEmpty"
+                    @click="!isInformationEmpty && batchRemoveRecords()"
+                  >
+                    <v-icon left color="green">mdi-microsoft-excel</v-icon>
+                    <span style="color:black; font-weight:600;">確定</span>
+                  </v-btn>
+                </div>
+              </div>
+              </div>
+            </v-col>
+
+            <!--客製化搜尋輸入框-->
+            <v-col cols="auto">
+              <div class="search-slot">
+                <v-text-field
+                  v-model="search"
+                  prepend-inner-icon="mdi-magnify"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  density="compact"
+                  class="toolbar-field toolbar-field--24 search-field"
+                />
+              </div>
+            </v-col>
+
+            <!-- 客製化barcode輸入框 -->
+            <v-col cols="auto">
+              <div class="barcode-slot">
+                <v-text-field
+                  id="bar_code"
+                  v-model="bar_code"
+                  :value="bar_code"
+                  ref="barcodeInput"
+                  @keyup.enter="handleBarCode"
+                  hide-details="auto"
+                  prepend-icon="mdi-barcode"
+
+                  density="compact"
+                  class="toolbar-field toolbar-field--24 barcode-field"
+                />
+              </div>
+            </v-col>
+          </v-row>
         </v-card-title>
       </v-card>
     </template>
@@ -210,7 +279,7 @@
       <div style="left:20px; position:relative;">{{ column.title }}</div>
     </template>
 
-    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
+    <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 -->
     <template v-slot:header.req_qty="{ column }">
       <div style="text-align: center;">
         <div>需求</div>
@@ -218,7 +287,7 @@
       </div>
     </template>
 
-    <!-- 客製化 '備料數量' (delivery_qty) 欄位的表頭 2025-06-13 modify, 改順序 -->
+    <!-- 客製化 '備料數量' (delivery_qty) 欄位的表頭 -->
     <template v-slot:header.delivery_qty="{ column }">
       <div style="text-align: center;">
         <div>備料</div>
@@ -226,7 +295,7 @@
       </div>
     </template>
 
-    <!-- 客製化 '應領取數量' (must_receive_qty) 欄位的表頭 2025-06-13 add, 改順序 -->
+    <!-- 客製化 '應領取數量' (must_receive_qty) 欄位的表頭 -->
     <template v-slot:header.must_receive_qty="{ column }">
       <div style="text-align: center;">
         <div>應領取</div>
@@ -234,33 +303,36 @@
       </div>
     </template>
 
-    <!-- 客製化 '領取數量' (receive_qty) 欄位的表頭 -->
-  <!--ready modify 2025-09-15
-    <template v-slot:header.receive_qty="{ column }">
-      <div style="text-align: center;">
-        <div>領取</div>
-        <div>數量</div>
-      </div>
-    </template>
-  -->
-
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
-    <!--
       <div>
-        <div>{{ item.order_num }}</div>
-        <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-      </div>
-    -->
-      <div>
-        <div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">
+        <!--<div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">-->
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-if="(String(item.shortage_note || '').includes('缺料') || item.isLackMaterial != 99) &&
+          item.has_receive_true < item.has_bom" >
+
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
           {{ item.order_num }}&nbsp;&nbsp;
           <span style="color:red; font-weight:700; font-size:12px;">缺料</span>
         </div>
         <div style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;" v-else>
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
           {{ item.order_num }}
         </div>
-        <div style="color: #a6a6a6; font-size:12px; margin-right: 40px;">{{ item.assemble_work }}</div>
+        <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>
       </div>
     </template>
 
@@ -321,13 +393,13 @@
       </v-hover>
     </template>
   -->
-    <!-- 自訂 '應領取數量'欄位的資料藍位 -->
+    <!-- 自訂 '應領取數量'欄位的資料欄位 -->
+<!--  :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"-->
     <template v-slot:item.must_receive_qty="{ item }">
       <div style="display: flex; align-items: center;">
-        <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null"> <!--組裝途程-->
+        <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null && item.begin_records == 0"> <!--組裝途程-->
           <v-icon
             style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
             @click="addAbnormalInMaterial(item)"
             size="16"
             class="mr-2"
@@ -456,24 +528,38 @@
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
-      <TimerDisplay
-        :fontSize="18"
-        :autoStart="false"
+      <!--<span v-if="isMineStarted(item) || item.show_name == userId" -->
+      <!--<span v-if="item._showMyTimer || item.show_name == userId"-->
+      <!--<span v-if="isMineStarted(item) || item.show_name == userId"-->
+      <span v-if="item._showMyTimer || isMineStarted(item) || item.show_name == userId"
 
-        :show="true"
+        style="
+          position: relative;
+          left: 70px;
+          color:#4000ff;
+          width:88px;
+          min-width:88px;
+          font-variant-numeric:tabular-nums;"
+      >
+        <TimerDisplay
+          :fontSize="18"
+          :autoStart="false"
 
-        :key="`${item.id}-${currentUser.empID}`"
+          :show="true"
 
-        :ref="el => setTimerEl(item, el)"
-        :isPaused="isPausedOf(item)"
-        @update:isPaused="val => setPausedOf(item, val)"
-        @update:time="ms => onTickOf(item, ms)"
+          :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${safeUserId}`"
 
-        class="me-2"
-        style="min-width:88px; display:inline-block;"
-      />
+          :ref="el => setTimerEl(item, el)"
+          :isPaused="isPausedOf(item)"
+          @update:isPaused="val => setPausedOf(item, val)"
+          @update:time="ms => onTickOf(item, ms)"
 
+          class="me-2"
+          style="min-width:88px; display:inline-block;"
+        />
+      </span>
       <!-- 綠點：這筆「有人」在開工（不限本人） -->
+      <!--
       <v-badge
         :key="`badge-${item.index}-${item.count}`"
         v-bind="badgeProps(item)"
@@ -483,18 +569,26 @@
         offset-y="6"
         class="me-1"
       >
+      -->
+      <!-- :style="item.show_name === userId ? { position: 'relative', left: '70px' } : {position: 'relative', left: '117px'}" -->
+
         <v-btn
           size="small"
           variant="tonal"
-          style="font-size: 14px; font-weight: 700; font-family: '微軟正黑體', sans-serif;"
+
+          style="font-size:14px; font-weight:700; font-family: '微軟正黑體', sans-serif; position:relative; left:70px;"
+
           :disabled="isButtonDisabled(item)"
-          @click="onStart(item)"
+          @click="onClickBegin(item)"
+          prepend-icon = "mdi-play"
           color="indigo-darken-4"
         >
+          <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
           開 始
-          <v-icon color="indigo-darken-4" end>mdi-open-in-new</v-icon>
         </v-btn>
+      <!--
       </v-badge>
+      -->
     </template>
 
     <template #no-data>
@@ -505,12 +599,20 @@
 </template>
 
 <script setup>
-//import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount } from 'vue';
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, onDeactivated } from 'vue';
+
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrBefore);             //啟用 plugin
+
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
 import { onBeforeRouteLeave } from 'vue-router';
 
 import TimerDisplay from "./TimerDisplayBegin.vue";
 import { useProcessTimer } from "../mixins/useProcessTimerBegin.js";
+import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
 
@@ -524,30 +626,53 @@ const search = ref('');
 import { useRouter } from 'vue-router';
 const router = useRouter();
 
+// +++
+
+const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
+const menuOpen = ref(false)
+const today = new Date()
+const menuKey = ref(0)
+const settingDefaultRange = ref(false)
+
+const dpRange = ref(null)             // 外部值（清空用 null，不要 []）
+const dpRange2 = ref([])
+const dpInternal = ref(null)          // 內部值：選取當下就會更新
+const formattedDateRange = ref('')    // 綁給 <v-text-field>
+const dateFieldActive = ref(false)
+
+
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { materials_and_assembles, assembles_active_user_count, boms, socket_server_ip }  from '../mixins/crud.js';
+import { temp_isLackMaterial }  from '../mixins/crud.js';
 import { begin_count, end_count }  from '../mixins/crud.js';
 import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
-const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
+//const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
-const updateAssembleMustReceiveQtyByMaterialID = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialID');
+const updateAssembleMustReceiveQtyByMaterialIDAndDate = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDate');
+
 const copyAssemble = apiOperation('post', '/copyAssemble');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
+
+const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
+
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
-const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+//const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
+
+const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
 
 
 //=== component name ==
@@ -605,14 +730,14 @@ const footerOptions = [
 const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
-  { title: '訂單編號', sortable: true, key: 'order_num', width:160 },
-  { title: '物料編號', sortable: false, key: 'material_num', width:180},
-  { title: '需求數量', sortable: false, key: 'req_qty', width:80 },
-  { title: '備料數量', sortable: false, key: 'delivery_qty', width:80 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:180 },
+  { title: '物料編號', sortable: false, key: 'material_num', width:160},
+  { title: '需求數量', sortable: false, key: 'req_qty', width:60 },
+  { title: '備料數量', sortable: false, key: 'delivery_qty', width:60 },
   { title: '應領取數量', sortable: false, key: 'must_receive_qty', width:100 },  // 2025-06-13 add, 改順序
   //{ title: '領取數量', sortable: false, key: 'receive_qty' },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:120 },
-  { title: '交期', align: 'start', sortable: false, key: 'delivery_date', width:110 },
+  { title: '交期', align: 'start', sortable: false, key: 'delivery_date', width:100 },
   { title: '', sortable: false, key: 'gif' },
   { title: '', sortable: false, key: 'action' },
 ];
@@ -637,17 +762,31 @@ const outputStatus = ref({
   step2: null
 });
 
-const currentUser = ref({});
+const currentUser = ref(null);
 const componentKey = ref(0) // key 值用於強制重新渲染
 
+const safeUserId = computed(() => String(currentUser.value?.empID ?? '').trim());
+const userId = computed(() => safeUserId.value);
+
+function loadCurrentUser() {
+  let userRaw = sessionStorage.getItem('auth_user');
+
+  if (!userRaw) {
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+
+  try {
+    currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  } catch (e) {
+    console.error('loadCurrentUser parse failed:', e, userRaw);
+    currentUser.value = null;
+  }
+}
+
 const currentBoms = ref([]);
-
-//const currentStartTime = ref(null);  // 記錄開始時間
-
-//const agv1StartTime = ref(null);
-//const agv1EndTime = ref(null);
-//const agv2StartTime = ref(null);
-//const agv2EndTime = ref(null);
 
 const pagination = reactive({
   itemsPerPage: 5,              // 預設值, rows/per page
@@ -672,8 +811,7 @@ const abnormalDialog_display = ref(true);
 
 const abnormalDialog_record = ref(null);
 
-let pollId = null;                                  // 每 10 秒輪詢
-const refreshPollIdTimerMs = ref(10 * 1000);        // 10秒
+const refreshing = ref(false);
 
 const timerMap = new Map();
 
@@ -685,12 +823,9 @@ const activeMap = reactive({
   '21': {}, '22': {}, '23': {}
 })
 
+const selectedAsmId = ref(null);
+
 //=== watch ===
-//watch(currentUser, (newUser) => {
-//  if (newUser.perm < 1) {
-//    permDialog.value = true;
-//  }
-//});
 setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
@@ -699,24 +834,72 @@ watch(bar_code, (newVal) => {
     handleBarCode();
   }
 })
-/*
-// 監控 station2_trans_ready
-watch(station2_trans_ready, (newVal) => {
-  if (newVal) {
-    // 開始閃爍
-    blinkInterval = setInterval(() => {
-      showText.value = !showText.value
-    }, 500)
-  } else {
-    // 停止閃爍
-    clearInterval(blinkInterval)
-    blinkInterval = null
-    showText.value = true
+
+watch(menuOpen, (open) => {
+  if (open) {
+    // 每次開都回今天那個月
+    menuKey.value++
+
+    //如果希望「使用者已經選過日期就不要覆蓋」
+    if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
+      // 每次開都預設今天~+7天
+      setDefaultRange()
+    }
   }
 })
-*/
+
+//watch([() => pagination.page, () => pagination.itemsPerPage], () => {
+//  runQueryDebounced();
+//})
+
+watch(() => pagination.itemsPerPage, (val) => {
+    if (!currentUser.value) return
+
+    currentUser.value.setting_items_per_page = Number(val) || 10
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
+  },
+  { immediate: true }
+)
+
+watch(  () => safeUserId.value, async (uid) => {
+    if (!uid) return;
+
+    console.log('[safeUserId watcher] current user ready:', uid);
+
+    await nextTick();
+
+    if ((materials_and_assembles.value || []).length > 0) {
+      await restoreActiveTimersOnly();
+    }
+  },
+  { immediate: true }
+);
+
+// 畫面控制
+watch(dpRange2, ([start, end]) => {
+  if (settingDefaultRange.value) return   // ✅ 預設值時不關 menu
+
+  if (start && end) {
+    formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+    menuOpen.value = false                 // ✅ 使用者選完才關
+  }
+})
+
+// 資料查詢, 日期變更就查
+//watch([dpRange2], () => {
+//  if (settingDefaultRange.value) return   // ⭐ 防止初始化觸發
+//  pagination.page = 1;
+//  runQueryDebounced();
+//}, { deep: true })
 
 //=== computed ===
+
+const isInformationEmpty = computed(() => {
+  return materials_and_assembles.value.length === 0;
+});
+
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
 }));
@@ -729,8 +912,8 @@ const adjustTablePosition = computed(() => ({
   //top: `${mouseY.value + 10}px`,
   //left: `${mouseX.value - 150}px`,
 
-  top: '80px',      // 固定上邊距離
-  right: '190px',  // 固定左邊距離
+  top: '130px',      // 固定上邊距離
+  right: '225px',   // 固定左邊距離
 
   backgroundColor: 'white',
   padding: '5px',
@@ -750,8 +933,6 @@ const adjustTablePosition = computed(() => ({
 const filteredBoms = computed(() =>
   boms.value.filter(item => item.receive)
 );
-
-const userId = computed(() => currentUser.value.empID ?? '')
 
 // index -> idx (0-based)
 const indexToIdx = computed(() => {
@@ -803,14 +984,14 @@ onMounted(async () => {
   }
   //+++
 
-  // 阻止直接後退
-  //history.pushState(null, null, document.URL)
-  window.history.pushState(null, null, document.URL)
+  // 阻止直接後退，但保留 Vue Router 的 state
+  window.history.replaceState(window.history.state, '', document.URL);
   window.addEventListener('popstate', handlePopState)
 
   console.log("current routeName:", routeName.value);
 
   //user define
+  /*
   let userRaw = sessionStorage.getItem('auth_user');
   if (!userRaw) {
     // 只在第一次開分頁時，從 localStorage 複製一份
@@ -820,15 +1001,18 @@ onMounted(async () => {
     }
   }
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  */
+  loadCurrentUser();
 
   if (currentUser.value) {
-    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
-    currentUser.value.setting_lastRoutingName = routeName.value;
+    pagination.itemsPerPage = Number(currentUser.value.setting_items_per_page) || 5
+    currentUser.value.setting_lastRoutingName = routeName.value
 
     localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
-  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+
+  console.log("currentUser:", safeUserId.value || '(empty)');
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
@@ -846,14 +1030,29 @@ onMounted(async () => {
 
   //await initialize_for_mounted();
 
-  await listMaterialsAndAssembles()
+  //await listMaterialsAndAssembles()
+  await safeRefresh();
 
-  await nextTick()
+  ///* materials_and_assembles.value.map(it => ({
+  ///*   ...it,
+  ///*   pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
+  ///*   count: typeof it.count === 'number' ? it.count : 0,
+  ///* }));
+  materials_and_assembles.value = materials_and_assembles.value.map(it => ({
+    ...it,
+    pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
+    count: typeof it.count === 'number' ? it.count : 0,
+  }))
+
   materials_and_assembles.value.forEach(r => getT(r))     // 先建好 t
   await nextTick()
-  await restoreAllMyTimers()                              // 逐列 t.restoreProcess(...)
-  await refreshActiveCounts()
-  pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value)
+
+  if (safeUserId.value) {         // 逐列 t.restoreProcess(...)
+    //await restoreAllMyTimers()
+    await restoreActiveTimersOnly();
+  } else {
+    console.warn('[mounted] skip initial restore: current user not ready');
+  }
 
   //處理socket連線
   console.log('等待socket連線...');
@@ -894,7 +1093,8 @@ onMounted(async () => {
       station2_trans_ready.value = true;
       forkliftNoticeFun();
 
-      await initialize_for_created();
+      await safeRefresh();
+      //await initialize_for_created();
       //initialize();
     })
 
@@ -976,31 +1176,91 @@ onDeactivated(() => { disposeAllTimersOnce(); });
 onBeforeMount(() => {
   console.log("Employer, created()...")
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  //pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
   initAxios();
-  initialize_for_created();
-  //initialize();
+  //initialize_for_created();
 });
 
 onBeforeUnmount(() => {
-  if (pollId)
-    clearInterval(pollId);
+  //2025-11-18 if (pollId)
+  //2025-11-18   clearInterval(pollId);
 });
 
 //=== method ===
+
+const fmt = (d) => {
+  if (!d) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const batchRemoveRecords = async () => {
+  console.log('batchRemoveRecords()...');
+
+  showFields.value = false;
+};
+
+const openDateMenu = () => {
+  menuOpen.value = true
+  showFields.value = true
+}
+
+const runQuery = async () => {
+  const payload = buildListInformationsPayload();
+  await listInformations(payload);
+};
+
+const runQueryDebounced = () => {
+  if (_qTimer) clearTimeout(_qTimer);
+  _qTimer = setTimeout(runQuery, 200);
+};
+
+// 加天數
+const addDays = (date, days)=>{
+  const d = new Date(date)
+  d.setDate(d.getDate()+days)
+  return d
+}
+
+// 設定預設區間（今天~7天）
+const setDefaultRange = ()=>{
+  const start = new Date()
+  const end   = addDays(start, 7)
+
+  settingDefaultRange.value = true
+  dpRange2.value = [start, end]
+
+  formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+
+  // 下一個 tick 再解除旗標，避免 watcher 立刻關 menu
+  queueMicrotask(() => {
+    settingDefaultRange.value = false
+  })
+}
+
+const clearDates = () => {
+  dpRange2.value = [null, null]
+  formattedDateRange.value = ''
+  menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
+}
+
+// ===
+
 const KEY = 'material' // 'material' 或 'assemble'
 
-//const keyOf = (row, userId) => `${row.id}:${row.assemble_id}:${row.process_step_code}:${userId}`
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
-const rowOf = (it) => it?.raw ?? it
-
-const getT = (row) => useRowTimer(row, userId.value)
+//const getT = (row) => useRowTimer(row, currentUser.value.empID)
+const getT = (row) => {
+  const uid = safeUserId.value;
+  if (!uid) return makeStub();
+  return useRowTimer(row, uid);
+};
 
 function setTimerEl(row, el) {
-  console.log("setTimerEl(), row:", row);
-
   if (!row || !row.id) {
     console.warn('setTimerEl(): row undefined', row)
     return
@@ -1011,7 +1271,6 @@ function setTimerEl(row, el) {
 }
 
 // ---- 收尾清理（Begin 專用：含輪詢計時器）----
-
 function disposeAllTimersOnce() {
   if (__disposedAll) return;
   __disposedAll = true;
@@ -1025,6 +1284,7 @@ function disposeAllTimersOnce() {
     timerMap.clear();
   }
 
+  /* //2025-11-18
   // 2) 清掉頁面用的輪詢（Begin.vue 有使用）
   try {
     if (typeof pollId !== 'undefined' && pollId) {
@@ -1033,23 +1293,15 @@ function disposeAllTimersOnce() {
       pollId = null;
     }
   } catch (_e) {}
+  */
 }
-
-/*
-function setTimerEl(row, el) {
-  console.log("setTimerEl(), row:", row);
-
-  const key = `${row.id}-${processTypeOf(row)}-${userId.value}`
-  timerRefs.set(key, el || null)
-}
-*/
 
 // 下面這三個轉接器, 可避免在模板裡出現「函式呼叫＋屬性賦值」，VS Code 會比較乾淨
 
 // 取得／設定 isPaused（避免在模板裡對函式呼叫結果賦值）
 //const isPausedOf = (row) => getT(row).isPaused
 const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
-//const setPausedOf = (row, v) => { getT(row).isPaused = v }
+
 const setPausedOf = (row, v) => {
   const t = getT(row);
 
@@ -1058,9 +1310,11 @@ const setPausedOf = (row, v) => {
   //如果 t 存在且有 isPaused 這個 ref，就把它的值設成布林化後的 v
   if (t?.isPaused) t.isPaused.value = !!v
 }
+
 // 轉接 onTick（避免直接把函式呼叫結果當 handler）
-//const onTickOf = (row, payload) => { getT(row).onTick(payload) }
 const onTickOf = (row, ms) => {
+  console.log("onTickOf..")
+
   const t = getT(row)
   t?.onTick?.(ms)
 }
@@ -1071,47 +1325,33 @@ function onTimeUpdate(row, ms) {
 
 // 依 row.process_step_code → process_type
 function processTypeOf(row) {
+  console.log("processTypeOf:", row.process_step_code)
+
   const step = Number(row.process_step_code ?? 0)
-  if (step === 3) return 21  // 組裝
-  if (step === 2) return 22  // 檢驗
-  if (step === 1) return 23  // 雷射（依你的實際對照）
-  return 21                  // 預設給 21，避免落空
+  const work = row.assemble_work
+  if (step === 3 || (step === 0 && work.includes('B109'))) return 21  // 組裝
+  if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
+  if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
 }
 
 // 以 material 為粒度，idKey 取 material_id（列表裡是 id=material.id）
 // 若後端已支援 assemble 粒度，改成 row.assemble_id 並把 key 換成 'assemble'
 function idOf(row) {
   return row.id;
-  //return KEY === 'assemble' ? (row.assemble_id ?? null) : (row.id ?? row.material_id ?? null)
 }
-/*
+
 async function restoreAllMyTimers() {
-  if (!materials_and_assembles.value.length) return
-  const uid = userId.value
+  //const me = currentUser.value.empID      // 登入人員代號
+  const me = safeUserId.value;      // 登入人員代號
+  if (!me) {
+    console.warn('[restoreAllMyTimers] skip: current user not ready');
+    return;
+  }
 
-  const jobs = materials_and_assembles.value.map(async (row) => {
-    try {
-      const t = getT(row)
-
-      const pType = processTypeOf(row);
-
-      // 叫 hook 去「只做還原、不新建」，拿回 processId / isPaused / 已累積秒數
-      await t.restoreProcess(row.id, pType, uid, row.assemble_id, { restoreOnly: true });
-      // 把目前秒數丟進 <TimerDisplay>（讓它立刻顯示正確值）
-      onTickOf(row, t.elapsedMs.value || 0)
-    } catch (e) {
-      console.warn('restore fail', row.id, e)
-    }
-  })
-
-  await Promise.all(jobs)
-}
-*/
-async function restoreAllMyTimers() {
-  const me = userId.value      // 你用的登入人員代號
   const rows = materials_and_assembles.value || []
   for (const row of rows) {
     const t = getT(row)
+    console.log("t:", t)
     if (!t?.restoreProcess) continue
     try {
       // 讓後端回傳 elapsed / paused 狀態；restoreOnly=true 不會重寫 begin_time
@@ -1123,148 +1363,160 @@ async function restoreAllMyTimers() {
   }
 }
 
-async function refreshActiveCounts() {
-  console.log("@@@refreshActiveCounts...")
+/*
+const shouldRestoreRow = (row) => {
+  // 依你目前資料結構調整
+  // 先用最保守條件：只有「已開始、未結束、屬於目前使用者」才 restore
 
-  const rows = materials_and_assembles.value || []
-  if (!rows.length) return
+  //const me = String(currentUser.value?.empID ?? '')
+  const me = safeUserId.value;
 
-  // 準備查詢分組
-  const groups = { '21': [], '22': [], '23': [] }
-  for (const row of rows) {
+  const started =
+    row?.hasStarted === true ||
+    row?.has_started === true ||
+    Number(row?.hasStarted || 0) === 1 ||
+    Number(row?.has_started || 0) === 1 ||
+    Number(row?.startStatus || 0) === 1
 
-    console.log("row: ", row)
+  //const notClosed =
+  //  row?.isClosed !== true &&
+  //  row?.end_time == null &&
+  //  row?.process_end_time == null
 
-    const pt = String(processTypeOf(row))
-    console.log("pt: ", pt)
-    if (row.id != null) groups[pt].push(Number(row.id))
+  const sameUser =
+    String(row?.user_id ?? row?.process_user_id ?? row?.empID ?? '') === me ||
+    String(row?.isOpenEmpId ?? '') === me ||
+    String(row?.show_name ?? '') === me;
+
+  //return started && notClosed && sameUser
+  return started && sameUser
+
+}
+*/
+const shouldRestoreRow = (row) => {
+  const me = safeUserId.value;
+  if (!me || !row) return false;
+
+  const sameUser =
+    String(row.isOpenEmpId ?? '') === me ||
+    String(row.show_name ?? '') === me ||
+    String(row.user_id ?? '') === me ||
+    String(row.process_user_id ?? '') === me;
+
+  const started =
+    row.hasStarted === true ||
+    row.hasStarted === 1 ||
+    row.hasStarted === '1' ||
+    row.startStatus === true ||
+    row.startStatus === 1 ||
+    row.startStatus === '1' ||
+    row.show_timer === true ||
+    row.show_timer === 1 ||
+    row.show_timer === '1';
+
+  const ok = sameUser && started;
+
+  if (ok) {
+    console.log('[shouldRestoreRow] match row=', {
+      id: row.id,
+      assemble_id: row.assemble_id,
+      isOpenEmpId: row.isOpenEmpId,
+      show_name: row.show_name,
+      hasStarted: row.hasStarted,
+      startStatus: row.startStatus,
+      show_timer: row.show_timer,
+    });
   }
 
-  // 呼叫 API
-  const res = await getActiveCountMap({
-    key: 'material',
-    groups
-  })
-  console.log('getActiveCountMap:', res)
+  return ok;
+};
 
-  // 正規化回傳
-  const incoming = (res && res.counts) ? res.counts : {}
+/*
+async function restoreActiveTimersOnly() {
+  //const me = currentUser.value.empID
+  const me = safeUserId.value;
+  if (!me) {
+    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
+    return;
+  }
 
-  // ✅ 重點：維持每個 activeMap[pt] 的「同一個物件引用」，
-  // 先清空，再覆蓋新資料
-  for (const pt of PROCESS_TYPES) {
-    const dst = activeMap[pt]            // 既有 reactive 物件
-    const src = incoming[pt] || {}       // 新資料（可能不存在）
+  const rows = (materials_and_assembles.value || []).filter(shouldRestoreRow)
 
-    // 1) 清空舊 key
-    for (const k of Object.keys(dst)) delete dst[k]
+  console.log('[restoreActiveTimersOnly] rows to restore =', rows.map(r => r.id))
 
-    // 2) 覆蓋新 key
-    for (const [id, cnt] of Object.entries(src)) {
-      dst[String(id)] = Number(cnt) || 0
+  for (const row of rows) {
+    const t = getT(row)
+    if (!t?.restoreProcess) continue
+
+    try {
+      await t.restoreProcess(
+        row.id,
+        processTypeOf(row),
+        me,
+        row.assemble_id
+      )
+    } catch (e) {
+      console.warn('restore fail for row', row.id, e)
     }
   }
+}
+*/
+async function restoreActiveTimersOnly() {
+  const me = safeUserId.value;
+  if (!me) {
+    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
+    return;
+  }
 
-  //（可選）如果你還在每列上放快取欄位，這裡同步一下：
+  const allRows = materials_and_assembles.value || [];
+
+  console.log('[restore] me =', me);
+  console.log(
+    '[restore] scan =',
+    allRows.slice(0, 20).map(r => ({
+      id: r.id,
+      assemble_id: r.assemble_id,
+      isOpenEmpId: r.isOpenEmpId,
+      show_name: r.show_name,
+      hasStarted: r.hasStarted,
+      startStatus: r.startStatus,
+      show_timer: r.show_timer,
+    }))
+  );
+
+  const rows = allRows.filter(shouldRestoreRow);
+
+  console.log('[restore] rows=', rows.map(r => ({
+    id: r.id,
+    assemble_id: r.assemble_id,
+  })));
+
+  if (!rows.length) return;
+
+  // 先把 timer 掛出來
   for (const row of rows) {
-    const pt = String(processTypeOf(row))
-    const id = String(row.id)
-    row.active_user_count = Number(activeMap[pt][id] || 0)
+    row._showMyTimer = true;
+    row.show_name = me;
   }
 
-  await listMaterialsAndAssembles();
+  await nextTick();
 
-  let payload = {
-    user_id: currentUser.value.empID,
-  };
-  await getCountMaterialsAndAssemblesByUser(payload);
-}
+  for (const row of rows) {
+    const t = getT(row);
+    if (!t?.restoreProcess) continue;
 
-/*
-async function refreshActiveCounts() {
-  const rows = materials_and_assembles.value || []
-  if (!rows.length) return
-
-  const groups = { '21': [], '22': [], '23': [] }
-  for (const row of materials_and_assembles.value) {
-    //const pt = row.process_step_code === 3 ? 21
-    //          : row.process_step_code === 2 ? 22
-    //          : 23
-    //groups[String(pt)].push(row.id) // material_id
-
-    const pt = String(processTypeOf(row))
-    if (row.id != null) groups[pt].push(Number(row.id))
-  }
-
-  let payload = {
-    key: 'material',
-    groups: groups,     // { '21': [ids...], '22': [ids...], '23': [ids...] }
-  }
-
-  let res = await getActiveCountMap(payload);
-  console.log("data: ", res);
-
-  //const countsByType = res.counts || {};
-  //for (const row of rows) {
-  //  const pt = String(processTypeOf(row));
-  //  const id = String(idOf(row));
-  //  row.active_user_count = Number(countsByType[pt]?.[id] || 0);
-  //}
-  console.log("res.counts: ", res.counts);
-
-  if (res.counts) {
-    activeMap['21'] = res.counts['21'] || {}
-    activeMap['22'] = res.counts['22'] || {}
-    activeMap['23'] = res.counts['23'] || {}
-  } else {
-    activeMap['21'] = {}
-    activeMap['22'] = {}
-    activeMap['23'] = {}
-  }
-}
-*/
-
-/*
-async function refreshActiveCounts() {
-  try {
-    // 把同一批資料依「每列對應的 process_type」分組
-    const groups = materials_and_assembles.value.reduce((acc, row) => {
-      const pt = String(processTypeOf(row))     // 21/22/23 → '21'/'22'/'23'
-      if (!acc[pt]) acc[pt] = []
-      acc[pt].push(row.id)                      // 你這邊用的是 material_id
-      return acc
-    }, {})
-
-    // 沒資料就略過
-    const hasAny = Object.values(groups).some(arr => (arr?.length || 0) > 0)
-    if (!hasAny) return
-
-    const payload = { key: 'material', groups }
-    const res = await getActiveCountMap(payload)
-    const data = res?.data ?? res
-    if (!data?.counts) return
-
-    // 套回到每列(row)的 active_user_count（某個 pt 的人數）
-    materials_and_assembles.value.forEach((row) => {
-      const ptKey = String(processTypeOf(row))
-      const cntMap = data.counts?.[ptKey] || {}
-      row.active_user_count = Number(cntMap?.[String(row.id)] ?? 0)
-    })
-  } catch (e) {
-    console.error('refreshActiveCounts error:', e)
-  }
-}
-*/
-async function restoreMyTimers() {
-  const uid = userId.value
-  if (!uid) return
-  for (const row of materials_and_assembles.value || []) {
-    const t = getT(row)
     try {
-      await t.startProcess(row.material_id ?? row.id, processTypeOf(row), uid, row.assemble_id)
-      // 不 toggle，避免誤開暫停的工單
-    } catch(e) {
-      console.debug('restore timer skip', row.id, e);
+      await t.restoreProcess(
+        row.id,
+        processTypeOf(row),
+        me,
+        row.assemble_id
+      );
+
+      row._showMyTimer = true;
+      row.show_name = me;
+    } catch (e) {
+      console.warn('[restore] fail row=', row.id, e);
     }
   }
 }
@@ -1298,84 +1550,26 @@ function useRowTimer(row, currentUserId) {
     return makeStub()
   }
 
-  /*
-  const rowKey = row.id ?? row.assemble_id ?? row.material_id
-  if (rowKey == null) {
-    // 防守：渲染很早或資料異常時，回一個不會炸的空實例
-    return {
-      timerRef: { value: null },
-      isPaused: true,
-      onTick: () => {},
-      startProcess: async () => {},
-      toggleTimer: async () => {},
-      processId: { value: null },
-    }
-  }
-
-  const key = `${rowKey}:${currentUserId}`
-  */
   const key = keyOf(row, currentUserId)
   if (!timerMap.has(key)) {
     const timerRef = ref(null)
     const t = useProcessTimer(() => timerRef.value)     // hook
-    // 這裡 t 內通常有：isPaused(ref)、elapsedMs(ref)、processId(ref)、onTick(fn)...
+    console.log("t:", t)
+    // t 內有：isPaused(ref)、elapsedMs(ref)、processId(ref)、onTick(fn)...
+
+    // 收斂清理方法（清掉本地 ticker / 狀態）
+    t.dispose = () => {
+      try { t._stopLocalTicker?.() } catch (e) {}
+      try { t.onTick = () => {} } catch (e) {}
+      // 如有 setInterval / requestAnimationFrame 也在 hook 內清
+    }
+
     timerMap.set(key, { ...t, timerRef })
   }
   return timerMap.get(key)
 }
 
 // 這筆是否有人在開工（顯示綠點）
-//function hasAnyoneStarted(row) {
-//  return Number(row.active_user_count || 0) > 0
-//}
-/*
-function hasAnyoneStarted(rowLike) {
-  const row = rowLike?.raw ?? rowLike        // 兼容 slot 傳進來的是 { raw } 或直接 row
-  if (!row.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  let yy=(activeMap[pt]?.[id] ?? 0) > 0
-  console.log("yy:",activeMap[pt]?.[id] ?? 0, activeMap[pt]?.[id], yy);
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
-/*
-function hasAnyoneStarted(rowLike) {
-  console.log("hasAnyoneStarted...")
-  const row = rowLike?.raw ?? rowLike
-  const t = getT(row)             // 你的 useRowTimer 對應的 timer 物件
-  let yyz=!!t?.processId?.value
-  console.log("@@@ yyz:",row.id, t?.processId?.value, yyz);
-  return !!t?.processId?.value    // 有自己的進行中流程就亮
-}
-*/
-
-/*
-function hasAnyoneStarted(rowLike) {
-  const row = rowLike?.raw ?? rowLike
-  if (!row?.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  // activeMap 是後端回的累計人數；若你在後端用 include_paused=false，就不會把暫停算進去
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
-/*
-function hasAnyoneStarted(row) {
-  console.log("hasAnyoneStarted...")
-
-  if (!row?.id) return false
-  const pt = String(processTypeOf(row))
-  const id = String(row.id)
-  let yyz=activeMap[pt]?.[id] ?? 0
-  console.log("@@@ yyz:",id, (activeMap[pt]?.[id] ?? 0) > 0);
-
-  return (activeMap[pt]?.[id] ?? 0) > 0
-}
-*/
-
 function hasAnyoneStarted(row) {
   const t = getT(row) // 你的 useRowTimer 物件
   const idx = materials_and_assembles.value.findIndex(item => item.index === row.index);
@@ -1413,11 +1607,15 @@ function badgeProps(row) {
 
   const targetIndex = materials_and_assembles.value.findIndex(
     (kk) => kk.index === row.index
+    //(kk) => kk.index === selectedAsmId.value
   );
   console.log("targetIndex:", targetIndex)
 
   console.log("count:", count)
+  //if (materials_and_assembles.value[targetIndex].index==selectedAsmId.value && selectedAsmId.value ==null ) {
   materials_and_assembles.value[targetIndex].count=count
+  //selectedAsmId.value =null;
+  //}
 
   console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
 
@@ -1438,10 +1636,16 @@ async function nudgeResume () {
   timer()?.resume?.()
 }
 
-async function onStart(row) {
-  console.log("onStart(), row", row);
+async function onClickBegin(row) {
+  console.log("onClickBegin(), row", row);
 
-    if (!row || !row.id) {
+  const me = safeUserId.value;
+  if (!me) {
+    showSnackbar("使用者資料尚未載入，請稍後再試!", "red-darken-2");
+    return;
+  }
+
+  if (!row || !row.id) {
     showSnackbar("資料異常，按鍵無效!", "red-darken-2")
     return
   }
@@ -1452,36 +1656,59 @@ async function onStart(row) {
     return
   }
 
-  console.log("t.processId.value:", t.processId.value, t)
-  //console.log("t.userId.value, userId.value:", t.userId.value, userId.value, t.userId.value==userId.value)
+  console.log("t, t.processId.value, t.hasStarted?.value, t.isPaused.value:", t, t.processId.value, t.hasStarted?.value, t.isPaused.value)
 
-  // 同一人不能對自己已開工的紀錄重複開始
-  //if (t.processId?.value) {
-  //    showSnackbar("已經領料了...", "orange-darken-2");
-  //  return;
-  //}
-  if (t.processId?.value && t.hasStarted?.value && !t.isPaused?.value) {
+  if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
     showSnackbar("已經領料了...", "orange-darken-2")
     return
   }
 
+  selectedAsmId.value = row.index;
+
+  //
+  // ✅ 先讓畫面立即顯示 timer，不等 refresh / 後端
+  row._showMyTimer = true;
+  row.show_timer = true;
+  row.show_name = safeUserId.value;
+
+  //t.elapsedMs.value = t.elapsedMs.value || 0;
+  //t.isPaused.value = false;
+
   await nextTick();
+
+  //t.timerRef?.value?.setState?.(0, false);
+  //t.timerRef?.value?.resume?.();
+  //
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
-    await t.startProcess(row.id, processTypeOf(row), userId.value, row.assemble_id)
+    const pid = await t.startProcess(
+      row.id,
+      processTypeOf(row),
+      me,
+      row.assemble_id
+    )
+
+    if (!pid || (typeof pid === 'object' && pid.success === false)) {
+      showSnackbar("開始失敗：使用者或流程資料異常!", "red-darken-2");
+      return;
+    }
   }
-  // 2) 立刻做一次 “恢復”（unpause, 以觸發後端寫入 begin_time
+
   console.log("t.isPaused:", t.isPaused.value)
+
+  // 若後端回來是 paused，再切成 running
   if (t.isPaused.value) {
     //await t.nudgeResume?.()
     await t.toggleTimer();    // paused -> active（後端寫 begin_time）
-    t.isPaused.value =false;  // 2025-09-24
+    t.isPaused.value = false;
   }
 
   await updateItem(row);
 
-  await refreshActiveCounts();
+  // 不要整頁 refresh；只更新局部資料/綠點
+  await nextTick();
+  await safeRefresh();
 }
 
 function startDisabled(row) {
@@ -1494,22 +1721,35 @@ const handleSetLinks = (links) => {
   updateNavLinks(links);
 };
 
+// 避免同時多次 refresh
+const safeRefresh = async () => {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await listMaterialsAndAssembles();
+    //await nextTick();
+    //await restoreAllMyTimers();
+  } finally {
+    refreshing.value = false;
+  }
+};
+
 const handleMaterialUpdate = async ()  => {
   console.log("handleMaterialUpdate 被觸發！")
 
-  await listMaterialsAndAssembles();
-
-  // 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
-  await nextTick();
-
-  // 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
-  await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
-
+  await safeRefresh();
+  //
+  //await listMaterialsAndAssembles();
+  //// 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
+  //await nextTick();
+  //// 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
+  //await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
+  //
   // 再抓「有人開工」的綠點數（不只自己）
-  await refreshActiveCounts();
+  //2025-11-18 await refreshActiveCounts();
 }
 
-async function onDelete() {
+async function onDelete(item) {
   const ok = await confirmRef.value.open({
     title: deleteTitle.value,
     message: deleteMessage.value,
@@ -1517,18 +1757,78 @@ async function onDelete() {
     cancelText: '取消',
   })
   if (ok) {
-    removeMaterialsAndRelationTableFun();
+    await removeMaterialsAndRelationTableFun(item.id);
+
+    //待待
+    // window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+
+    //const idx = materials_and_assembles.value.findIndex(row => row.id === item.id)
+    //if (idx !== -1) {
+    //  materials_and_assembles.value.splice(idx, 1)
+    //}
   }
+}
+
+const removeMaterialsAndRelationTableFun = async (id) => {
+  console.log("removeMaterialsAndRelationTableFun()...");
+
+  console.log("id:", id);
+
+  let ok = false;
+  try {
+    const result = await removeMaterialsAndRelationTable({id: id});
+    // crud.js 直接回傳 res.data，後端 jsonify(True) 會得到布林 true
+    ok = result === true;
+    console.log("remove result:", result);
+  } catch (err) {
+    console.error("DELETE API failed:", err?.response?.status, err?.response?.data, err?.message);
+    showSnackbar("刪除 API 失敗", 'red accent-2');
+    return false;
+  }
+
+  if (!ok) {
+    showSnackbar("找不到目標或已被刪除。", 'red accent-2');
+    return;
+  }
+
+  //editDialog.value = false;
+
+  const idx = materials_and_assembles.value.findIndex(row => row.id === id)
+  if (idx !== -1) {
+    materials_and_assembles.value.splice(idx, 1)
+  }
+
+  showSnackbar("刪除工單完成!", "green darken-1")
+  return true
+  /*
+  try {
+    editDialog.value = false;
+
+    //await listMaterialsAndAssembles();
+    await safeRefresh();
+
+    //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
+
+    showSnackbar("刪除工單完成!", 'green darken-1');
+  } catch (err) {
+    console.error("REFRESH failed:", err?.response?.status, err?.response?.data, err?.message);
+    //showSnackbar("刪除成功，但刷新列表失敗。請稍後重試。", 'red accent-2');
+    showSnackbar("刪除工單完成!", 'green darken-1');
+  }
+  */
 }
 
 const initialize = async () => {
   try {
     console.log("initialize()...");
 
-    // 1) 先撈表格資料
-    await listMaterialsAndAssembles();
+    // 1. 先撈表格資料
+    //await listMaterialsAndAssembles();
+    await safeRefresh();
 
-    // 2) 補上欄位（這會影響渲染）
+    //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
+
+    // 2. 補上欄位（這會影響渲染）
     // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
     materials_and_assembles.value.forEach(item => {
       item.pickBegin = [];
@@ -1548,19 +1848,21 @@ const initialize = async () => {
     await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
 
     // 5) 再抓「有人開工」的綠點數（不只自己）
-    await refreshActiveCounts();
+    //2025-11-18 await refreshActiveCounts();
 
     // 還原計時器（依後端真實狀態）
     //await restoreMyTimers();
 
-    pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
+    //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
 const initialize_for_created = async () => {
-  await listMaterialsAndAssembles();
+  //await listMaterialsAndAssembles();
+  await safeRefresh();
+
 
   materials_and_assembles.value.map(it => ({
     ...it,
@@ -1576,17 +1878,25 @@ const initialize_for_mounted = async () => {
 
   await restoreAllMyTimers();
 
-  await refreshActiveCounts();
+  //2025-11-18 await refreshActiveCounts();
 
-  if (pollId) clearInterval(pollId);
-  pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
+  //2025-11-18 if (pollId) clearInterval(pollId);
+  //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
 };
 
+/*
 const customFilter =  (value, query, item)  => {
   return value != null &&
     query != null &&
     typeof value === 'string' &&
     value.toString().toLocaleUpperCase().indexOf(query) !== -1
+}
+*/
+
+const customFilter = (value, query, item) => {
+  if (value == null || query == null) return false
+
+  return String(value).toUpperCase().includes(String(query).toUpperCase())
 }
 
 const handleBarCode = () => {
@@ -1649,22 +1959,9 @@ const forkliftNoticeFun = () => {
   station2_trans_ready.value = false;
 }
 
-/*
 const handlePopState = () => {
-  // 重新添加歷史紀錄以阻止實際後退
-  history.pushState(null, null, document.URL)
-
-  // 只在第一次顯示警告
-  if (showBackWarning.value) {
-    showSnackbar('後退功能已禁用，請使用頁面内的導航按鍵', 'red accent-2');
-    showBackWarning.value = false
-  }
-}
-*/
-const handlePopState = () => {
-  // ✅ 正確方式：保留 Vue Router 的 state
-  //history.pushState(history.state, '', document.URL);
-  window.history.pushState(history.state, '', document.URL);
+  // 重新把這一筆 entry 的 state 改回 Router 給的 state
+  window.history.replaceState(window.history.state, '', document.URL);
 
   if (showBackWarning.value) {
     showSnackbar('後退功能已禁用，請使用頁面內的導航按鍵', 'red accent-2')
@@ -1673,16 +1970,13 @@ const handlePopState = () => {
 }
 
 const isButtonDisabled = (item) => {
-  //console.log("item.whichStation:",item.whichStation, item.whichStation != 2);
-  //console.log("item.input_disable:",item.input_disable);
-  //console.log("!item.process_step_enable:",!item.process_step_enable);
-  //console.log("OR return value:",(item.whichStation != 2 || item.input_disable) || !item.process_step_enable);
-  return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable || item.isLackMaterial ==0;
-  //return (item.whichStation != 2 || item.input_disable) || item.process_step_enable==0;
+  //return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable || item.isLackMaterial ==0;
+  return item.whichStation != 2 || item.isLackMaterial ==0;
 };
 
 const isGifDisabled = (item) => {
-  return item.whichStation != 2 || item.input_disable || !item.process_step_enable;
+  //return item.whichStation != 2 || item.input_disable || !item.process_step_enable;
+  return item.whichStation != 2
 };
 
 const handleKeyDown = (event) => {
@@ -1727,6 +2021,8 @@ const getStatusStyle = (status) =>{
     5: '#86007d',
     6: '#ffa52c',
     7: '#008018',
+    8: '#776472',
+    9: '#85CB33',
   };
 
   return {
@@ -1755,30 +2051,24 @@ const createAbnormalFun = async () => {
   console.log("createAbnormalFun()...");
 
   if (abnormalDialog_new_must_receive_qty.value != abnormalDialog_must_receive_qty.value) {
-    let temp_str = '(' + abnormalDialog_delivery_qty.value + abnormalDialog_new_must_receive_qty.value + ')'
+    let temp_str = '(' + abnormalDialog_delivery_qty.value + ' / ' + abnormalDialog_new_must_receive_qty.value + ')'
     abnormalDialog_message.value = '備料區來料數量不對! '+ temp_str;
     console.log("temp_str:", temp_str);
     let payload = {}
 
     try {
-      //payload = {
-      //  assemble_id: item.assemble_id,
-      //  cause_message: ['備料區來料數量不對'],
-      //  cause_user: currentUser.value.empID,
-      //};
-      //await updateAssembleAlarmMessage(payload);
-
       payload = {
         assemble_id: abnormalDialog_record.value.assemble_id,
         record_name: 'Incoming1_Abnormal',
         record_data: abnormalDialog_message.value,
       };
       await updateAssemble(payload);
+
       abnormalDialog_record.value.Incoming1_Abnormal=false;
 
       // targetIndex為目前table data record 的 index
       const targetIndex = materials_and_assembles.value.findIndex(
-        (kk) => kk.id === item.id
+        (kk) => kk.id === abnormalDialog_record.value.id
       );
 
       if (targetIndex !== -1) {
@@ -1800,22 +2090,11 @@ const createAbnormalFun = async () => {
 const updateItem = async (item) => {
   console.log("PickReportForAssembleBegin, updateItem(),", item);
 
-  /* ready modify 2025-09-15
-  //item.receive_qty = item.receive_qty || 0;
-
-  // 檢查是否輸入了空白或 0
-  if (!item.receive_qty || Number(item.receive_qty) === 0) {
-    console.log("item.receive_qty:", item.receive_qty)
-    receive_qty_alarm.value = '領取數量不可為空白或0!'
-    item.tooltipVisible = true;     // 顯示 Tooltip 提示
-    setTimeout(() => {
-      item.tooltipVisible = false;  // 2秒後隱藏 Tooltip
-      item.receive_qty = '';        // 清空輸入欄位
-    }, 2000);
-    console.error('領取數量不可為空白或0!');
-    return;
+  const me = safeUserId.value;
+  if (!me) {
+    throw new Error("current user not ready");
   }
-  */
+
   let payload = {};
 
   let startTime = new Date();                                                         // 記錄當前結束時間
@@ -1844,13 +2123,18 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  // 2-a.紀錄該筆的完工應領取數量
-  payload = {
-    material_id: item.id,
-    record_name: 'must_receive_end_qty',
-    record_data: Number(item.receive_qty),
-  };
-  await updateAssembleMustReceiveQtyByMaterialID(payload);
+  if (item.must_receive_end_qty==0) {
+    // 2-a.紀錄該筆的完工應領取數量
+    payload = {
+      material_id: item.id,
+
+      create_at: item.create_at,
+
+      record_name: 'must_receive_end_qty',
+      record_data: Number(item.receive_qty),
+    };
+    await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
+  }
 
   //// 2-b.紀錄該筆的應領取數量, 2025-06-18 add, 改順序
   //payload = {
@@ -1858,7 +2142,7 @@ const updateItem = async (item) => {
   //  record_name: 'must_receive_qty',
   //  record_data: Number(item.must_receive_end_qty) - Number(item.receive_qty),
   //};
-  //await updateAssembleMustReceiveQtyByMaterialID(payload);
+  //await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
 
   // 3.暫存每次領取數量
   //item.pickBegin.push(item.receive_qty);
@@ -1879,15 +2163,29 @@ const updateItem = async (item) => {
   payload = {
     assemble_id: item.assemble_id,
     record_name: 'user_id',
-    record_data: currentUser.value.empID,
+    record_data: me,
   };
   await updateAssemble(payload);
 
-  //if (item.input_disable) {
+  //2025-12-22 mark
+  /*
+  if (item.assemble_work.includes('109')) {
+    payload = {
+      assemble_id: item.assemble_id,
+      record_name: 'input_abnormal_disable',
+      record_data: true,
+    };
+    await updateAssemble(payload);
+  }
+  */
 
   // 取得組裝區目前途程的show2_ok訊息類型(開始)
   checkInputStr(item.assemble_work);
   console.log("outputStatus:", outputStatus.value, typeof(outputStatus.value.step1), typeof(outputStatus.value.step1))
+
+  if (outputStatus.value?.step1 == null) {
+    throw new Error("outputStatus.value.step1 is undefined");
+  }
 
   // 6.按開始鍵後, 記錄當前途程開始狀態顯示訊息
   payload = {
@@ -1924,8 +2222,6 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  //}
-
   let temp = Number(item.req_qty)
   // 確認 已領取數量總數=需求數量(訂單數量)
   console.log("total == temp ?",total, temp)
@@ -1939,31 +2235,13 @@ const updateItem = async (item) => {
       record_data: true,
     };
     await updateAssemble(payload);
+
     item.input_disable = true;
   }
 
-  /* ready modify 2025-09-15
-  if (Number(item.must_receive_qty) != Number(item.receive_qty)) {
-    console.log("item.must_receive_qty != item.receive_qty", item.must_receive_qty, item.receive_qty)
-
-    let temp_qty = item.must_receive_qty - item.receive_qty;
-    console.log("temp_qty:", temp_qty)
-
-    //2025-08-04
-    payload = {
-      material_id: item.id,
-      record_name: 'must_receive_qty',
-      record_data: Number(item.receive_qty),
-    };
-    await updateAssembleMustReceiveQtyByMaterialID(payload);
-    //
-    payload = {
-      copy_id: item.assemble_id,
-      must_receive_qty: temp_qty,
-    }
-    await copyAssemble(payload);
-  }
-  */
+  const key = `${item.id}:${item.assemble_id}:${processTypeOf(item)}:${me}`;
+  localStorage.setItem(`PR_END_SYNC_${me}`, `${key}|${Date.now()}`);
+  console.log("key key:", `PR_END_SYNC_${me}`, key);
 
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
@@ -2036,15 +2314,7 @@ const formatDateTime = (date) => {
   const ss = String(date.getSeconds()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
-/*
-const formatTime = (time) => {                            // 格式化時間為 hh:mm:ss
-  const hours = String(time.getHours()).padStart(2, '0');
-  const minutes = String(time.getMinutes()).padStart(2, '0');
-  const seconds = String(time.getSeconds()).padStart(2, '0');
 
-  return `${hours}:${minutes}:${seconds}`;
-};
-*/
 const showSnackbar = (message, color) => {
   console.log("showSnackbar,", message, color)
 
@@ -2087,22 +2357,37 @@ const handleGifClick = async (item, index) => {
   hoveredItemIndex.value = index;
   isTableVisible.value = true;    // 設置表格可見
 
-  //boms.value = [];
-  let payload = {
-    //order_num: item.order_num,
-    id: item.id,
-  };
-  await getBoms(payload);
-  console.log('Current hovered item index:', hoveredItemIndex.value);
-  //reactiveBoms = reactive({ data: [...boms.value] });
-  //reactiveBoms = ref([...boms.value]);
-  console.log("bom[]:", boms.value)
-  //console.log("reactiveBoms:", reactiveBoms)
-  //currentBoms.value = [...boms.value];
-  //console.log("currentBoms[]:", currentBoms.value)
-  //console.log("currentBoms.rec:", currentBoms.value[0].receive)
-  //console.log("Raw currentBoms:", toRaw(currentBoms.value));
-  //await nextTick();
+  //await getBoms({id: item.id});
+  await fetchBoms(item)
+  //await getOrderPickedBoms({ order_num: item.order_num });
+  //console.log('Current hovered item index:', hoveredItemIndex.value);
+  //console.log("bom[]:", boms.value)
+};
+
+const fetchBoms = async (item) => {
+  if (!item?.order_num) {
+    boms.value = [];
+    return;
+  }
+
+  try {
+    let res;
+
+    if (item.merge_enabled) {
+      res = await getOrderPickedBoms({
+        order_num: item.order_num,
+      });
+    } else {
+      res = await getOrderPickedBoms({
+        id: item.id,
+      });
+    }
+  } catch (e) {
+    console.error("fetchBoms failed:", e);
+    boms.value = [];
+  }
+
+  boms.value = res.data?.boms || [];
 };
 
 // 滑鼠移入表格時，保持表格顯示
@@ -2279,4 +2564,253 @@ const removelocalStorage = () => {
   max-width: 520px;          // 避免太寬，可調整
   white-space: pre-wrap;     // 保留換行
 }
+
+//===
+
+.slide-enter-from
+{
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+}
+
+//===過場特效
+
+.flip_btn {
+  position: relative;
+  top: -5px;
+  left: 30px;
+  height: 20px;
+  width: 130px;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease-in-out;
+  transform: translateZ(-20px);
+}
+
+.flip_btn:hover {
+  transform: rotateX(-90deg) translateY(20px);
+}
+
+.side {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 130px;
+  //width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.default-side {
+  transform: translateZ(20px);
+}
+
+.hover-side {
+  transform: rotateX(90deg) translateZ(20px);
+}
+
+
+:deep(.dp__calendar_header .dp__calendar_header_item) {
+  font-size: 0.8em;
+}
+
+// ------- 沒有週數欄（共 7 欄）：一～五綠，六日紅 -------
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(-n+5)) {
+  background: #2e7d32; color: #fff;
+}
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(6)),
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(7)) {
+  background: #c62828; color: #fff;
+}
+
+// ------- 有週數欄（第 1 欄是週數）：星期從第 2～8 欄 -------
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(n+2):nth-child(-n+6)) {
+
+  background: #2e7d32; color: #fff;   // 第 2～6 欄 = 一～五 → 綠
+}
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(7)),
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(8)) {
+
+  background: #c62828; color: #fff;   // 第 7、8 欄 = 六、日 → 紅
+}
+
+// 如果週數欄（W）有開啟，不要上色它
+:deep(.dp-colored .dp__calendar_header_item_week) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+:deep(.dp__month_year_select) {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+:deep(.dateicon > .v-input__prepend .v-icon) {
+  color: #F48FB1 !important;
+}
+
+// 讓 DatePicker 撐滿 v-menu 設定的寬度
+:deep(.dp-stretch .dp__main) {
+  width: 100%;
+}
+
+:deep(.dp__outer_menu_wrap) {
+  width: 140%;
+}
+
+// ===
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 16px;
+}
+
+// 4. 日期範圍往左調整
+.date-slot {
+  width: 290px;
+  min-width: 290px;
+}
+
+.date-box {
+  width: 290px;
+}
+
+// 1 + 2. 整批刪除固定寬度，不跟搜尋框重疊，也不擠壓別人
+.batch-slot {
+  width: 180px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  position:relative;
+  top: -2px;
+}
+
+.fixed-flip-btn {
+  width: 180px;
+  min-width: 180px;
+  position: relative;
+  left: -10px;
+}
+
+.fixed-flip-btn .default-side {
+  width: 100%;
+  min-width: 100%;
+  max-height: 34px;
+  border-radius: 6px;
+  border-width: 1.5px;
+  border-color: #64B5F6;
+}
+
+.hover-actions {
+  width: 180px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 86px;
+  min-width: 86px;
+  border-radius: 6px;
+  border-width: 1.5px;
+  border-color: #64B5F6;
+  position: relative;
+  top: 5px;
+}
+
+// 搜尋框固定寬度，避免被擠壓或重疊
+:deep(.search-slot) {
+  width: 180px;
+  min-width: 180px;
+  position: relative;
+  top: 5px;
+}
+
+// 3. barcode 再往右移
+:deep(.barcode-slot) {
+  width: 220px;
+  min-width: 220px;
+
+  position: relative;
+  top: 8px;
+}
+
+:deep(.barcode-slot .v-input__control) {
+  position: relative;
+  top: 3px;
+}
+
+.toolbar-field {
+  width: 100%;
+}
+
+// 外框高度統一
+:deep(.toolbar-field--24 .v-field) {
+  min-height: 24px !important;
+  height: 24px !important;
+  align-items: center !important;
+  border-radius: 4px;
+}
+
+// input 區高度統一
+:deep(.toolbar-field--24 .v-field__input) {
+  min-height: 24px !important;
+  height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+// 真正輸入文字的 input：讓游標垂直置中
+:deep(.toolbar-field--24 input) {
+  height: 24px !important;
+  line-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  align-self: center !important;
+}
+
+:deep(.date-box .v-text-field input) {
+  top: 7px;
+}
+
+// ***
+
+.batch-slot.is-disabled {
+  cursor: not-allowed !important;
+}
+
+.batch-slot.is-disabled * {
+  cursor: not-allowed !important;
+}
+
+.batch-slot.is-disabled .flip_btn:hover {
+  transform: none !important;
+}
+
+.batch-slot.is-disabled .hover-side {
+  pointer-events: none !important;
+}
+
+.batch-slot.is-disabled .default-side {
+  pointer-events: auto !important;
+}
+// ===
 </style>

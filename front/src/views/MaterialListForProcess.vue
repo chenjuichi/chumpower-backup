@@ -822,6 +822,8 @@ const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const currentUser = ref({});
+//const currentUser = ref(null);
+
 const componentKey = ref(0);            // key 值用於強制重新渲染
 const currentProcessId = ref(0);
 
@@ -1270,6 +1272,7 @@ onMounted(async () => {
 
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
+
   if (!userRaw) {
     // 只在第一次開分頁時，從 localStorage 複製一份
     userRaw = localStorage.getItem('loginedUser');
@@ -1277,9 +1280,11 @@ onMounted(async () => {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
+
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  if (currentUser.value) {
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
     currentUser.value.setting_items_per_page = pagination.itemsPerPage;
     currentUser.value.setting_lastRoutingName = routeName.value;
 

@@ -743,6 +743,7 @@ const search = ref('');
 
 const history = ref(false);
 const currentUser = ref({});
+//const currentUser = ref(null);
 
 const current_order_num = ref('');
 
@@ -910,8 +911,9 @@ onMounted(async () => {
 
   console.log("裝置像素比 (DPR):", window.devicePixelRatio);
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
+/*
+  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current userData:", userData);
 
   userData.setting_items_per_page = pagination.itemsPerPage;
@@ -936,6 +938,31 @@ onMounted(async () => {
   }
   console.log('currentUser:', currentUser.value);
   //#
+*/
+
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+
+  console.log("currentUser:", currentUser.value);
 
   intervalId = setInterval(listInformationsFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API
   intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API

@@ -586,7 +586,9 @@ const search = ref('');
 
 const editedIndex = ref(-1);
 
-const currentUser = ref({});
+//const currentUser = ref({});
+const currentUser = ref(null);
+
 const componentKey = ref(0)             // key值用於強制重新渲染
 
 const pick_date_dialog = ref(false);    // 控制 v-pick_date Dialog 顯示
@@ -693,7 +695,7 @@ watch(bar_code, (newVal) => {
 })
 
 //=== computed ===
-const userId = computed(() => currentUser.value.empID ?? '')
+const userId = computed(() => currentUser.value?.empID ?? '')
 
 /**
  * 組合規則：
@@ -783,6 +785,7 @@ onMounted(async () => {
 
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
+
   if (!userRaw) {
     // 只在第一次開分頁時，從 localStorage 複製一份
     userRaw = localStorage.getItem('loginedUser');
@@ -790,16 +793,19 @@ onMounted(async () => {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
+
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  if (currentUser.value) {
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
     currentUser.value.setting_items_per_page = pagination.itemsPerPage;
     currentUser.value.setting_lastRoutingName = routeName.value;
 
     localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
-  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+
+  console.log("currentUser:", currentUser.value?.empID || '');
 
   //
   observer = new MutationObserver(() => {
@@ -865,7 +871,8 @@ onUnmounted(() => {   // 清除計時器（當元件卸載時）
 onBeforeMount(() => {
   console.log("PickReportForAssembleError.vue, created()...", currentUser.value)
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  //pagination.itemsPerPage = currentUser.value?.setting_items_per_page;
+  pagination.itemsPerPage = Number(currentUser.value?.setting_items_per_page) || 10;
 
   initAxios();
   initialize();
@@ -1333,7 +1340,7 @@ const exportToExcelFun = async () => {
   let payload = {
     blocks: object_Desserts,
     count: object_Desserts.length,
-    name: currentUser.value.name,
+    name: currentUser.value?.name,
   };
 
   try {
@@ -1442,7 +1449,7 @@ const onValueUpdate = async (item) => {
   const payload = {
     assemble_id: item.assemble_id,
     cause_message: item.cause_message,  // 是一個 array，例如 ["異常1", "異常2"]
-    cause_user: currentUser.value.empID,
+    cause_user: currentUser.value?.empID,
   };
 
   try {

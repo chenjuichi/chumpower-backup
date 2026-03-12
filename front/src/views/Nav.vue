@@ -549,35 +549,39 @@ onBeforeMount(() => {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
-  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
-  /*
-  if (currentUser.value) {
-    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
-    currentUser.value.setting_lastRoutingName = routeName.value;
 
-    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
-    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  try {
+    currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  } catch (e) {
+    console.error('auth_user JSON parse failed:', e, userRaw);
+    currentUser.value = null;
   }
-  console.log("currentUser:", currentUser.value);
-  */
-  //
 
-  //
-  if (currentUser.value) {
-    let default_routingPriv = initialSelection.join(',');
-    let routingPriv_string = (currentUser.value.setting_routingPriv == '') ? default_routingPriv : currentUser.value.setting_routingPriv;
-    let routingPriv_array = routingPriv_string.split(',').map(value => value === '1');
-    console.log("routingPriv_array:", routingPriv_array);
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    const defaultRoutingPriv = initialSelection.join(',');
+
+    const rawRoutingPriv = currentUser.value?.setting_routingPriv;
+
+    const routingPrivString =
+    (typeof rawRoutingPriv === 'string' && rawRoutingPriv.trim() !== '')
+      ? rawRoutingPriv
+      : defaultRoutingPriv;
+
+    const routingPrivArray = String(routingPrivString)
+      .split(',')
+      .map(value => value === '1');
+
+    console.log("routingPrivArray:", routingPrivArray);
 
     // 使用 routingPriv_array 的值更新 reactiveLinks 中每個物件的 isEnabled 屬性
     localNavLinks.value.forEach((link, index) => {
-      if (index < routingPriv_array.length) {
-        link.isEnabled = routingPriv_array[index];
+      if (index < routingPrivArray.length) {
+        link.isEnabled = routingPrivArray[index];
       }
     });
     console.log("localNavLinks:", localNavLinks.value);
   }
-  //
 
   initAxios();
   initialize();

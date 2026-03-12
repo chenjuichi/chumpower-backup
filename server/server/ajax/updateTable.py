@@ -255,6 +255,7 @@ def update_password():
 
 
 # update user's setting from user table some data
+"""
 @updateTable.route("/updateSetting", methods=['POST'])
 def update_setting():
     print("updateSetting....")
@@ -287,6 +288,79 @@ def update_setting():
     return jsonify({
       'status': True,
     })
+"""
+
+
+@updateTable.route("/updateSetting", methods=['POST'])
+def update_setting():
+    print("updateSetting.")
+
+    request_data = request.get_json(silent=True) or {}
+
+    userID = (request_data.get('empID') or '').strip()
+    new_isSee = request_data.get('seeIsOk')
+    new_lastRoutingName = request_data.get('lastRoutingName')
+    new_itemsPerPage = request_data.get('itemsPerPage', 0)
+
+    if not userID:
+      return jsonify({
+        'status': False,
+        'message': '缺少 empID'
+      }), 400
+
+    s = Session()
+    try:
+      _user = s.query(User).filter_by(emp_id=userID).first()
+      if not _user:
+        return jsonify({
+          'status': False,
+          'message': f'找不到使用者: {userID}'
+        }), 404
+
+      if not _user.setting_id:
+        return jsonify({
+          'status': False,
+          'message': f'使用者 {userID} 沒有 setting_id'
+        }), 400
+
+      update_data = {
+        'lastRoutingName': new_lastRoutingName,
+        'isSee': new_isSee,
+      }
+
+      try:
+        items_per_page = int(new_itemsPerPage or 0)
+      except Exception:
+        items_per_page = 0
+
+      if items_per_page != 0:
+        update_data['items_per_page'] = items_per_page
+
+      rows = s.query(Setting).filter(Setting.id == _user.setting_id).update(update_data)
+
+      if rows == 0:
+        return jsonify({
+          'status': False,
+          'message': f'找不到對應 Setting: {_user.setting_id}'
+        }), 404
+
+      s.query(User).filter(User.emp_id == userID).update({'isOnline': False})
+
+      s.commit()
+
+      return jsonify({
+        'status': True,
+        'message': '設定更新成功'
+      })
+    except Exception as e:
+      s.rollback()
+      current_app.logger.exception("update_setting failed")
+      return jsonify({
+        'status': False,
+        'message': str(e)
+      }), 500
+    finally:
+      s.close()
 
 
 # from user table update some data by id
@@ -1485,9 +1559,15 @@ def update_assemble():
   #print("request_data", request_data)
   _assemble_id = request_data['assemble_id']
   _record_name = request_data['record_name']
+
+  if 'record_data' not in request_data:
+    return jsonify({
+        'status': False,
+        'message': '缺少 record_data'
+    }), 400
   _record_data = request_data['record_data']
 
-  print("_record_name:", _record_name)
+  #print("_record_name:", _record_name)
 
   return_value = True  # true: 資料正確, 註冊成功
   s = Session()
@@ -1516,6 +1596,12 @@ def update_assemble_p():
   #print("request_data", request_data)
   _assemble_id = request_data['assemble_id']
   _record_name = request_data['record_name']
+
+  if 'record_data' not in request_data:
+    return jsonify({
+        'status': False,
+        'message': '缺少 record_data'
+    }), 400
   _record_data = request_data['record_data']
 
   #print("_record_name:", _record_name)

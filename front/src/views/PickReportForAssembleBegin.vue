@@ -9,11 +9,11 @@
       </v-btn>
     </template>
   </v-snackbar>
-
+<!--
   <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
     <LedLights :activeColor="activeColor" />
   </DraggablePanel>
-
+-->
   <ConfirmDialog ref="confirmRef" />
 
   <v-data-table
@@ -27,8 +27,11 @@
     density="comfortable"
     style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
     :items-per-page-options="footerOptions"
-    item-key="name"
-    items-per-page="5"
+
+    item-value="row_key"
+
+    v-model:items-per-page="pagination.itemsPerPage"
+    v-model:page="pagination.page"
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
@@ -102,35 +105,149 @@
             </v-dialog>
           </div>
 
-          <div style="display: flex; flex-direction: column; align-items: center;">
-            <!--客製化搜尋-->
-            <v-text-field
-              id="bar_code"
+          <v-row
+            class="ma-0 toolbar-row"
+            align="center"
+            no-gutters
+            style="position:relative; left:-45px; top:22px; height:48px;"
+          >
+            <!--日期範圍-->
+            <v-col cols="auto">
+              <div class="date-slot">
+              <Transition name="slide">
+                <!--<div v-if="showFields" class="date-box">-->
+                <div class="date-box">
+                  <v-menu
+                    v-model="menuOpen"
+                    :close-on-content-click="false"
+                    location="bottom start"
+                    origin="top start"
+                    :offset="[0, 8]"
+                    :width="480"
+                    :min-width="480"
+                    transition="fade-transition"
+                    :open-on-focus="false"
+                    :open-on-hover="false"
+                  >
+                    <template #activator="{ props }">
+                      <v-text-field
+                        v-bind="props"
+                        label="交期範圍"
+                        v-model="formattedDateRange"
+                        readonly
+                        variant="underlined"
+                        density="compact"
 
-              v-model="search"
+                        :placeholder="dateFieldActive ? 'yyyy-mm-dd ~ yyyy-mm-dd' : ''"
+                        prepend-icon="mdi-calendar-check"
 
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              hide-details
-              single-line
-              style="position: relative; top: 45px; right: 250px; min-width: 150px;"
-              density="compact"
-            />
+                        class="dateicon date-range-field"
+                        clearable
+                        hide-details
 
-            <!-- 客製化barcode輸入 -->
-            <v-text-field
-              id="bar_code"
-              v-model="bar_code"
-              :value="bar_code"
-              ref="barcodeInput"
-              @keyup.enter="handleBarCode"
-              hide-details="auto"
-              prepend-icon="mdi-barcode"
-              style="min-width:200px; position: relative; top: 15px; right: 50px;"
-              class="align-center"
-              density="compact"
-            />
-          </div>
+                        @click="openDateMenu"
+                        @focus="dateFieldActive = true"
+                        @blur="dateFieldActive = false"
+                        @click:clear="clearDates"
+                      />
+                    </template>
+
+                    <div class="dp-stretch">
+                      <VueDatePicker
+                        :key="menuKey"
+                        :start-date="today"
+                        v-model="dpRange2"
+                        :enable-time-picker="false"
+                        range
+                        :inline="true"
+                        :auto-apply="true"
+                        locale="zh-TW"
+                        week-num-name=""
+                        :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+                      />
+                    </div>
+                  </v-menu>
+                </div>
+              </Transition>
+              </div>
+            </v-col>
+
+            <!--整批刪除 按鍵-->
+            <v-col cols="auto">
+              <div class="batch-slot" :class="{ 'is-disabled': isInformationEmpty }">
+                <!-- 翻轉效果 -->
+                <div class="flip_btn fixed-flip-btn">
+                  <v-btn
+                    v-if="hasDpRange2"
+                    style="background:#E3F2FD !important;"
+
+                    class="side default-side thin"
+                    :disabled="isInformationEmpty"
+                    @mouseenter="!isInformationEmpty && (showFields = true)"
+                    @click="!isInformationEmpty && (showFields = true)"
+                  >
+                    <v-icon left color="green" style="font-weight:700;">mdi-sticker-remove-outline</v-icon>
+                    <span style="color:black; font-weight:600;">整批刪除</span>
+                  </v-btn>
+
+                  <div class="side hover-side hover-actions">
+                    <!-- 取消按鍵 -->
+                    <v-btn
+                      class="action-btn"
+                      :disabled="isInformationEmpty"
+                      @click="!isInformationEmpty && (showFields = false)"
+                    >
+                      <v-icon left color="#ff0000">mdi-window-close</v-icon>
+                      <span style="color:black; font-weight:600;">取消</span>
+                    </v-btn>
+
+                    <!-- 確定按鍵 -->
+                    <v-btn
+                      class="action-btn"
+                      :disabled="isInformationEmpty"
+                      @click="!isInformationEmpty && onClickRemoveByDeliveryDateRange()"
+                    >
+                      <v-icon left color="green">mdi-microsoft-excel</v-icon>
+                      <span style="color:black; font-weight:600;">確定</span>
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+            </v-col>
+
+            <!--客製化搜尋輸入框-->
+            <v-col cols="auto">
+              <div class="search-slot">
+                <v-text-field
+                  v-model="search"
+                  prepend-inner-icon="mdi-magnify"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  density="compact"
+                  class="toolbar-field toolbar-field--24 search-field"
+                />
+              </div>
+            </v-col>
+
+            <!-- 客製化barcode輸入框 -->
+            <v-col cols="auto">
+              <div class="barcode-slot">
+                <v-text-field
+                  id="bar_code"
+                  v-model="bar_code"
+                  :value="bar_code"
+                  ref="barcodeInput"
+                  @keyup.enter="handleBarCode"
+                  hide-details="auto"
+                  prepend-icon="mdi-barcode"
+
+                  density="compact"
+                  class="toolbar-field toolbar-field--24 barcode-field"
+                />
+              </div>
+            </v-col>
+          </v-row>
         </v-card-title>
       </v-card>
     </template>
@@ -278,12 +395,12 @@
     </template>
   -->
     <!-- 自訂 '應領取數量'欄位的資料欄位 -->
+<!--  :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"-->
     <template v-slot:item.must_receive_qty="{ item }">
       <div style="display: flex; align-items: center;">
         <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null && item.begin_records == 0"> <!--組裝途程-->
           <v-icon
             style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-            :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
             @click="addAbnormalInMaterial(item)"
             size="16"
             class="mr-2"
@@ -412,62 +529,54 @@
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
-      <span v-if="item.show_name == userId"
-        style="
-          position: relative;
-          left: 70px;
-          color:#4000ff;
-          width:88px;
-          min-width:88px;
-          font-variant-numeric:tabular-nums;"
-      >
-        <TimerDisplay
-          :fontSize="18"
-          :autoStart="false"
-
-          :show="true"
-
-          :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${currentUser.empID}`"
-
-          :ref="el => setTimerEl(item, el)"
-          :isPaused="isPausedOf(item)"
-          @update:isPaused="val => setPausedOf(item, val)"
-          @update:time="ms => onTickOf(item, ms)"
-
-          class="me-2"
-          style="min-width:88px; display:inline-block;"
-        />
-      </span>
-      <!-- 綠點：這筆「有人」在開工（不限本人） -->
-      <!--
-      <v-badge
-        :key="`badge-${item.index}-${item.count}`"
-        v-bind="badgeProps(item)"
-        :content="item.count"
-        color="green"
-        offset-x="6"
-        offset-y="6"
-        class="me-1"
-      >
-      -->
-        <v-btn
-          size="small"
-          variant="tonal"
-
-          style="font-size:14px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
-          :style="item.show_name === userId ? { position: 'relative', left: '70px' } : {position: 'relative', left: '117px'}"
-
-          :disabled="isButtonDisabled(item)"
-          @click="onClickBegin(item)"
-          prepend-icon = "mdi-play"
-          color="indigo-darken-4"
+      <div class="begin-cell">
+        <div class="begin-timer-slot">
+          <span
+            v-if="item._showMyTimer || isMineStarted(item) || item.show_name == userId"
+            class="begin-timer-text"
+          >
+            <TimerDisplay
+              :fontSize="18"
+              :autoStart="false"
+              :show="true"
+              :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${safeUserId}`"
+              :ref="el => setTimerEl(item, el)"
+              :isPaused="isPausedOf(item)"
+              @update:isPaused="val => setPausedOf(item, val)"
+              @update:time="ms => onTickOf(item, ms)"
+              class="begin-timer"
+            />
+          </span>
+        </div>
+        <!-- 綠點：這筆「有人」在開工（不限本人） -->
+        <!--
+        <v-badge
+          :key="`badge-${item.index}-${item.count}`"
+          v-bind="badgeProps(item)"
+          :content="item.count"
+          color="green"
+          offset-x="6"
+          offset-y="6"
+          class="me-1"
         >
-          <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
-          開 始
-        </v-btn>
-      <!--
-      </v-badge>
-      -->
+        -->
+        <!-- :style="item.show_name === userId ? { position: 'relative', left: '70px' } : {position: 'relative', left: '117px'}" -->
+          <v-btn
+            size="small"
+            variant="tonal"
+            class="begin-btn"
+            :disabled="isButtonDisabled(item)"
+            @click="onClickBegin(item)"
+            prepend-icon = "mdi-play"
+            color="indigo-darken-4"
+          >
+            <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
+            開 始
+          </v-btn>
+        <!--
+        </v-badge>
+        -->
+      </div>
     </template>
 
     <template #no-data>
@@ -478,8 +587,15 @@
 </template>
 
 <script setup>
-//import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount } from 'vue';
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, onDeactivated } from 'vue';
+
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrBefore);             //啟用 plugin
+
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
 import { onBeforeRouteLeave } from 'vue-router';
 
 import TimerDisplay from "./TimerDisplayBegin.vue";
@@ -497,6 +613,21 @@ const search = ref('');
 
 import { useRouter } from 'vue-router';
 const router = useRouter();
+
+// +++
+
+const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
+const menuOpen = ref(false)
+const today = new Date()
+const menuKey = ref(0)
+const settingDefaultRange = ref(false)
+
+const dpRange = ref(null)             // 外部值（清空用 null，不要 []）
+const dpRange2 = ref([])
+const dpInternal = ref(null)          // 內部值：選取當下就會更新
+const formattedDateRange = ref('')    // 綁給 <v-text-field>
+const dateFieldActive = ref(false)
+
 
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
@@ -527,10 +658,11 @@ const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
 const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
 const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
 //const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
+
 const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
+const removeMaterialsAndRelationTableByDeliveryDateRange = apiOperation('post', '/removeMaterialsAndRelationTableByDeliveryDateRange');
 
 const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
-
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleBegin' });
@@ -619,17 +751,33 @@ const outputStatus = ref({
   step2: null
 });
 
-const currentUser = ref({});
+//const currentUser = ref({});
+const currentUser = ref(null);
+
 const componentKey = ref(0) // key 值用於強制重新渲染
 
-const currentBoms = ref([]);
+const safeUserId = computed(() => String(currentUser.value?.empID ?? '').trim());
+const userId = computed(() => safeUserId.value);
 
-//const currentStartTime = ref(null);  // 記錄開始時間
+function loadCurrentUser() {
+  let userRaw = sessionStorage.getItem('auth_user');
 
-//const agv1StartTime = ref(null);
-//const agv1EndTime = ref(null);
-//const agv2StartTime = ref(null);
-//const agv2EndTime = ref(null);
+  if (!userRaw) {
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+
+  try {
+    currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  } catch (e) {
+    console.error('loadCurrentUser parse failed:', e, userRaw);
+    currentUser.value = null;
+  }
+}
+
+//const currentBoms = ref([]);
 
 const pagination = reactive({
   itemsPerPage: 5,              // 預設值, rows/per page
@@ -678,7 +826,82 @@ watch(bar_code, (newVal) => {
   }
 })
 
+watch(menuOpen, (open) => {
+  if (open) {
+    // 每次開都回今天那個月
+    menuKey.value++
+
+    //如果希望「使用者已經選過日期就不要覆蓋」
+    if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
+      // 每次開都預設今天~+7天
+      setDefaultRange()
+    }
+  }
+})
+
+//watch([() => pagination.page, () => pagination.itemsPerPage], () => {
+//  runQueryDebounced();
+//})
+
+watch(() => pagination.itemsPerPage, (val) => {
+    if (!currentUser.value?.empID) return
+    //if (!currentUser.value) return
+
+    currentUser.value.setting_items_per_page = Number(val) || 10
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
+  },
+  { immediate: true }
+)
+
+watch(  () => safeUserId.value, async (uid) => {
+    if (!uid) return;
+
+    console.log('[safeUserId watcher] current user ready:', uid);
+
+    await nextTick();
+
+    if ((materials_and_assembles.value || []).length > 0) {
+      await restoreActiveTimersOnly();
+    }
+  },
+  { immediate: true }
+);
+
+// 畫面控制
+watch(dpRange2, ([start, end]) => {
+  if (settingDefaultRange.value) return   // ✅ 預設值時不關 menu
+
+  if (start && end) {
+    formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+    menuOpen.value = false                 // ✅ 使用者選完才關
+  }
+})
+
+// 資料查詢, 日期變更就查
+//watch([dpRange2], () => {
+//  if (settingDefaultRange.value) return   // ⭐ 防止初始化觸發
+//  pagination.page = 1;
+//  runQueryDebounced();
+//}, { deep: true })
+
 //=== computed ===
+
+const hasDpRange2 = computed(() => {
+  return Array.isArray(dpRange2.value) &&
+    dpRange2.value.length > 0 &&
+    dpRange2.value.every(v => !!v);
+});
+
+const hasDeliveryRangeText = computed(() => {
+  return !!String(dateRangeText.value ?? '').trim();
+});
+
+const isInformationEmpty = computed(() => {
+  return materials_and_assembles.value.length === 0;
+});
+
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
 }));
@@ -712,8 +935,6 @@ const adjustTablePosition = computed(() => ({
 const filteredBoms = computed(() =>
   boms.value.filter(item => item.receive)
 );
-
-const userId = computed(() => currentUser.value.empID ?? '')
 
 // index -> idx (0-based)
 const indexToIdx = computed(() => {
@@ -772,6 +993,7 @@ onMounted(async () => {
   console.log("current routeName:", routeName.value);
 
   //user define
+  /*
   let userRaw = sessionStorage.getItem('auth_user');
   if (!userRaw) {
     // 只在第一次開分頁時，從 localStorage 複製一份
@@ -781,15 +1003,19 @@ onMounted(async () => {
     }
   }
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+  */
+  loadCurrentUser();
 
-  if (currentUser.value) {
-    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
-    currentUser.value.setting_lastRoutingName = routeName.value;
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    pagination.itemsPerPage = Number(currentUser.value.setting_items_per_page) || 5
+    currentUser.value.setting_lastRoutingName = routeName.value
 
     localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
     sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
   }
-  console.log("currentUser:", currentUser.value.empID);
+
+  console.log("currentUser:", safeUserId.value || '(empty)');
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
@@ -810,18 +1036,26 @@ onMounted(async () => {
   //await listMaterialsAndAssembles()
   await safeRefresh();
 
-  materials_and_assembles.value.map(it => ({
+  ///* materials_and_assembles.value.map(it => ({
+  ///*   ...it,
+  ///*   pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
+  ///*   count: typeof it.count === 'number' ? it.count : 0,
+  ///* }));
+  materials_and_assembles.value = materials_and_assembles.value.map(it => ({
     ...it,
     pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
     count: typeof it.count === 'number' ? it.count : 0,
-  }));
+  }))
 
-  await nextTick()
   materials_and_assembles.value.forEach(r => getT(r))     // 先建好 t
   await nextTick()
-  await restoreAllMyTimers()                              // 逐列 t.restoreProcess(...)
-  //2025-11-18 await refreshActiveCounts()
-  //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value)
+
+  if (safeUserId.value) {         // 逐列 t.restoreProcess(...)
+    //await restoreAllMyTimers()
+    await restoreActiveTimersOnly();
+  } else {
+    console.warn('[mounted] skip initial restore: current user not ready');
+  }
 
   //處理socket連線
   console.log('等待socket連線...');
@@ -957,11 +1191,77 @@ onBeforeUnmount(() => {
 });
 
 //=== method ===
+
+const fmt = (d) => {
+  if (!d) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const batchRemoveRecords = async () => {
+  console.log('batchRemoveRecords()...');
+
+  showFields.value = false;
+};
+
+const openDateMenu = () => {
+  menuOpen.value = true
+  showFields.value = true
+}
+
+const runQuery = async () => {
+  const payload = buildListInformationsPayload();
+  await listInformations(payload);
+};
+
+const runQueryDebounced = () => {
+  if (_qTimer) clearTimeout(_qTimer);
+  _qTimer = setTimeout(runQuery, 200);
+};
+
+// 加天數
+const addDays = (date, days)=>{
+  const d = new Date(date)
+  d.setDate(d.getDate()+days)
+  return d
+}
+
+// 設定預設區間（今天~7天）
+const setDefaultRange = ()=>{
+  const start = new Date()
+  const end   = addDays(start, 7)
+
+  settingDefaultRange.value = true
+  dpRange2.value = [start, end]
+
+  formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
+
+  // 下一個 tick 再解除旗標，避免 watcher 立刻關 menu
+  queueMicrotask(() => {
+    settingDefaultRange.value = false
+  })
+}
+
+const clearDates = () => {
+  dpRange2.value = [null, null]
+  formattedDateRange.value = ''
+  menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
+}
+
+// ===
+
 const KEY = 'material' // 'material' 或 'assemble'
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
-const getT = (row) => useRowTimer(row, currentUser.value.empID)
+//const getT = (row) => useRowTimer(row, currentUser.value.empID)
+const getT = (row) => {
+  const uid = safeUserId.value;
+  if (!uid) return makeStub();
+  return useRowTimer(row, uid);
+};
 
 function setTimerEl(row, el) {
   if (!row || !row.id) {
@@ -1044,7 +1344,13 @@ function idOf(row) {
 }
 
 async function restoreAllMyTimers() {
-  const me = currentUser.value.empID      // 你用的登入人員代號
+  //const me = currentUser.value.empID      // 登入人員代號
+  const me = safeUserId.value;      // 登入人員代號
+  if (!me) {
+    console.warn('[restoreAllMyTimers] skip: current user not ready');
+    return;
+  }
+
   const rows = materials_and_assembles.value || []
   for (const row of rows) {
     const t = getT(row)
@@ -1056,6 +1362,164 @@ async function restoreAllMyTimers() {
       // useProcessTimerBegin.js 內已處理：paused 就 pause；running 就啟動本地 ticker + autoUpdate
     } catch (e) {
       console.warn('restore fail for row', row.id, e)
+    }
+  }
+}
+
+/*
+const shouldRestoreRow = (row) => {
+  // 依你目前資料結構調整
+  // 先用最保守條件：只有「已開始、未結束、屬於目前使用者」才 restore
+
+  //const me = String(currentUser.value?.empID ?? '')
+  const me = safeUserId.value;
+
+  const started =
+    row?.hasStarted === true ||
+    row?.has_started === true ||
+    Number(row?.hasStarted || 0) === 1 ||
+    Number(row?.has_started || 0) === 1 ||
+    Number(row?.startStatus || 0) === 1
+
+  //const notClosed =
+  //  row?.isClosed !== true &&
+  //  row?.end_time == null &&
+  //  row?.process_end_time == null
+
+  const sameUser =
+    String(row?.user_id ?? row?.process_user_id ?? row?.empID ?? '') === me ||
+    String(row?.isOpenEmpId ?? '') === me ||
+    String(row?.show_name ?? '') === me;
+
+  //return started && notClosed && sameUser
+  return started && sameUser
+
+}
+*/
+const shouldRestoreRow = (row) => {
+  const me = safeUserId.value;
+  if (!me || !row) return false;
+
+  const sameUser =
+    String(row.isOpenEmpId ?? '') === me ||
+    String(row.show_name ?? '') === me ||
+    String(row.user_id ?? '') === me ||
+    String(row.process_user_id ?? '') === me;
+
+  const started =
+    row.hasStarted === true ||
+    row.hasStarted === 1 ||
+    row.hasStarted === '1' ||
+    row.startStatus === true ||
+    row.startStatus === 1 ||
+    row.startStatus === '1' ||
+    row.show_timer === true ||
+    row.show_timer === 1 ||
+    row.show_timer === '1';
+
+  const ok = sameUser && started;
+
+  if (ok) {
+    console.log('[shouldRestoreRow] match row=', {
+      id: row.id,
+      assemble_id: row.assemble_id,
+      isOpenEmpId: row.isOpenEmpId,
+      show_name: row.show_name,
+      hasStarted: row.hasStarted,
+      startStatus: row.startStatus,
+      show_timer: row.show_timer,
+    });
+  }
+
+  return ok;
+};
+
+/*
+async function restoreActiveTimersOnly() {
+  //const me = currentUser.value.empID
+  const me = safeUserId.value;
+  if (!me) {
+    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
+    return;
+  }
+
+  const rows = (materials_and_assembles.value || []).filter(shouldRestoreRow)
+
+  console.log('[restoreActiveTimersOnly] rows to restore =', rows.map(r => r.id))
+
+  for (const row of rows) {
+    const t = getT(row)
+    if (!t?.restoreProcess) continue
+
+    try {
+      await t.restoreProcess(
+        row.id,
+        processTypeOf(row),
+        me,
+        row.assemble_id
+      )
+    } catch (e) {
+      console.warn('restore fail for row', row.id, e)
+    }
+  }
+}
+*/
+async function restoreActiveTimersOnly() {
+  const me = safeUserId.value;
+  if (!me) {
+    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
+    return;
+  }
+
+  const allRows = materials_and_assembles.value || [];
+
+  console.log('[restore] me =', me);
+  console.log(
+    '[restore] scan =',
+    allRows.slice(0, 20).map(r => ({
+      id: r.id,
+      assemble_id: r.assemble_id,
+      isOpenEmpId: r.isOpenEmpId,
+      show_name: r.show_name,
+      hasStarted: r.hasStarted,
+      startStatus: r.startStatus,
+      show_timer: r.show_timer,
+    }))
+  );
+
+  const rows = allRows.filter(shouldRestoreRow);
+
+  console.log('[restore] rows=', rows.map(r => ({
+    id: r.id,
+    assemble_id: r.assemble_id,
+  })));
+
+  if (!rows.length) return;
+
+  // 先把 timer 掛出來
+  for (const row of rows) {
+    row._showMyTimer = true;
+    row.show_name = me;
+  }
+
+  await nextTick();
+
+  for (const row of rows) {
+    const t = getT(row);
+    if (!t?.restoreProcess) continue;
+
+    try {
+      await t.restoreProcess(
+        row.id,
+        processTypeOf(row),
+        me,
+        row.assemble_id
+      );
+
+      row._showMyTimer = true;
+      row.show_name = me;
+    } catch (e) {
+      console.warn('[restore] fail row=', row.id, e);
     }
   }
 }
@@ -1178,6 +1642,12 @@ async function nudgeResume () {
 async function onClickBegin(row) {
   console.log("onClickBegin(), row", row);
 
+  const me = safeUserId.value;
+  if (!me) {
+    showSnackbar("使用者資料尚未載入，請稍後再試!", "red-darken-2");
+    return;
+  }
+
   if (!row || !row.id) {
     showSnackbar("資料異常，按鍵無效!", "red-darken-2")
     return
@@ -1189,34 +1659,62 @@ async function onClickBegin(row) {
     return
   }
 
-  console.log("t.processId.value:", t.processId.value, t)
+  console.log("t, t.processId.value, t.hasStarted?.value, t.isPaused.value:", t, t.processId.value, t.hasStarted?.value, t.isPaused.value)
 
-  //if (t.processId?.value && t.hasStarted?.value && !t.isPaused?.value) {
-  if (t.processId?.value && t.hasStarted?.value) {
+  if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
     showSnackbar("已經領料了...", "orange-darken-2")
     return
   }
 
+  selectedAsmId.value = row.index;
+
+  //
+  // ✅ 先讓畫面立即顯示 timer，不等 refresh / 後端
+  row._showMyTimer = true;
+  row.show_timer = true;
+  row.show_name = me;
+
+  //t.elapsedMs.value = t.elapsedMs.value || 0;
+  //t.isPaused.value = false;
+
   await nextTick();
 
-  selectedAsmId.value = row.index;
+  //t.timerRef?.value?.setState?.(0, false);
+  //t.timerRef?.value?.resume?.();
+  //
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
-    await t.startProcess(row.id, processTypeOf(row), currentUser.value.empID, row.assemble_id)
+    const pid = await t.startProcess(
+      row.id,
+      processTypeOf(row),
+      me,
+      row.assemble_id
+    )
+
+    if (!pid || (typeof pid === 'object' && pid.success === false)) {
+      showSnackbar("開始失敗：使用者或流程資料異常!", "red-darken-2");
+      return;
+    }
   }
-  // 2) 立刻做一次 “恢復”（unpause, 以觸發後端寫入 begin_time
+
   console.log("t.isPaused:", t.isPaused.value)
+
+  // 若後端回來是 paused，再切成 running
   if (t.isPaused.value) {
     //await t.nudgeResume?.()
     await t.toggleTimer();    // paused -> active（後端寫 begin_time）
-    t.isPaused.value =false;  // 2025-09-24
+    t.isPaused.value = false;
   }
 
   await updateItem(row);
 
-  //2025-11-18 await refreshActiveCounts();
+  // 不要整頁 refresh；只更新局部資料/綠點
+  //await nextTick();
+  //await safeRefresh();
 
+  await nextTick();
+  //await restoreAllMyTimers();
 }
 
 function startDisabled(row) {
@@ -1265,10 +1763,15 @@ async function onDelete(item) {
     cancelText: '取消',
   })
   if (ok) {
-    removeMaterialsAndRelationTableFun(item.id);
+    await removeMaterialsAndRelationTableFun(item.id);
 
     //待待
-    window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+    // window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+
+    //const idx = materials_and_assembles.value.findIndex(row => row.id === item.id)
+    //if (idx !== -1) {
+    //  materials_and_assembles.value.splice(idx, 1)
+    //}
   }
 }
 
@@ -1286,7 +1789,7 @@ const removeMaterialsAndRelationTableFun = async (id) => {
   } catch (err) {
     console.error("DELETE API failed:", err?.response?.status, err?.response?.data, err?.message);
     showSnackbar("刪除 API 失敗", 'red accent-2');
-    return;
+    return false;
   }
 
   if (!ok) {
@@ -1294,20 +1797,64 @@ const removeMaterialsAndRelationTableFun = async (id) => {
     return;
   }
 
-  try {
-    editDialog.value = false;
-
-    //await listMaterialsAndAssembles();
-    await safeRefresh();
-
-    //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
-
-    showSnackbar("刪除工單完成!", 'green darken-1');
-  } catch (err) {
-    console.error("REFRESH failed:", err?.response?.status, err?.response?.data, err?.message);
-    //showSnackbar("刪除成功，但刷新列表失敗。請稍後重試。", 'red accent-2');
-    showSnackbar("刪除工單完成!", 'green darken-1');
+  const idx = materials_and_assembles.value.findIndex(row => row.id === id)
+  if (idx !== -1) {
+    materials_and_assembles.value.splice(idx, 1)
   }
+
+  showSnackbar("刪除工單完成!", "green darken-1")
+  return true
+
+}
+
+const onClickRemoveByDeliveryDateRange = async () => {
+
+  let ok = false
+  let result = null
+
+  try {
+
+    const payload = {
+      dpRange2: dpRange2.value,
+      delete_copies: true,
+    }
+
+    result = await removeMaterialsAndRelationTableByDeliveryDateRange(payload)
+
+    ok = result.status === true
+
+    console.log("remove result:", result)
+
+  } catch (err) {
+
+    console.error(
+      "DELETE API failed:",
+      err?.response?.status,
+      err?.response?.data,
+      err?.message
+    )
+
+    showSnackbar("刪除 API 失敗", 'red accent-2')
+    return
+  }
+
+  if (!ok) {
+    showSnackbar("找不到目標或已被刪除。", 'red accent-2')
+    return
+  }
+
+  // 刪除前端資料
+  if (Array.isArray(result.deleted_ids) && result.deleted_ids.length > 0) {
+
+    const deleteSet = new Set(result.deleted_ids)
+
+    materials_and_assembles.value =
+      materials_and_assembles.value.filter(
+        row => !deleteSet.has(row.id)
+      )
+  }
+
+  showSnackbar(`整批刪除成功，共刪除 ${result.deleted_count ?? 0} 筆!`, "green darken-1")
 }
 
 const initialize = async () => {
@@ -1355,7 +1902,6 @@ const initialize_for_created = async () => {
   //await listMaterialsAndAssembles();
   await safeRefresh();
 
-
   materials_and_assembles.value.map(it => ({
     ...it,
     pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
@@ -1376,11 +1922,19 @@ const initialize_for_mounted = async () => {
   //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
 };
 
+/*
 const customFilter =  (value, query, item)  => {
   return value != null &&
     query != null &&
     typeof value === 'string' &&
     value.toString().toLocaleUpperCase().indexOf(query) !== -1
+}
+*/
+
+const customFilter = (value, query, item) => {
+  if (value == null || query == null) return false
+
+  return String(value).toUpperCase().includes(String(query).toUpperCase())
 }
 
 const handleBarCode = () => {
@@ -1574,6 +2128,11 @@ const createAbnormalFun = async () => {
 const updateItem = async (item) => {
   console.log("PickReportForAssembleBegin, updateItem(),", item);
 
+  const me = safeUserId.value;
+  if (!me) {
+    throw new Error("current user not ready");
+  }
+
   let payload = {};
 
   let startTime = new Date();                                                         // 記錄當前結束時間
@@ -1642,7 +2201,7 @@ const updateItem = async (item) => {
   payload = {
     assemble_id: item.assemble_id,
     record_name: 'user_id',
-    record_data: currentUser.value.empID,
+    record_data: me,
   };
   await updateAssemble(payload);
 
@@ -1661,6 +2220,10 @@ const updateItem = async (item) => {
   // 取得組裝區目前途程的show2_ok訊息類型(開始)
   checkInputStr(item.assemble_work);
   console.log("outputStatus:", outputStatus.value, typeof(outputStatus.value.step1), typeof(outputStatus.value.step1))
+
+  if (outputStatus.value?.step1 == null) {
+    throw new Error("outputStatus.value.step1 is undefined");
+  }
 
   // 6.按開始鍵後, 記錄當前途程開始狀態顯示訊息
   payload = {
@@ -1697,8 +2260,6 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  //}
-
   let temp = Number(item.req_qty)
   // 確認 已領取數量總數=需求數量(訂單數量)
   console.log("total == temp ?",total, temp)
@@ -1712,15 +2273,16 @@ const updateItem = async (item) => {
       record_data: true,
     };
     await updateAssemble(payload);
+
     item.input_disable = true;
   }
 
-  const key = `${item.id}:${item.assemble_id}:${processTypeOf(item)}:${currentUser.value.empID}`
-  localStorage.setItem(`PR_END_SYNC_${currentUser.value.empID}`, `${key}|${Date.now()}`)
-  console.log("key key:",`PR_END_SYNC_${currentUser.value.empID}`, key)
+  const key = `${item.id}:${item.assemble_id}:${processTypeOf(item)}:${me}`;
+  localStorage.setItem(`PR_END_SYNC_${me}`, `${key}|${Date.now()}`);
+  console.log("key key:", `PR_END_SYNC_${me}`, key);
 
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 const checkInputStr = (inputStr) => {
@@ -1846,16 +2408,21 @@ const fetchBoms = async (item) => {
     return;
   }
 
-  if (item.merge_enabled) {
-    const res = await getOrderPickedBoms({
-      order_num: item.order_num,
-      //id: item.id,
-    });
-  } else {
-    const res = await getOrderPickedBoms({
-      //order_num: item.order_num,
-      id: item.id,
-    });
+  try {
+    let res;
+
+    if (item.merge_enabled) {
+      res = await getOrderPickedBoms({
+        order_num: item.order_num,
+      });
+    } else {
+      res = await getOrderPickedBoms({
+        id: item.id,
+      });
+    }
+  } catch (e) {
+    console.error("fetchBoms failed:", e);
+    boms.value = [];
   }
 
   boms.value = res.data?.boms || [];
@@ -2034,5 +2601,288 @@ const removelocalStorage = () => {
 .tooltip-content {
   max-width: 520px;          // 避免太寬，可調整
   white-space: pre-wrap;     // 保留換行
+}
+
+//===
+
+.slide-enter-from
+{
+  transform: translateX(-100%);
+}
+
+.slide-leave-to {
+  transform: translateX(100%);
+}
+
+//===過場特效
+
+.flip_btn {
+  position: relative;
+  top: -5px;
+  left: 30px;
+  height: 20px;
+  width: 130px;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease-in-out;
+  transform: translateZ(-20px);
+}
+
+.flip_btn:hover {
+  transform: rotateX(-90deg) translateY(20px);
+}
+
+.side {
+  position: absolute;
+  backface-visibility: hidden;
+  width: 130px;
+  //width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.default-side {
+  transform: translateZ(20px);
+}
+
+.hover-side {
+  transform: rotateX(90deg) translateZ(20px);
+}
+
+
+:deep(.dp__calendar_header .dp__calendar_header_item) {
+  font-size: 0.8em;
+}
+
+// ------- 沒有週數欄（共 7 欄）：一～五綠，六日紅 -------
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(-n+5)) {
+  background: #2e7d32; color: #fff;
+}
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(6)),
+:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
+      .dp__calendar_header_item:nth-child(7)) {
+  background: #c62828; color: #fff;
+}
+
+// ------- 有週數欄（第 1 欄是週數）：星期從第 2～8 欄 -------
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(n+2):nth-child(-n+6)) {
+
+  background: #2e7d32; color: #fff;   // 第 2～6 欄 = 一～五 → 綠
+}
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(7)),
+:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
+      .dp__calendar_header_item:nth-child(8)) {
+
+  background: #c62828; color: #fff;   // 第 7、8 欄 = 六、日 → 紅
+}
+
+// 如果週數欄（W）有開啟，不要上色它
+:deep(.dp-colored .dp__calendar_header_item_week) {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+:deep(.dp__month_year_select) {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+:deep(.dateicon > .v-input__prepend .v-icon) {
+  color: #F48FB1 !important;
+}
+
+// 讓 DatePicker 撐滿 v-menu 設定的寬度
+:deep(.dp-stretch .dp__main) {
+  width: 100%;
+}
+
+:deep(.dp__outer_menu_wrap) {
+  width: 140%;
+}
+
+// ===
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 16px;
+}
+
+// 4. 日期範圍往左調整
+.date-slot {
+  width: 290px;
+  min-width: 290px;
+}
+
+.date-box {
+  width: 290px;
+}
+
+// 1 + 2. 整批刪除固定寬度，不跟搜尋框重疊，也不擠壓別人
+.batch-slot {
+  width: 180px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  position:relative;
+  top: -2px;
+}
+
+.fixed-flip-btn {
+  width: 180px;
+  min-width: 180px;
+  position: relative;
+  left: -10px;
+}
+
+.fixed-flip-btn .default-side {
+  width: 100%;
+  min-width: 100%;
+  max-height: 34px;
+  border-radius: 6px;
+  border-width: 1.5px;
+  border-color: #64B5F6;
+}
+
+.hover-actions {
+  width: 180px;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 86px;
+  min-width: 86px;
+  border-radius: 6px;
+  border-width: 1.5px;
+  border-color: #64B5F6;
+  position: relative;
+  top: 5px;
+}
+
+// 搜尋框固定寬度，避免被擠壓或重疊
+:deep(.search-slot) {
+  width: 180px;
+  min-width: 180px;
+  position: relative;
+  top: 5px;
+}
+
+// 3. barcode 再往右移
+:deep(.barcode-slot) {
+  width: 220px;
+  min-width: 220px;
+
+  position: relative;
+  top: 8px;
+}
+
+:deep(.barcode-slot .v-input__control) {
+  position: relative;
+  top: 3px;
+}
+
+.toolbar-field {
+  width: 100%;
+}
+
+// 外框高度統一
+:deep(.toolbar-field--24 .v-field) {
+  min-height: 24px !important;
+  height: 24px !important;
+  align-items: center !important;
+  border-radius: 4px;
+}
+
+// input 區高度統一
+:deep(.toolbar-field--24 .v-field__input) {
+  min-height: 24px !important;
+  height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+// 真正輸入文字的 input：讓游標垂直置中
+:deep(.toolbar-field--24 input) {
+  height: 24px !important;
+  line-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  align-self: center !important;
+}
+
+:deep(.date-box .v-text-field input) {
+  top: 7px;
+}
+
+// ***
+
+.batch-slot.is-disabled {
+  cursor: not-allowed !important;
+}
+
+.batch-slot.is-disabled * {
+  cursor: not-allowed !important;
+}
+
+.batch-slot.is-disabled .flip_btn:hover {
+  transform: none !important;
+}
+
+.batch-slot.is-disabled .hover-side {
+  pointer-events: none !important;
+}
+
+.batch-slot.is-disabled .default-side {
+  pointer-events: auto !important;
+}
+// ===
+
+.begin-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 160px;   /* 可依畫面再微調 */
+  position: relative;
+  left: 120px;
+}
+
+.begin-timer-slot {
+  width: 92px;        /* 固定保留計時器空間，按鍵就不會被擠走 */
+  min-width: 92px;
+  text-align: right;
+}
+
+.begin-timer-text {
+  color: #4000ff;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+}
+
+.begin-timer {
+  min-width: 88px;
+  display: inline-block;
+}
+
+.begin-btn {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: '微軟正黑體', sans-serif;
+  flex: 0 0 auto;     /* 按鍵固定，不被擠壓 */
 }
 </style>

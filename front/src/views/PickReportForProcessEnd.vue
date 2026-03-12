@@ -865,15 +865,18 @@ onMounted(async () => {
 
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
+
   if (!userRaw) {
     userRaw = localStorage.getItem('loginedUser');
     if (userRaw) {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
+
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  if (currentUser.value) {
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
     currentUser.value.setting_items_per_page = pagination.itemsPerPage;
     currentUser.value.setting_lastRoutingName = routeName.value;
 

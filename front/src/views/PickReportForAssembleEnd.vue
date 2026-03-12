@@ -30,7 +30,8 @@
       style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
       :items-per-page-options="footerOptions"
       item-key="name"
-      items-per-page="5"
+      v-model:items-per-page="pagination.itemsPerPage"
+      v-model:page="pagination.page"
 
       item-value="index"
       show-select
@@ -708,7 +709,8 @@ const outputStatus = ref({
   step2: null
 });
 
-const currentUser = ref({});
+//const currentUser = ref({});
+const currentUser = ref(null);
 
 const componentKey = ref(0)                 // key值用於強制重新渲染
 
@@ -767,7 +769,7 @@ const lastKeys = ref(new Set());
 let _endReloadLock = false;
 let _endReloadPromise = null;
 
-const getUid = () => (currentUser.value?.empID ? String(currentUser.value.empID) : '')
+const getUid = () => (currentUser.value?.empID ? String(currentUser.value?.empID) : '')
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
@@ -859,6 +861,18 @@ watch(bar_code, (newVal) => {
   }
 })
 
+watch(() => pagination.itemsPerPage, (val) => {
+  if (!currentUser.value?.empID) return
+  //if (!currentUser.value) return
+
+    currentUser.value.setting_items_per_page = Number(val) || 10
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
+  },
+  { immediate: true }
+)
+
 //== timerDisplay用 ==
 // 在每次資料更新後，對新出現的 row 補做一次 ensureRestored(row)
 watch(() => [materials_and_assembles_by_user.value, currentUser.value?.empID],
@@ -897,7 +911,6 @@ watch(materials_and_assembles_by_user, (rows) => {
 }, { immediate: true })
 */
 //=== computed ===
-const userId = computed(() => currentUser.value.empID ?? '')
 
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -961,22 +974,31 @@ onMounted(async () => {
 
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
+
   if (!userRaw) {
     userRaw = localStorage.getItem('loginedUser');
     if (userRaw) {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
+
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  if (currentUser.value) {
-    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    pagination.itemsPerPage = Number(currentUser.value?.setting_items_per_page) || 10;
     currentUser.value.setting_lastRoutingName = routeName.value;
 
-    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
-    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser?.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser?.value));
   }
-  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+
+  console.log("currentUser:", currentUser.value?.empID || '');
+
+  if (!currentUser.value?.empID) {
+    console.warn('[End] mounted skip initialize: empty empID', currentUser.value);
+    return;
+  }
 
   initialize();
 
@@ -1558,16 +1580,16 @@ onMounted(async () => {
     });
 
     socket.value.on('triggerLogout', async (data) => {
-      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
+      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value?.empID);
 
-      if (data.empID && data.empID === currentUser.value.empID) {
+      if (data.empID && data.empID === currentUser.value?.empID) {
         console.log("本裝置符合 empID，執行強制登出流程");
 
         let payload = {
           itemsPerPage: 0,
           seeIsOk: '0',
           lastRoutingName: 'Main',
-          empID: currentUser.value.empID,
+          empID: currentUser.value?.empID,
         };
 
         try {
@@ -1613,7 +1635,7 @@ onDeactivated(() => { disposeAllTimersOnce(); });
 onBeforeMount(() => {
   console.log("Employer, created()...")
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  pagination.itemsPerPage = currentUser.value?.setting_items_per_page;
 
   initAxios();
   //initialize();
@@ -1772,7 +1794,8 @@ const isPausedOf = (row) => {
   return t?.isPaused?.value ?? false
 }
 
-const getT = (row) => useRowTimer(row, getUid())
+//const getT = (row) => useRowTimer(row, getUid())
+const getT = (row) => useRowTimer(row, currentUser.value?.empID ?? '')
 
 function getTByKey(key) {
    return timerMap.get(key) ?? makeStub()
@@ -1903,12 +1926,11 @@ const getIcon = (isPaused) => {
 
 const ensureStarted = async (row) => {
 //async function ensureStarted(row) {
-  //const t = useRowTimer(row, currentUser.value.empID);
   const t = getT(row);
 
   if (!t.processId.value) {
     const pType = processTypeOf(row)
-    await t.startProcess(row.id, pType, currentUser.value.empID, row.assemble_id)
+    await t.startProcess(row.id, pType, currentUser.value?.empID, row.assemble_id)
 
     // 後端回傳 is_paused = false 時：一定要讓 isPausedOf(row) 變 false
     setPausedOf(row, !!t.isPaused.value === true ? true : false)
@@ -1940,20 +1962,16 @@ const initialize = async () => {
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
     //let payload = {
-    //  user_id: currentUser.value.empID,
+    //  user_id: currentUser.value?.empID,
     //  //history: history.value,
     //};
-    await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
+    await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID });
 
     //await nextTick();
     console.log(
       '[End][timerElMap] after fetch keys=',
       Array.from(timerElMap.keys())
     )
-
-    //debugRows('after fetch')
-
-    //await getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
 
     // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
     materials_and_assembles_by_user.value.forEach(item => {
@@ -2774,7 +2792,7 @@ const reloadEndLocked = () => {
 };
 
 const reloadEndRowsAndRestoreTimers = async () => {
-  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID })
+  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID })
 
   await nextTick();
   //console.log(
@@ -2933,8 +2951,7 @@ const onClickAbnormal = async (rawItem) => {
     console.error('onClickAbnormal 發生錯誤：', err)
     // 簡單回滾策略：重新拉資料覆蓋本地樂觀更新
     await Promise.all([
-      getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
-      //getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+      getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID }),
     ])
 
     await nextTick();

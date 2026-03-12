@@ -49,13 +49,17 @@ onMounted(() => {
   //history.pushState(null, null, document.URL)
   window.addEventListener('popstate', handlePopState)
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
-  console.log("current userData:", userData);
+
+  //let userData = JSON.parse(localStorage.getItem('loginedUser'));
+  //console.log("current userData:", userData);
 
   //userData.setting_items_per_page = pagination.itemsPerPage;
-  userData.setting_lastRoutingName = routeName.value;
-  localStorage.setItem('loginedUser', JSON.stringify(userData));
+  let userData = JSON.parse(localStorage.getItem('loginedUser') || 'null');
+  if (userData?.empID) {
+    userData.setting_lastRoutingName = routeName.value;
+    localStorage.setItem('loginedUser', JSON.stringify(userData));
+  }
 
   let user = localStorage.getItem("loginedUser");
   currentUser.value = user ? JSON.parse(user) : null;

@@ -560,10 +560,10 @@ import { apiOperationB } from '../mixins/crudB.js';
 const listInformations = apiOperation('get', '/listInformations');
 const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
 
-const getBoms = apiOperation('post', '/getBoms');
-const updateBoms = apiOperation('post', '/updateBoms');
-const updateMaterial = apiOperation('post', '/updateMaterial');
-const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
+//const getBoms = apiOperation('post', '/getBoms');
+//const updateBoms = apiOperation('post', '/updateBoms');
+//const updateMaterial = apiOperation('post', '/updateMaterial');
+//const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
@@ -610,7 +610,7 @@ const selectedOrderNums = ref([]);      // v-select multiple 選到的工單
 const screenWidth = ref(window.innerWidth);
 
 // 取得今日日期 (格式：YYYY/MM/DD)
-const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
+//const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
 
 const formatDate = (date) => {
   const y = date.getFullYear()
@@ -624,7 +624,8 @@ const getTwoWeeksAgoFromString = (dateStr) => {
   base.setDate(base.getDate() + 12)
   return formatDate(base)
 }
-const twoWeeksAgoDate = ref(getTwoWeeksAgoFromString(todayDate.value))
+
+//const twoWeeksAgoDate = ref(getTwoWeeksAgoFromString(todayDate.value))
 
 const footerOptions = [
   { value: 5, title: '5' },
@@ -672,6 +673,7 @@ const search = ref('');
 
 const history = ref(false);
 const currentUser = ref({});
+//const currentUser = ref(null);
 
 const current_order_num = ref('');
 
@@ -748,11 +750,11 @@ watch([dpRange2, selectedOrderNums, orderWildcard, switchValue], () => {
   runQueryDebounced();
 }, { deep: true })
 
-watch(() => informations.value || [], (newVal) => {
-    console.log("Updated informations...", newVal);
-  },
-  { deep: true }
-);
+//watch(() => informations.value || [], (newVal) => {
+//    console.log("Updated informations...", newVal);
+//  },
+//  { deep: true }
+//);
 
 watch(fromDateValStart, (val) => {
   console.log("watch(), fromDateValStart:", fromDateValStart.value)
@@ -839,8 +841,10 @@ onMounted(async () => {
 
   console.log("裝置像素比 (DPR):", window.devicePixelRatio);
 
-  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current routeName:", routeName.value);
+
+/*
+  let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current userData:", userData);
 
   userData.setting_items_per_page = pagination.itemsPerPage;
@@ -865,6 +869,31 @@ onMounted(async () => {
   }
   console.log('currentUser:', currentUser.value);
   //#
+*/
+
+  //user define
+  let userRaw = sessionStorage.getItem('auth_user');
+
+  if (!userRaw) {
+    // 只在第一次開分頁時，從 localStorage 複製一份
+    userRaw = localStorage.getItem('loginedUser');
+    if (userRaw) {
+      sessionStorage.setItem('auth_user', userRaw);
+    }
+  }
+
+  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
+
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+    currentUser.value.setting_lastRoutingName = routeName.value;
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+  }
+
+  console.log("currentUser:", currentUser.value);
 
   intervalId = setInterval(listInformationsFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API
   intervalIdForProgressCircle = setInterval(listWorkingOrderStatusFun, 5 * 60 * 1000);  // 每 5分鐘調用一次 API
@@ -964,6 +993,7 @@ const runQueryDebounced = () => {
 
 // ===
 
+/*
 // 日期比較工具（統一格式）
 const toDateOnly = (v) => {
   if (!v) return null
@@ -985,6 +1015,7 @@ const toDateOnly = (v) => {
 
   return null
 }
+*/
 
 // 加天數
 const addDays = (date, days)=>{
@@ -1017,7 +1048,7 @@ const clearDates = () => {
   menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
 }
 
-const isEmpty = (v) => v === "" || v === null || v === undefined;
+//const isEmpty = (v) => v === "" || v === null || v === undefined;
 
 // ✅ 空值顯示成 "(空白)"
 //const displayBlank = (v) => (isEmpty(v) ? "(空白)" : String(v));

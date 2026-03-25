@@ -31,13 +31,13 @@ Product = None
 association_material_abnormal = None
 
 try:
-    from database.tables import Session, Material, Bom, Assemble, Process  # type: ignore
+    from server.database.x_tables import Session, Material, Bom, Assemble, Process  # type: ignore
     try:
-        from database.tables import Product  # type: ignore
+        from server.database.x_tables import Product  # type: ignore
     except Exception:
         Product = None
     try:
-        from database.tables import association_material_abnormal  # type: ignore
+        from server.database.x_tables import association_material_abnormal  # type: ignore
     except Exception:
         association_material_abnormal = None
 except Exception:

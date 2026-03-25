@@ -2,7 +2,7 @@ import re
 
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash
-from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from server.database.x_tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
 from sqlalchemy import and_, or_, not_, func
 from sqlalchemy.orm import joinedload
 
@@ -548,7 +548,7 @@ def need_more_process_qty(k1: int, t1: int, must_qty: int, s=None):
 
     close_after = False
     if s is None:
-        from database.tables import Session  # 若你的檔名不同請調整
+        from server.database.x_tables import Session  # 若你的檔名不同請調整
         s = Session()
         close_after = True
 

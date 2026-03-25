@@ -142,7 +142,10 @@ class Setting(BASE):  # 一對多, "一":permission, "多":user
     message = Column(String(30))                            # 訊息
     #pdf__manager = Column(Integer, default=0)               # 1:配件生管主管, 2:配件組立加工主管
     merg_manage = Column(Boolean, default=True)             # False: 備料工單在組裝線不合併
-    routingPriv = Column(String(70), default=text("0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0"))
+    routingPriv = Column(String(70),
+                          default=text("0,0,0,0,0,1,1,1,1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,0,0,0,0,0,0"))
+    #routingPriv = Column(String(100),
+    #                               default=text("'6,7,8,9,10,11,12,13,14,15,16,17,18,19,20'"))
     lastRoutingName = Column(String(70), default=text(""))  # user最後瀏覽的網頁routing name, max 3 個, 以,分隔
     _user = relationship('User', backref='setting')         # 一對多(一 )
     create_at = Column(DateTime, server_default=func.now())

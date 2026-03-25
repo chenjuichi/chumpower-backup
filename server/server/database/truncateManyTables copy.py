@@ -1,4 +1,4 @@
-from tables import Session, engine
+from server.database.x_tables import Session, engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text, MetaData
 

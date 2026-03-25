@@ -17,7 +17,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import Nav from '../Nav.vue';
+import Nav from '../x_Nav.vue';
 import Footer from '../Footer.vue';
 //import LoginForm from './views/LoginForm.vue';
 import Sender from '../../components/Sender.vue';

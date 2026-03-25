@@ -3,7 +3,7 @@ import { ref } from 'vue';
 
 // 所有需要 blob 處理的 API 路徑（可擴充）
 //const blobPaths = ['/downloadXlsxFile', '/saveFile', '/stampFile', '/downloadFile'];
-const blobPaths = ['/downloadXlsxFile', '/downloadFile'];
+const blobPaths = ['/downloadXlsxFile', '/downloadFile', '/downloadBatFile'];
 
 // 定義 apiOperation，用來處理不同的 API 操作
 export const apiOperationB = (operation, path) => {
@@ -20,7 +20,8 @@ export const apiOperationB = (operation, path) => {
     const options = {
       responseType: isBlobPath ? 'blob' : 'json', // 自動判斷是否下載檔案
       headers: {
-        'Accept': isBlobPath ? 'application/pdf' : 'application/json'
+        //'Accept': isBlobPath ? 'application/pdf' : 'application/json'
+        'Accept': isBlobPath ? 'application/octet-stream' : 'application/json'
         /*
         'Accept': path.includes('download')
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -38,7 +39,9 @@ export const apiOperationB = (operation, path) => {
 
 // 處理回應
 const handleResponse = (res, path) => {
-  if (path === '/downloadFile' || path === '/downloadXlsxFile') {
+  if (path === '/downloadFile' ||
+      path === '/downloadXlsxFile'||
+      path === '/downloadBatFile') {
     if (res.data instanceof Blob) {
       console.log("Blob received from", path);
       return res; // 返回完整回應

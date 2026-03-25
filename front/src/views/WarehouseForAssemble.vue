@@ -231,7 +231,8 @@
         </v-icon>
 
         <span style="margin-left: 15px;">
-          {{ item.must_allOk_qty }}
+          <!--{{ item.must_allOk_qty }}-->
+          {{ getRemainQty(item) }}
         </span>
       </div>
     </template>
@@ -637,6 +638,14 @@ initialize();
 });
 
 //=== method ===
+
+// 剩餘應入庫量
+const getRemainQty = (row) => {
+  const delivery = Number(row.delivery_qty) || 0;          // 到庫數量
+  const stocked  = Number(row.total_allOk_qty) || 0;       // 已入庫總數量
+  return Math.max(0, delivery - stocked);                  // 剩餘應入庫量
+};
+
 const setActive2 = async (value) => {
   history.value = value;       // 設置當前活動按鈕
 
@@ -711,6 +720,18 @@ const getWarehouseForAssembleByHistoryFun = async () => {
     history_flag: history.value,
   };
   await getWarehouseForAssembleByHistory(payload);
+  //
+  const items = Array.isArray(warehouses.value)
+  ? warehouses.value
+  : [];
+
+  warehouses.value = items.map(row => ({
+    ...row,
+    allOk_qty: 0,              // 進畫面時一律顯示 0，讓使用者自行輸入
+    tooltipVisible: false,
+    isError: false,
+  }));
+  //
 }
 
 const getRowProps = (item, index) => {
@@ -727,11 +748,13 @@ const checkQtyField = (item) => {
   // 將輸入值轉換為數字，並確保是有效的數字，否則設為 0
 
   const mustQty  = Number(item.must_allOk_qty) || 0;  // 應入庫數量
+  const maxQty = Number(item.delivery_qty) || 0;      // 到庫數量
   const inputQty = Number(item.allOk_qty) || 0;       // 入庫數量（目前輸入）
   const total_allOk_qty = Number(item.total_allOk_qty) || 0;
 
   // 檢查是否超過需求數量
-  if ((inputQty + total_allOk_qty) > mustQty) {
+  //if ((inputQty + total_allOk_qty) > mustQty) {
+  if ((inputQty + total_allOk_qty) > maxQty) {
     over_qty_alarm.value = '入庫數量與已入庫總數量的和太大!';
     item.tooltipVisible = true;
 
@@ -832,7 +855,8 @@ const updateItem2 = async (item) => {
 
   // 檢查是否輸入了空白或 0
   if (!item.allOk_qty || Number(item.allOk_qty) === 0) {
-    allOk_qty = Number(item.delivery_qty) || 0;
+    //allOk_qty = Number(item.delivery_qty) || 0;
+    allOk_qty = getRemainQty(item);   // 改用剩餘應入庫量
   } else {
     allOk_qty = Number(item.allOk_qty) || 0;
   }
@@ -914,6 +938,7 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
+/*
 const onClickWarehouseIn = async () => {
   console.log("onClickWarehouseIn...")
 
@@ -954,7 +979,8 @@ const onClickWarehouseIn = async () => {
       // ✅ 2) 本次入庫量 d2：沒輸入或為 0 → 預設用到庫數量
       let d2 = 0;
       if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
-        d2 = Number(row.delivery_qty) || 0;
+        //d2 = Number(row.delivery_qty) || 0;
+        d2 = getRemainQty(row);
       } else {
         d2 = Number(row.allOk_qty) || 0;
       }
@@ -977,39 +1003,6 @@ const onClickWarehouseIn = async () => {
       const nowStr = formatDateTime(new Date());
       const createProc = (current_line === 'process') ? createProcessP : createProcess;
       const createProd = (current_line === 'process') ? createProductP : createProduct;
-      /*
-      // 建立「成品入庫」process_type=31
-      let payload = {
-        begin_time: nowStr,
-        end_time: nowStr,
-        periodTime: '',
-        order_num: row.order_num,
-        user_id: currentUser.value?.empID ?? '',
-        process_type: 31,
-        id: current_material_id,
-        material_id: current_material_id,
-        assemble_id: current_assemble_id,
-        has_started: true,
-        process_work_time_qty: d2,
-        allOk_qty: d2,
-      };
-      const procResp = await createProc(payload);
-
-      // 建 product（⚠️ allOk_qty / good_qty 一律用 d2）
-      const productPayload = {
-        material_id: current_material_id,
-        assemble_id: current_assemble_id,              // ✅ 後端可用來標記 P_Assemble.isStockIn
-        user_id: currentUser.value?.empID ?? '',
-        line_difference: (current_line === 'process') ? 1 : 0,
-        process_id: procResp?.process_id,              // 可能 undefined 也沒關係（後端 B 方案會補）
-        allOk_qty: d2,
-        good_qty: d2,
-        non_good_qty: 0,
-        delivery_qty: Number(row.delivery_qty) || 0,
-        assemble_qty: 0,
-      };
-      await createProd(productPayload);
-      */
 
       const productPayload = {
         material_id: current_material_id,
@@ -1121,6 +1114,158 @@ const onClickWarehouseIn = async () => {
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
+*/
+
+const onClickWarehouseIn = async () => {
+  console.log("onClickWarehouseIn...");
+
+  const selectedIds = Array.isArray(selectedItems.value)
+    ? [...new Set(selectedItems.value)]
+    : [];
+
+  if (selectedIds.length === 0) {
+    showSnackbar('請選擇入庫的工單!', 'red accent-2');
+    return;
+  }
+
+  try {
+    let successCount = 0;
+
+    for (const id of selectedIds) {
+      const targetIndex = warehouses.value.findIndex((kk) => kk.index === id);
+      if (targetIndex === -1) continue;
+
+      const row = warehouses.value[targetIndex];
+
+      const current_material_id = row.id;
+      const current_assemble_id = row.assemble_id;
+      const current_process_id = row.process_id;
+
+      const current_must_qty = Number(
+        row.must_receive_end_qty ?? row.total_ask_qty_end ?? row.must_allOk_qty ?? 0
+      );
+
+      const current_total_qty = Number(row.total_allOk_qty ?? 0);
+
+      const current_line = String(row.line || '').trim().toLowerCase();
+      const updateAssem = pick(current_line, updateAssemble, updateAssembleP);
+      const updateMat   = pick(current_line, updateMaterial, updateMaterialP);
+      const createProd  = (current_line === 'process') ? createProductP : createProduct;
+
+      let d2 = 0;
+      if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
+        d2 = Number(row.delivery_qty) || 0;
+      } else {
+        d2 = Number(row.allOk_qty) || 0;
+      }
+
+      if (d2 <= 0) {
+        showSnackbar('入庫數量不可為 0', 'red accent-2');
+        continue;
+      }
+
+      const new_total = current_total_qty + d2;
+      const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
+
+      console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
+
+      const productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
+        process_id: current_process_id,
+        user_id: currentUser.value?.empID ?? '',
+        line_difference: (current_line === 'process') ? 1 : 0,
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+        delivery_qty: Number(row.delivery_qty) || 0,
+        assemble_qty: 0,
+      };
+
+      const resp = await createProd(productPayload);
+      if (!resp?.status) {
+        throw new Error(resp?.error || 'createProduct/createProductP failed');
+      }
+
+      // 前端同步更新本次輸入值
+      await updateAssem({
+        assemble_id: current_assemble_id,
+        record_name: 'allOk_qty',
+        record_data: d2,
+      });
+
+      if (!is_done) {
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'input_allOk_disable',
+          record_data: false,
+        });
+      } else {
+        await updateMat({
+          id: current_material_id,
+          record_name: 'show2_ok',
+          record_data: current_line === 'process' ? 8 : 12,
+        });
+
+        await updateMat({
+          id: current_material_id,
+          record_name: 'show3_ok',
+          record_data: current_line === 'process' ? 8 : 13,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'input_allOk_disable',
+          record_data: true,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'isWarehouseStationShow',
+          record_data: true,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'isStockIn',
+          record_data: true,
+        });
+      }
+
+      successCount++;
+    }
+
+    if (successCount > 0) {
+      await updateAGV({
+        id: 1,
+        status: 0,
+        station: 3,
+      });
+    }
+
+    await delay(500);
+
+    selectedItems.value = [];
+    if (localStorage.getItem('selectedItems')) {
+      localStorage.removeItem('selectedItems');
+    }
+
+    history.value = false;
+    if (localStorage.getItem('history')) {
+      localStorage.removeItem('history');
+    }
+
+    // ✅ 關鍵：入庫後直接重抓，不靠前端手動 splice
+    //await refreshWarehouseList();
+    await getWarehouseForAssembleByHistoryFun();
+
+    showSnackbar('入庫登記完成!', 'green accent-3');
+  } catch (err) {
+    console.error('入庫流程發生例外：', err);
+    showSnackbar('入庫流程執行失敗，請稍後再試', 'red accent-2');
+  }
+};
+
 
 // 改變拖曳功能
 //const toggleDrag = () => {

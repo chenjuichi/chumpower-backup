@@ -6,7 +6,7 @@ from datetime import datetime, date
 from sqlalchemy import distinct, func, case
 from flask import Blueprint, jsonify, request, current_app
 #from sqlalchemy.sql import func
-from database.tables import User, Material, Bom, Assemble, Permission, AbnormalCause, Process, Product, Setting, Session
+from server.database.x_tables import User, Material, Bom, Assemble, Permission, AbnormalCause, Process, Product, Setting, Session
 
 from flask_cors import CORS
 

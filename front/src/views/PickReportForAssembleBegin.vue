@@ -604,8 +604,8 @@ import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
 
-import LedLights from './LedLights.vue';
-import DraggablePanel from './DraggablePanel.vue';
+//import LedLights from './LedLights.vue';
+//import DraggablePanel from './DraggablePanel.vue';
 
 import { useRoute } from 'vue-router';
 

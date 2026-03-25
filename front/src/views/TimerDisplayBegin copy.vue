@@ -2,7 +2,9 @@
 import { ref, defineComponent, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 
 //=== component name ==
-defineComponent({ name: 'TimerDisplayBegin' });
+defineComponent({
+  name: 'TimerDisplayBegin'
+});
 
 /**
  * Props
@@ -51,7 +53,7 @@ function _tick() {
 
   elapsedMs.value += 1000
   emit('update:time', elapsedMs.value)
-  console.log('[TD] tick', elapsedMs.value)
+  console.log('TimerDisplayBegin.vue, [TD] tick', elapsedMs.value)
 }
 
 function start() {
@@ -60,6 +62,9 @@ function start() {
   if (intervalId) return
   if (props.isPaused) return
   console.log('[TD] start')
+
+  stop()
+
   intervalId = setInterval(_tick, 1000)
 }
 
@@ -175,9 +180,7 @@ onBeforeUnmount(() => {
 //})
 
 defineExpose({
-  //start, stop, pause: stop, resume: start, reset,
-  //setState, setElapsedTime, getElapsedMs
-  start, stop, pause, stop, resume, start, reset,
+  start, stop, pause, stop, resume, reset,
   setState, setElapsedTime, getElapsedMs,
 })
 </script>

@@ -1,5 +1,5 @@
 # compare_models.py
-from tables import Material, Assemble, Process, Bom, AbnormalCause
+from server.database.x_tables import Material, Assemble, Process, Bom, AbnormalCause
 from p_tables import P_Material, P_Assemble, P_Process, P_Bom, P_AbnormalCause
 
 def dump_model(cls):

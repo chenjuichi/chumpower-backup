@@ -2,7 +2,7 @@ import re
 import random
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
-from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from server.database.x_tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
 from database.p_tables import P_Material, P_Assemble, P_Process, P_Part,P_AbnormalCause
 from sqlalchemy import and_, or_, not_, func
 #from sqlalchemy.orm import joinedload
@@ -325,7 +325,7 @@ def active_count_map_by_assemble_multi(
     { "21": { "6": 1, "38": 0 }, "22": {...}, "23": {...} }
     以「製程別 → assemble_id」分組計數
     """
-    from database.tables import Process
+    from server.database.x_tables import Process
     result = {str(pt): {} for pt in process_types}
     if not assemble_ids:
         return result
@@ -506,7 +506,7 @@ def end_ok_flag(s, material_id: int, process_step_code: int) -> bool:
 def need_more_assemble_abnormal_qty(k1: int, s=None):
     close_after = False
     if s is None:
-        from database.tables import Session  # 若你的檔名不同請調整
+        from server.database.x_tables import Session  # 若你的檔名不同請調整
         s = Session()
         close_after = True
 
@@ -539,7 +539,7 @@ def need_more_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
 
     close_after = False
     if s is None:
-        from database.tables import Session  # 若你的檔名不同請調整
+        from server.database.x_tables import Session  # 若你的檔名不同請調整
         s = Session()
         close_after = True
 

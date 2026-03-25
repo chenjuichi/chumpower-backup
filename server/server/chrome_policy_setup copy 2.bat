@@ -29,8 +29,6 @@ echo.
 echo [HKEY_LOCAL_MACHINE\Software\Policies\Google\Chrome]
 echo "WebRtcAllowLegacyGlobalIpAddress"=dword:00000001
 echo "TreatInsecureOriginAsSecure"="http://192.168.68.56:8060,http://192.168.68.56"
-echo "InsecureDownloadWarningsEnabled"=dword:00000000
-echo "ExemptFileTypeDownloadWarnings"="bat,pdf"
 ) > "%temp%\chrome_policies.reg"
 
 if not exist "%temp%\chrome_policies.reg" (

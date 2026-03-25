@@ -34,7 +34,7 @@ from sqlalchemy.exc import SQLAlchemyError
 # Import models & session from your project, with fallbacks
 try:
     # 1) simple import (tables.py on sys.path)
-    from database.tables import (
+    from server.database.x_tables import (
         Session,
         Material,
         Bom,
@@ -42,18 +42,18 @@ try:
         Process,
     )
     try:
-        from database.tables import Product  # optional
+        from server.database.x_tables import Product  # optional
     except Exception:
         Product = None
     try:
-        from database.tables import association_material_abnormal  # optional m2m
+        from server.database.x_tables import association_material_abnormal  # optional m2m
     except Exception:
         association_material_abnormal = None
 
 except Exception:
     try:
         # 2) package-style import: database/tables.py
-        from database.tables import (
+        from server.database.x_tables import (
             Session,
             Material,
             Bom,
@@ -61,11 +61,11 @@ except Exception:
             Process,
         )
         try:
-            from database.tables import Product  # optional
+            from server.database.x_tables import Product  # optional
         except Exception:
             Product = None
         try:
-            from database.tables import association_material_abnormal  # optional
+            from server.database.x_tables import association_material_abnormal  # optional
         except Exception:
             association_material_abnormal = None
     except Exception as e:

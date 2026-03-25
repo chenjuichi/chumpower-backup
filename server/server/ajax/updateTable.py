@@ -38,6 +38,33 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+def parse_datetime_or_none(val):
+    if val is None or str(val).strip() == "":
+        return None
+
+    txt = str(val).strip()
+
+    # ISO 格式
+    try:
+        return dt.fromisoformat(txt.replace("Z", ""))
+    except Exception:
+        pass
+
+    # 常見格式
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+    ):
+        try:
+            return dt.strptime(txt, fmt)
+        except Exception:
+            continue
+
+    raise ValueError(f"無法解析日期時間格式: {txt}")
+
+
 def _to_int_or_none(v):
   if v is None or v == "":
     return None
@@ -364,55 +391,317 @@ def update_setting():
 
 
 # from user table update some data by id
+"""
 @updateTable.route("/updateUser", methods=['POST'])
 def update_user():
-    print("updateUser....")
+    print("updateUser.")
 
-    request_data = request.get_json()
-    #print("request_data", request_data)
-    _emp_id = request_data['emp_id']
-    _emp_name = request_data['emp_name']
-    _dep_name = request_data['dep_name']
-    _emp_perm = request_data['emp_perm']
-    _routingPriv = request_data['routingPriv']
-    _password_reset = request_data['password_reset']
+    request_data = request.get_json() or {}
+
+    _emp_id = request_data.get('emp_id', '').strip()
+    _emp_name = request_data.get('emp_name', '').strip()
+    _dep_name = request_data.get('dep_name', '').strip()
+    _emp_perm = request_data.get('emp_perm')
+    _routingPriv = request_data.get('routingPriv', '')
+    _password_reset = request_data.get('password_reset', 'no')
+
+    # ===== 新增：請假 / 代理資料 =====
+    _leave_start = request_data.get('leave_start')
+    _leave_end = request_data.get('leave_end')
+    _leave_type = request_data.get('leave_type')
+    _delegate_emp_id = (request_data.get('delegate_emp_id') or '').strip()
+
     newPassword = 'a12345678'
 
-    return_value = True  # true: 資料正確, 註冊成功
+    return_value = True
     if _emp_id == "" or _emp_name == "":
-        return_value = False  # false: 資料不完全 註冊失敗
+        return_value = False
+        return jsonify({
+            'status': False,
+            'message': 'emp_id 或 emp_name 不可為空'
+        }), 400
 
     s = Session()
-    user = s.query(User).filter_by(emp_id=_emp_id).first()
-    if user and user.isRemoved:
-      _auth_name = 'member' if _emp_perm == 4 else ('staff' if _emp_perm == 3 else ('admin' if _emp_perm == 2 else ('system' if _emp_perm == 1 else 'member')))
-      s.query(Permission).filter(Permission.id == user.perm_id).update(
-        {"auth_code": _emp_perm, "auth_name": _auth_name}
-      )
 
-      s.query(Setting).filter(Setting.id == user.setting_id).update(
-        {"routingPriv": _routingPriv}
-      )
+    try:
+        user = s.query(User).filter_by(emp_id=_emp_id).first()
+        if not user:
+            return jsonify({
+                'status': False,
+                'message': f'找不到使用者: {_emp_id}'
+            }), 404
 
-      if _password_reset=='yes':
-        s.query(User).filter(User.emp_id == _emp_id).update({
-          "emp_name": _emp_name,
-          "dep_name": _dep_name,
-          "password": generate_password_hash(newPassword, method='scrypt')
+        if not user.isRemoved:
+            return jsonify({
+                'status': False,
+                'message': f'使用者 {_emp_id} 已刪除或不可更新'
+            }), 400
+
+        # ===== 1) 更新 Permission =====
+        try:
+            _emp_perm = int(_emp_perm)
+        except Exception:
+            return jsonify({
+                'status': False,
+                'message': 'emp_perm 格式錯誤'
+            }), 400
+
+        _auth_name = (
+            'member' if _emp_perm == 4 else
+            ('staff' if _emp_perm == 3 else
+             ('admin' if _emp_perm == 2 else
+              ('system' if _emp_perm == 1 else 'member')))
+        )
+
+        s.query(Permission).filter(Permission.id == user.perm_id).update({
+            "auth_code": _emp_perm,
+            "auth_name": _auth_name
         })
-      else:
-        s.query(User).filter(User.emp_id == _emp_id).update({
-          "emp_name": _emp_name,
-          "dep_name": _dep_name,
+
+        # ===== 2) 更新 Setting =====
+        s.query(Setting).filter(Setting.id == user.setting_id).update({
+            "routingPriv": _routingPriv
         })
 
-      s.commit()
+        # ===== 3) 更新 User =====
+        update_user_data = {
+            "emp_name": _emp_name,
+            "dep_name": _dep_name,
+        }
 
-    s.close()
+        if _password_reset == 'yes':
+            update_user_data["password"] = generate_password_hash(newPassword, method='scrypt')
 
-    return jsonify({
-        'status': return_value
-    })
+        s.query(User).filter(User.emp_id == _emp_id).update(update_user_data)
+
+        # ===== 4) 更新 / 新增 UserDelegate =====
+        has_any_leave_field = any([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
+        leave_fully_set = all([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
+
+        if has_any_leave_field and not leave_fully_set:
+            return jsonify({
+                'status': False,
+                'message': '請假資料需同時填寫：開始時間、結束時間、假別、代理人工號'
+            }), 400
+
+
+        if leave_fully_set:
+            start_dt = parse_datetime_or_none(_leave_start)
+            end_dt = parse_datetime_or_none(_leave_end)
+
+            if start_dt is None or end_dt is None:
+                return jsonify({
+                    'status': False,
+                    'message': '請假開始/結束日期時間不可為空'
+                }), 400
+
+            # 先確認代理人工號是否存在
+            delegate_user = s.query(User).filter_by(emp_id=_delegate_emp_id).first()
+            if not delegate_user:
+                return jsonify({
+                    'status': False,
+                    'message': f'找不到代理人工號: {_delegate_emp_id}'
+                }), 404
+
+            # 找該員工最後一筆 UserDelegate
+            delegate_row = (
+                s.query(UserDelegate)
+                .filter(UserDelegate.user_id == user.id)
+                .order_by(UserDelegate.id.desc())
+                .first()
+            )
+
+            if delegate_row:
+                # 有資料就更新
+                delegate_row.delegate_emp_id = _delegate_emp_id
+                delegate_row.start_date = start_dt
+                delegate_row.end_date = end_dt
+                delegate_row.reason = _leave_type
+            else:
+                # 沒資料就新增
+                new_delegate = UserDelegate(
+                    user_id=user.id,
+                    delegate_emp_id=_delegate_emp_id,
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    reason=_leave_type
+                )
+                s.add(new_delegate)
+
+            # 可選：同步更新 user.is_user_delegate
+            user.is_user_delegate = True
+
+        s.commit()
+
+        return jsonify({
+            'status': True,
+            'message': '更新成功'
+        })
+
+    except Exception as e:
+        s.rollback()
+        current_app.logger.exception("updateUser failed")
+        return jsonify({
+            'status': False,
+            'message': str(e)
+        }), 500
+
+    finally:
+        s.close()
+"""
+
+
+@updateTable.route("/updateUser", methods=['POST'])
+def update_user():
+    print("updateUser.")
+
+    request_data = request.get_json() or {}
+
+    _emp_id = (request_data.get('emp_id') or '').strip()
+    _emp_name = (request_data.get('emp_name') or '').strip()
+    _dep_name = (request_data.get('dep_name') or '').strip()
+    _emp_perm = request_data.get('emp_perm')
+    _routingPriv = request_data.get('routingPriv', '')
+    _password_reset = request_data.get('password_reset', 'no')
+
+    # ===== 請假 / 代理資料 =====
+    _leave_start = (request_data.get('leave_start') or '').strip()
+    _leave_end = (request_data.get('leave_end') or '').strip()
+    _leave_type = (request_data.get('leave_type') or '').strip()
+    _delegate_emp_id = (request_data.get('delegate_emp_id') or '').strip()
+
+    newPassword = 'a12345678'
+
+    if _emp_id == "" or _emp_name == "":
+        return jsonify({
+            'status': False,
+            'message': 'emp_id 或 emp_name 不可為空'
+        }), 400
+
+    s = Session()
+
+    try:
+        user = s.query(User).filter_by(emp_id=_emp_id).first()
+        if not user:
+            return jsonify({
+                'status': False,
+                'message': f'找不到使用者: {_emp_id}'
+            }), 404
+
+        if not user.isRemoved:
+            return jsonify({
+                'status': False,
+                'message': f'使用者 {_emp_id} 已刪除或不可更新'
+            }), 400
+
+        try:
+            _emp_perm = int(_emp_perm)
+        except Exception:
+            return jsonify({
+                'status': False,
+                'message': 'emp_perm 格式錯誤'
+            }), 400
+
+        _auth_name = (
+            'member' if _emp_perm == 4 else
+            ('staff' if _emp_perm == 3 else
+             ('admin' if _emp_perm == 2 else
+              ('system' if _emp_perm == 1 else 'member')))
+        )
+
+        # 1) 更新 Permission
+        s.query(Permission).filter(Permission.id == user.perm_id).update({
+            "auth_code": _emp_perm,
+            "auth_name": _auth_name
+        })
+
+        print("使用者menu setting:", _routingPriv)
+        # 2) 更新 Setting
+        s.query(Setting).filter(Setting.id == user.setting_id).update({
+            "routingPriv": _routingPriv
+        })
+
+        # 3) 更新 User
+        update_user_data = {
+            "emp_name": _emp_name,
+            "dep_name": _dep_name,
+        }
+
+        if _password_reset == 'yes':
+            update_user_data["password"] = generate_password_hash(newPassword, method='scrypt')
+
+        s.query(User).filter(User.emp_id == _emp_id).update(update_user_data)
+
+        # 4) 更新 / 新增 UserDelegate
+        has_any_leave_field = any([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
+        leave_fully_set = all([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
+
+        if has_any_leave_field and not leave_fully_set:
+            return jsonify({
+                'status': False,
+                'message': '請假資料需同時填寫：開始時間、結束時間、假別、代理人工號'
+            }), 400
+
+        if leave_fully_set:
+            start_dt = parse_datetime_or_none(_leave_start)
+            end_dt = parse_datetime_or_none(_leave_end)
+
+            if start_dt is None or end_dt is None:
+                return jsonify({
+                    'status': False,
+                    'message': '請假開始/結束日期時間不可為空'
+                }), 400
+
+            delegate_user = s.query(User).filter_by(emp_id=_delegate_emp_id).first()
+            if not delegate_user:
+                return jsonify({
+                    'status': False,
+                    'message': f'找不到代理人工號: {_delegate_emp_id}'
+                }), 404
+
+            delegate_row = (
+                s.query(UserDelegate)
+                .filter(UserDelegate.user_id == user.id)
+                .order_by(UserDelegate.id.desc())
+                .first()
+            )
+
+            if delegate_row:
+                delegate_row.delegate_emp_id = _delegate_emp_id
+                delegate_row.start_date = start_dt
+                delegate_row.end_date = end_dt
+                delegate_row.reason = _leave_type
+            else:
+                new_delegate = UserDelegate(
+                    user_id=user.id,
+                    delegate_emp_id=_delegate_emp_id,
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    reason=_leave_type
+                )
+                s.add(new_delegate)
+
+            user.is_user_delegate = True
+        else:
+            user.is_user_delegate = False
+
+        s.commit()
+
+        return jsonify({
+            'status': True,
+            'message': '更新成功'
+        })
+
+    except Exception as e:
+        s.rollback()
+        current_app.logger.exception("updateUser failed")
+        return jsonify({
+            'status': False,
+            'message': str(e)
+        }), 500
+
+    finally:
+        s.close()
 
 
 @updateTable.route('/updateDelegate', methods=['POST'])

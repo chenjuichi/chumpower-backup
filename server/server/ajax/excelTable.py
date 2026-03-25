@@ -26,7 +26,7 @@ from database.tables import User, Session, Material, Bom, Assemble, Product
 from database.p_tables import P_Material, P_Bom, P_Assemble, P_Product, P_Part
 
 from database.tables import ProcessedFile
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, send_from_directory
 
 import warnings
 warnings.filterwarnings(
@@ -2192,6 +2192,29 @@ def upload_pdf_files():
     'status': True
   })
 
+
+@excelTable.route("/downloadBatFile", methods=['POST'])
+def download_bat_file():
+    print("downloadBatFile....")
+
+    data = request.json
+    filename = data.get("filename")
+
+    bat_dir = r"C:\vue\chumpower\server"
+
+    full_path = os.path.join(bat_dir, filename)
+
+    if not os.path.isfile(full_path):
+        return jsonify({
+            'status': False,
+            'message': '檔案不存在'
+        }), 404
+
+    return send_from_directory(
+        bat_dir,
+        filename,
+        as_attachment=True
+    )
 
 # 內部：套用 BOM 差異(原 apply_bom_diffs 的核心；不對外成 route)
 def _apply_bom_diffs_tx(s, material: Material, ops: list):

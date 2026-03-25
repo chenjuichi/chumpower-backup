@@ -14,7 +14,7 @@ from sqlalchemy import inspect
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 
-from database.tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
+from server.database.x_tables import User, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 
 from werkzeug.security import generate_password_hash
 

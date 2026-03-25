@@ -336,9 +336,46 @@
             </button>
             <div class="dropdown-contentk">
               <div class="dropdown-item my-dropdown-item" @click="logout">登出</div>
+              <div class="dropdown-item my-dropdown-item" @click="downloadBatFun">下載.bat檔案</div>
               <div class="dropdown-item my-dropdown-item" @click="passwordDialog">修改密碼</div>
               <div class="dropdown-item my-dropdown-item" @click="browserDialog">表單貼條碼</div>
               <!--<div class="dropdown-item my-dropdown-item" @click="functionC">功能C</div>-->
+
+            	<!-- Snackbar -->
+              <v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+                {{ snackbar_info }}
+                <template v-slot:actions>
+                  <v-btn color="#adadad" @click="snackbar = false">
+                    <v-icon dark>mdi-close-circle</v-icon>
+                  </v-btn>
+                </template>
+              </v-snackbar>
+
+              <v-dialog v-model="alert" width="500">
+                <v-card>
+                  <v-alert
+                    border="start"
+                    color="deep-purple-accent-4"
+                    title="下載完成，請依下列步驟操作"
+                    variant="tonal"
+                    class="ma-4"
+                  >
+                    <div class="text-body-1">
+                      1. 登出系統, 並關閉chrome瀏覽器<br>
+                      2. 回到檔案總管, 並進入 Downloads 資料夾<br>
+                      3. 右鍵 chrome_policy_setup.bat, 並選擇「以系統管理員身分執行」<br>
+                      4. 選擇 執行按鍵<br>
+                      5. 完成後, 按Enter鍵<br>
+                      6. 重新開啟新的chrome瀏覽器, 並登入系統<br>
+                    </div>
+                  </v-alert>
+                  <v-card-actions class="justify-end">
+                    <v-btn color="primary" @click="alert=false">
+                      知道了
+                    </v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
             </div>
           </li>
           <!--item8-->
@@ -379,15 +416,13 @@
   <BrowseDirectory :pdf="openPdfDialog" @update:pdf="updatePdfDialog" />
 </template>
 
-
 <script setup>
 import { ref, reactive, watch, watchEffect, computed, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
-//import { useRoute, useRouter } from 'vue-router'; // Import useRouter
+
 import { useRouter } from 'vue-router'; // Import useRouter
-//import logo from '../assets/BBC-Line-Logo_Blue.png';
+
 import logo from '../assets/logo.svg';
 
-//import VCheckbox from './VCheckbox.vue';
 import ChangePassword from './changePassword.vue';
 import BrowseDirectory from './BrowseDirectory.vue';
 
@@ -397,9 +432,11 @@ import eventBus from '../mixins/enentBus.js';
 
 import { myMixin } from '../mixins/common.js';
 
-//import { begin_count, end_count }  from '../mixins/crud.js';
+import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { apiOperation, }  from '../mixins/crud.js';
+
+import { apiOperationB }  from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 //const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
@@ -407,6 +444,9 @@ import { apiOperation, }  from '../mixins/crud.js';
 //const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
 //const getCountMaterialsAndAssemblesByUser2 = apiOperation('post', '/getCountMaterialsAndAssemblesByUser2');
 const updateSetting = apiOperation('post', '/updateSetting');
+
+// 使用 apiOperationF 函式來建立 API 請求
+const downloadBatFile = apiOperationB('post', '/downloadBatFile');
 
 //=== component name ==
 defineComponent({
@@ -419,7 +459,6 @@ const { initAxios } = myMixin();
 //=== props ==
 const props = defineProps({
   showFooter: Boolean,
-  //navBarColor: String,
   navBarColor: {
     type: String,
     default: "#f9f9f9", // 提供默認值，避免 undefined
@@ -455,6 +494,8 @@ const hoveredItems = reactive({});
 //})
 const currentUser = ref(null);
 const popStateHandler = ref(null);
+
+const alert = ref(false);
 
 const initialSelection = Array(26).fill(0).map((_, i) => (roleMappings['員工'].includes(i + 1) ? 1 : 0));
 
@@ -663,9 +704,84 @@ const onLeave = (index) => {
   console.log("onLeave:", index, hoveredItems[index]);
 };
 
+/*
+const downloadBatFun = async () => {
+  try {
+    const response = await downloadBatFile({
+      filename: 'chrome_policy_setup.bat'
+    });
+
+    const blob = response.data;
+
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'chrome_policy_setup.bat';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    window.URL.revokeObjectURL(url);
+
+    showSnackbar('bat 檔案下載成功', '#008184');
+
+  } catch (error) {
+    console.error(error);
+    showSnackbar('bat 檔案下載失敗', 'red accent-2');
+  }
+};
+*/
+
+/*
+const downloadBatFile = apiOperationB('post', '/downloadBatFile');
+*/
+// 定義一個延遲函數
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const downloadBatFun = async () => {
+  let bat_file_name = 'chrome_policy_setup.bat'
+
+  try {
+    const response = await downloadBatFile({
+      filename: bat_file_name
+    });
+
+    if (!response || !(response.data instanceof Blob)) {
+      console.error('response.data 不是 Blob:', response);
+      showSnackbar('下載失敗：回傳格式不是檔案', 'red accent-2');
+      return;
+    }
+
+    const blob = response.data;
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = bat_file_name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    window.URL.revokeObjectURL(url);
+
+    showSnackbar('bat 檔案下載成功,', '#008184');
+
+    await delay(3000);
+
+    // ✅ 下載成功後顯示操作提示
+    alert.value = true;
+  } catch (error) {
+    console.error('downloadBatFun error:', error);
+    showSnackbar('bat 檔案下載失敗', 'red accent-2');
+  }
+};
+
 const passwordDialog = () => {
   openDialog.value=true;
 };
+
 const browserDialog = () => {
   console.log("browserDialog()...")
   openPdfDialog.value=true;
@@ -816,6 +932,7 @@ const disableBackButton = () => {
   window.addEventListener('popstate', popStateHandler.value);
 };
 */
+
 const disableBackButton = () => {
   // 初始化時 push 一次，保留原狀態
   window.history.pushState({ ...window.history.state }, '', window.location.href);
@@ -844,6 +961,14 @@ const allowBackspaceInInputs = (event) => {
 
 const closeDropdown = () => {
   Object.keys(hoveredItems).forEach(k => (hoveredItems[k] = false));
+};
+
+const showSnackbar = (message, color) => {
+  console.log("showSnackbar,", message, color)
+
+  snackbar_info.value = message;
+  snackbar_color.value = color;
+  snackbar.value = true;
 };
 </script>
 

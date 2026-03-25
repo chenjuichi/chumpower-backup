@@ -3,7 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from database.tables import User, UserDelegate, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
+from server.database.x_tables import User, UserDelegate, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
 from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
 
 from sqlalchemy.exc import SQLAlchemyError

@@ -2,7 +2,7 @@ import re
 
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash
-from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from server.database.x_tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
 from sqlalchemy import and_, or_, not_, func
 
 from flask_cors import CORS

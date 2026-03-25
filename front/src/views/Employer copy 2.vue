@@ -10,11 +10,8 @@
     </template>
   </v-snackbar>
 
-  <!--
   <v-row align="center" justify="center" v-if="currentUser.perm >= 1">
     <v-card width="60vw" class="pa-md-4 mt-3 pb-2 mx-lg-auto">
-  -->
-    <v-card class="pa-md-4 mt-3 pb-2 mx-lg-auto employer-main-card">
       <!--items-per-page-text="每頁的資料筆數"-->
       <v-data-table
         :headers="headers"
@@ -35,7 +32,7 @@
             <v-spacer></v-spacer>
             <v-dialog
               v-model="dialog"
-              max-width="1000"
+              max-width="980"
               content-class="employer-edit-dialog"
             >
               <template v-slot:activator="{ props: activatorProps }">
@@ -45,20 +42,16 @@
                   新增資料
                 </v-btn>
               </template>
-              <v-card class="employer-dialog-card">
-                <v-card-title class="dialog-title-bar">
-                  <span class="text-h5">{{ formTitle }}</span>
-                </v-card-title>
+              <v-card>
+                  <v-card-title>
+                    <span class="text-h5">{{ formTitle }}</span>
+                  </v-card-title>
 
-                <v-card-text class="dialog-body">
-                  <!-- 上半部：基本資料 + 權限 -->
-                  <v-row class="dialog-main-row" align="stretch">
-                    <!-- 左側：基本資料 -->
-                    <v-col cols="12" lg="7">
-                      <div class="dialog-section">
-                        <div class="section-title">基本資料</div>
-                        <v-row>
-                          <v-col cols="12" sm="3">
+                  <v-card-text>
+                    <v-row>
+                      <v-col cols="12" md="7">
+                        <v-row >
+                          <v-col cols="12" md="4">
                             <v-text-field
                               label="工號"
                               v-model="editedItem.emp_id"
@@ -66,84 +59,137 @@
                               variant="underlined"
                               :readonly="formTitle === '編輯資料'"
                               ref="EmpIDInput"
-                              @update:focused="checkUsers"
+                              @update:focused ="checkUsers"
                               @keypress="handleKeyDown"
                             />
                           </v-col>
-                          <v-col cols="12" sm="3">
+                          <v-col cols="12" md="4">
                             <v-text-field
-                              label="姓名"
-                              v-model="editedItem.emp_name"
-                              :rules="[requiredRule, nameRule]"
-                              variant="underlined"
-                            />
+                            label="姓名"
+                            v-model="editedItem.emp_name"
+                            :rules="[requiredRule, nameRule]"
+
+                            variant="underlined"
+
+                          />
                           </v-col>
-                          <v-col cols="12" sm="6">
+                          <v-col cols="12" md="4">
                             <v-select
                               label="部門"
                               :items="departments"
                               v-model="editedItem.dep_name"
                               variant="underlined"
+                              style="width: 100% !important; max-width: 183px !important;"
                             />
                           </v-col>
                         </v-row>
 
-                        <div class="section-subtitle">群組</div>
-                        <div class="role-block">
-                          <v-btn-toggle
-                            v-model="toggle"
-                            variant="outlined"
-                            divided
-                            color="#6200ea"
-                            density="compact"
-                            class="role-toggle"
-                          >
-                            <v-btn
-                              v-for="(role, index) in roles"
-                              :key="index"
-                              :value="role"
-                              class="role-btn"
-                            >
-                              <span class="fa-stack role-icon">
-                                <i
-                                  class="fa-solid fa-user-lock fa-stack-2x"
-                                  style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"
-                                ></i>
-                                <i
-                                  :class="role.iconClass"
-                                  style="color: #EF5350; font-weight: 800; position: absolute; transform: translate(50%, -25%);"
-                                ></i>
+                        <v-row style="height: 150px; display: flex; justify-content: flex-end; align-items: flex-end;" no-gutters>
+                          <v-btn-toggle v-model="toggle" variant="outlined" divided color="#6200ea" density="compact">
+                            <v-btn v-for="(role, index) in roles" :key="index" :value="role.value" style="height: auto; padding: 0; font-size: 6px; width: 70px; min-width: 0px;">
+                              <span class="fa-stack fa-2x">
+                                <i class="fa-solid fa-user-lock fa-stack-2x" style="color: #1565C0; font-size: 1.2em; position: absolute; transform: translate(-10%, 30%);"></i>
+                                <i :class="role.iconClass" style="color: #EF5350; font-weight: 800; position: absolute; transform: translate(50%, -25%);"></i>
                               </span>
                             </v-btn>
                           </v-btn-toggle>
+                          <pre class="toggle-display" style="font-weight: 700; font-size:15px; position:relative; top: -20px; left: -110px;">
+                            {{ toggle }}
+                          </pre>
+                        </v-row>
 
-                          <div class="role-text">
-                            目前群組：{{ toggle }}
+                        <v-row no-gutters align="center" style="top: -40px; position: relative;" v-if="editedIndex != -1">
+                          <v-col cols="12" md="3"></v-col>
+                          <div style="margin-bottom: 0; font-size: 14px;">
+                            <span style="font-weight: bold;">重設密碼為預設值</span>
+                            <span style="font-weight: normal;">(a12345)</span>
                           </div>
-                        </div>
-
-                        <div v-if="editedIndex != -1" class="password-reset-block">
-                          <div class="password-reset-title">
-                            重設密碼為預設值 <span class="password-note">(a12345)</span>
-                          </div>
-                          <v-radio-group
-                            v-model="password_reset"
-                            hide-details
-                            inline
-                            class="password-reset-radio"
-                          >
+                          <v-radio-group v-model="password_reset" hide-details inline style="font-size: 14px;">
                             <v-radio value="no" label="否"></v-radio>
                             <v-radio value="yes" label="是"></v-radio>
                           </v-radio-group>
-                        </div>
-                      </div>
-                    </v-col>
+                        </v-row>
 
-                    <!-- 右側：權限 -->
-                    <v-col cols="12" lg="5">
-                      <div class="dialog-section">
-                        <div class="section-title">功能權限</div>
-                        <div class="custom-card permission-card">
+                        <!-- 員工請假功能 -->
+                        <v-row v-if="editedIndex != -1" style="margin-top: -20px;">
+                          <v-col cols="12">
+                            <v-card variant="outlined" class="pa-3 leave-card">
+                              <div class="text-subtitle-1 font-weight-bold mb-3" style="color:#1565C0;">
+                                員工請假
+                              </div>
+
+                              <!-- 請假日期時間範圍 -->
+                              <v-menu
+                                :close-on-content-click="false"
+                                location="bottom start"
+                                origin="top start"
+                                :offset="[0, 8]"
+                                :width="520"
+                                :min-width="520"
+                                transition="fade-transition"
+                              >
+                                <template #activator="{ props }">
+                                  <v-text-field
+                                    v-bind="props"
+                                    label="請假日期時間範圍"
+                                    :model-value="leaveFormattedRange"
+                                    readonly
+                                    variant="underlined"
+                                    density="compact"
+                                    prepend-icon="mdi-calendar-clock"
+                                    placeholder="yyyy-mm-dd HH:mm:ss ~ yyyy-mm-dd HH:mm:ss"
+                                    clearable
+                                    class="dateicon"
+                                    @click:clear="clearLeaveRange"
+                                  />
+                                </template>
+
+                                <div class="dp-stretch">
+                                  <VueDatePicker
+                                    v-model="editedItem.leave_range"
+                                    range
+                                    :enable-time-picker="true"
+                                    :time-picker-inline="true"
+                                    :minutes-increment="1"
+                                    :seconds-increment="1"
+                                    :auto-apply="false"
+                                    :inline="true"
+                                    locale="zh-TW"
+                                    week-num-name=""
+                                    :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+                                  />
+                                </div>
+                              </v-menu>
+
+                              <!-- 假別 -->
+                              <div class="mt-4 mb-2" style="font-weight:700; font-size:14px;">
+                                假別
+                              </div>
+                              <v-radio-group
+                                v-model="editedItem.leave_type"
+                                inline
+                                hide-details
+                                class="leave-radio-group"
+                              >
+                                <v-radio
+                                  v-for="item in leaveTypes"
+                                  :key="item.value"
+                                  :label="item.label"
+                                  :value="item.value"
+                                />
+                              </v-radio-group>
+
+                              <!-- 顯示實際值 -->
+                              <div class="mt-3" style="font-size:13px; color:#666;">
+                                <div>開始：{{ editedItem.leave_start || '未設定' }}</div>
+                                <div>結束：{{ editedItem.leave_end || '未設定' }}</div>
+                              </div>
+                            </v-card>
+                          </v-col>
+                        </v-row>
+                      </v-col>
+                      <v-col cols="12" md="5">
+                        <div class="custom-card">
                           <tree-view
                             color="blue"
                             :items="treeViewItems"
@@ -153,147 +199,24 @@
                             @select="handleSelect"
                           />
                         </div>
-                      </div>
-                    </v-col>
-                  </v-row>
+                      </v-col>
+                    </v-row>
 
-                  <!-- 下半部：請假 -->
-                  <v-row class="leave-row">
-                      <div class="dialog-section leave-section">
-                        <div class="section-title">員工請假</div>
-                        <v-row
-                          class="mt-0 mb-0 row-hidden"
-                          style="min-height:48px; height:48px; flex-wrap:nowrap;"
-                        >
-                          <v-col cols="8" class="d-flex align-center pt-0 pb-0">
-                            <div class="leave-date-wrap">
-                              <v-menu
-                                :close-on-content-click="false"
-                                location="bottom start"
-                                origin="top start"
-                                :offset="[0, 8]"
-                                :width="480"
-                                :min-width="480"
-                                transition="fade-transition"
-                                :open-on-focus="false"
-                                :open-on-hover="false"
-
-                              >
-                                <template #activator="{ props }">
-                                  <v-text-field
-                                    v-bind="props"
-                                    label="請假日期與時間"
-                                    :model-value="leaveFormattedRange"
-                                    readonly
-                                    variant="underlined"
-                                    density="compact"
-                                    style="margin-top:20px;"
-                                    placeholder="yyyy-mm-dd HH:mm:ss ~ yyyy-mm-dd HH:mm:ss"
-                                    prepend-icon="mdi-calendar-clock"
-                                    class="dateicon leave-date-field"
-                                    clearable
-                                    @click:clear="clearLeaveRange"
-                                  />
-                                </template>
-
-                                <div class="leave-datepicker">
-                                  <VueDatePicker
-                                    v-model="editedItem.leave_range"
-                                    range
-                                    :enable-time-picker="true"
-                                    :time-picker-inline="true"
-                                    :minutes-increment="1"
-                                    :seconds-increment="1"
-                                    :inline="true"
-                                    :auto-apply="true"
-                                    locale="zh-TW"
-                                    week-num-name=""
-                                    :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
-                                  />
-                                </div>
-                              </v-menu>
-                            </div>
-                          </v-col>
-
-                          <v-col cols="4" class="d-flex align-center pt-0 pb-0">
-                            <div class="leave-type-wrap">
-                              <div class="section-subtitle leave-type-title">假別</div>
-
-                              <v-radio-group
-                                v-model="editedItem.leave_type"
-                                hide-details
-                                class="leave-radio-group leave-radio-grid"
-                                style="position:relative; right:50px;"
-                              >
-                                <v-row no-gutters>
-                                  <v-col
-                                    cols="4"
-                                    v-for="item in leaveTypes"
-                                    :key="item.value"
-                                    class="py-1"
-                                  >
-                                    <v-radio
-                                      :label="item.label"
-                                      :value="item.value"
-                                    />
-                                  </v-col>
-                                </v-row>
-                              </v-radio-group>
-
-                              <v-row>
-  <v-col cols="12" md="7">
-    <v-select
-      label="代理人"
-      v-model="editedItem.delegate_emp_id"
-
-      :items="users.filter(u => u.emp_id !== editedItem.emp_id)"
-
-      item-title="emp_name"
-      item-value="emp_id"
-      variant="underlined"
-      density="compact"
-      prepend-icon="mdi-account-switch"
-      placeholder="選擇代理人"
-    />
-  </v-col>
-</v-row>
-                            </div>
-                          </v-col>
-                        </v-row>
-
-                        <v-row class="leave-info-row">
-                          <v-col cols="12" md="4">
-                            <div class="leave-info-item">
-                              <span class="leave-info-label">開始：</span>
-                              <span>{{ editedItem.leave_start || '未設定' }}</span>
-                            </div>
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <div class="leave-info-item">
-                              <span class="leave-info-label">結束：</span>
-                              <span>{{ editedItem.leave_end || '未設定' }}</span>
-                            </div>
-                          </v-col>
-                        </v-row>
-                      </div>
-
-                  </v-row>
-
-                  <v-row justify="center" class="dialog-action-row">
-                    <v-col cols="auto">
-                      <v-btn text @click="close" class="btns">
-                        <i class="fa-regular fa-circle-xmark" />
-                        取消
-                      </v-btn>
-                    </v-col>
-                    <v-col cols="auto">
-                      <v-btn text @click="save" class="btns" :disabled="!validateFields">
-                        <i class="fa-regular fa-circle-check" />
-                        確定
-                      </v-btn>
-                    </v-col>
-                  </v-row>
-                </v-card-text>
+                    <v-row justify="center">
+                      <v-col cols="auto">
+                        <v-btn text @click="close" class="btns">
+                          <i class="fa-regular fa-circle-xmark" />
+                          取消
+                        </v-btn>
+                      </v-col>
+                      <v-col cols="auto">
+                        <v-btn text @click="save" class="btns" :disabled='validateFields'>
+                          <i class="fa-regular fa-circle-check" />
+                          確定
+                        </v-btn>
+                      </v-col>
+                    </v-row>
+                  </v-card-text>
               </v-card>
             </v-dialog>
 
@@ -345,10 +268,7 @@
         </template>
       </v-data-table>
     </v-card>
-<!--
-
   </v-row>
--->
 </div>
 </template>
 
@@ -371,17 +291,16 @@ import { myMixin } from '../mixins/common.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
+//import { setupListUsersWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
-
+//import { departments, desserts }  from '../mixins/crud.js';
 import { departments }  from '../mixins/crud.js';
 import { desserts2 }  from '../mixins/crud.js';
 import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
 
-//import { parseRoutingPriv, serializeRoutingPriv } from '../mixins/MenuConstants'
-
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
-
+//const listUsers = apiOperation('get', '/listUsers');
 const listUsers2 = apiOperation('get', '/listUsers2');
 const removeUser = apiOperation('post', '/removeUser');
 const updateUser = apiOperation('post', '/updateUser');
@@ -403,7 +322,27 @@ const props = defineProps({
 //=== data ===
 const nameRule = value => value.length <= 10 || '長度太長!';
 const requiredRule = value => !!value || '必須輸入資料!';
-
+//const empIDRule = value => /^[0-9]{4,5}$/.test(value) || '必須是7或8位數!';  // ^ 和 $ 分別表示字符串的開始和結束, [0-9] 表示數字, {4,5} 4到5位數
+// 必須是7或8位數，且8位數時首位必須為0!
+//const empIDRule = value => {
+//  const normalizedValue = value.padStart(8, '0');
+//  return /^[0-9]{7,8}$/.test(normalizedValue) && normalizedValue.length === 8 && normalizedValue[0] === '0'
+//    ? true : '必須是7或8位數!';
+//};
+//const empIDRule = value => {
+//  return /^[0-9]{7,8}$/.test(value) && (value.length === 8 ? value[0] === '0' : true)
+//    ? true : '必須是7或8位數!';
+//};
+//const empIDRule = value => {
+//  return /^[0-9]{7,8}$/.test(value) && (value.length === 8 ? value[0] === '0' : true)
+//    ? true
+//    : '必須是7或8位數!';
+//};
+// 驗證規則
+//const empIDRule = value => {
+//  return (value.length === 7 || (value.length === 8 && value[0] === '0'))
+//    ? true : '必須是7或8位數!';
+//};
 const empIDRule = value => {
   return /^[0-9]{7}$/.test(value) || /^[0-9]{8}$/.test(value) && value[0] === '0'
     ? true
@@ -425,6 +364,7 @@ const footerOptions = [
   { value: 5, title: '5' },
   { value: 10, title: '10' },
   { value: 25, title: '25' },
+  //{ value: -1, title: '$vuetify.dataFooter.itemsPerPageAll' }
   { value: -1, title: '全部' }
 ];
 
@@ -452,8 +392,6 @@ const showExplore = ref(false);
 
 const EmpIDInput = ref(null);
 
-const users = ref([]);          // for 代理人
-
 const dialog = ref(false);
 const dialogDelete = ref(false);
 const totalItems = ref(0);
@@ -478,7 +416,6 @@ const editedItem = reactive({
   leave_range: null,            // [startDate, endDate]
   leave_start: '',              // yyyy-mm-dd HH:mm:ss
   leave_end: '',                // yyyy-mm-dd HH:mm:ss
-  delegate_emp_id: '',
 });
 
 const defaultItem = reactive({
@@ -501,45 +438,33 @@ const pagination = reactive({
   page: 1,
 });
 
+//const snackbar = ref(false);
+//const snackbar_info = ref('');
+//const snackbar_color = ref('red accent-2');
+
 //=== watch ===
-/*
-watch(() => editedItem.leave_range,  (newVal) => {
+//setupListUsersWatcher();
+
+// 監聽輸入值變化，自動補0
+//watch(() => editedItem.emp_id, (newVal) => {
+//  if (newVal.length === 7) {
+//    editedItem.emp_id = newVal.padStart(8, '0');
+//  }
+//});
+
+watch(() => editedItem.leave_range,
+  (newVal) => {
     if (!newVal || !Array.isArray(newVal) || newVal.length !== 2) {
       editedItem.leave_start = '';
       editedItem.leave_end = '';
       return;
     }
 
-    //editedItem.leave_start = newVal[0] ? formatDateTime(newVal[0]) : '';
-    //editedItem.leave_end = newVal[1] ? formatDateTime(newVal[1]) : '';
-
-    editedItem.leave_start = dayjs(newVal[0]).format('YYYY-MM-DD HH:mm:ss')
-    editedItem.leave_end = dayjs(newVal[1]).format('YYYY-MM-DD HH:mm:ss')
+    editedItem.leave_start = newVal[0] ? formatDateTime(newVal[0]) : '';
+    editedItem.leave_end = newVal[1] ? formatDateTime(newVal[1]) : '';
   },
   { deep: true }
 );
-*/
-
-const pad22 = (n) => String(n).padStart(2, '0')
-
-const formatDateTime22 = (date) => {
-  if (!date) return ''
-  const d = new Date(date)
-  return `${d.getFullYear()}-${pad22(d.getMonth() + 1)}-${pad22(d.getDate())} ${pad22(d.getHours())}:${pad22(d.getMinutes())}:${pad22(d.getSeconds())}`
-}
-
-watch(() => editedItem.leave_range, (newVal) => {
-    if (!newVal || !Array.isArray(newVal) || newVal.length !== 2) {
-      editedItem.leave_start = ''
-      editedItem.leave_end = ''
-      return
-    }
-
-    editedItem.leave_start = newVal[0] ? formatDateTime22(newVal[0]) : ''
-    editedItem.leave_end = newVal[1] ? formatDateTime22(newVal[1]) : ''
-  },
-  { deep: true }
-)
 
 // ===
 
@@ -559,7 +484,9 @@ watch(toggle, (newVal) => {
   }
 });
 
-watch(() => editedItem.emp_perm, (newValue) => {
+watch(
+  () => editedItem.emp_perm,
+  (newValue) => {
     toggle.value = empPermMapping[newValue];
   }
 );
@@ -572,23 +499,11 @@ watch(dialog, (newVal) => {
   }
 });
 
-watch(  () => treeViewSelection.value,
-  (newVal) => {
-    updateSelection(newVal || [])
-  },
-  { deep: true }
-)
-
 //=== computed ===
 const formTitle = computed(() => (editedIndex.value === -1 ? '新增資料' : '編輯資料'));
 
-/*
 const tableStyle = computed(() => ({
   height: props.showFooter ? 'calc(100vh - 120px)' : 'calc(100vh - 60px)'
-}));
-*/
-const tableStyle = computed(() => ({
-  height: props.showFooter ? 'calc(100vh - 220px)' : 'calc(100vh - 160px)'
 }));
 
 const containerStyle = computed(() => ({
@@ -597,103 +512,13 @@ const containerStyle = computed(() => ({
 
 const routeName = computed(() => route.name);
 
-/*
 const validateFields = computed(() => {
-  // 新增模式先不擋
-  if (editedIndex.value === -1) return false
+  if (currentUser.value.empID==editedItem.emp_id && currentUser.value.name==editedItem.emp_name) {
+    return true;
+  }
 
-  const original = desserts2.value[editedIndex.value] || {}
-
-  // 1. 部門 / 群組 / 重設密碼 有修改
-  const depChanged = editedItem.dep_name !== original.dep_name
-
-  const roleChanged =
-    Number(editedItem.emp_perm) !== Number(original.emp_perm)
-
-  const passwordChanged = password_reset.value === 'yes'
-
-  // 2. 功能權限有修改
-  const originalRoutingPriv = String(original.routingPriv || '')
-    .split(',')
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-    .sort((a, b) => a - b)
-
-  const currentRoutingPriv = [...currentSetting.value]
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-    .sort((a, b) => a - b)
-
-  const permissionChanged =
-    originalRoutingPriv.length !== currentRoutingPriv.length ||
-    originalRoutingPriv.some((v, i) => v !== currentRoutingPriv[i])
-
-  const basicChanged = depChanged || roleChanged || passwordChanged || permissionChanged
-
-  // 2. 請假資料都有設定
-  const leaveFullySet =
-    !!editedItem.leave_start &&
-    !!editedItem.leave_end &&
-    !!editedItem.leave_type &&
-    !!editedItem.delegate_emp_id
-
-  return basicChanged || leaveFullySet
-})
-*/
-
-const sameNumberArray = (a = [], b = []) => {
-  const arr1 = [...a]
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-    .sort((x, y) => x - y)
-
-  const arr2 = [...b]
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-    .sort((x, y) => x - y)
-
-  return arr1.length === arr2.length && arr1.every((v, i) => v === arr2[i])
-}
-
-const validateFields = computed(() => {
-  // 新增模式先不擋
-  if (editedIndex.value === -1) return false
-
-  const original = desserts2.value[editedIndex.value] || {}
-
-  // 1. 部門 / 群組 / 重設密碼 有修改
-  const depChanged = editedItem.dep_name !== original.dep_name
-
-  const roleChanged =
-    Number(editedItem.emp_perm) !== Number(original.emp_perm)
-
-  const passwordChanged = password_reset.value === 'yes'
-
-  // 2. 功能權限有修改
-  const originalRoutingPriv = String(original.routingPriv || '')
-    .split(',')
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-
-  const currentRoutingPriv = [...currentSetting.value]
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-
-  const permissionChanged =
-    !sameNumberArray(originalRoutingPriv, currentRoutingPriv)
-
-  const basicChanged =
-    depChanged || roleChanged || passwordChanged || permissionChanged
-
-  // 3. 請假資料都有設定
-  const leaveFullySet =
-    !!editedItem.leave_start &&
-    !!editedItem.leave_end &&
-    !!editedItem.leave_type &&
-    !!editedItem.delegate_emp_id
-
-  return basicChanged || leaveFullySet
-})
+  return ['emp_id', 'emp_name', 'dep_name'].some(field => !editedItem[field]);
+});
 
 //=== mounted ===
 onMounted(() => {
@@ -753,10 +578,9 @@ const clearLeaveRange = () => {
 const initialize = async () => {
   console.log("initialize()...")
 
+  //listUsers();
   await listUsers2();
   await listDepartments();
-
-  users.value = desserts2.value;
 };
 
 // 輸入框失去焦點時補全0
@@ -777,7 +601,6 @@ const close = () => {
     Object.assign(editedItem, defaultItem);
 };
 
-/*
 const save = () => {
   console.log("save(),", toggle.value);
 
@@ -800,42 +623,6 @@ const save = () => {
   }
   close();
 }
-*/
-
-const save = async () => {
-  const hasAnyLeaveField =
-    !!editedItem.leave_start ||
-    !!editedItem.leave_end ||
-    !!editedItem.leave_type ||
-    !!editedItem.delegate_emp_id
-
-  const leaveFullySet =
-    !!editedItem.leave_start &&
-    !!editedItem.leave_end &&
-    !!editedItem.leave_type &&
-    !!editedItem.delegate_emp_id
-
-  if (hasAnyLeaveField && !leaveFullySet) {
-    alert('請假資料需同時填寫：開始時間、結束時間、假別、代理人工號')
-    return
-  }
-
-  try {
-    if (editedIndex.value > -1) {
-      await updateItem(editedItem)
-    } else {
-      await createItem(editedItem)
-    }
-
-    await initialize()
-    close()
-  } catch (err) {
-    console.error('save failed =', err)
-    console.error('save failed status =', err?.response?.status)
-    console.error('save failed data =', err?.response?.data)
-    alert(err?.response?.data?.message || '儲存失敗')
-  }
-}
 
 const reverseEmpPermMapping = Object.fromEntries(
   Object.entries(empPermMapping).map(([key, value]) => [value, key])
@@ -849,32 +636,27 @@ const getEmpPermKey = (permText) => {
   return reverseEmpPermMapping[permText] || '未知';
 };
 
-const updateItem = async (object) => {
-  const leaveFullySet =
-    !!object.leave_start &&
-    !!object.leave_end &&
-    !!object.leave_type &&
-    !!object.delegate_emp_id
+const updateItem = (object) => {  //編輯 user後端table資料
+  console.log("updateItem(),", object);
 
-  const payload = {
+  let payload= {
     emp_id: object.emp_id,
     emp_name: object.emp_name,
     dep_name: object.dep_name,
     emp_perm: object.emp_perm,
-    routingPriv: currentSetting.value.join(','),
-    //routingPriv: serializeRoutingPriv(currentSetting.value),
+    routingPriv: currentSetting.value.join(','),          // 轉換為以逗號分隔的字串
     password_reset: password_reset.value,
 
-    leave_start: leaveFullySet ? object.leave_start : '',
-    leave_end: leaveFullySet ? object.leave_end : '',
-    leave_type: leaveFullySet ? object.leave_type : '',
-    delegate_emp_id: leaveFullySet ? object.delegate_emp_id : '',
-  }
+    // ===== 員工請假 =====
+    leave_type: object.leave_type,
+    leave_start: object.leave_start,
+    leave_end: object.leave_end,
+  };
 
-  console.log('updateUser payload =', JSON.stringify(payload, null, 2))
-
-  return await updateUser(payload)
-}
+  updateUser(payload).then(data => {
+    !data && showSnackbar(data.message, 'red accent-2');  // update失敗
+  });
+};
 
 const createItem = (object) => {
   console.log("createItem(),", object);
@@ -914,30 +696,11 @@ const editItem = (item) => {
   let routingPrivArray = editedItem.routingPriv.split(',').map(Number);
   console.log("routingPrivArray,", routingPrivArray)
 
-  //let routingPrivArray = String(editedItem.routingPriv || '')
-  //.split(',')
-  //.map(v => Number(v))
-  //.filter(v => !Number.isNaN(v))
-
-  // 真正存檔的是葉節點
-  //currentSetting.value = [...routingPrivArray].sort((a, b) => a - b)
-
   treeViewSelection.value = Array(26).fill(0);
   treeViewSelection.value = getSelectedIds(treeViewItems.value, routingPrivArray);
 
-  // UI 勾選要把父節點也補回去
-  //treeViewSelection.value = expandSelectionWithParents(
-  //  treeViewItems.value,
-  //  currentSetting.value
-  //)
-
   console.log("treeViewSelection:", treeViewSelection.value)
   editedItem.password_reset = 'no'
-
-  editedItem.leave_end = item.leave_end || ''
-  editedItem.leave_type = item.leave_type || ''
-  editedItem.delegate_emp_id = item.delegate_emp_id || ''
-
   dialog.value = true;
 }
 
@@ -976,7 +739,6 @@ const handleSelect = (node) => {
   }
 };
 
-/*
 const updateSelection = (newSelection) => {
   console.log("updateSelection,", newSelection)
 
@@ -987,25 +749,6 @@ const updateSelection = (newSelection) => {
     treeViewSelection.value = newSelection;
   });
 };
-*/
-
-const updateSelection = (selection) => {
-  console.log('updateSelection,', selection)
-
-  // 先只取葉節點，作為真正要存回 DB 的 routingPriv
-  const leafIds = extractLeafIdsFromSelection(treeViewItems.value, selection)
-
-  // 再補父節點，作為 UI 顯示用勾選狀態
-  const fullSelection = expandSelectionWithParents(treeViewItems.value, leafIds)
-
-  if (!sameNumberArray(treeViewSelection.value, fullSelection)) {
-    treeViewSelection.value = fullSelection
-  }
-
-  currentSetting.value = [...leafIds].sort((a, b) => a - b)
-
-  console.log('currentSetting:', currentSetting.value)
-}
 
 const updateSetting = (arr) => {
   currentSetting.value = currentSetting.value.map(() => 0);   // 將 Setting 陣列重置為全 0
@@ -1033,38 +776,26 @@ const removeItem = (id) => {  //依user id來刪除後端table資料
 };
 
 const checkUsers = (focused) => {
-  // 只在失焦時檢查
-  if (focused) return
-
-  // 編輯模式不檢查工號重複
-  if (editedIndex.value !== -1) return
-
-  //if (!focused) { // 當失去焦點時
-  //  console.log("checkUser()...");
-
-  const empId = String(editedItem.emp_id || '').trim()
-  if (!empId) return
+  if (!focused) { // 當失去焦點時
+    console.log("checkUser()...");
 
     if (editedItem.emp_id.length == 7) {
       editedItem.emp_id = editedItem.emp_id.padStart(8, '0');
     }
 
-    //let foundDessert = desserts2.value.find(dessert => dessert.emp_id === registerUser.empID);
-    let foundDessert = desserts2.value.find(dessert => String(dessert.emp_id || '') === empId);
-    console.log("foundDessert:",foundDessert);
-    if (foundDessert) {
+    //foundDessert.value = temp_desserts.value.find(dessert => dessert.emp_id === registerUser.empID);
+    foundDessert.value = desserts2.value.find(dessert => dessert.emp_id === registerUser.empID);
+    console.log("foundDessert:",foundDessert.value);
+    if (foundDessert.value) {
       if (editedItem.emp_id !='') {
         let temp_info = snackbar_info.value = '錯誤, 工號' + editedItem.emp_id + '重複!';
         showSnackbar(temp_info, 'red accent-2');
 
         editedItem.emp_id = '';
       }
-
-      nextTick(() => {
-        EmpIDInput.value.focus();
-      })
+      EmpIDInput.value.focus();
     }
-  //}
+  }
 };
 
 const handleKeyDown = (event) => {
@@ -1116,84 +847,6 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
-
-const isLeafNode = (node) => {
-  return !node.children || node.children.length === 0
-}
-
-const getAllLeafIds = (items = []) => {
-  const result = []
-
-  const walk = (nodes) => {
-    for (const node of nodes || []) {
-      if (isLeafNode(node)) {
-        result.push(Number(node.id))
-      } else {
-        walk(node.children)
-      }
-    }
-  }
-
-  walk(items)
-  return result
-}
-
-const extractLeafIdsFromSelection = (items = [], selectedIds = []) => {
-  const selectedSet = new Set((selectedIds || []).map(v => Number(v)))
-  const result = []
-
-  const walk = (nodes) => {
-    for (const node of nodes || []) {
-      const nodeId = Number(node.id)
-
-      if (isLeafNode(node)) {
-        if (selectedSet.has(nodeId)) {
-          result.push(nodeId)
-        }
-      } else {
-        walk(node.children)
-      }
-    }
-  }
-
-  walk(items)
-  return result
-}
-
-const expandSelectionWithParents = (items = [], selectedIds = []) => {
-  const selectedSet = new Set((selectedIds || []).map(v => Number(v)))
-
-  const walk = (nodes) => {
-    let allLeafSelectedUnderThisLevel = true
-
-    for (const node of nodes || []) {
-      const nodeId = Number(node.id)
-
-      if (isLeafNode(node)) {
-        if (!selectedSet.has(nodeId)) {
-          allLeafSelectedUnderThisLevel = false
-        }
-      } else {
-        const allChildrenSelected = walk(node.children)
-
-        if (allChildrenSelected) {
-          selectedSet.add(nodeId)   // 補父節點
-        } else {
-          allLeafSelectedUnderThisLevel = false
-        }
-      }
-    }
-
-    return allLeafSelectedUnderThisLevel
-  }
-
-  walk(items)
-
-  return [...selectedSet]
-    .map(v => Number(v))
-    .filter(v => !Number.isNaN(v))
-    .sort((a, b) => a - b)
-}
 </script>
 
 <style lang="scss" scoped>
@@ -1209,23 +862,10 @@ const expandSelectionWithParents = (items = [], selectedIds = []) => {
   top: 60px !important;       // 確保在導航欄下方
   bottom: 60px !important;    // 確保在頁腳上方
   padding: 0px 10px;
-  //width: 100vw;               // 視窗寬度
-  width: 100%;
+  width: 100vw;               // 視窗寬度
   margin: 0;
   overflow-y: auto;           // 添加scrollbar，防止內容溢出
-  //overflow-y: hidden;
   overflow-x:hidden;
-  overflow: hidden;
-
-}
-
-:deep(.v-table__wrapper) {
-  scrollbar-width: none;
-}
-
-:deep(.v-table__wrapper::-webkit-scrollbar) {
-  width: 0;
-  display: none;
 }
 
 .table_border_radius {
@@ -1303,18 +943,12 @@ max-height: 60px;
 .form_container {
   margin-top: 20px; /* Optional: Add some margin to separate form from SVG */
 }
-/*
+
 :deep(.v-overlay__content) {
     //overflow: hidden !important;
   overflow-y: hidden !important;
   top: 20px !important;
   border-radius: 40px;
-}
-*/
-:deep(.v-overlay__content) {
-  overflow-y: hidden !important;
-  top: 20px !important;
-  border-radius: 0 !important;
 }
 
 .card-no-padding .v-card {
@@ -1325,7 +959,7 @@ max-height: 60px;
 :deep(.v-card-text .card_container) {
   padding: 0px;
 }
-/*
+
 .custom-card {
 	//background-color: #B3E5FC;
 	box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.1);
@@ -1339,18 +973,6 @@ max-height: 60px;
   text-align: justify;
   //border: 1px solid #1a1a1a;
   //border: none;
-}
-*/
-.custom-card {
-  box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.1);
-  border-radius: 0;
-  width: 100%;
-  max-width: none;
-  max-height: 360px;
-  transition: all 0.5s ease;
-  overflow-x: hidden;
-  overflow-y: auto;
-  text-align: justify;
 }
 
 // 滾動條樣式
@@ -1526,305 +1148,4 @@ max-height: 60px;
 :deep(.dateicon > .v-input__prepend .v-icon) {
   color: #1976D2;
 }
-
-// == new
-:deep(.employer-edit-dialog) {
-  border-radius: 0 !important;
-  overflow: visible !important;
-}
-
-:deep(.employer-edit-dialog .v-card) {
-  border-radius: 0 !important;
-}
-
-.employer-dialog-card {
-  border-radius: 0 !important;
-}
-
-.dialog-title-bar {
-  border-bottom: 1px solid #e0e0e0;
-  padding: 14px 20px 12px;
-}
-
-.dialog-body {
-  padding: 20px 22px 16px !important;
-}
-
-.dialog-main-row {
-  margin-bottom: 6px;
-}
-
-.dialog-section {
-  border: 1px solid #e3e8ef;
-  padding: 16px 16px 12px;
-  background: #fcfdff;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1565c0;
-  margin-bottom: 12px;
-}
-
-.section-subtitle {
-  font-size: 14px;
-  font-weight: 700;
-  color: #455a64;
-  margin: 8px 0 10px;
-}
-
-.role-block {
-  margin-top: 6px;
-}
-
-.role-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.role-btn {
-  height: 42px !important;
-  width: 48px !important;
-  min-width: 48px !important;
-  padding: 0 !important;
-}
-
-.role-text {
-  margin-top: 10px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #37474f;
-}
-
-.role-icon {
-  font-size: 0.95rem;
-}
-
-.role-icon .fa-user-lock {
-  font-size: 1rem;
-}
-
-.role-icon i:last-child {
-  font-size: 0.9rem;
-}
-
-.password-reset-block {
-  margin-top: 18px;
-  padding-top: 12px;
-  border-top: 1px dashed #cfd8dc;
-}
-
-.password-reset-title {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.password-note {
-  font-weight: 400;
-}
-/*
-.permission-section {
-  //height: 100%;
-  //display: flex;
-  //flex-direction: column;
-  //flex: 1;
-}
-*/
-
-.permission-card {
-  //max-width: none;
-  //width: 100%;
-  //height: 100%;
-  //min-height: 320px;
-  //max-height: 360px;
-  //border-radius: 0;
-  flex: 1;
-  width: 100%;
-  overflow-y: auto;
-  border-radius: 0;
-}
-
-.leave-row {
-  margin-top: 4px;
-}
-
-.leave-section {
-  margin-top: 4px;
-}
-
-.leave-picker-wrap {
-  background: #fff;
-  padding: 10px;
-}
-
-.leave-type-title {
-  margin-top: 2px;
-}
-
-.leave-radio-group {
-  row-gap: 4px;
-}
-
-.leave-info-row {
-  margin-top: 6px;
-}
-
-.leave-info-item {
-  font-size: 14px;
-  color: #455a64;
-  background: #f5f9ff;
-  padding: 10px 12px;
-  border-left: 4px solid #90caf9;
-}
-
-.leave-info-label {
-  font-weight: 700;
-  margin-right: 6px;
-}
-
-.dialog-action-row {
-  margin-top: 8px;
-}
-
-.leave-date-wrap {
-  min-width: 480px;
-  width: 480px;
-
-}
-
-:deep(.v-overlay__content) {
-  overflow-x: hidden;
-}
-
-.leave-date-field {
-  margin-top: 20px;
-}
-
-.leave-type-wrap {
-  position: relative;
-  left: 50px;
-  top: 20px;
-}
-
-.leave-radio-grid {
-  margin-top: 4px;
-}
-
-.leave-radio-grid :deep(.v-selection-control-group) {
-  width: 100%;
-}
-
-.leave-radio-grid :deep(.v-label) {
-  font-size: 14px;
-}
-
-.leave-radio-grid :deep(.v-selection-control) {
-  min-height: 32px;
-}
-
-.leave-radio-grid :deep(.v-radio) {
-  margin-bottom: 0;
-}
-
-//////
-.leave-datepicker {
-  width: 100%;
-  padding: 10px 14px;
-  background: white;
-}
-
-.leave-datepicker :deep(.dp__main) {
-  width: 100%;
-}
-
-.leave-datepicker :deep(.dp__calendar_wrap) {
-  width: 100%;
-}
-
-.leave-datepicker :deep(.dp__calendar) {
-  width: 100%;
-}
-
-.leave-datepicker :deep(.dp__month_year_row) {
-  width: 100%;
-}
-
-.leave-datepicker :deep(.dp__week_days) {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-}
-
-.leave-datepicker :deep(.dp__calendar_row) {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-}
-
-:deep(.dp__instance_calendar) {
-  width: 480px !important;
-  min-width: 480px !important;
-}
-
-.employer-main-card {
-  height: calc(100% - 16px);
-  overflow: hidden;
-}
-
-// ***
-:deep(.dp__calendar_header .dp__calendar_header_item) {
-  font-size: 0.8em;
-}
-
-// ------- 沒有週數欄（共 7 欄）：一～五綠，六日紅 -------
-:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
-      .dp__calendar_header_item:nth-child(-n+5)) {
-  background: #2e7d32; color: #fff;
-}
-:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
-      .dp__calendar_header_item:nth-child(6)),
-:deep(.dp__calendar_header:not(:has(.dp__calendar_header_item_week))
-      .dp__calendar_header_item:nth-child(7)) {
-  background: #c62828; color: #fff;
-}
-
-// ------- 有週數欄（第 1 欄是週數）：星期從第 2～8 欄 -------
-:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
-      .dp__calendar_header_item:nth-child(n+2):nth-child(-n+6)) {
-
-  background: #2e7d32; color: #fff;   // 第 2～6 欄 = 一～五 → 綠
-}
-:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
-      .dp__calendar_header_item:nth-child(7)),
-:deep(.dp__calendar_header:has(.dp__calendar_header_item_week)
-      .dp__calendar_header_item:nth-child(8)) {
-
-  background: #c62828; color: #fff;   // 第 7、8 欄 = 六、日 → 紅
-}
-
-// 如果週數欄（W）有開啟，不要上色它
-:deep(.dp-colored .dp__calendar_header_item_week) {
-  background: transparent !important;
-  color: inherit !important;
-}
-
-:deep(.dp__month_year_select) {
-  color: #1976d2;
-  font-weight: bold;
-}
-
-:deep(.dateicon > .v-input__prepend .v-icon) {
-  color: #F48FB1 !important;
-}
-
-// 讓 DatePicker 撐滿 v-menu 設定的寬度
-:deep(.dp-stretch .dp__main) {
-  width: 100%;
-}
-
-:deep(.dp__outer_menu_wrap) {
-  width: 140%;
-}
-
 </style>

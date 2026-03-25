@@ -436,7 +436,8 @@
                     <!-- onLine 欄位，依值改背景色 -->
                     <template v-slot:item.online="{ item }">
                       <div class="text-center pa-1" :style="getOnlineCellStyle(item.online)">
-                        {{ item.online }}
+                        <!--{{ item.online }}-->
+                        {{ getOnlineText(item.online) }}
                       </div>
                     </template>
                   </v-data-table>
@@ -958,7 +959,7 @@ const onClickOnlineUsers = async () => {
   // 先開 dialog，避免資料還沒回來就看不到反應
   onlineDialog.value = true
 
-  // 你可以先用假資料測，排除 template / reactivity 問題
+  // 可以先用假資料測，排除 template / reactivity 問題
   const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
   allOnlineUsers.value = resp || [];
 
@@ -971,6 +972,13 @@ const onClickOnlineUsers = async () => {
 }
 
 //=== method ===
+
+const getOnlineText = (val) => {
+  if (val === 0) return '請假'
+  if (val === 1) return '在線'
+  if (val === 2) return '離線'
+  return ''
+}
 
 const runQuery = async () => {
   const payload = buildListInformationsPayload();
@@ -1752,7 +1760,6 @@ const showSnackbar = (message, color) => {
 .hover-side {
   transform: rotateX(90deg) translateZ(20px);
 }
-
 
 :deep(.dp__calendar_header .dp__calendar_header_item) {
   font-size: 0.8em;

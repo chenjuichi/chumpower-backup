@@ -4,8 +4,8 @@ import os
 from openpyxl import load_workbook
 from flask import current_app
 
-from database.tables import Session
-from database.p_tables import P_Part
+from tables import Session
+from p_tables import P_Part
 
 def import_p_part_from_excel(base_dir: str | None = None):
     """
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     base_dir = r"C:\vue\chumpower\excel_in"
 
     # 如果要確保 DB / Table 已建立，可以在這裡 import BASE, engine
-    from database.tables import BASE, engine
+    from tables import BASE, engine
     # BASE.metadata.create_all(engine)  # 如果需要才打開
 
     import_p_part_from_excel(base_dir=base_dir)

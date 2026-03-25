@@ -377,7 +377,7 @@ import { departments }  from '../mixins/crud.js';
 import { desserts2 }  from '../mixins/crud.js';
 import { empPermMapping, roleMappings, treeViewItems } from '../mixins/MenuConstants.js';
 
-//import { parseRoutingPriv, serializeRoutingPriv } from '../mixins/MenuConstants'
+import { parseRoutingPriv, serializeRoutingPriv } from '../mixins/MenuConstants'
 
 // 使用 apiOperation 函式來建立 API 請求
 const listDepartments = apiOperation('get', '/listDepartments');
@@ -861,8 +861,8 @@ const updateItem = async (object) => {
     emp_name: object.emp_name,
     dep_name: object.dep_name,
     emp_perm: object.emp_perm,
-    routingPriv: currentSetting.value.join(','),
-    //routingPriv: serializeRoutingPriv(currentSetting.value),
+    //routingPriv: currentSetting.value.join(','),
+    routingPriv: serializeRoutingPriv(currentSetting.value),
     password_reset: password_reset.value,
 
     leave_start: leaveFullySet ? object.leave_start : '',
@@ -911,8 +911,8 @@ const editItem = (item) => {
     editedItem.leave_range = null;
   }
 
-  let routingPrivArray = editedItem.routingPriv.split(',').map(Number);
-  console.log("routingPrivArray,", routingPrivArray)
+  //let routingPrivArray = editedItem.routingPriv.split(',').map(Number);
+  //console.log("routingPrivArray,", routingPrivArray)
 
   //let routingPrivArray = String(editedItem.routingPriv || '')
   //.split(',')
@@ -922,14 +922,22 @@ const editItem = (item) => {
   // 真正存檔的是葉節點
   //currentSetting.value = [...routingPrivArray].sort((a, b) => a - b)
 
-  treeViewSelection.value = Array(26).fill(0);
-  treeViewSelection.value = getSelectedIds(treeViewItems.value, routingPrivArray);
+  //treeViewSelection.value = Array(26).fill(0);
+  //treeViewSelection.value = getSelectedIds(treeViewItems.value, routingPrivArray);
 
   // UI 勾選要把父節點也補回去
   //treeViewSelection.value = expandSelectionWithParents(
   //  treeViewItems.value,
   //  currentSetting.value
   //)
+
+  let routingPrivArray = parseRoutingPriv(editedItem.routingPriv)
+  currentSetting.value = [...routingPrivArray]
+
+  treeViewSelection.value = expandSelectionWithParents(
+    treeViewItems.value,
+    currentSetting.value
+  )
 
   console.log("treeViewSelection:", treeViewSelection.value)
   editedItem.password_reset = 'no'

@@ -1268,24 +1268,25 @@ def copy_material():
   })
 
 
+"""
 @createTable.route("/createProduct", methods=["POST"])
 def create_product():
-    """
-    支援：
-    1) 單筆：JSON 直接是一個物件
-    2) 多筆：{"items": [ {...}, {...} ]}
-    欄位（每筆 item）：
-      - material_id (必填, int, 必須存在於 material)
-      - delivery_qty (選填, int, default 0)
-      - assemble_qty (選填, int, default 0)
-      - allOk_qty (選填, int, default 0)
-      - good_qty (選填, int, default 0)
-      - non_good_qty (選填, int, default 0)
-      - reason (選填, str)
-      - confirm_comment (選填, str)
-    批次語意：任何一筆驗證錯誤 → 整批 rollback。
-    回傳：{ status, created, items: [ {id, material_id, ...} ] }
-    """
+    #
+    #支援：
+    #1) 單筆：JSON 直接是一個物件
+    #2) 多筆：{"items": [ {...}, {...} ]}
+    #欄位（每筆 item）：
+    #  - material_id (必填, int, 必須存在於 material)
+    #  - delivery_qty (選填, int, default 0)
+    #  - assemble_qty (選填, int, default 0)
+    #  - allOk_qty (選填, int, default 0)
+    #  - good_qty (選填, int, default 0)
+    #  - non_good_qty (選填, int, default 0)
+    #  - reason (選填, str)
+    #  - confirm_comment (選填, str)
+    #批次語意：任何一筆驗證錯誤 → 整批 rollback。
+    #回傳：{ status, created, items: [ {id, material_id, ...} ] }
+    #
     s = Session()
     try:
         #payload = request.get_json(silent=True) or {}
@@ -1366,6 +1367,193 @@ def create_product():
            "items": items
         })
         #}) , 201
+
+    except SQLAlchemyError as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    except Exception as e:
+        s.rollback()
+        return jsonify({"status": False, "error": str(e)}), 500
+    finally:
+        s.close()
+"""
+
+
+@createTable.route("/createProduct", methods=["POST"])
+def create_product():
+    #
+    #組裝線入庫：
+    #1. 若沒送 process_id，會自動補一筆 Process(process_type=31)
+    #2. 建立 Product
+    #3. 回寫 Material.allOk_qty / total_allOk_qty
+    #4. 回寫 Assemble.isStockIn / isWarehouseStationShow
+    #
+    s = Session()
+    try:
+        payload = request.get_json()
+
+        raw_items = payload.get("items", None)
+        if raw_items is None:
+            raw_items = [payload]
+
+        if not isinstance(raw_items, list) or len(raw_items) == 0:
+            return jsonify({
+                "status": False,
+                "error": "payload 應為物件或 {items: [...]}，且不可為空"
+            }), 400
+
+        errors = []
+        material_ids = [it.get("material_id") for it in raw_items]
+
+        try:
+            material_ids_int = [int(mid) for mid in material_ids]
+        except (TypeError, ValueError):
+            return jsonify({"status": False, "error": "material_id 必須是整數"}), 400
+
+        exist_mid_set = set(
+            [m.id for m in s.query(Material.id).filter(Material.id.in_(material_ids_int)).all()]
+        )
+
+        for idx, it in enumerate(raw_items):
+            mid = it.get("material_id")
+            if mid is None:
+                errors.append({"index": idx, "error": "material_id 為必填"})
+                continue
+            if int(mid) not in exist_mid_set:
+                errors.append({"index": idx, "error": f"material_id {mid} 不存在"})
+
+        if errors:
+            return jsonify({"status": False, "errors": errors}), 400
+
+        created_rows = []
+
+        for it in raw_items:
+            mid = _normalize_int(it.get("material_id"), 0)
+            if mid <= 0:
+                continue
+
+            add_qty = _normalize_int(it.get("allOk_qty"), 0)
+            user_id = (it.get("user_id") or "").strip() or "system"
+            line_diff = _normalize_int(it.get("line_difference"), 0)
+
+            assemble_id = _normalize_int(it.get("assemble_id"), 0)
+            if assemble_id <= 0:
+                latest_a = (
+                    s.query(Assemble)
+                    .filter(Assemble.material_id == mid)
+                    .order_by(Assemble.id.desc())
+                    .first()
+                )
+                assemble_id = latest_a.id if latest_a else 0
+
+            process_id_to_use = _normalize_int(it.get("process_id"), 0)
+
+            # ✅ 若沒送 process_id，就自動補一筆入庫 Process(31)
+            if process_id_to_use <= 0 and add_qty > 0:
+                exist = (
+                    s.query(Process)
+                    .filter(Process.material_id == mid)
+                    .filter(Process.assemble_id == assemble_id)
+                    .filter(Process.process_type == 31)
+                    .filter(Process.process_work_time_qty == add_qty)
+                    .order_by(Process.id.desc())
+                    .first()
+                )
+                if exist:
+                    process_id_to_use = exist.id
+                else:
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    m_for_must = s.query(Material).filter(Material.id == mid).one_or_none()
+                    must_qty = _normalize_int(getattr(m_for_must, "must_allOk_qty", 0), 0) if m_for_must else 0
+
+                    stockin_proc = Process(
+                        material_id=mid,
+                        assemble_id=assemble_id,
+                        has_started=True,
+                        user_id=user_id,
+
+                        begin_time=now_str,
+                        end_time=now_str,
+                        period_time="00:00:00",
+
+                        pause_time=0,
+                        elapsedActive_time=0,
+                        str_elapsedActive_time="00:00:00",
+                        is_pause=True,
+
+                        process_type=31,
+                        process_work_time_qty=add_qty,
+                        must_allOk_qty=must_qty,
+                        allOk_qty=add_qty,
+                        isAllOk=True,
+                        normal_work_time=0,
+                    )
+                    s.add(stockin_proc)
+                    s.flush()
+                    process_id_to_use = stockin_proc.id
+
+            p = Product(
+                material_id=mid,
+                process_id=(process_id_to_use or None),
+                delivery_qty=_normalize_int(it.get("delivery_qty"), 0),
+                assemble_qty=_normalize_int(it.get("assemble_qty"), 0),
+                allOk_qty=add_qty,
+                good_qty=_normalize_int(it.get("good_qty"), add_qty),
+                non_good_qty=_normalize_int(it.get("non_good_qty"), 0),
+                reason=(it.get("reason") or None),
+                confirm_comment=(it.get("confirm_comment") or None),
+            )
+            s.add(p)
+            created_rows.append(p)
+
+            # ✅ 回寫 Material
+            m = s.query(Material).filter(Material.id == mid).one_or_none()
+            if m is not None:
+                m.allOk_qty = add_qty
+                m.total_allOk_qty = _normalize_int(getattr(m, "total_allOk_qty", 0), 0) + add_qty
+
+                must_qty2 = _normalize_int(getattr(m, "must_allOk_qty", 0), 0)
+                if must_qty2 > 0 and m.total_allOk_qty >= must_qty2:
+                    m.isAllOk = True
+                    m.show2_ok = 12
+                    m.show3_ok = 13
+
+            # ✅ 回寫 Assemble
+            if assemble_id > 0:
+                a = (
+                    s.query(Assemble)
+                    .filter(Assemble.id == assemble_id, Assemble.material_id == mid)
+                    .one_or_none()
+                )
+                if a:
+                    a.allOk_qty = add_qty
+                    a.isStockIn = True
+                    a.isWarehouseStationShow = True
+                    a.update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        s.commit()
+
+        items = []
+        for p in created_rows:
+            items.append({
+                "id": p.id,
+                "material_id": p.material_id,
+                "delivery_qty": p.delivery_qty,
+                "assemble_qty": p.assemble_qty,
+                "allOk_qty": p.allOk_qty,
+                "good_qty": p.good_qty,
+                "non_good_qty": p.non_good_qty,
+                "reason": p.reason,
+                "confirm_comment": p.confirm_comment,
+                "create_at": getattr(p, "create_at", None).isoformat() if getattr(p, "create_at", None) else None,
+            })
+
+        return jsonify({
+            "status": True,
+            "created": len(items),
+            "items": items
+        })
 
     except SQLAlchemyError as e:
         s.rollback()

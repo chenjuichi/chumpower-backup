@@ -36,8 +36,19 @@ const elapsedMs = ref(0)     // 目前累積的毫秒
 let intervalId = null        // setInterval handler
 
 /* ----- 轉字串顯示（HH:MM:SS）----- */
+/*
 const hhmmss = computed(() => {
   const sec = Math.floor((elapsedMs.value || 0) / 1000)
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0')
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0')
+  const s = String(sec % 60).padStart(2, '0')
+  return `${h}:${m}:${s}`
+})
+*/
+
+// 2026-03-23修正版
+const hhmmss = computed(() => {
+  const sec = Math.floor((shownMs.value || 0) / 1000)
   const h = String(Math.floor(sec / 3600)).padStart(2, '0')
   const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0')
   const s = String(sec % 60).padStart(2, '0')
@@ -97,12 +108,35 @@ function reset() {
  * @param {number} seconds - 從後端帶回的有效秒數
  * @param {boolean} paused - 是否暫停
  */
+/*
 function setState(seconds, paused) {
   const sec = Number(seconds) || 0
   elapsedMs.value = sec * 1000
   emit('update:time', elapsedMs.value)
   if (paused) stop()
   else start()
+}
+*/
+
+// 2026-03-23修正版
+function setState(seconds, paused) {
+  const sec = Number(seconds) || 0
+  const ms = sec * 1000
+
+  // 1. 先同步時間
+  elapsedMs.value = ms
+  emit('update:time', ms)
+
+  // 2. 先同步 paused 狀態給父層
+  emit('update:isPaused', !!paused)
+
+  // 3. 直接控制 interval，避免被 props.isPaused 舊值卡住
+  stop()
+
+  if (!paused && props.show && props.displayMs === null) {
+    intervalId = setInterval(_tick, 1000)
+    console.log('[TD] setState -> restart interval')
+  }
 }
 
 /** setElapsedTime：毫秒版，提供相容 API */
@@ -180,7 +214,7 @@ onBeforeUnmount(() => {
 //})
 
 defineExpose({
-  start, stop, pause, stop, resume, reset,
+  start, stop, pause, resume, reset,
   setState, setElapsedTime, getElapsedMs,
 })
 </script>

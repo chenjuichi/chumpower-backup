@@ -29,7 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # Import models & session from your project
 try:
-    from database.tables import (
+    from server.database.x_tables import (
         Session,
         Material,
         Bom,

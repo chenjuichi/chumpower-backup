@@ -2,9 +2,10 @@ import re
 import random
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
-from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, UserDelegate, Setting, Session
 from database.p_tables import P_Material, P_Assemble, P_Process, P_Part,P_AbnormalCause
-from sqlalchemy import and_, or_, not_, func
+
+from sqlalchemy import and_, or_, not_, func, tuple_, literal, false
 
 from sqlalchemy.orm.exc import MultipleResultsFound
 
@@ -18,7 +19,8 @@ from collections import defaultdict
 #from operator import itemgetter
 
 from datetime import datetime, timezone, timedelta
-from datetime import datetime as dt
+
+from datetime import datetime as dt, time
 
 from zoneinfo import ZoneInfo
 
@@ -26,6 +28,47 @@ getTable = Blueprint('getTable', __name__)
 
 from log_util import setup_logger
 logger = setup_logger(__name__)  # 每個模組用自己的名稱
+
+
+# ------------------------------------------------------------------
+
+
+def is_delegate_active_now(delegate_rows, now_dt):
+    WORK_START = time(8, 0, 0)
+    WORK_END = time(17, 0, 0)
+
+    for row in delegate_rows:
+        start_dt = row.start_date
+        end_dt = row.end_date
+
+        if not start_dt:
+            continue
+
+        # 若沒 end_date，先視為 start_dt 當天結束
+        if not end_dt:
+            end_dt = start_dt
+
+        # 規則 1：
+        # 若請假起始時間 <= 08:00，顯示區間起點延長到當天 00:00:00
+        if start_dt.time() <= WORK_START:
+            effective_start = dt.combine(start_dt.date(), time(0, 0, 0))
+        else:
+            effective_start = start_dt
+
+        # 規則 2：
+        # 若請假結束時間 >= 17:00，顯示區間終點延長到當天 23:59:59
+        if end_dt.time() >= WORK_END:
+            effective_end = dt.combine(end_dt.date(), time(23, 59, 59))
+        else:
+            effective_end = end_dt
+
+        if effective_start <= now_dt <= effective_end:
+            return True
+
+    return False
+
+
+# ------------------------------------------------------------------
 
 
 def read_all_p_part_process_code_p():
@@ -1735,7 +1778,7 @@ def update_process_begin():
       pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
     )
 
-
+"""
 @getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
 def toggle_process_begin():
     print("dialog2ToggleProcessBegin API....")
@@ -1798,18 +1841,100 @@ def toggle_process_begin():
           if not log.begin_time:
             log.begin_time = now_tpe_str
 
+    # 先算當下正確的有效秒數
+    live = _live_elapsed_seconds(log)
+
+    # 同步回 DB，避免下次又拿到舊值
+    log.elapsedActive_time = int(live)
+
     s.commit()
 
     return jsonify(
       success=True,
       is_paused=log.is_pause,
-      elapsed_time=int(log.elapsedActive_time or 0),
-      pause_time=log.pause_time or 0,
+      #elapsed_time=int(log.elapsedActive_time or 0),
+      #pause_time=log.pause_time or 0,
+      elapsed_time=int(live),
+      pause_time=int(log.pause_time or 0),
+
       pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
       # 回傳 has_started 讓前端可用（即使沒有欄位也安全處理）
-      #has_started=getattr(log, "has_started", None),
       has_started=bool(log.has_started),
+
     )
+"""
+
+
+@getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
+def toggle_process_begin():
+    print("dialog2ToggleProcessBegin API....")
+
+    data = request.json
+    process_id = data["process_id"]
+    want_pause = bool(data["is_paused"])
+
+    s = Session()
+
+    q = s.query(Process).filter_by(id=process_id).with_for_update()
+    log = q.one_or_none()
+
+    if not log:
+        s.close()
+        return jsonify(success=False, message="process not found"), 404
+
+    if log.end_time is not None:
+        s.close()
+        return jsonify(success=False, message="process already closed"), 400
+
+    now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
+    now_tpe_str = now_tpe_aw.strftime(FMT)
+
+    if want_pause:
+        # → 要暫停
+        if not log.is_pause:
+            log.is_pause = True
+            log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
+        else:
+            if not log.pause_started_at:
+                log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
+    else:
+        # → 要恢復
+        if log.is_pause:
+            if log.pause_started_at:
+                ps = log.pause_started_at
+                ps_aw = ps if ps.tzinfo else ps.replace(tzinfo=TPE)
+                delta = int((now_tpe_aw - ps_aw).total_seconds())
+                log.pause_time = int(log.pause_time or 0) + max(0, delta)
+
+            log.pause_started_at = None
+            log.is_pause = False
+
+        if not getattr(log, "has_started", False):
+            try:
+                log.has_started = True
+            except AttributeError:
+                pass
+
+            if not log.begin_time:
+                log.begin_time = now_tpe_str
+
+    # ✅ 用 live 當唯一真相
+    live = _live_elapsed_seconds(log)
+    log.elapsedActive_time = int(live)
+
+    s.commit()
+
+    result = jsonify(
+        success=True,
+        is_paused=bool(log.is_pause),
+        elapsed_time=int(live),
+        pause_time=int(log.pause_time or 0),
+        pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
+        has_started=bool(getattr(log, "has_started", False)),
+    )
+    s.close()
+    return result
+
 
 """
 @getTable.route("/dialog2CloseProcessBegin", methods=['POST'])
@@ -3025,13 +3150,68 @@ def get_users_deps_processes():
 
         _objects = s.query(User).all()
         users = [u.__dict__ for u in _objects]
+
         index=0
+        #today_dt = dt.now()
+
+        today_date = dt.now().date()
+        now_dt = dt.now()
+
         for user in users:
           # 依你原本邏輯：只留下 isRemoved == True 的使用者
           if user['isRemoved'] == False:
               continue
 
           emp_id = user['emp_id']
+
+          #print("user['id'], today_dt:", user['id'], today_dt)
+
+          delegate_rows = (
+              s.query(UserDelegate)
+              .filter(
+                  UserDelegate.user_id == user['id'],
+                  UserDelegate.start_date.isnot(None),
+                  or_(
+                      func.date(UserDelegate.start_date) == today_date,
+                      func.date(UserDelegate.end_date) == today_date,
+                      and_(
+                          func.date(UserDelegate.start_date) <= today_date,
+                          func.date(UserDelegate.end_date) >= today_date
+                      )
+                  )
+              )
+              .all()
+          )
+
+          # 🔥 判斷是否在代理期間
+          delegate_active = is_delegate_active_now(delegate_rows, now_dt)
+          """
+          delegate_active = (
+              s.query(UserDelegate)
+              .filter(
+                  UserDelegate.user_id == user['id'],
+                  UserDelegate.start_date <= today_dt,
+                  or_(
+                      UserDelegate.end_date == None,
+                      UserDelegate.end_date >= today_dt
+                  )
+              )
+              .first()
+              is not None
+          )
+          """
+
+          # 🔥 覆蓋 online 狀態
+          #is_online = False if delegate_active else user['isOnline']
+          #print("emp_id:", emp_id, is_online)
+
+          # 0: 請假, 1: 在線, 2: 離線
+          if delegate_active:
+              online_value = 0
+          else:
+              online_value = 1 if bool(user['isOnline']) else 2
+
+          print("emp_id:", emp_id, "delegate_active:", delegate_active, "online_value:", online_value)
 
           # 計算這段日期內的 elapsedActive_time 總和
           total_elapsed = (
@@ -3055,18 +3235,25 @@ def get_users_deps_processes():
           m = (total_elapsed % 3600) // 60
           sec = total_elapsed % 60
           total_str = f"{h:02d}:{m:02d}:{sec:02d}"
+
+          #online_value = 0 if str(emp_id).strip() in delegate_user_ids else random.randint(1, 2)   # 或你原本非代理時要給的值
+          dep_name = user['dep_name'] or ''
+          dep_name = dep_name.split('-', 1)[1] if '-' in dep_name else dep_name
+
           index = index + 1
           _user_object = {
             'id': index,
             'emp_id': emp_id,
             'emp_name': user['emp_name'],
-            'dep_name': user['dep_name'].split('-', 1)[1],
+            #'dep_name': user['dep_name'].split('-', 1)[1],
+            'dep_name': dep_name,
 
             #'elapsedActive_range_secs':  total_elapsed,
             #'elapsedActive_range_str':  total_str,
             #'elapsedActive_select':  select_days,
             'workHours': total_str,
-            'online': random.randint(0, 2),
+            #'online': random.randint(0, 2),
+            'online': online_value,
           }
 
           _user_results.append(_user_object)
@@ -3736,6 +3923,7 @@ def get_abnormal_causes_by_history():
         continue
 
 
+"""
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
     print("getWarehouseForAssembleByHistory...")
@@ -3783,47 +3971,16 @@ def get_Warehouse_For_assemble_by_history():
         rows.extend([(m, a, p, "process")  for (m, a, p) in p_q.all()])
         #print("rows:", len(rows), rows)
 
-        """
-        for m, a in q.all():
-            rows.append({
-                "line": "assemble",
-                "material_id": m.id,
-                "order_num": m.order_num,
-                "material_num": m.material_num,
-                "assemble_id": a.id,
-                "allOk_qty": a.allOk_qty,
-            })
-
-        for m, a in p_q.all():
-            rows.append({
-                "line": "process",
-                "material_id": m.id,
-                "order_num": m.order_num,
-                "material_num": m.material_num,
-                "assemble_id": a.id,
-                "allOk_qty": a.allOk_qty,
-            })
-        """
-
         def g(obj, name, default=None):
             return getattr(obj, name, default) if obj is not None else default
-        """
-        def safe_str(v, default=''):
-          try:
-            return '' if v is None else str(v)
-          except Exception:
-            return default
-        """
+
         results = []
         index=0
-        #for m, a, p in rows:
         for m, a, p, line in rows:
             isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
             isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
 
-            isStockIn_abnormal_qty = bool(g(a, "abnormal_qty", 0))
-            isStockIn_allOk_qty = bool(g(a, "allOk_qty", 0))
-            print("history_flag, isWarehouseStationShow, isStockIn:", history_flag, isWarehouseStationShow, isStockIn)
+            #print("history_flag, isWarehouseStationShow, isStockIn:", history_flag, isWarehouseStationShow, isStockIn)
 
             # history_flag=False：只顯示 未入庫（isStockIn==0）
             # history_flag=True：只顯示 已入庫（isStockIn==1）
@@ -3837,47 +3994,13 @@ def get_Warehouse_For_assemble_by_history():
             abn_qty = int(g(a, "abnormal_qty", 0) or 0)
             #a_allok = int(g(a, "allOk_qty", 0) or 0)
             a_allok = int(g(a, "completed_qty", 0) or 0)
-            print("$$$$$ line, abn_qty, a_allok: ", line, abn_qty, a_allok)
-            """
-            if line == "process" and abn_qty > 0 and a_allok == 0:
-                print("process ok")
-                good_a = (
-                    s.query(P_Assemble)
-                    .filter(P_Assemble.material_id == g(a, "material_id"))
-                    .order_by(P_Assemble.must_receive_end_qty.desc(), P_Assemble.id.asc())
-                    .first()
-                )
-
-                if good_a:
-                    a = good_a  # ✅ 直接換成良品那筆再往下跑
-
-                    isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
-                    isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
-
-                    # ✅ 仍然排除「報廢拆單那筆」(避免只剩它被顯示)
-                    abn_qty = int(g(a, "abnormal_qty", 0) or 0)
-                    a_allok = int(g(a, "allOk_qty", 0) or 0)
-                    print("#####line, abn_qty, a_allok: ", line, abn_qty, a_allok)
-            """
-            print("line, abn_qty, a_allok: ", line, abn_qty, a_allok)
-            print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
+            #print("$$$$$ line, abn_qty, a_allok: ", line, abn_qty, a_allok)
+            #print("line, abn_qty, a_allok: ", line, abn_qty, a_allok)
+            #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
 
             if abn_qty > 0 and a_allok == 0:
                 continue
-            """
-            if history_flag:
-                # 歷史：已入庫 + 已進歷史
-                if not isWarehouseStationShow:
-                    continue
-                if not isStockIn:
-                    continue
-            else:
-                # 等待入庫：未入庫 + 未進歷史
-                if not isWarehouseStationShow:
-                    continue
-                if isStockIn:
-                    continue
-            """
+
             if history_flag:
                 # 歷史：已入庫 + 已進歷史
                 if not isStockIn:
@@ -3893,7 +4016,8 @@ def get_Warehouse_For_assemble_by_history():
                     continue
                 # 加工線且不必入庫, 或者, 加工線且需要入庫且已經入庫
                 #if line == "process" and (not isStockIn or not isWarehouseStationShow):
-                if line == ("process" and not isStockIn) or ("process" and isStockIn and isWarehouseStationShow):
+                #if line == ("process" and not isStockIn) or ("process" and isStockIn and isWarehouseStationShow):
+                if line == "process" and (( not isStockIn) or (isStockIn and isWarehouseStationShow)):
                    continue
 
             print("all step ok...", line)
@@ -3901,29 +4025,15 @@ def get_Warehouse_For_assemble_by_history():
             material_id=g(m, "id")
             assemble_id=g(a, "id")
             input_allOk_disable=g(a, "input_allOk_disable")
-            #ok, process_total = need_more_process_qty(k1=material_id, a1=assemble_id, t1=31, must_qty=0, s=s)
-            """
-            assemble_total = sum_process_work_qty(
-                s, Process, material_id, assemble_id, process_type=31
-            )
 
-            process_total = sum_process_work_qty(
-                s, P_Process, material_id, assemble_id, process_type=31
-            )
-
-            total_allOk_qty = assemble_total + process_total
-            """
             ProcessCls = Process if line == "assemble" else P_Process
 
             total_allOk_qty = sum_process_work_qty(
                 s, ProcessCls, material_id, assemble_id, process_type=31
             )
 
-            #print("process_total:", process_total)
-            #print("assemble_total:", assemble_total)
-            #print("process_total:", process_total)
-            print("total_allOk_qty:", total_allOk_qty)
-
+            delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
 
             index=index+1
             results.append({
@@ -3934,7 +4044,7 @@ def get_Warehouse_For_assemble_by_history():
                 "req_qty":              g(m, "material_qty", 0),
                 "date":                 g(m, "material_delivery_date", ""),
                 "input_allOk_disable":  input_allOk_disable,
-                "allOk_disable":  g(a, "input_allOk_disable"),
+                "allOk_disable":        g(a, "input_allOk_disable"),
 
                 "shortage_note":        g(m, "shortage_note", ""),
                 "comment":              cleaned_comment,
@@ -3942,10 +4052,13 @@ def get_Warehouse_For_assemble_by_history():
 
                 "process_id":           g(p, "id"),
                 "assemble_id":          assemble_id,
-                "delivery_qty":         g(p, "process_work_time_qty"),  # 到庫數量
-                "must_allOk_qty":       g(m, "must_allOk_qty", 0),      # 應入庫總數量
+                #"delivery_qty":         g(p, "process_work_time_qty"),  # 到庫數量
+                "delivery_qty":         delivery_qty,  # 到庫數量
+                #"must_allOk_qty":       g(m, "must_allOk_qty", 0),      # 應入庫總數量
+                "must_allOk_qty":       remain_allOk_qty,      # 應入庫總數量
                 "total_allOk_qty":      total_allOk_qty,                # 已入庫總數量
-                "allOk_qty":            g(a, "allOk_qty", 0),           # 入庫數量
+                #"allOk_qty":            g(a, "allOk_qty", 0),           # 入庫數量
+                "allOk_qty":            0,           # 入庫數量, 初始值設為0
                 "isWarehouseStationShow": isWarehouseStationShow,
 
                 "normal_work_time":     g(p, "normal_work_time", 0),
@@ -3963,6 +4076,259 @@ def get_Warehouse_For_assemble_by_history():
             "status": len(results) > 0,
             "warehouse_for_assemble": results
         })
+    finally:
+        s.close()
+"""
+
+
+@getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
+def get_Warehouse_For_assemble_by_history():
+    print("getWarehouseForAssembleByHistory...")
+
+    data = request.json or {}
+    history_flag = bool(data.get('history_flag', False))
+
+    def to_int(v, default=0):
+        try:
+            if v is None:
+                return default
+            return int(v)
+        except Exception:
+            return default
+
+    s = Session()
+    try:
+        # ------------------------------------------------------------
+        # 1) 先把組裝線 / 加工線 的主查詢都壓到 SQL 層處理
+        #    只撈需要的欄位，避免 Material/Assemble/Process 整個 ORM 物件進來
+        # ------------------------------------------------------------
+        aq = (
+            s.query(
+                Material.id.label("material_id"),
+                Material.order_num.label("order_num"),
+                Material.material_num.label("material_num"),
+                Material.material_qty.label("req_qty"),
+                Material.material_delivery_date.label("date"),
+                Material.shortage_note.label("shortage_note"),
+                Material.material_comment.label("material_comment"),
+                Material.Incoming2_Abnormal.label("Incoming2_Abnormal"),
+
+                Assemble.id.label("assemble_id"),
+                Assemble.input_allOk_disable.label("input_allOk_disable"),
+                literal(0).label("isStockIn"),
+                #Assemble.isStockIn.label("isStockIn"),
+                Assemble.isWarehouseStationShow.label("isWarehouseStationShow"),
+                Assemble.completed_qty.label("completed_qty"),
+                Assemble.abnormal_qty.label("abnormal_qty"),
+                Assemble.must_receive_end_qty.label("must_receive_end_qty"),
+                Assemble.total_ask_qty_end.label("total_ask_qty_end"),
+
+                Process.id.label("process_id"),
+                Process.process_work_time_qty.label("delivery_qty"),
+                Process.normal_work_time.label("normal_work_time"),
+
+                literal("assemble").label("line"),
+            )
+            .join(Process, Process.material_id == Material.id)
+            .join(Assemble, Assemble.id == Process.assemble_id)
+            .filter(Process.has_started.is_(True))
+            .filter(Process.end_time.isnot(None))
+            .filter(Process.end_time != '')
+            .filter(Process.normal_work_time.in_([2, 3]))
+        )
+
+        pq = (
+            s.query(
+                P_Material.id.label("material_id"),
+                P_Material.order_num.label("order_num"),
+                P_Material.material_num.label("material_num"),
+                P_Material.material_qty.label("req_qty"),
+                P_Material.material_delivery_date.label("date"),
+                P_Material.shortage_note.label("shortage_note"),
+                P_Material.material_comment.label("material_comment"),
+                P_Material.Incoming2_Abnormal.label("Incoming2_Abnormal"),
+
+                P_Assemble.id.label("assemble_id"),
+                P_Assemble.input_allOk_disable.label("input_allOk_disable"),
+                P_Assemble.isStockIn.label("isStockIn"),
+                P_Assemble.isWarehouseStationShow.label("isWarehouseStationShow"),
+                P_Assemble.completed_qty.label("completed_qty"),
+                P_Assemble.abnormal_qty.label("abnormal_qty"),
+                P_Assemble.must_receive_end_qty.label("must_receive_end_qty"),
+                P_Assemble.total_ask_qty_end.label("total_ask_qty_end"),
+
+                P_Process.id.label("process_id"),
+                P_Process.process_work_time_qty.label("delivery_qty"),
+                P_Process.normal_work_time.label("normal_work_time"),
+
+                literal("process").label("line"),
+            )
+            .join(P_Process, P_Process.material_id == P_Material.id)
+            .join(P_Assemble, P_Assemble.id == P_Process.assemble_id)
+            .filter(P_Process.has_started.is_(True))
+            .filter(P_Process.end_time.isnot(None))
+            .filter(P_Process.end_time != '')
+            .filter(P_Process.normal_work_time.in_([3]))
+        )
+
+        # ------------------------------------------------------------
+        # 2) history_flag 的條件盡量提前在 SQL 過濾
+        # ------------------------------------------------------------
+        if history_flag:
+            # 歷史：已入庫 + 已進歷史
+            #aq = aq.filter(Assemble.isStockIn == 1, Assemble.isWarehouseStationShow == 1)
+            aq = aq.filter(false())
+            pq = pq.filter(P_Assemble.isStockIn == 1, P_Assemble.isWarehouseStationShow == 1)
+        else:
+            # 等待入庫：
+            # 組裝線 -> 未進歷史
+            aq = aq.filter(or_(Assemble.isWarehouseStationShow.is_(False), Assemble.isWarehouseStationShow == 0))
+
+            # 加工線 -> 必須已入庫，但未進歷史
+            pq = pq.filter(P_Assemble.isStockIn == 1).filter(
+                or_(P_Assemble.isWarehouseStationShow.is_(False), P_Assemble.isWarehouseStationShow == 0)
+            )
+
+        # 報廢拆單筆（abnormal_qty > 0 且 completed_qty == 0）直接在 SQL 排除
+        aq = aq.filter(
+            not_(
+                and_(
+                    func.coalesce(Assemble.abnormal_qty, 0) > 0,
+                    func.coalesce(Assemble.completed_qty, 0) == 0
+                )
+            )
+        )
+
+        pq = pq.filter(
+            not_(
+                and_(
+                    func.coalesce(P_Assemble.abnormal_qty, 0) > 0,
+                    func.coalesce(P_Assemble.completed_qty, 0) == 0
+                )
+            )
+        )
+
+        # 一次撈回
+        a_rows = aq.all()
+        p_rows = pq.all()
+
+        rows = list(a_rows) + list(p_rows)
+
+        if not rows:
+            return jsonify({
+                "status": False,
+                "warehouse_for_assemble": []
+            })
+
+        # ------------------------------------------------------------
+        # 3) 批次彙總 process_type=31 的已入庫總數
+        #    取代逐筆 sum_process_work_qty()，避免 N+1 query
+        # ------------------------------------------------------------
+        a_keys = [(r.material_id, r.assemble_id) for r in a_rows]
+        p_keys = [(r.material_id, r.assemble_id) for r in p_rows]
+
+        a_total_map = {}
+        if a_keys:
+            a_total_rows = (
+                s.query(
+                    Process.material_id,
+                    Process.assemble_id,
+                    func.coalesce(func.sum(Process.process_work_time_qty), 0).label("total_allOk_qty")
+                )
+                .filter(Process.process_type == 31)
+                .filter(Process.has_started.is_(True))
+                .filter(Process.end_time.isnot(None))
+                .filter(Process.end_time != '')
+                .filter(tuple_(Process.material_id, Process.assemble_id).in_(a_keys))
+                .group_by(Process.material_id, Process.assemble_id)
+                .all()
+            )
+            a_total_map = {
+                (r.material_id, r.assemble_id): int(r.total_allOk_qty or 0)
+                for r in a_total_rows
+            }
+
+        p_total_map = {}
+        if p_keys:
+            p_total_rows = (
+                s.query(
+                    P_Process.material_id,
+                    P_Process.assemble_id,
+                    func.coalesce(func.sum(P_Process.process_work_time_qty), 0).label("total_allOk_qty")
+                )
+                .filter(P_Process.process_type == 31)
+                .filter(P_Process.has_started.is_(True))
+                .filter(P_Process.end_time.isnot(None))
+                .filter(P_Process.end_time != '')
+                .filter(tuple_(P_Process.material_id, P_Process.assemble_id).in_(p_keys))
+                .group_by(P_Process.material_id, P_Process.assemble_id)
+                .all()
+            )
+            p_total_map = {
+                (r.material_id, r.assemble_id): int(r.total_allOk_qty or 0)
+                for r in p_total_rows
+            }
+
+        # ------------------------------------------------------------
+        # 4) 組結果
+        # ------------------------------------------------------------
+        results = []
+        index = 0
+
+        for r in rows:
+            material_id = r.material_id
+            assemble_id = r.assemble_id
+            line = r.line
+
+            delivery_qty = to_int(r.delivery_qty, 0)
+
+            if line == "assemble":
+                total_allOk_qty = a_total_map.get((material_id, assemble_id), 0)
+            else:
+                total_allOk_qty = p_total_map.get((material_id, assemble_id), 0)
+
+            remain_allOk_qty = max(0, delivery_qty - total_allOk_qty)
+
+            index += 1
+            results.append({
+                "index": index,
+                "id": material_id,
+                "order_num": r.order_num or "",
+                "material_num": r.material_num or "",
+                "req_qty": to_int(r.req_qty, 0),
+                "date": r.date or "",
+                "input_allOk_disable": r.input_allOk_disable,
+                "allOk_disable": r.input_allOk_disable,
+
+                "shortage_note": r.shortage_note or "",
+                "comment": (r.material_comment or "").strip(),
+                "Incoming2_Abnormal": (r.Incoming2_Abnormal == ""),
+
+                "process_id": r.process_id,
+                "assemble_id": assemble_id,
+                "delivery_qty": delivery_qty,
+                "must_allOk_qty": remain_allOk_qty,
+                "total_allOk_qty": total_allOk_qty,
+                "allOk_qty": 0,
+                "isWarehouseStationShow": bool(to_int(r.isWarehouseStationShow, 0) == 1),
+
+                "normal_work_time": to_int(r.normal_work_time, 0),
+                "tooltipVisible": False,
+                "line": line,
+
+                "must_receive_end_qty": to_int(r.must_receive_end_qty, 0),
+                "total_ask_qty_end": to_int(r.total_ask_qty_end, 0),
+                "abnormal_qty": to_int(r.abnormal_qty, 0),
+            })
+
+        #results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
+        results.sort(key=lambda x: (x["date"] or ""), reverse=True)
+
+        return jsonify({
+            "status": len(results) > 0,
+            "warehouse_for_assemble": results
+        })
+
     finally:
         s.close()
 

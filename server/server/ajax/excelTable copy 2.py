@@ -18,8 +18,8 @@ import pandas as pd
 import openpyxl
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from database.tables import User, Session, Material, Bom, Assemble, Product
-from database.tables import ProcessedFile
+from server.database.x_tables import User, Session, Material, Bom, Assemble, Product
+from server.database.x_tables import ProcessedFile
 from flask import Blueprint, jsonify, request, current_app
 
 #from werkzeug.utils import secure_filename

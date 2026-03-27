@@ -3923,19 +3923,29 @@ def get_abnormal_causes_by_history():
         continue
 
 
-"""
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
     print("getWarehouseForAssembleByHistory...")
 
     data = request.json
     #history_flag = data.get('history_flag')
-    history_flag = bool(data.get('history_flag', False))
-    #print("history_flag:", history_flag)
+    #history_flag = bool(data.get('history_flag', False))
+    raw_history_flag = data.get('history_flag', False)
+    if isinstance(raw_history_flag, str):
+        history_flag = raw_history_flag.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+    else:
+        history_flag = bool(raw_history_flag)
+    print("history_flag:", history_flag)
 
     def to_int01(v, default=0):
       try:
           return 1 if int(v) == 1 else 0
+      except Exception:
+          return default
+
+    def to_int(v, default=0):
+      try:
+          return int(v)
       except Exception:
           return default
 
@@ -3969,16 +3979,30 @@ def get_Warehouse_For_assemble_by_history():
         rows = []
         rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
         rows.extend([(m, a, p, "process")  for (m, a, p) in p_q.all()])
-        #print("rows:", len(rows), rows)
+        print("rows:", len(rows))
 
         def g(obj, name, default=None):
             return getattr(obj, name, default) if obj is not None else default
 
+        seen = set()
         results = []
         index=0
         for m, a, p, line in rows:
-            isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
-            isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
+
+            key = (line, g(m, "id"), g(a, "id"))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            #isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
+            if line == "process":
+              isStockIn = g(a, "isStockIn", 1)
+            if line == "assemble":
+              isStockIn = 1
+
+            #isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
+            isWarehouseStationShow = g(a, "isWarehouseStationShow", 0)
+            isAllOk = g(m, "isAllOk", 0)
 
             #print("history_flag, isWarehouseStationShow, isStockIn:", history_flag, isWarehouseStationShow, isStockIn)
 
@@ -3998,9 +4022,37 @@ def get_Warehouse_For_assemble_by_history():
             #print("line, abn_qty, a_allok: ", line, abn_qty, a_allok)
             #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
 
+            if m.id==1316:
+                print("line, history_flag, isStockIn, isWarehouseStationShow, isAllOk: ")
+                print(m.id, line, history_flag, isStockIn, isWarehouseStationShow, isAllOk)
+                print(abn_qty ,a_allok)
+
             if abn_qty > 0 and a_allok == 0:
                 continue
 
+            if history_flag:
+              # 歷史紀錄：已入庫
+              if not isStockIn:
+                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
+                continue
+              if not isWarehouseStationShow:
+                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
+                continue
+            else:
+              #print("line, history_flag, isStockIn, isWarehouseStationShow: ", m.order_num, line, history_flag, isStockIn, isWarehouseStationShow)
+              # 等待入庫：已到成品區、可顯示在入庫畫面、但尚未入庫
+              #if isWarehouseStationShow:
+              if line == "assemble" and isWarehouseStationShow and isAllOk:
+
+                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", m.id, line, history_flag, isStockIn, isWarehouseStationShow)
+                continue
+              #if isStockIn:   # 針對加工線
+              if line == "process" and (( not isStockIn) or (isStockIn and isWarehouseStationShow)):
+
+                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
+                continue
+
+            """
             if history_flag:
                 # 歷史：已入庫 + 已進歷史
                 if not isStockIn:
@@ -4019,8 +4071,9 @@ def get_Warehouse_For_assemble_by_history():
                 #if line == ("process" and not isStockIn) or ("process" and isStockIn and isWarehouseStationShow):
                 if line == "process" and (( not isStockIn) or (isStockIn and isWarehouseStationShow)):
                    continue
+            """
 
-            print("all step ok...", line)
+            #print("all step ok...", line)
             cleaned_comment = (g(m, "material_comment", "") or "").strip()
             material_id=g(m, "id")
             assemble_id=g(a, "id")
@@ -4035,20 +4088,28 @@ def get_Warehouse_For_assemble_by_history():
             delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
             remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
 
+            can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
+
             index=index+1
             results.append({
-                "index":  index,
-                "id":                   material_id,
-                "order_num":            g(m, "order_num", ""),
-                "material_num":         g(m, "material_num", ""),
-                "req_qty":              g(m, "material_qty", 0),
+                "index": index,
+                "id": material_id,
+                "order_num": g(m, "order_num", ""),
+                "material_num": g(m, "material_num", ""),
+                "req_qty": g(m, "material_qty", 0),
                 "date":                 g(m, "material_delivery_date", ""),
-                "input_allOk_disable":  input_allOk_disable,
-                "allOk_disable":        g(a, "input_allOk_disable"),
+
+                #"input_allOk_disable":  input_allOk_disable,
+                #"allOk_disable":        g(a, "input_allOk_disable"),
+                "input_allOk_disable": (not can_input_stockin),
+                "allOk_disable": (not can_input_stockin),
 
                 "shortage_note":        g(m, "shortage_note", ""),
                 "comment":              cleaned_comment,
-                "Incoming2_Abnormal":   (g(m, "Incoming2_Abnormal", "") == ""),
+
+                #"Incoming2_Abnormal":   (g(m, "Incoming2_Abnormal", "") == ""),
+                #"Incoming2_Abnormal": to_int01(g(m, "Incoming2_Abnormal", 0), 0) == 1,
+                "Incoming2_Abnormal": bool(g(m, "Incoming2_Abnormal", False)),
 
                 "process_id":           g(p, "id"),
                 "assemble_id":          assemble_id,
@@ -4058,7 +4119,8 @@ def get_Warehouse_For_assemble_by_history():
                 "must_allOk_qty":       remain_allOk_qty,      # 應入庫總數量
                 "total_allOk_qty":      total_allOk_qty,                # 已入庫總數量
                 #"allOk_qty":            g(a, "allOk_qty", 0),           # 入庫數量
-                "allOk_qty":            0,           # 入庫數量, 初始值設為0
+                #"allOk_qty":            0,           # 入庫數量, 初始值設為0
+                "allOk_qty": to_int(g(a, "allOk_qty", 0), 0),
                 "isWarehouseStationShow": isWarehouseStationShow,
 
                 "normal_work_time":     g(p, "normal_work_time", 0),
@@ -4078,9 +4140,9 @@ def get_Warehouse_For_assemble_by_history():
         })
     finally:
         s.close()
+
+
 """
-
-
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
     print("getWarehouseForAssembleByHistory...")
@@ -4331,7 +4393,7 @@ def get_Warehouse_For_assemble_by_history():
 
     finally:
         s.close()
-
+"""
 
 # 取得訂單「組裝異常」相關的歷史資訊清單
 @getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])

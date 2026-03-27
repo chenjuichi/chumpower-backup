@@ -2,62 +2,22 @@
 chcp 65001 > nul
 setlocal
 
-:: ---------- 自動提升為系統管理員 ----------
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Requesting administrator privilege...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
+echo 設定 Chrome 下載政策...
 
-echo ============================================
-echo  Chrome Policy Auto Setup
-echo  (Create directories + create .reg + import)
-echo ============================================
-echo.
+:: 建立政策路徑
+reg add "HKLM\Software\Policies\Google\Chrome" /f
 
-REM Create policy folder (usually not required, but for safety)
-echo Creating policy directory...
-mkdir "C:\Windows\System32\GroupPolicy\Machine" 2>nul
-mkdir "C:\Windows\System32\GroupPolicy\User" 2>nul
+:: 1. 關閉危險下載警告（核心）
+reg add "HKLM\Software\Policies\Google\Chrome" /v DownloadRestrictions /t REG_DWORD /d 0 /f
 
-REM Generate the reg file
-echo Creating chrome_policies.reg...
-(
-echo Windows Registry Editor Version 5.00
-echo.
-echo [HKEY_LOCAL_MACHINE\Software\Policies\Google\Chrome]
-echo "WebRtcAllowLegacyGlobalIpAddress"=dword:00000001
-echo "TreatInsecureOriginAsSecure"="http://192.168.68.56:8060,http://192.168.68.56"
-echo "InsecureDownloadWarningsEnabled"=dword:00000000
-echo "ExemptFileTypeDownloadWarnings"="bat,pdf"
-) > "%temp%\chrome_policies.reg"
+:: 2. 允許特定副檔名
+reg add "HKLM\Software\Policies\Google\Chrome" /v ExemptFileTypeDownloadWarnings /t REG_SZ /d "exe,bat,msi,zip" /f
 
-if not exist "%temp%\chrome_policies.reg" (
-    echo Failed to create reg file.
-    pause
-    exit /b 1
-)
+:: 3. 允許內網當安全來源（很重要）
+reg add "HKLM\Software\Policies\Google\Chrome" /v TreatInsecureOriginAsSecure /t REG_SZ /d "http://192.168.68.56" /f
 
-echo Done.
-echo.
+:: 4. 關閉不安全下載警告
+reg add "HKLM\Software\Policies\Google\Chrome" /v InsecureDownloadWarningsEnabled /t REG_DWORD /d 0 /f
 
-REM Import the registry entries
-echo Importing chrome_policies.reg ...
-reg import "%temp%\chrome_policies.reg"
-
-if %errorlevel% neq 0 (
-    echo.
-    echo ERROR: Failed to import registry.
-    echo Please confirm this BAT is running as Administrator.
-    pause
-    exit /b 1
-)
-
-echo.
-echo ============================================
-echo  Completed!
-echo  Restart Chrome and check: chrome://policy
-echo ============================================
+echo 完成，請重新開啟 Chrome
 pause
-exit /b 0

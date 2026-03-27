@@ -386,7 +386,9 @@ export const apiOperation = (operation, path, payload) => {
 
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
-              path == '/exportToExcelForError' || path == '/exportToExcelForAssembleInformation' ||
+              path == '/exportToExcelForError' ||
+              path == '/exportToExcelForAssembleInformation' ||
+              path == '/exportToExcelForAssembleInformationByWorkDate' ||
   path == '/dialog2StartProcess'      || path == '/dialog2UpdateProcess'      || path == '/dialog2ToggleProcess'      || path == '/dialog2CloseProcess' ||
   path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin') {
             return res.data;

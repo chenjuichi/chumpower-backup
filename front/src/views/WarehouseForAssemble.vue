@@ -218,6 +218,7 @@
     <!-- 自訂 應入庫數量 欄位資料欄位 -->
     <template v-slot:item.must_allOk_qty="{ item }">
       <div style="display:flex; align-items:center; left:25px; position:relative;">
+      <!--
         <v-icon
           v-if="!history"
           style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
@@ -229,7 +230,7 @@
         >
           mdi-bell-plus
         </v-icon>
-
+      -->
         <span style="margin-left: 15px;">
           <!--{{ item.must_allOk_qty }}-->
           {{ getRemainQty(item) }}
@@ -1168,11 +1169,23 @@ const onClickWarehouseIn = async () => {
       const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
 
       console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
-
+      /*
       const productPayload = {
         material_id: current_material_id,
         assemble_id: current_assemble_id,
         process_id: current_process_id,
+        user_id: currentUser.value?.empID ?? '',
+        line_difference: (current_line === 'process') ? 1 : 0,
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+        delivery_qty: Number(row.delivery_qty) || 0,
+        assemble_qty: 0,
+      };
+      */
+      const productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
         user_id: currentUser.value?.empID ?? '',
         line_difference: (current_line === 'process') ? 1 : 0,
         allOk_qty: d2,

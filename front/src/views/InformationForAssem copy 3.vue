@@ -51,31 +51,7 @@
     <!--日期範圍-->
     <v-col cols="3" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
       <Transition name="slide">
-        <!--<div v-if="showFields" style="min-width:290px;">-->
-        <div
-          v-if="showFields"
-          style="
-            min-width:290px;
-            display:flex;
-            flex-direction:column;
-            gap:10px;
-          "
-        >
-          <v-radio-group
-            v-model="select_date"
-            inline
-            style="position:relative; top:30px; right:-50px; font-size:14px;"
-          >
-            <v-radio
-              label="交期"
-              value="1"
-            ></v-radio>
-            <v-radio
-              label="工作日期"
-              value="2"
-            ></v-radio>
-          </v-radio-group>
-
+        <div v-if="showFields" style="min-width:290px;">
           <v-menu
             v-model="menuOpen"
             :close-on-content-click="false"
@@ -91,13 +67,12 @@
             <template #activator="{ props }">
               <v-text-field
                 v-bind="props"
-
-                :label="select_date === '1' ? '交期範圍' : '工作日期範圍'"
+                label="交期範圍"
                 v-model="formattedDateRange"
                 readonly
                 variant="underlined"
                 density="compact"
-
+                style="margin-top:20px;"
                 placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
                 prepend-icon="mdi-calendar-check"
                 class="dateicon"
@@ -593,7 +568,6 @@ const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
 
 const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
 const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
-const exportToExcelForAssembleInformationByWorkDate = apiOperation('post', '/exportToExcelForAssembleInformationByWorkDate');
 const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
@@ -620,8 +594,6 @@ const today = new Date()
 const menuKey = ref(0)
 const settingDefaultRange = ref(false)
 
-const select_date = ref("1");
-
 const dpRange = ref(null)             // 外部值（清空用 null，不要 []）
 const dpRange2 = ref([])
 const dpInternal = ref(null)          // 內部值：選取當下就會更新
@@ -639,7 +611,7 @@ const selectedOrderNums = ref([]);      // v-select multiple 選到的工單
 const screenWidth = ref(window.innerWidth);
 
 // 取得今日日期 (格式：YYYY/MM/DD)
-const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
+//const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
 
 const formatDate = (date) => {
   const y = date.getFullYear()
@@ -750,12 +722,10 @@ watch(menuOpen, (open) => {
     // 每次開都回今天那個月
     menuKey.value++
 
-    if (select_date.value === '1') {
-      //如果希望「使用者已經選過日期就不要覆蓋」
-      if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
-        // 每次開都預設今天~+7天
-        setDefaultRange()
-      }
+    //如果希望「使用者已經選過日期就不要覆蓋」
+    if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
+      // 每次開都預設今天~+7天
+      setDefaultRange()
     }
   }
 })
@@ -855,8 +825,7 @@ const isInformationEmpty = computed(() => {
 // 過濾符合條件的資訊
 const filteredInformations = computed(() => {
   const filtered = informations.value.filter(item => {
-    //const isWithinDateRange = checkDateInRange(item.delivery_date);
-    const isWithinDateRange = select_date.value === '2' ? true : checkDateInRange(item.delivery_date)
+    const isWithinDateRange = checkDateInRange(item.delivery_date);
     const isWithinOrderRange = checkOrderInRange(item.order_num);
     return isWithinDateRange && isWithinOrderRange;
   });
@@ -1281,16 +1250,6 @@ const checkOrderInRange = (orderNum) => {
 };
 // == 工單範圍 v-select 用 end ==
 
-const formatDateYMD = (d) => {
-  if (!d) return ''
-  const dt = new Date(d)
-  if (Number.isNaN(dt.getTime())) return ''
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const day = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 const exportToExcelFun = async () => {
   console.log('InformationForAssem.vue, exportToExcelFun()...');
 
@@ -1321,29 +1280,11 @@ const exportToExcelFun = async () => {
 
   let payload = {
     blocks: updatedData,
-    name: currentUser.value?.name || '',
-    //select_date: select_date.value,
-    //start_date: dpRange2?.[0] ? dayjs(dpRange2[0]).format('YYYY-MM-DD') : '',
-    //end_date: dpRange2?.[1] ? dayjs(dpRange2[1]).format('YYYY-MM-DD') : '',
+    name: currentUser.value.name,
   };
 
-
   try {
-      let export_file_data=null;
-
-      if (select_date.value === '1') {
-        // 交期匯出
-        export_file_data = await exportToExcelForAssembleInformation(payload);
-      } else {
-        // 工作日期匯出
-        export_file_data = await exportToExcelForAssembleInformationByWorkDate({
-          start_date: formatDateYMD(dpRange2.value?.[0]),
-          end_date: formatDateYMD(dpRange2.value?.[1]),
-        })
-      }
-
-
-    //const export_file_data = await exportToExcelForAssembleInformation(payload);
+    const export_file_data = await exportToExcelForAssembleInformation(payload);
     console.log("export_file_dat:", export_file_data);
 
     if (export_file_data.status) {
@@ -1355,7 +1296,7 @@ const exportToExcelFun = async () => {
       let temp_message = '轉檔完成!';
       showSnackbar(temp_message, '#008184');
     } else {
-      showSnackbar(export_file_data.message, 'red accent-2');
+      showSnackbar(excel_file_data.message, 'red accent-2');
     }
   } catch (error) {
     console.error("Error during execution:", error);
@@ -1979,9 +1920,5 @@ const showSnackbar = (message, color) => {
   white-space: nowrap;
   position: relative;
   left: 70px;
-}
-
-:deep(.v-radio .v-label) {
-  color:blue;
 }
 </style>

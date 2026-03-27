@@ -9,8 +9,10 @@ import glob
 import math
 
 import pymysql
-from sqlalchemy import exc
-from sqlalchemy import exists
+from sqlalchemy import and_, or_, func, exists
+from sqlalchemy.orm import selectinload
+
+import traceback
 
 import re
 
@@ -22,11 +24,13 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.cell.rich_text import CellRichText, TextBlock, InlineFont
 from openpyxl.utils import get_column_letter
 
-from database.tables import User, Session, Material, Bom, Assemble, Product
-from database.p_tables import P_Material, P_Bom, P_Assemble, P_Product, P_Part
+from database.tables import User, Session, Material, Bom, Assemble, Product, Process
+from database.p_tables import P_Material, P_Bom, P_Assemble, P_Product, P_Part, P_Process
 
 from database.tables import ProcessedFile
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
+
+#from openpyxl.cell.text import InlineFont
 
 import warnings
 warnings.filterwarnings(
@@ -1232,6 +1236,458 @@ def export_to_excel_for_error():
       'file_name': file_name,
       # 'outputs': myDir,
     })
+
+
+@excelTable.route("/exportToExcelForAssembleInformationByWorkDate", methods=['POST'])
+def export_to_excel_for_assemble_information_by_work_date():
+    print("exportToExcelForAssembleInformationByWorkDate.")
+
+    request_data = request.get_json(force=True) or {}
+    #_name = request_data.get('name', '')
+    _name = ''
+    _start_date = (request_data.get('start_date') or '').strip()
+    _end_date = (request_data.get('end_date') or '').strip()
+    print("start_date, end_date:",_start_date, _end_date)
+
+    now = datetime.datetime.now()
+    today = now.strftime('%Y-%m-%d-%H%M')
+    file_name = f'組裝區工時資訊查詢_{today}.xlsx'
+    export_dir = r'C:\vue\chumpower\excel_export'
+    os.makedirs(export_dir, exist_ok=True)
+    current_file = os.path.join(export_dir, file_name)
+    temp_file = current_file.replace(".xlsx", "_temp.xlsx")
+
+    code_to_name = {
+        1:  '備料',
+        19: '等待AGV(備料區)',
+        2:  'AGV運行(備料區->組裝區)',
+        23: '雷射',
+        21: '組裝',
+        22: '檢驗',
+        29: '等待AGV(組裝區)',
+        3:  'AGV運行(組裝區->成品區)',
+        31: '成品入庫',
+        5:  '堆高機運行(備料區->組裝區)',
+        6:  '堆高機運行(組裝區->成品區)',
+    }
+
+    # process_type -> Material 標工欄位
+    ptype_to_sd_field = {
+        21: "sd_time_B109",
+        22: "sd_time_B110",
+        23: "sd_time_B106",
+    }
+
+    AGV_NAMES = {
+        "AGV1-1", "AGV1-2", "AGV2-1", "AGV2-2",
+        "(AGV1-1)", "(AGV1-2)", "(AGV2-1)", "(AGV2-2)"
+    }
+
+    def to_dt(val):
+        if not val:
+            return None
+        if isinstance(val, datetime.datetime):
+            return val
+        if isinstance(val, datetime.date):
+            return datetime.datetime.combine(val, datetime.time.min)
+
+        s = str(val).strip()
+        if not s or s == '0000-00-00 00:00:00':
+            return None
+
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y/%m/%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y/%m/%d %H:%M",
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+        ):
+            try:
+                return datetime.datetime.strptime(s, fmt)
+            except ValueError:
+                continue
+        return None
+
+    def fmt(dt):
+        return dt.strftime("%Y-%m-%d %H:%M:%S") if isinstance(dt, datetime.datetime) else ""
+
+    def _to_float(v, default=0.0):
+        try:
+            if v is None:
+                return default
+            s = str(v).strip()
+            if s == "" or s.lower() == "nan":
+                return default
+            return float(s)
+        except Exception:
+            return default
+
+    def _seconds_from_elapsed(val):
+        if val is None:
+            return None
+
+        if isinstance(val, (int, float)):
+            x = float(val)
+            return x / 1000.0 if x > 1e7 else x
+
+        if isinstance(val, str):
+            s = val.strip()
+            if not s:
+                return None
+            if ":" in s:
+                parts = s.split(":")
+                try:
+                    parts = [float(p) for p in parts]
+                    if len(parts) == 3:
+                        h, m, sec = parts
+                        return h * 3600 + m * 60 + sec
+                    if len(parts) == 2:
+                        m, sec = parts
+                        return m * 60 + sec
+                except Exception:
+                    return None
+            try:
+                x = float(s)
+                return x / 1000.0 if x > 1e7 else x
+            except Exception:
+                return None
+
+        return None
+
+    def get_active_seconds(process, start_dt, end_dt, effective_end):
+        for k in ("elapsedActive_time", "elapsed_active_time"):
+            v = getattr(process, k, None)
+            sec = _seconds_from_elapsed(v)
+            if sec is not None and sec >= 0:
+                return sec
+
+        if start_dt and effective_end:
+            total_sec = (effective_end - start_dt).total_seconds()
+            if total_sec < 0:
+                total_sec = 0
+
+            pause_sec = None
+            for k in ("pause_time", "paused_time", "pause_seconds", "paused_seconds"):
+                v = getattr(process, k, None)
+                pause_sec = _seconds_from_elapsed(v)
+                if pause_sec is not None and pause_sec >= 0:
+                    break
+
+            if pause_sec:
+                total_sec = max(total_sec - pause_sec, 0)
+
+            return total_sec
+
+        return None
+
+    def in_range(dt_obj, sd, ed):
+        if not dt_obj:
+            return False
+        d = dt_obj.date()
+        if sd and ed:
+            return sd <= d <= ed
+        if sd:
+            return d >= sd
+        if ed:
+            return d <= ed
+        return False
+
+    start_dt_filter = to_dt(_start_date)
+    end_dt_filter = to_dt(_end_date)
+    sd = start_dt_filter.date() if start_dt_filter else None
+    ed = end_dt_filter.date() if end_dt_filter else None
+
+    if not sd and not ed:
+        return jsonify({
+            'status': False,
+            'message': '請提供 start_date 或 end_date',
+            'file_name': ''
+        }), 200
+
+    if os.path.exists(current_file):
+        try:
+            os.remove(current_file)
+        except PermissionError:
+            return jsonify({
+                'status': False,
+                'message': '請關閉 Excel 檔案後重試',
+                'file_name': ''
+            }), 200
+
+    wb = Workbook()
+    ws = wb.worksheets[0]
+    ws.title = '組裝區在製品生產資訊查詢-' + _name
+    ws.sheet_properties.tabColor = '7da797'
+
+    header = [
+        '訂單編號', '物料', '說明', '交期', '訂單數量', '現況數量',
+        '廢品數量', '入庫數量',
+        '工序', '員工',
+        '開始時間', '結束時間',
+        '實際耗時(分)', '實際工時(分/PCS)', '單件標工(分/PCS)', '註記'
+    ]
+    ws.append(header)
+
+    for idx, _ in enumerate(header, start=1):
+        cell = ws.cell(row=1, column=idx)
+        cell.font = Font(name='微軟正黑體', color='FF0000', bold=True)
+        cell.alignment = Alignment(horizontal='center')
+        ws.column_dimensions[cell.column_letter].width = 16
+
+    ORDER_COL = header.index('訂單編號') + 1
+    PROCESS_COL = header.index('工序') + 1
+    EMP_COL = header.index('員工') + 1
+
+    fill_white = PatternFill("solid", fgColor="FFFFFFFF")
+    fill_gray = PatternFill("solid", fgColor="FFEDF2F4")
+
+    s = Session()
+    try:
+        # 先抓符合日期的 process
+        q = s.query(Process)
+
+        if sd and ed:
+            q = q.filter(
+                or_(
+                    and_(Process.begin_time.isnot(None), Process.begin_time != '', func.date(Process.begin_time) >= sd, func.date(Process.begin_time) <= ed),
+                    and_(Process.end_time.isnot(None), Process.end_time != '', func.date(Process.end_time) >= sd, func.date(Process.end_time) <= ed),
+                )
+            )
+        elif sd:
+            q = q.filter(
+                or_(
+                    and_(Process.begin_time.isnot(None), Process.begin_time != '', func.date(Process.begin_time) >= sd),
+                    and_(Process.end_time.isnot(None), Process.end_time != '', func.date(Process.end_time) >= sd),
+                )
+            )
+        elif ed:
+            q = q.filter(
+                or_(
+                    and_(Process.begin_time.isnot(None), Process.begin_time != '', func.date(Process.begin_time) <= ed),
+                    and_(Process.end_time.isnot(None), Process.end_time != '', func.date(Process.end_time) <= ed),
+                )
+            )
+
+        process_rows = (
+            q.order_by(Process.material_id.asc(), Process.begin_time.asc(), Process.id.asc())
+             .all()
+        )
+
+        if not process_rows:
+            wb.save(temp_file)
+            os.replace(temp_file, current_file)
+            return jsonify({
+                'status': True,
+                'message': current_file,
+                'file_name': file_name
+            }), 200
+
+        material_ids = sorted({int(p.material_id or 0) for p in process_rows if getattr(p, 'material_id', None)})
+        material_rows = s.query(Material).filter(Material.id.in_(material_ids)).all()
+        material_map = {m.id: m for m in material_rows}
+
+        assemble_rows = s.query(Assemble).filter(Assemble.material_id.in_(material_ids)).all()
+        assemble_map = {}
+        for a in assemble_rows:
+            assemble_map.setdefault(a.material_id, []).append(a)
+
+        product_rows = s.query(Product).filter(Product.material_id.in_(material_ids)).all()
+        product_map = {}
+        for p in product_rows:
+            product_map.setdefault(p.material_id, []).append(p)
+
+        prev_order_num = None
+        group_idx = -1
+
+        for record in process_rows:
+            material = material_map.get(int(record.material_id or 0))
+            if not material:
+                continue
+
+            assemble_records = assemble_map.get(material.id, [])
+            work_qty = material.total_delivery_qty or 0
+
+            # 比照 get_processes_by_order_num()：告警訊息來源
+            alarm_proc_record = [
+                a for a in assemble_records
+                if ((a.id == record.assemble_id and record.has_started))
+            ]
+
+            if len(alarm_proc_record) == 1:
+                assm_alarm = alarm_proc_record[0]
+                alarm_msg_enable = assm_alarm.alarm_enable
+                alarm_msg_isAssembleFirstAlarm = assm_alarm.isAssembleFirstAlarm
+
+                if not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm:
+                    alarm_msg_string = (assm_alarm.alarm_message or '').strip()
+                else:
+                    alarm_msg_string = ''
+
+                if record.process_type == 21:
+                    alarm_msg_string = assm_alarm.Incoming1_Abnormal
+            else:
+                alarm_msg_enable = True
+                alarm_msg_isAssembleFirstAlarm = True
+                alarm_msg_string = ''
+
+                if (
+                    material.Incoming0_Abnormal != '' and
+                    record.end_time != '' and
+                    record.begin_time != '' and
+                    record.assemble_id == 0 and
+                    record.process_type in [1, 5]
+                ):
+                    alarm_msg_string = material.Incoming0_Abnormal
+
+            # 比照 get_processes_by_order_num()：略過無效 begin_time
+            bt_raw = (record.begin_time or "").strip()
+            if (not bt_raw or bt_raw == "0000-00-00 00:00:00") and record.process_type not in {5, 6}:
+                continue
+
+            begin_dt = to_dt(record.begin_time)
+            end_dt = to_dt(record.end_time)
+
+            # 任一落在日期範圍內才輸出
+            if not (in_range(begin_dt, sd, ed) or in_range(end_dt, sd, ed)):
+                continue
+
+            order_num = str(material.order_num or '').strip()
+            if not order_num:
+                continue
+
+            if order_num != prev_order_num:
+                group_idx += 1
+                prev_order_num = order_num
+
+            group_fill = fill_white if (group_idx % 2 == 0) else fill_gray
+
+            status = code_to_name.get(record.process_type, '空白')
+
+            # 比照 get_processes_by_order_num()：工序名稱附員工
+            name_core = (record.user_id or "").lstrip("0")
+            if record.process_type in {1, 5, 6}:
+                process_name_base = status
+                emp_col = ''
+                process_name_display = status
+            else:
+                process_name_base = status
+                emp_col = '' if (record.user_id or '') in AGV_NAMES else name_core
+                process_name_display = status
+
+            # 現況數量
+            stockin_total = sum(_to_float(getattr(p, 'allOk_qty', 0), 0) for p in product_map.get(material.id, []))
+            current_qty = max(_to_float(work_qty, 0) - stockin_total, 0)
+            # 🔥 成品入庫 + 現況=0 → 顯示空白
+            if record.process_type == 31 and current_qty == 0:
+                current_qty = ''
+
+            # 廢品 / 入庫
+            assm = None
+            if record.assemble_id and int(record.assemble_id) != 0:
+                assm = next((a for a in assemble_records if a.id == record.assemble_id), None)
+
+            scrap_qty = ''
+            stockin_qty = ''
+
+            if assm:
+                aq = int(getattr(assm, "abnormal_qty", 0) or 0)
+                scrap_qty = aq if aq > 0 else ''
+
+                if record.process_type == 31:
+                    cq = int(getattr(assm, "completed_qty", 0) or 0)
+                    stockin_qty = cq if cq != 0 else ''
+
+            # 時間
+            effective_end = end_dt if end_dt is not None else (now if begin_dt else None)
+            active_sec = get_active_seconds(record, begin_dt, end_dt, effective_end)
+
+            actual_minutes = ''
+            actual_per_pcs = ''
+            if active_sec is not None:
+                actual_minutes = round(active_sec / 60.0, 2)
+                if work_qty and float(work_qty) > 0:
+                    actual_per_pcs = round(actual_minutes / float(work_qty), 4)
+
+            # ⭐ 成品入庫 + 時間為0 → 顯示空白
+            if record.process_type == 31:
+                if actual_minutes == 0:
+                    actual_minutes = ''
+                if actual_per_pcs == 0:
+                    actual_per_pcs = ''
+
+            std_per_pcs = ''
+            sd_field = ptype_to_sd_field.get(record.process_type)
+            if sd_field and hasattr(material, sd_field):
+                std_total_min = _to_float(getattr(material, sd_field, 0), 0)
+                if work_qty and float(work_qty) > 0 and std_total_min:
+                    std_per_pcs = round(std_total_min / float(work_qty), 4)
+
+            ws.append([
+                order_num,
+                material.material_num or '',
+                material.material_comment or '',
+                material.material_delivery_date or '',
+                work_qty,
+                current_qty,
+                scrap_qty,
+                stockin_qty,
+                process_name_display,
+                emp_col,
+                fmt(begin_dt),
+                fmt(end_dt),
+                actual_minutes,
+                actual_per_pcs,
+                std_per_pcs,
+                alarm_msg_string
+            ])
+
+            r = ws.max_row
+            c = ws.cell(row=r, column=ORDER_COL)
+            c.number_format = '@'
+            c.value = str(order_num)
+
+            for col_idx in range(1, len(header) + 1):
+                ws.cell(row=r, column=col_idx).fill = group_fill
+
+            if not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm:
+                cell = ws.cell(row=r, column=PROCESS_COL)
+                rt = CellRichText()
+                rt.append(TextBlock(InlineFont(rFont='微軟正黑體', sz=11), process_name_base))
+                rt.append(TextBlock(InlineFont(rFont='微軟正黑體', sz=11, color='FFFF0000'), " - 異常整修"))
+                cell.value = rt
+
+        last_col_letter = get_column_letter(ws.max_column)
+        ws.auto_filter.ref = f"A1:{last_col_letter}{ws.max_row}"
+
+        wb.save(temp_file)
+        os.replace(temp_file, current_file)
+
+        return jsonify({
+            'status': True,
+            'message': current_file,
+            'file_name': file_name
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except Exception:
+            pass
+
+        print("export_to_excel_for_assemble_information_by_work_date EXCEPTION:", repr(e))
+        traceback.print_exc()
+
+        return jsonify({
+            'status': False,
+            'message': f'匯出失敗: {e}',
+            'file_name': ''
+        }), 500
+
+    finally:
+        s.close()
 
 
 @excelTable.route("/exportToExcelForAssembleInformation", methods=['POST'])

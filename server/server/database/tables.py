@@ -10,7 +10,7 @@ from datetime import datetime, UTC
 
 from datetime import datetime as dt
 
-from sqlalchemy import Table, Column, Integer, String, DateTime, Boolean, func, ForeignKey, create_engine
+from sqlalchemy import Table, Column, Integer, String, DateTime, Text, JSON, Boolean, func, ForeignKey, create_engine
 from sqlalchemy import text
 from sqlalchemy.orm import relationship, backref, scoped_session, sessionmaker, declarative_base  #for 2.0版
 
@@ -27,6 +27,46 @@ try:
 except ImportError:
     # 直接在 database 資料夾裡用 python tables.py 執行
     import p_tables
+
+
+# ------------------------------------------------------------------
+
+
+def default_process_steps():
+    return {
+      "assemble": [
+        {"id": 1, "name": "組立", "checked": False},
+        {"id": 2, "name": "鋼珠", "checked": False},
+        {"id": 3, "name": "磨斜套", "checked": False},
+        {"id": 4, "name": "鎖緊", "checked": False},
+        {"id": 5, "name": "防鏽", "checked": False},
+        {"id": 6, "name": "黏側蓋", "checked": False},
+        {"id": 7, "name": "端磨", "checked": False},
+        {"id": 8, "name": "拉扭力", "checked": False},
+        {"id": 9, "name": "轉牙+敲pin", "checked": False},
+        {"id": 10, "name": "巡牙", "checked": False},
+        {"id": 11, "name": "量同心", "checked": False},
+        {"id": 12, "name": "磨pin", "checked": False},
+        {"id": 13, "name": "彈簧扣治具", "checked": False},
+        {"id": 14, "name": "合爪+量爪", "checked": False},
+        {"id": 15, "name": "前置作業", "checked": False},
+        {"id": 16, "name": "自動組立", "checked": False},
+        {"id": 17, "name": "自動鎖緊", "checked": False},
+      ],
+      "check": [
+        {"id": 1, "name": "檢驗", "checked": False},
+        {"id": 2, "name": "壓配+鎖螺絲", "checked": False},
+        {"id": 3, "name": "清洗", "checked": False},
+        {"id": 4, "name": "黏側蓋", "checked": False},
+        {"id": 5, "name": "動平衡", "checked": False},
+        {"id": 6, "name": "止洩帶+鎖水孔", "checked": False},
+        {"id": 7, "name": "塑膠環", "checked": False},
+        {"id": 8, "name": "防鏽", "checked": False},
+        {"id": 9, "name": "轉手感+防鏽", "checked": False},
+        {"id": 10, "name": "左右螺母", "checked": False},
+        {"id": 11, "name": "鎖螺絲", "checked": False},
+      ]
+    }
 
 
 # ------------------------------------------------------------------
@@ -272,6 +312,12 @@ class Material(BASE):
     _product =  relationship('Product', backref="material")         # 一對多(一),
     _process =  relationship('Process', backref="material")         # 一對多(一),
     material_stockin_date = Column(String(12))                      # 入庫日期
+
+    #process_steps = Column(Text, nullable=True)                     # 組裝/檢驗工序, 格式: id:name:checked(t/f),....;id:name:checked(t/f),....
+    process_steps = Column(JSON, default=default_process_steps)     # ial 是否
+
+    process_step_enable = Column(Boolean, default=False)            # +工序按鍵, false:失效, 允許做排程設定;
+
     create_at = Column(DateTime, server_default=func.now())
     update_time = Column(String(30))
 
@@ -380,6 +426,7 @@ class Assemble(BASE):
     __tablename__ = 'assemble'
 
     id = Column(Integer, primary_key=True, autoincrement=True)    #
+
     material_id = Column(Integer, ForeignKey('material.id'))      #material table id
     material_num = Column(String(20), nullable=False)             #料號
     material_comment = Column(String(70), nullable=False)         #料號說明
@@ -400,6 +447,7 @@ class Assemble(BASE):
     user_id = Column(String(8))                                   #工序作業員工工號(領料)
     writer_id = Column(String(8))                                 #工序異常資料填寫員工編號
     write_date = Column(String(18))                               #工序異常資料填寫日期 2025-05-12 add
+
     good_qty = Column(Integer, default=0)                         #確認良品數量
     total_good_qty = Column(Integer, default=0)                   #已交付確認良品總數
     non_good_qty = Column(Integer, default=0)                     #廢品數量
@@ -435,10 +483,12 @@ class Assemble(BASE):
     isAssembleFirstAlarm_message = Column(String(100), default='')
     isAssembleFirstAlarm_qty = Column(Integer, default=0)
 
-    whichStation = Column(Integer, default=1)                     # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
+    whichStation = Column(Integer, default=1)             # 目標途程, 目前途程為1:檢料, 2: 組裝, 3:成品
     show1_ok = Column(String(20), server_default='1')
     show2_ok = Column(String(20), server_default='0')
     show3_ok = Column(String(20), server_default='0')
+
+    schedule_id = Column(Integer, default = 0)            # +工序, material table內 process_steps json資料的id
 
     update_time = Column(String(30))
     create_at = Column(DateTime, server_default=func.now())

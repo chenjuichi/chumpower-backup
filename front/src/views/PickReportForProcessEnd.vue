@@ -957,6 +957,7 @@ onMounted(async () => {
         console.log('targetItem:', rec);
 
         const current_material_id = rec.id;
+        const current_assemble_id = rec.assemble_id;
 
         try {
           // Material：成品站/等待入庫/等待組裝中/目標途程=成品站
@@ -983,7 +984,7 @@ onMounted(async () => {
           // 關閉組裝站顯示
           await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
-
+            assemble_id: current_assemble_id,
             create_at: rec.create_at,
 
             record_name: 'isAssembleStationShow',
@@ -1930,6 +1931,7 @@ const callForklift = async () => {
         continue;
       }
       const mid = rec.id;
+      const current_assemble_id = rec.assemble_id;
 
       await updateMaterialRecord({
         id: mid,
@@ -1960,7 +1962,7 @@ const callForklift = async () => {
       // 關閉組裝站顯示
       await updateAssembleMustReceiveQtyByMaterialIDAndDate({
         material_id: mid,
-
+        assemble_id: current_assemble_id,
         create_at: rec.create_at,
 
         record_name: 'isAssembleStationShow',

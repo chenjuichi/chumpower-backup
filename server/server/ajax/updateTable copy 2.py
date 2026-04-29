@@ -17,7 +17,7 @@ from sqlalchemy import inspect
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import cast, Integer
+from sqlalchemy import and_
 
 from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
@@ -710,6 +710,7 @@ def update_user():
 def terminate_active():
     print("updateDelegate....")
 
+
     data = request.json
     user_id = int(data['user_id'])
     end_date = datetime.fromisoformat(data['end_date'].replace('Z','')) if data.get('end_date') else datetime.now()
@@ -898,7 +899,6 @@ def update_bom(material_id):
   })
 
 
-"""
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
   print("updateAssembleProcessStep....")
@@ -998,161 +998,6 @@ def update_assemble_process_step():
   return jsonify({
     'status': return_value
   })
-"""
-
-
-@updateTable.route('/updateAssembleProcessStep', methods=['POST'])
-def update_assemble_process_step():
-    print("updateAssembleProcessStep.")
-
-    data = request.get_json(silent=True) or {}
-
-    if 'id' not in data or 'assemble_id' not in data:
-        return jsonify({
-            "status": False,
-            "message": "Missing parameters 'id' or 'assemble_id'"
-        }), 400
-
-    material_id = data['id']
-    assemble_id = data['assemble_id']
-
-    s = Session()
-    try:
-        material_record = s.query(Material).filter_by(id=material_id).first()
-        if not material_record:
-            return jsonify({
-                "status": False,
-                "message": f"Material with id {material_id} not found"
-            }), 404
-
-        assemble_record = s.query(Assemble).filter_by(id=assemble_id, material_id=material_id).first()
-        if not assemble_record:
-            return jsonify({
-                "status": False,
-                "message": f"Assemble with id {assemble_id} and material_id {material_id} not found"
-            }), 404
-
-        # 只處理同一 material 的所有 assemble
-        assemble_records = (
-            s.query(Assemble)
-             .filter(Assemble.material_id == material_id)
-             .all()
-        )
-
-        if not assemble_records:
-            return jsonify({
-                "status": False,
-                "message": "No assemble rows found"
-            }), 200
-
-        # ------------------------------------------------------------
-        # 1) 只看 未完成(step > 0) 的 rows
-        # ------------------------------------------------------------
-        active_rows = []
-        for r in assemble_records:
-            try:
-                step = int(r.process_step_code or 0)
-            except Exception:
-                step = 0
-
-            if step > 0:
-                active_rows.append(r)
-
-        # 若全部都 0 -> material 完成
-        if not active_rows:
-            material_record.isAssembleStation3TakeOk = True
-            #
-            ## ✅ 最後完成後，保留在 End.vue 顯示
-            #assemble_record.isAssembleStationShow = True
-            #
-            ## ✅ 進入等待入庫
-            #assemble_record.isWarehouseStationShow = True
-            #
-            ## ✅ 狀態顯示：等待入庫作業
-            #assemble_record.show2_ok = 10
-
-            # 先全部關掉，避免顯示錯的完成列
-            for r in assemble_records:
-                r.isAssembleStationShow = False
-
-            # ✅ 選一筆代表等待入庫的 B110
-            # 優先選應完成數量最大的 B110，例如 3377 = 950
-            final_row = (
-                s.query(Assemble)
-                .filter(Assemble.material_id == material_id)
-                .filter(Assemble.work_num.like('%B110%'))
-                .order_by(cast(Assemble.must_receive_end_qty, Integer).desc(),
-                          Assemble.id.desc()
-                )
-                .first()
-            )
-
-            if final_row:
-                final_row.isAssembleStationShow = True
-                final_row.isWarehouseStationShow = True
-                final_row.show2_ok = 10  # 等待入庫作業
-                final_row.input_end_disable = True
-
-            s.commit()
-            return jsonify({
-                "status": True,
-                "material_done": True,
-                "released_next_group": False,
-                "current_group_step": 0,
-                "message": "material done"
-            }), 200
-
-        # ------------------------------------------------------------
-        # 2) 找目前最高 step 群組（例如 3=B109）
-        # ------------------------------------------------------------
-        current_group_step = max(int(r.process_step_code or 0) for r in active_rows)
-
-        current_group_rows = [
-            r for r in active_rows
-            if int(r.process_step_code or 0) == current_group_step
-        ]
-
-        # ------------------------------------------------------------
-        # 3) 判斷目前群組是否已全部完成
-        #    注意：因為這支通常是在某筆先被改成 step=0 後才呼叫，
-        #    所以這裡重新抓 current_group_rows 即可
-        # ------------------------------------------------------------
-        # 若 current_group_rows 仍有資料，表示這個群組還沒全部歸 0
-        # 例如：B109 還有 102/103 是 step=3
-        if current_group_rows:
-            material_record.isAssembleStation3TakeOk = False
-
-            s.commit()
-            return jsonify({
-                "status": False,
-                "material_done": False,
-                "released_next_group": False,
-                "current_group_step": current_group_step,
-                "message": "current group not finished yet"
-            }), 200
-
-        # 理論上跑不到這裡，因為 current_group_step 是從 active_rows 算的
-        # 保底留著
-        material_record.isAssembleStation3TakeOk = False
-        s.commit()
-
-        return jsonify({
-            "status": False,
-            "material_done": False,
-            "released_next_group": False,
-            "current_group_step": current_group_step,
-            "message": "no state changed"
-        }), 200
-
-    except Exception as e:
-        s.rollback()
-        print("updateAssembleProcessStep error:", e)
-        return jsonify({
-            "status": False,
-            "message": str(e)
-        }), 500
-    finally:
-        s.close()
 
 
 @updateTable.route('/updateAssembleProcessStepP', methods=['POST'])
@@ -1538,10 +1383,10 @@ def update_process_data_by_material_id_p():
       #temp_len = len(material._process)
       #if _seq < 0 or _seq > temp_len:
       if not target_process:
-        #print("step2-0 ")
+        print("step2-0 ")
         return jsonify({'status': False, 'msg': 'seq out of range'})
 
-      #print("step3")
+      print("step3")
 
       # 取出對應的 Process
       #target_process = material._process[_seq-1]
@@ -1549,7 +1394,7 @@ def update_process_data_by_material_id_p():
       # 更新欄位
       if _record_name1 and _record_data1 is not None:
         setattr(target_process, _record_name1, _record_data1)
-      #print("step4")
+      print("step4")
 
       s.commit()
 
@@ -1621,7 +1466,7 @@ def update_assembleMustReceiveQty_by_MaterialID():
   _material_id = request_data.get('material_id')
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
-  #print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+  print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
 
   return_value = True  # true: 資料正確,
   s = Session()
@@ -1670,7 +1515,7 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
   _material_id = request_data.get('material_id')
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
-  #print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+  print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
 
   return_value = True  # true: 資料正確,
   s = Session()
@@ -1702,7 +1547,6 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
   })
 
 
-"""
 @updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
 def update_assembleMustReceiveQty_by_materialID_and_date():
     print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
@@ -1715,8 +1559,8 @@ def update_assembleMustReceiveQty_by_materialID_and_date():
     _record_name   = request_data['record_name']
     _record_data   = request_data['record_data']
 
-    #print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
-    #print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
+    print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
+    print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
 
     return_value = True
     s = Session()
@@ -1773,85 +1617,8 @@ def update_assembleMustReceiveQty_by_materialID_and_date():
     return jsonify({
         'status': return_value
     })
-"""
-
-@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
-def update_assembleMustReceiveQty_by_materialID_and_date():
-    print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
-
-    request_data = request.get_json() or {}
-
-    _material_id   = request_data.get('material_id')
-    _assemble_id   = request_data.get('assemble_id')   # ✅ 新增
-    _raw_create_at = request_data.get('create_at')
-    _record_name   = request_data.get('record_name')
-    _record_data   = request_data.get('record_data')
-
-    return_value = True
-    s = Session()
-
-    try:
-        valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
-        if _record_name not in valid_columns:
-            return jsonify({
-                'status': False,
-                'msg': f'{_record_name} 不是 Assemble 合法欄位'
-            })
-
-        query = s.query(Assemble).filter(Assemble.material_id == _material_id)
-
-        # ✅ 有 assemble_id 時，只更新單筆，避免 3378 的 50 被 3377 的 950 蓋掉
-        if _assemble_id is not None and _assemble_id != '':
-            query = query.filter(Assemble.id == _assemble_id)
-
-        # ✅ 沒 assemble_id 才走舊邏輯：material_id + create_at
-        else:
-            if _raw_create_at is None:
-                return jsonify({
-                    'status': False,
-                    'msg': '缺少 assemble_id 或 create_at'
-                })
-
-            target_create_at = normalize_create_at(_raw_create_at)
-            query = query.filter(Assemble.create_at == target_create_at)
-
-        assemble_records = query.all()
-
-        if not assemble_records:
-            return jsonify({
-                'status': False,
-                'msg': f'No Assemble records found, material_id={_material_id}, assemble_id={_assemble_id}, create_at={_raw_create_at}'
-            })
-
-        updated_ids = []
-
-        for record in assemble_records:
-            setattr(record, _record_name, _record_data)
-            updated_ids.append(record.id)
-
-        print("updated assemble ids:", updated_ids)
-
-        s.commit()
-
-        return jsonify({
-            'status': True,
-            'updated_ids': updated_ids
-        })
-
-    except Exception as e:
-        s.rollback()
-        traceback.print_exc()
-        print("update_assembleMustReceiveQty_by_materialID_and_date error:", e)
-        return jsonify({
-            'status': False,
-            'msg': str(e)
-        })
-
-    finally:
-        s.close()
 
 
-"""
 @updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDateP", methods=['POST'])
 def update_assembleMustReceiveQty_by_materialID_and_date_p():
     print("updateAssembleMustReceiveQtyByMaterialIDAndDateP....")
@@ -1922,82 +1689,6 @@ def update_assembleMustReceiveQty_by_materialID_and_date_p():
     return jsonify({
         'status': return_value
     })
-"""
-
-
-@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDateP", methods=['POST'])
-def update_assembleMustReceiveQty_by_materialID_and_date_p():
-    print("updateAssembleMustReceiveQtyByMaterialIDAndDateP....")
-
-    request_data = request.get_json() or {}
-
-    _material_id   = request_data.get('material_id')
-    _assemble_id   = request_data.get('assemble_id')   # ✅ 新增
-    _raw_create_at = request_data.get('create_at')
-    _record_name   = request_data.get('record_name')
-    _record_data   = request_data.get('record_data')
-
-    s = Session()
-
-    try:
-        valid_columns = [c.key for c in inspect(P_Assemble).mapper.column_attrs]
-        if _record_name not in valid_columns:
-            return jsonify({
-                'status': False,
-                'msg': f'{_record_name} 不是 P_Assemble 合法欄位'
-            })
-
-        query = s.query(P_Assemble).filter(P_Assemble.material_id == _material_id)
-
-        # ✅ 有 assemble_id：只更新單筆 P_Assemble
-        if _assemble_id is not None and _assemble_id != '':
-            query = query.filter(P_Assemble.id == _assemble_id)
-
-        # ✅ 沒 assemble_id：維持舊邏輯，更新同 material_id + create_at 那一批
-        else:
-            if _raw_create_at is None:
-                return jsonify({
-                    'status': False,
-                    'msg': '缺少 assemble_id 或 create_at'
-                })
-
-            target_create_at = normalize_create_at(_raw_create_at)
-            query = query.filter(P_Assemble.create_at == target_create_at)
-
-        assemble_records = query.all()
-
-        if not assemble_records:
-            return jsonify({
-                'status': False,
-                'msg': f'No P_Assemble records found, material_id={_material_id}, assemble_id={_assemble_id}, create_at={_raw_create_at}'
-            })
-
-        updated_ids = []
-
-        for record in assemble_records:
-            setattr(record, _record_name, _record_data)
-            updated_ids.append(record.id)
-
-        print("updated p assemble ids:", updated_ids)
-
-        s.commit()
-
-        return jsonify({
-            'status': True,
-            'updated_ids': updated_ids
-        })
-
-    except Exception as e:
-        s.rollback()
-        traceback.print_exc()
-        print("update_assembleMustReceiveQty_by_materialID_and_date_p error:", e)
-        return jsonify({
-            'status': False,
-            'msg': str(e)
-        })
-
-    finally:
-        s.close()
 
 
 @updateTable.route("/updateMaterialFields", methods=['POST'])
@@ -2353,7 +2044,7 @@ def sync_assemble_schedule_rows(session, material_id, process_steps):
             session.add(new_row)
 """
 
-def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
+def sync_assemble_schedule_rows(session, material_id, process_steps):
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
         print("material not found:", material_id)
@@ -2566,8 +2257,6 @@ def update_assemble_schedule_rows():
     request_data = request.get_json()
     material_id = request_data.get('id')
     process_steps = request_data.get('process_steps') or {}
-
-    abnormal_qty = request_data.get('abnormal_qty', None)
     #print("process_steps:", process_steps)
 
     s = Session()
@@ -2607,20 +2296,11 @@ def update_assemble_schedule_rows():
         # -------------------------
         # 2️⃣ 同步 assemble rows
         # -------------------------
-        # ✅ 有傳 abnormal_qty，而且不是空值，才帶 qty
-        if abnormal_qty is not None and abnormal_qty != '':
-            sync_assemble_schedule_rows(
-                session=s,
-                material_id=material_id,
-                process_steps=normalized_process_steps,
-                qty=abnormal_qty
-            )
-        else:
-            sync_assemble_schedule_rows(
-                session=s,
-                material_id=material_id,
-                process_steps=normalized_process_steps
-            )
+        sync_assemble_schedule_rows(
+            session=s,
+            material_id=material_id,
+            process_steps=normalized_process_steps
+        )
 
         # -------------------------
         # 3️⃣ commit
@@ -2642,286 +2322,6 @@ def update_assemble_schedule_rows():
         s.close()
 
 
-def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, qty):
-    print("add_assemble_schedule_rows_by_abnormal....")
-    print("material_id:", material_id)
-    print("qty:", qty)
-
-    material = session.query(Material).filter(Material.id == material_id).first()
-    if not material:
-        raise Exception(f"material not found: {material_id}")
-
-    try:
-        target_qty = int(qty or 0)
-    except Exception:
-        target_qty = 0
-
-    if target_qty <= 0:
-        raise Exception("abnormal_qty must > 0")
-
-    all_rows = (
-        session.query(Assemble)
-        .filter(Assemble.material_id == material_id)
-        .all()
-    )
-
-    def get_any_template_row():
-        # 優先找主列
-        for row in all_rows:
-            if row.is_copied_from_id is None:
-                return row
-
-        return all_rows[0] if all_rows else None
-
-    def create_row_from_template(template, work_num, process_step_code, schedule_id, copied_from_id=None):
-        new_row = Assemble(
-            material_id=material.id,
-            material_num=material.material_num,
-            material_comment=material.material_comment,
-            seq_num=getattr(template, 'seq_num', 10) if template else 10,
-
-            work_num=work_num,
-            process_step_code=process_step_code,
-            schedule_id=schedule_id,
-            is_copied_from_id=copied_from_id,
-
-            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
-
-            # ✅ 異常返工數量
-            must_receive_qty=target_qty,
-            ask_qty=target_qty,
-            total_ask_qty=target_qty,
-            total_ask_qty_end=0,
-            must_receive_end_qty=target_qty,
-
-            abnormal_qty=0,
-
-            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
-            writer_id=None,
-            write_date=None,
-
-            good_qty=0,
-            total_good_qty=0,
-            non_good_qty=0,
-            meinh_qty=0,
-
-            completed_qty=0,
-            total_completed_qty=0,
-            allOk_qty=0,
-
-            reason='',
-            confirm_comment='',
-            is_assemble_ok=0,
-
-            currentStartTime=None,
-            currentEndTime=None,
-
-            input_disable=1,
-            input_end_disable=0,
-            input_allOk_disable=0,
-            input_abnormal_disable=0,
-
-            isAssembleStationShow=getattr(template, 'isAssembleStationShow', 0) if template else 0,
-            isWarehouseStationShow=getattr(template, 'isWarehouseStationShow', 0) if template else 0,
-
-            alarm_enable=1,
-            alarm_message='',
-
-            isAssembleFirstAlarm=1,
-            isAssembleFirstAlarm_message='',
-            isAssembleFirstAlarm_qty=0,
-
-            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
-            show1_ok=getattr(template, 'show1_ok', material.show1_ok) if template else material.show1_ok,
-            show2_ok=getattr(template, 'show2_ok', material.show2_ok) if template else material.show2_ok,
-            show3_ok=getattr(template, 'show3_ok', material.show3_ok) if template else material.show3_ok,
-        )
-
-        session.add(new_row)
-        session.flush()
-        return new_row
-
-    def add_group_rows(work_num, process_step_code, target_steps):
-        checked_ids = [
-            int(x.get('id'))
-            for x in (target_steps or [])
-            if x.get('checked') and x.get('id') is not None
-        ]
-
-        if not checked_ids:
-            print(f"{work_num} no checked steps, skip")
-            return []
-
-        template = get_any_template_row()
-        created_rows = []
-
-        # 第一個 checked step 建主列
-        base = create_row_from_template(
-            template=template,
-            work_num=work_num,
-            process_step_code=process_step_code,
-            schedule_id=checked_ids[0],
-            copied_from_id=None
-        )
-
-        created_rows.append(base)
-
-        # 其餘 checked step 建 copied rows
-        for sid in checked_ids[1:]:
-            copied = create_row_from_template(
-                template=base,
-                work_num=work_num,
-                process_step_code=process_step_code,
-                schedule_id=sid,
-                copied_from_id=base.id
-            )
-            created_rows.append(copied)
-
-        print(
-            f"created abnormal schedule rows: "
-            f"material_id={material_id}, work_num={work_num}, count={len(created_rows)}"
-        )
-
-        return created_rows
-
-    created = []
-
-    # B109 = 組裝
-    created += add_group_rows(
-        work_num='B109',
-        process_step_code=3,
-        target_steps=process_steps.get('assemble', [])
-    )
-
-    # B110 = 檢驗
-    created += add_group_rows(
-        work_num='B110',
-        process_step_code=2,
-        target_steps=process_steps.get('check', [])
-    )
-
-    return created
-
-
-@updateTable.route("/addAssembleScheduleRows", methods=['POST'])
-def add_assemble_schedule_rows():
-    print("addAssembleScheduleRows....")
-
-    request_data = request.get_json() or {}
-
-    material_id = request_data.get('id')
-    process_steps = request_data.get('process_steps') or {}
-    abnormal_qty = request_data.get('abnormal_qty', None)
-
-    s = Session()
-
-    try:
-        if not material_id:
-            return jsonify({'status': False, 'msg': 'missing material id'})
-
-        if abnormal_qty is None or abnormal_qty == '':
-            return jsonify({'status': False, 'msg': 'missing abnormal_qty'})
-
-        normalized_process_steps = {
-            'assemble': [
-                {
-                    'id': int(x.get('id')) if x.get('id') is not None else None,
-                    'name': x.get('name', ''),
-                    'checked': bool(x.get('checked'))
-                }
-                for x in (process_steps.get('assemble') or [])
-            ],
-            'check': [
-                {
-                    'id': int(x.get('id')) if x.get('id') is not None else None,
-                    'name': x.get('name', ''),
-                    'checked': bool(x.get('checked'))
-                }
-                for x in (process_steps.get('check') or [])
-            ]
-        }
-
-        print("normalized_process_steps:", normalized_process_steps)
-        print("abnormal_qty:", abnormal_qty)
-
-        created_rows = add_assemble_schedule_rows_by_abnormal(
-            session=s,
-            material_id=material_id,
-            process_steps=normalized_process_steps,
-            qty=abnormal_qty
-        )
-
-        s.commit()
-
-        return jsonify({
-            'status': True,
-            'msg': 'add assemble schedule rows ok',
-            'created_count': len(created_rows),
-            'created_ids': [row.id for row in created_rows]
-        })
-
-    except Exception as e:
-        s.rollback()
-        traceback.print_exc()
-        print("addAssembleScheduleRows ERROR:", repr(e))
-        return jsonify({
-            'status': False,
-            'msg': str(e)
-        })
-
-    finally:
-        s.close()
-
-
-@updateTable.route("/updateAssembleFieldByAssembleID", methods=['POST'])
-def update_assemble_field_by_assemble_id():
-    print("updateAssembleFieldByAssembleID....")
-
-    request_data = request.get_json() or {}
-    assemble_id = request_data.get('assemble_id')
-    record_name = request_data.get('record_name')
-    record_data = request_data.get('record_data')
-
-    if not assemble_id:
-        return jsonify({'status': False, 'msg': 'missing assemble_id'})
-
-    s = Session()
-
-    try:
-        valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
-        if record_name not in valid_columns:
-            return jsonify({
-                'status': False,
-                'msg': f'{record_name} 不是 Assemble 合法欄位'
-            })
-
-        asm = s.query(Assemble).filter(Assemble.id == assemble_id).first()
-        if not asm:
-            return jsonify({
-                'status': False,
-                'msg': f'assemble_id={assemble_id} not found'
-            })
-
-        setattr(asm, record_name, record_data)
-
-        s.commit()
-
-        return jsonify({
-            'status': True,
-            'assemble_id': assemble_id,
-            'record_name': record_name,
-            'record_data': record_data
-        })
-
-    except Exception as e:
-        s.rollback()
-        traceback.print_exc()
-        return jsonify({'status': False, 'msg': str(e)})
-
-    finally:
-        s.close()
-
-
 # from material table update some data by id or orde_num
 @updateTable.route("/updateMaterial", methods=['POST'])
 def update_material():
@@ -2933,7 +2333,7 @@ def update_material():
     _id = request_data.get('id')
     _record_name = request_data['record_name']
     _record_data = request_data['record_data']
-    #print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
+    print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
 
     return_value = True  # true: 資料正確, 註冊成功
     s = Session()
@@ -3005,7 +2405,7 @@ def update_material_p():
     _id = request_data.get('id')
     _record_name = request_data['record_name']
     _record_data = request_data['record_data']
-    #print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
+    print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
 
     return_value = True  # true: 資料正確, 註冊成功
     s = Session()
@@ -3319,11 +2719,11 @@ def update_assemble_alarm_message():
     data = request.get_json()
 
     assemble_id = data.get("assemble_id")
-    #print("assemble_id:", assemble_id)
+    print("assemble_id:", assemble_id)
     cause_message_list = data.get("cause_message")  # 前端預期傳 list 或字串
-    #print("cause_message_list:", cause_message_list)
+    print("cause_message_list:", cause_message_list)
     cause_user = data.get("cause_user")
-    #print("cause_user:", cause_user)
+    print("cause_user:", cause_user)
 
     s = Session()
 
@@ -3434,8 +2834,8 @@ def update_bom_xor_receive():
     # 建立 dict 以 seq_num 為 key 對應 receive
     source_boms = {bom.seq_num: bom for bom in source_material._bom}
     copied_boms = {bom.seq_num: bom for bom in copied_material._bom}
-    #print("source_boms:",source_boms)
-    #print("copied_boms:",copied_boms)
+    print("source_boms:",source_boms)
+    print("copied_boms:",copied_boms)
 
     updated = False
     for seq_num, source_bom in source_boms.items():
@@ -3495,8 +2895,8 @@ def update_bom_xor_receive_p():
     # 建立 dict 以 seq_num 為 key 對應 receive
     source_boms = {bom.seq_num: bom for bom in source_material._bom}
     copied_boms = {bom.seq_num: bom for bom in copied_material._bom}
-    #print("source_boms:",source_boms)
-    #print("copied_boms:",copied_boms)
+    print("source_boms:",source_boms)
+    print("copied_boms:",copied_boms)
 
     updated = False
     for seq_num, source_bom in source_boms.items():

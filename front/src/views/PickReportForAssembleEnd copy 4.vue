@@ -30,7 +30,8 @@
       style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
       :items-per-page-options="footerOptions"
       item-key="name"
-      items-per-page="5"
+      v-model:items-per-page="pagination.itemsPerPage"
+      v-model:page="pagination.page"
 
       item-value="index"
       show-select
@@ -84,7 +85,7 @@
             <v-divider class="mx-2" inset vertical></v-divider>
 
             <!--客製化 員工選單-->
-            <div style="position:relative; width:160px; right: 5px;">
+            <div class="employee-select" style="position:relative; width:160px; right: 5px;">
               <v-text-field
                 v-model="selectedEmployee"
                 @keyup.enter="handleEmployeeSearch"
@@ -266,11 +267,11 @@
         </div>
       </template>
 
-      <!-- 客製化 '應完成數量' (must_receive_end_qty) 欄位的表頭 -->
+      <!-- 客製化 '應完成總數量' (must_receive_end_qty) 欄位的表頭 -->
       <template v-slot:header.must_receive_end_qty="{ column }">
         <div style="text-align: center;">
           <div>應完成</div>
-          <div>數量</div>
+          <div>總數量</div>
         </div>
       </template>
 
@@ -476,7 +477,7 @@
       <template v-slot:item.action="{ item }">
         <div class="action-cell">
           <!--計時器-->
-          <span v-if="!item.isShowLastTime"
+          <span
             style="
               color:#4000ff;
               width:88px;
@@ -484,6 +485,8 @@
               font-variant-numeric:tabular-nums;"
           >
             <TimerDisplay
+              :key="makeKey(item)"
+
               :fontSize="16"
               :autoStart="false"
               :show="true"
@@ -496,47 +499,29 @@
 
               :displayMs="closedDisplayMs(item)"
 
-              @update:isPaused="val => setPausedOf(item, val)"
-
               @update:time="ms => onTickOf(makeKey(item), item, ms)"
 
               class="me-2"
               style="min-width:88px; display:inline-block;"
             />
           </span>
-          <span v-else
-            class="me-2"
-            style="
-              color:#4000ff;
-              width:88px;
-              min-width:88px;
-              font-size: 16px;
-              font-variant-numeric:tabular-nums;
-              display:inline-block;
-              text-align: right;"
-          >
-            {{ item.last_time }}
-          </span>
-
           <!-- 自訂 暫停/開始 按鍵欄位-->
           <v-btn
             size="small"
             density="comfortable"
             variant="tonal"
-            :prepend-icon = "getIcon(isRowPaused(item))"
-
+            :prepend-icon = "getIcon(isPausedOf(item))"
             :disabled="item.isAssembleStationShow"
-            :style="{ background: isRowPaused(item) ? '#4CAF50' : '#FFEB3B', color: isRowPaused(item) ? '#fff' : '#000' }"
+            :style="{ background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B', color: isPausedOf(item) ? '#fff' : '#000' }"
 
             @click="onPauseToggle(item)"
             style="font-size:13px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
           >
             <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
-            {{ pauseLabel(item) }}
+            {{ isPausedOf(item) ? '開始' : '暫停' }}
           </v-btn>
 
           <!-- 自訂 '結束' 按鍵欄位 -->
-            <!--:disabled="Boolean(isButtonDisabled(item) || isRowPaused(item))"-->
           <v-btn
             size="small"
             density="comfortable"
@@ -550,7 +535,7 @@
               font-weight: 700;
               font-family: '微軟正黑體', sans-serif;
               padding: 0 5px !important;
-              "
+            "
           >
             結 束
             <v-icon color="indigo-darken-4" start>mdi-close-circle-outline</v-icon>
@@ -611,7 +596,6 @@ import { apiOperation}  from '../mixins/crud.js';
 // 使用 apiOperation 函式來建立 API 請求
 const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 const listUsers2 = apiOperation('get', '/listUsers2');
-//const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
 
 const updateAssembleMustReceiveQtyByMaterialIDAndDate = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDate');
 const copyNewAssemble = apiOperation('post', '/copyNewAssemble');
@@ -646,7 +630,7 @@ const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 // 結束已領料工單對話框相關
-const endTitle = ref('結束已領料工單');
+const endTitle = ref('完成組裝生產工單');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
@@ -662,8 +646,8 @@ const toggle_exclusive = ref(2);              // 控制選擇的按鈕, 預設AG
 
 const isCallForklift = ref(false);            // 確認是否已經呼叫了CallForklift(), true:已經按鍵了, 不能重複按鍵
 
-//const isVisible = ref(true);              // 設定初始狀態為顯示
-const isFlashLed = ref(false);            // 控制是否閃爍Led
+//const isVisible = ref(true);                // 設定初始狀態為顯示
+const isFlashLed = ref(false);                // 控制是否閃爍Led
 //let intervalIdForLed = null;
 const background = ref('#ffff00');
 
@@ -691,7 +675,7 @@ const footerOptions = [
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
   { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
-  { title: '物料編號', sortable: false, key: 'material_num', width:180 },
+  { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
   { title: '領取數量', sortable: false, key: 'ask_qty', width:70 },
@@ -700,7 +684,7 @@ const headers = [
   { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
   { title: '異常數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
   //{ title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '交期', sortable: false, key: 'delivery_date', width:100 },
+  { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'action', width:300 },
 ];
 
@@ -716,19 +700,17 @@ const sortDesc = ref([false])
 const receive_qty_alarm = ref('');
 const abnormal_qty_alarm = ref('');
 
-//const from_agv_input_order_num = ref('');
-//2025-10-20m, const isBlinking = ref(false);          // 控制按鍵閃爍
 const order_num_on_agv_blink=ref('');
 
 const selectedEmployee = ref(null);
 
-//const inputStr = ref('');
 const outputStatus = ref({
   step1: null,
   step2: null
 });
 
-const currentUser = ref({});
+//const currentUser = ref({});
+const currentUser = ref(null);
 
 const componentKey = ref(0)                 // key值用於強制重新渲染
 
@@ -772,30 +754,94 @@ let abnormalBusy = false
 const restoredKeys = new Set();
 
 const timerMap = new Map();
-const timerRefMap = new Map()
+const timerRefMap = new Map();
+const timerElMap = new Map();
+
 const lastTickMsMap = reactive(new Map())  // key: item.id, value: 畫面最後一次 @update:time 的毫秒數
 const frozenMsMap   = reactive(new Map())  // key: item.id, value: 按結束時要凍結顯示的毫秒數
 
+const pausedMap = reactive(new Map())  // key -> boolean
+
 let __disposedAll = false;
+
 const lastKeys = ref(new Set());
 
-//const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
-//const makeKey = (row) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${currentUser.value.empID}`
+let _endReloadLock = false;
+let _endReloadPromise = null;
 
-const getUid = () => (currentUser.value?.empID ? String(currentUser.value.empID) : '')
+const getUid = () => (currentUser.value?.empID ? String(currentUser.value?.empID) : '')
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
-//const keyOf = (row) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${getUid()}`
-
 // makeKey 一律走 keyOf + getUid，避免 undefined
 const makeKey = (row) => keyOf(row, getUid())
+
+function debugTimerMounts() {
+  console.log('[End][timerElMap] size=', timerElMap.size)
+  for (const [k, el] of timerElMap.entries()) {
+    console.log('[End][timerElMap]', k, 'mounted=', !!el)
+  }
+}
+
+function debugRows(tag) {
+  console.log(`\n[End][Rows] ${tag} count=`, materials_and_assembles_by_user.value?.length || 0)
+  for (const r of (materials_and_assembles_by_user.value || [])) {
+    const k = makeKey(r)
+    console.log(
+      '[End][Row]',
+      'order=', r.order_num,
+      'work=', r.work_num,
+      'material=', r.id,
+      'assemble=', r.assemble_id,
+      'step=', r.process_step_code,
+      'pType=', processTypeOf(r),
+      'key=', k,
+      'input_end_disable=', r.input_end_disable,
+      'alarm_enable=', r.alarm_enable,
+    )
+  }
+}
 
 function freezeRowTimer(item, msOverride = null) {
   const k = makeKey(item)
   const ms = msOverride ?? (lastTickMsMap.get(k) ?? getInitialMs(item) ?? 0)
   frozenMsMap.set(k, ms)
   return ms
+}
+
+const lastSyncTs = ref(0)
+
+function parseSyncVal(v) {
+  if (!v) return null
+  const [key, tsStr] = String(v).split('|')
+  const ts = Number(tsStr || 0)
+  if (!key || !Number.isFinite(ts)) return null
+  return { key, ts }
+}
+
+async function handleSyncKey(syncKey) {
+  const u = getUid()
+  if (!u) return
+
+  // ✅ 1) 先重撈，讓 b 出現在 End 清單
+  await getMaterialsAndAssemblesByUser({ user_id: u })
+
+  //await nextTick();
+  console.log(
+    '[End][timerElMap] after fetch keys=',
+    Array.from(timerElMap.keys())
+  )
+
+  //debugRows('after fetch')
+
+  await nextTick()
+
+  const rows = materials_and_assembles_by_user.value || []
+  const row = rows.find(r => makeKey(r, u) === syncKey)
+
+  if (row) {
+    await ensureRestored(row, u)     // ✅ 關鍵：讓 b 在 End 跑起來
+  }
 }
 
 // === watch ===
@@ -815,12 +861,22 @@ watch(bar_code, (newVal) => {
   }
 })
 
+watch(() => pagination.itemsPerPage, (val) => {
+  if (!currentUser.value?.empID) return
+  //if (!currentUser.value) return
+
+    currentUser.value.setting_items_per_page = Number(val) || 10
+
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
+  },
+  { immediate: true }
+)
+
 //== timerDisplay用 ==
 // 在每次資料更新後，對新出現的 row 補做一次 ensureRestored(row)
-watch(
-  () => [materials_and_assembles_by_user.value, currentUser.value?.empID],
+watch(() => [materials_and_assembles_by_user.value, currentUser.value?.empID],
   async ([rows, empID]) => {
-//watch(materials_and_assembles_by_user, async (rows) => {
   if (!empID) return;
   if (!rows?.length) return
 
@@ -832,7 +888,6 @@ watch(
     restoredKeys.add(k)
 
     // 只 restore 一次：把 b 的 processId/isPaused/elapsed 拉回來
-    //await ensureRestored(row, empID)
     await ensureRestored(row)
 
     // 如果這筆其實已經開始在跑，保險起見清掉凍結
@@ -856,7 +911,6 @@ watch(materials_and_assembles_by_user, (rows) => {
 }, { immediate: true })
 */
 //=== computed ===
-const userId = computed(() => currentUser.value.empID ?? '')
 
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
@@ -920,31 +974,46 @@ onMounted(async () => {
 
   //user define
   let userRaw = sessionStorage.getItem('auth_user');
+
   if (!userRaw) {
     userRaw = localStorage.getItem('loginedUser');
     if (userRaw) {
       sessionStorage.setItem('auth_user', userRaw);
     }
   }
+
   currentUser.value = userRaw ? JSON.parse(userRaw) : null;
 
-  if (currentUser.value) {
-    currentUser.value.setting_items_per_page = pagination.itemsPerPage;
+  if (currentUser.value?.empID) {
+  //if (currentUser.value) {
+    pagination.itemsPerPage = Number(currentUser.value?.setting_items_per_page) || 10;
     currentUser.value.setting_lastRoutingName = routeName.value;
 
-    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value));
-    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value));
+    localStorage.setItem('loginedUser', JSON.stringify(currentUser?.value));
+    sessionStorage.setItem('auth_user', JSON.stringify(currentUser?.value));
   }
-  console.log("currentUser:", currentUser.value, currentUser.value.perm, currentUser.value.empID);
+
+  console.log("currentUser:", currentUser.value?.empID || '');
+
+  if (!currentUser.value?.empID) {
+    console.warn('[End] mounted skip initialize: empty empID', currentUser.value);
+    return;
+  }
 
   initialize();
 
-  await nextTick();
-  await consumeSyncSignalOnce();
+  //// ###
+  //await nextTick();
+  //await consumeSyncSignalOnce();
 
   window.addEventListener('storage', onStorageSync);
 
-
+  // ✅ End 分頁「剛打開」時，即使沒收到事件，也補吃一次
+  const key = consumeSyncSignalOnce()
+  if (key) {
+    await handleSyncKey(key)
+  }
+  //// ###
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
@@ -1265,8 +1334,11 @@ onMounted(async () => {
       }
 
       // 待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      await reloadEndLocked();
 
+      // ✅ 回到預設亮綠燈/區域閒置, 這樣「送達」完刷新資料後，就會回到閒置綠燈
+      activeColor.value = 'green';
     });
 
     socket.value.on('station3_trans_end', async (data) => {
@@ -1421,8 +1493,10 @@ onMounted(async () => {
       }
 
       //待待
-      window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-
+      //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      await reloadEndLocked();
+      // ✅ 回到預設亮綠燈/區域閒置, 這樣「送達」完刷新資料後，就會回到閒置綠燈
+      activeColor.value = 'green';
     })
 
     socket.value.on('station2_agv_ready', async () => {
@@ -1506,16 +1580,16 @@ onMounted(async () => {
     });
 
     socket.value.on('triggerLogout', async (data) => {
-      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value.empID);
+      console.log("收到 triggerLogout 強迫登出訊息，empID:", data.empID, "目前 empID:", currentUser.value?.empID);
 
-      if (data.empID && data.empID === currentUser.value.empID) {
+      if (data.empID && data.empID === currentUser.value?.empID) {
         console.log("本裝置符合 empID，執行強制登出流程");
 
         let payload = {
           itemsPerPage: 0,
           seeIsOk: '0',
           lastRoutingName: 'Main',
-          empID: currentUser.value.empID,
+          empID: currentUser.value?.empID,
         };
 
         try {
@@ -1544,20 +1618,24 @@ onBeforeUnmount(() => window.removeEventListener('storage', onStorageSync))
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
-  window.removeEventListener('popstate', handlePopState)
+  window.removeEventListener('popstate', handlePopState);
+
+  window.removeEventListener('storage', onStorageSync);
 
   //clearInterval(intervalId);
+
+  disposeAllTimersOnce();
 });
 
 onBeforeRouteLeave(() => { disposeAllTimersOnce(); });
-onUnmounted(() => { disposeAllTimersOnce(); });
+//onUnmounted(() => { disposeAllTimersOnce(); });
 onDeactivated(() => { disposeAllTimersOnce(); });
 
 //=== created ===
 onBeforeMount(() => {
   console.log("Employer, created()...")
 
-  pagination.itemsPerPage = currentUser.value.setting_items_per_page;
+  pagination.itemsPerPage = currentUser.value?.setting_items_per_page;
 
   initAxios();
   //initialize();
@@ -1566,85 +1644,51 @@ onBeforeMount(() => {
 //=== method ===
 
 //== timerDisplay用 ==
-/*
-function onStorageSync(e) {
-  console.log("1.kkkkk:", e, e.key)
 
-  if (e.key !== 'PR_END_SYNC' || !e.newValue) return
-  const [k] = e.newValue.split('|')
-  if (!k) return
-
-  console.log("2.kkkkk:", k)
-
-  // 找到對應 row，force restore（這句是 b 在 End 立刻跑起來的關鍵）
-  const row = (materials_and_assembles_by_user.value || []).find(r => makeKey(r) === k)
-  if (row) ensureRestored(row, true)
+const syncStorageKey = () => {
+  const u = getUid()
+  return u ? `PR_END_SYNC_${u}` : null
 }
-*/
-function onStorageSync(e) {
-  console.log("1.kkkkk:", e, e.key)
 
-  const uid = getUid()
-  if (!uid) return
-
-  const storageKey = `PR_END_SYNC_${uid}`
-  if (e.key !== storageKey) return
+async function onStorageSync(e) {
+  const k = syncStorageKey()
+  if (!k) return
+  if (e.key !== k) return
   if (!e.newValue) return
 
-  console.log('[End] storage event received:', e.newValue)
+  const parsed = parseSyncVal(e.newValue)
+  if (!parsed) return
+  if (parsed.ts <= lastSyncTs.value) return
 
-  const [k] = e.newValue.split('|')
-  if (!k) return
-  console.log("2.kkkkk:", k)
-
-  const row = (materials_and_assembles_by_user.value || []).find(r => makeKey(r) === k)
-  if (row) {
-    console.log('[End] matched row, force restore:', k)
-    ensureRestored(row, true)
-  } else {
-    console.log('[End] no matched row for key:', k)
-  }
+  lastSyncTs.value = parsed.ts
+  await handleSyncKey(parsed.key)
 }
 
-async function consumeSyncSignalOnce() {
-  const uid = getUid()
-  if (!uid) return
+// ✅ End 打開時/資料更新時，都可以呼叫它
+function consumeSyncSignalOnce() {
+  const k = syncStorageKey()
+  if (!k) return null
 
-  const storageKey = `PR_END_SYNC_${uid}`
-  const v = localStorage.getItem(storageKey)
-  if (!v) return
+  const raw = localStorage.getItem(k)
+  const parsed = parseSyncVal(raw)
+  if (!parsed) return null
 
-  const [k, tsStr] = v.split('|')
-  if (!k) return
+  // 只處理「比上次新的」
+  if (parsed.ts <= lastSyncTs.value) return null
 
-  // 確保 rows 已經撈回來
-  const rows = materials_and_assembles_by_user.value || []
-  const row = rows.find(r => makeKey(r) === k)
-  if (row) {
-    // ✅ force restore：把 End 端這筆補到「running」
-    await ensureRestored(row, true)
-  }
+  lastSyncTs.value = parsed.ts
+  return parsed.key
 }
+
 
 function onTimeUpdate(key, row, ms) {
   console.log('%c[TD] tick', 'color:#6A1B9A', key, ms)  // ← 應該會一直印
   lastTickMsMap.set(key, Number(ms) || 0)
 }
 
-// === B) 刷新後『從資料列』判斷是否已結束，計算要顯示的毫秒 ===
-//// 依你的資料欄位取用：常見有 end_time / isClosed / elapsedActive_time 等
-//function isRowClosed(item) {
-//  return !!(item?.end_time || item?.process_end_time || item?.isClosed === true)
-//}
-
 function isRowClosed(row) {
-  // ✅ 以 Assemble 自己的結束旗標為準（你 onClickEnd 有寫入）
-  if (row?.input_end_disable === true) return true
-
-  // 其他保底（看你資料有沒有）
-  if (row?.isClosed === true) return true
-
-  return false
+  const t = getT(row);
+  return !!t?.endTime?.value || !!row?.end_time
 }
 
 // 從資料列取「最後的有效秒數」轉毫秒（依你的欄位擇一）
@@ -1714,10 +1758,6 @@ function closedDisplayMs(item) {
   return null
 }
 
-//function frozenMsOf(item) {
-//  return frozenMsMap.has(item.id) ? frozenMsMap.get(item.id) : null
-//}
-
 function frozenMsOf(row) {
 
   //const key = `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${currentUser.value.empID}`
@@ -1748,29 +1788,18 @@ function disposeAllTimersOnce() {
   } catch (_e) {}
 }
 
-//const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
 const isPausedOf = (row) => {
   const t = getT(row)
-  const closed = isRowClosed(row)
-
-  // 還沒結束 → 一律視為沒有暫停，讓 TimerDisplay 跑起來
-  if (!closed) {
-    return false
-  }
-
-  // 結束了才看 hook 裡 isPaused
-  return t?.isPaused.value ?? true
+  // 沒有 t 就視為「不暫停」（讓它照常跑）
+  return t?.isPaused?.value ?? false
 }
 
-const getT = (row) => useRowTimer(row, getUid())
+//const getT = (row) => useRowTimer(row, getUid())
+const getT = (row) => useRowTimer(row, currentUser.value?.empID ?? '')
 
 function getTByKey(key) {
    return timerMap.get(key) ?? makeStub()
 }
-
-//function isRowPaused(row) {
-//  return !!useRowTimer(row, currentUser.value.empID).isPaused.value
-//}
 
 function isRowPaused(row) {
   // 未結束的列一律讓它跑（避免 b 被默認 pause）
@@ -1787,31 +1816,28 @@ function getInitialMs(row) {
   return Number(t?.elapsedMs?.value ?? 0)
 }
 
-//async function ensureRestored(row, empID) {
 async function ensureRestored(row, force = false) {
-  console.log("ensureRestored()...");
+  const k = makeKey(row)
+  console.log('[End][ensureRestored] enter', k, 'emp=', currentUser.value?.empID)
 
+  if (!currentUser.value?.empID) return
   const uid = getUid()
   if (!uid) return null
 
-  //const key = keyOf(row, uid)
-  //const key = makeKey(item)
-
-  //const t = useRowTimer(row, currentUser.value.empID)
-  const t = useRowTimer(row, uid);
+  const t = useRowTimer(row, uid)
   if (!t) return null
 
-  // ✅ 避免每次 re-render 都狂打，但允許 force（後面用於 b 同步）
   if (!force && t.__restoredOnce) return t
   t.__restoredOnce = true
 
-  // 21/22/23 的對應你已有邏輯，照舊取出 pType
-  //const pType = row.process_step_code === 3 ? 21 : row.process_step_code === 2 ? 22 : 23
+  console.log('[End][ensureRestored][before]', k, 'paused=', isPausedOf(row))
+
   const pType = processTypeOf(row)
-  // 只做還原，不重置 begin_time
-  console.log("current empID:", uid)
-  //await t.restoreProcess(row.id, pType, empID, row.assemble_id || 0)
   await t.restoreProcess(row.id, pType, uid, row.assemble_id || 0)
+
+  // 如果 restoreProcess 會回傳/設定暫停狀態，這裡就印出來
+  console.log('[End][ensureRestored][after]', k, 'paused=', isPausedOf(row))
+
   return t
 }
 
@@ -1838,31 +1864,39 @@ function makeStub() {
 
 function setTimerEl(row, el) {
   if (!row || !row.id) {
-    console.warn('setTimerEl(): row undefined', row)
+    console.warn('[End][setTimerEl] row invalid', row)
     return
   }
-  const t = getT(row);
-  if (t)
-    t.timerRef.value = el || null;
+
+  const k = makeKey(row)
+
+  // ✅ 先記錄：這筆 row 的 TimerDisplay 是否真的掛上來
+  timerElMap.set(k, el || null)
+
+  console.log('[End][setTimerEl]', el ? 'MOUNT' : 'UNMOUNT', k)
+
+  // ✅ 再綁回你原本的 timerRef
+  const t = getT(row)
+  if (!t) {
+    console.warn('[End][setTimerEl] getT(row)=null', k)
+    return
+  }
+  t.timerRef.value = el || null
 }
 
 const setPausedOf = (row, v) => {
-  const t = getT(row);
-
-  //透過雙重否定，強制把任何輸入轉成純布林（truthy → true，falsy → false）
-  //例如 1/"yes" 會變 true，0/""/null/undefined 會變 false
-  //如果 t 存在且有 isPaused 這個 ref，就把它的值設成布林化後的 v
-  if (t?.isPaused)
-    t.isPaused.value = !!v
+  const t = getT(row)
+  if (!t?.isPaused) return
+  t.isPaused.value = !!v
+  console.log('[End][setPausedOf]', makeKey(row), 'set to', t.isPaused.value)
 }
 
 // 轉接 onTick（避免直接把函式呼叫結果當 handler）
 const onTickOf = (key, row, ms) => {
   console.log("onTickOf..")
-  //lastTickMsMap.set(row.id, Number(ms) || 0)
+
   lastTickMsMap.set(key, Number(ms) || 0)
 
-  //const t = getT(row)
   const t = getTByKey(key)
   t?.onTick?.(ms)
 }
@@ -1873,7 +1907,6 @@ function useRowTimer(row, uId) {
     return makeStub()
   }
 
-  //const key = keyOf(row, uId)
   const key = makeKey(row)
 
   if (!timerMap.has(key)) {
@@ -1885,38 +1918,19 @@ function useRowTimer(row, uId) {
   return timerMap.get(key)
 }
 
-function releaseRowTimer(row, uId) {
-  if (!row || !row.id) return
-  const key = keyOf(row, uId)
-  const t = timerMap.get(key)
-  t?.dispose?.()
-  timerMap.delete(key)
-}
-
-function revMapPtype(ptype) {
-  const p = Number(ptype)
-  if (p === 21) return 3   // 組裝 → step_code 3
-  if (p === 22) return 2   // 檢驗 → step_code 2
-  if (p === 23) return 1   // 雷射 → step_code 1
-  return 3                 // 預設成 3（視你系統習慣）
-}
-
 const getIcon = (isPaused) => {
   return isPaused ? "mdi-play" : "mdi-pause"
 }
+
 //===
 
-function reachTarget(row) {
-  return Number(row.total_ask_qty_end || 0) >= Number(row.must_receive_end_qty || 0)
-}
-
-async function ensureStarted(row) {
-  //const t = useRowTimer(row, currentUser.value.empID);
+const ensureStarted = async (row) => {
+//async function ensureStarted(row) {
   const t = getT(row);
 
   if (!t.processId.value) {
     const pType = processTypeOf(row)
-    await t.startProcess(row.id, pType, currentUser.value.empID, row.assemble_id)
+    await t.startProcess(row.id, pType, currentUser.value?.empID, row.assemble_id)
 
     // 後端回傳 is_paused = false 時：一定要讓 isPausedOf(row) 變 false
     setPausedOf(row, !!t.isPaused.value === true ? true : false)
@@ -1926,10 +1940,17 @@ async function ensureStarted(row) {
   return t
 }
 
-async function onPauseToggle(row) {
-  //if (reachTarget(row)) return
-  const t = await ensureStarted(row)
+const onPauseToggle = async (row) => {
+  const k = makeKey(row)
+  console.log('[End][paused][before]', k, 'isPaused=', isPausedOf(row))
+
+  const t = await ensureRestored(row)   // 或 ensureStarted(row) 也行
+  if (!t) return
+
+  // ✅ 核心：一定要走後端 toggle，讓 is_pause 寫進 DB
   await t.toggleTimer()
+
+  console.log('[End][paused][after]', k, 'isPaused=', t.isPaused.value)
 }
 
 const initialize = async () => {
@@ -1941,23 +1962,26 @@ const initialize = async () => {
 
     // 使用 async/await 等待 API 請求完成，確保順序正確
     //let payload = {
-    //  user_id: currentUser.value.empID,
+    //  user_id: currentUser.value?.empID,
     //  //history: history.value,
     //};
-    await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
-    await getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
+    await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID });
+
+    //await nextTick();
+    console.log(
+      '[End][timerElMap] after fetch keys=',
+      Array.from(timerElMap.keys())
+    )
 
     // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
     materials_and_assembles_by_user.value.forEach(item => {
       item.pickEnd = [];
     });
 
-    //== timerDisplay用 ==
     await nextTick()
 
     // 把正確的時間 & 暫停狀態直接推到 <TimerDisplay />
     for (const row of materials_and_assembles_by_user.value) {
-      //await ensureRestored(row, currentUser.value.empID)   // 還原「目前是否在跑、已經跑了幾秒」
       await ensureRestored(row);
     }
     //===
@@ -2041,15 +2065,10 @@ const handlePopState = () => {
   }
 }
 
-const isButtonDisabled = (item) => {
-  //let temp_TF =(item.whichStation != 2 || item.input_end_disable) || item.process_step_code;
-  //let temp_TF =(item.whichStation != 2 || item.input_end_disable);
-  let temp_TF = item.input_end_disable;
-  //let temp_TF =(item.whichStation != 2 || item.input_end_disable) || !item.process_step_enable;
-  //console.log("temp_TF:", item.input_end_disable, "TF:", temp_TF)
-  //console.log("temp_TF:", item.assemble_id,  temp_TF)
-  return temp_TF;
-};
+//const isButtonDisabled = (item) => {
+//  let temp_TF = item.input_end_disable;
+//  return temp_TF;
+//};
 
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
@@ -2062,8 +2081,9 @@ const checkReceiveQty = (item) => {
   const diff = Number(item.abnormal_qty)                  //異常數量
   //  ~ = 應完成總數量 - 已完成總數量 - 異常數量
   //const tmp = temp - completed - diff
-  const tmp = temp - completed
-  //const tmp = temp
+  //const tmp = temp - completed
+  const tmp = temp
+
   if (total > tmp) {
     receive_qty_alarm.value = '完成數量錯誤!';
     item.tooltipVisible = true;     // 顯示 Tooltip
@@ -2176,15 +2196,7 @@ const getBtnStyle = (item) => {
       } else {
         return item.alarm_enable ? '#e8eaf6' : '#ff0000'
       }
-      /*
-      if (!item.input_abnormal_disable) {
-        return item.alarm_enable ? '#e8eaf6' : '#ff0000'
-      } else {
-        return item.isAssembleFirstAlarm ? '#e8eaf6' : '#ff0000'
-      }
-      */
     }).value,
-    //color: item.alarm_enable ? '#000' : '#fff'
 
     color: computed(() => {
       if (item.process_step_code == 3) {
@@ -2334,6 +2346,14 @@ const callForklift = async () => {
         record_data: false
       });
 
+      // Warehouse頁面顯示用：送出後，進入待入庫清單
+      await updateAssembleMustReceiveQtyByMaterialIDAndDate({
+        material_id: mid,
+        create_at: rec.create_at,
+        record_name: 'isWarehouseStationShow',
+        record_data: true
+      });
+
       // must_allOk_qty 以收料數為準（數值化）
       await updateMaterial({
         id: mid,
@@ -2397,149 +2417,10 @@ const callForklift = async () => {
 
     isCallForklift.value = false;
   }
-
-  /*
-  let payload = {};
-
-  if (!isCallForklift.value) {                          // 沒有重複呼叫
-    if (selectedItems.value.length == 0) {              // 已點選選單
-      showSnackbar("請選擇送料的工單!", 'red accent-2');
-      return;
-    }
-    isCallForklift.value = true
-  } else {
-    showSnackbar("請不要重複按鍵!", 'red accent-2');
-    return;
-  } // end if
-
-  console.log('trans_end 處理步驟1...');
-  selectedItems.value.forEach(async (item) => {
-    console.log('selectedItems, item:', item);
-
-    targetItem = materials_and_assembles_by_user.value.find(
-      (kk) => kk.index === item
-    );
-    console.log("targetItem:", targetItem)
-
-    let current_assemble_id=targetItem.assemble_id
-    let current_material_id=targetItem.id
-
-    payload = {
-      id: current_material_id,
-      show1_ok: 3,        // 成品站
-      show2_ok: 10,       // 等待入庫
-      show3_ok: 3,        // 等待組裝中
-      whichStation: 3,    // 目標途程:成品站
-    };
-    await updateMaterialRecord(payload);
-
-    payload = {
-      material_id: current_material_id,
-      delivery_qty: 0,
-      record_name1: 'show1_ok',
-      record_data1: 3,
-      record_name2: 'show2_ok',
-      record_data2: 10,
-      record_name3: 'show3_ok',
-      record_data3: 3,
-    };
-    await updateAssmbleDataByMaterialID(payload)
-
-    payload = {
-      id: targetItem.id,
-      record_name: 'move_by_automatic_or_manual_2',
-      record_data: false
-    };
-    await updateMaterial(payload);
-
-    payload = {
-      material_id: current_material_id,
-      record_name: 'isAssembleStationShow',
-      record_data: false,
-    };
-    await updateAssembleMustReceiveQtyByMaterialIDAndDate(payload);
-
-    payload = {
-      id: current_material_id,
-      record_name: 'must_allOk_qty',
-      record_data: Number(targetItem.receive_qty)
-    };
-    await updateMaterial(payload);
-  }); // end forEach loop
-
-  console.log('agv_end 處理步驟2...');
-  selectedItems.value.forEach(async (item) => {
-    targetItem = materials_and_assembles_by_user.value.find(
-      (kk) => kk.index === item
-    );
-    console.log("targetItem:", targetItem)
-
-    payload = {
-      user_id: currentUser.value.empID,
-      id: targetItem.id,
-      process_type: 6,                          // 在成品區
-    };
-    await createProcess(payload);
-    console.log('步驟2-1...');
-
-    //紀錄該筆的組裝完成數量
-    payload = {
-      id: targetItem.id,
-      record_name: 'assemble_qty',
-      record_data: targetItem.delivery_qty
-    };
-    await updateMaterial(payload);
-    console.log('步驟2-2...');
-
-    //紀錄該筆訂單已組裝完成總數量
-    let temp_total_assemble_qty = targetItem.total_assemble_qty + targetItem.delivery_qty
-    payload = {
-      id: targetItem.id,
-      record_name: 'total_assemble_qty',
-      record_data: temp_total_assemble_qty
-    };
-    await updateMaterial(payload);
-    console.log('步驟2-3...');
-
-    //紀錄該筆的組裝完成狀態
-    payload = {
-      id: targetItem.id,
-      record_name: 'isAssembleStationShow',
-      record_data: true
-    };
-    await updateMaterial(payload);
-    console.log('步驟2-4...');
-
-    //下面這一段, 待討論....
-    //
-    //if (Number(myMaterial.delivery_qty) != Number(myMaterial.total_delivery_qty)) { // 1張工單多批次運送
-    //  console.log("1張工單多批次運送, 新增未運送數量(相同工單)")
-    //
-    //  let tempDelivery = myMaterial.total_delivery_qty - myMaterial.delivery_qty;
-    //
-    //  payload_new = {
-    //    copy_id: myMaterial.id,
-    //    total_delivery_qty: tempDelivery,
-    //    show2_ok: 2,
-    //    shortage_note: '',
-    //  }
-    //  await copyMaterial(payload_new);
-    //  console.log('步驟2-4...');
-    //}
-    //
-  });
-
-  // 插入延遲 3 秒
-  await delay(3000);
-
-  selectedItems.value = [];
-  if (localStorage.getItem('selectedItems')) {
-    localStorage.removeItem('selectedItems');
-  }
-  */
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-//##
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  await reloadEndLocked();
+  //##
 };
 
 const callAGV = async () => {
@@ -2622,58 +2503,6 @@ const callAGV = async () => {
     // 一定要解鎖，避免按鈕被卡住
     isCallAGV.value = false;
   }
-
-
-  /*
-  let payload = {};
-
-  if (!isCallAGV.value) {
-    if (selectedItems.value.length == 0) {
-      showSnackbar("請選擇送料的工單!", 'red accent-2');
-      return;
-    }
-
-    payload = {agv_id: 1};
-    await getAGV(payload);
-    console.log("hello, 組裝區叫車, AGV 狀態:", currentAGV.value);
-    if (currentAGV.value.station != 2 || currentAGV.value.status != 0) {
-    //  showSnackbar("AGV目前忙碌中...", 'red accent-2');
-    //  return;
-    }
-
-    isCallAGV.value = true
-  } else {
-    showSnackbar("請不要重複按鍵!", 'red accent-2');
-    return;
-  }
-
-  socket.value.emit('station2_call');
-  console.log("送出 station2_call訊息...")
-  order_num_on_agv_blink.value='叫車進站中...'
-
-  activeColor.value='red';    // 等待運輸
-
-  agv1StartTime.value = new Date();  // 使用 Date 來記錄等待agv開始時間
-  console.log("AGV Start time:", agv1StartTime.value);
-
-  selectedItems.value.forEach(async (item) => {
-    console.log('selectedItems, item:', item);
-
-    payload = {
-      id: item,
-      record_name: 'show3_ok',
-      record_data: 1      // 設為 1，等待agv
-    };
-    await updateMaterial(payload);
-
-    payload = {
-      assemble_id: item,
-      record_name: 'show3_ok',
-      record_data: 1,
-    };
-    await updateAssemble(payload);
-  });
-  */
 };
 
 // 定義一個延遲函數
@@ -2685,7 +2514,8 @@ const updateItem2 = async (item) => {
   const temp = Number(item.must_receive_end_qty)          //應完成總數量
   const completed = Number(item.total_completed_qty_num)  //已完成總數量
 
-  item.receive_qty = temp - completed
+  //item.receive_qty = temp - completed
+  //item.receive_qty = temp
 
   // 檢查是否輸入了空白或 0
   if (!item.receive_qty || Number(item.receive_qty) === 0) {
@@ -2799,7 +2629,11 @@ const onClickEnd = async (item) => {
     }
     await copyAssembleForDifference(payload);
 
-    await reloadEndRowsAndRestoreTimers();
+    // 2026-02-12 修改, 要再測試
+    //await reloadEndRowsAndRestoreTimers();
+    await reloadEndLocked();
+
+    debugRows('after fetch')
   }
 
   // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
@@ -2917,7 +2751,7 @@ const onClickEnd = async (item) => {
 
     payload = {
       process_id: myProcessId,
-      record_name: 'normal_work_time',
+      record_name: 'normal_work_time',    //最後工序
       record_data: 3,
     };
     await updateProcessData(payload);
@@ -2927,41 +2761,63 @@ const onClickEnd = async (item) => {
 
     payload = {
       process_id: myProcessId,
-      record_name: 'normal_work_time',
+      record_name: 'normal_work_time',  // 不是最後工序
       record_data: 1,
     };
-
-    await updateProcessData(payload);
+    //await updateProcessData(payload);
+    await reloadEndLocked();
   }
-
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+};
 
+// 2026-02-12 修改, 待測試
+/*
+const reloadEndLocked = async () => {
+  if (_endReloadLock) return;
+  _endReloadLock = true;
+  try {
+    await reloadEndRowsAndRestoreTimers();
+  } finally {
+    _endReloadLock = false;
+  }
+};
+*/
+const reloadEndLocked = () => {
+  if (_endReloadLock && _endReloadPromise) return _endReloadPromise;
+
+  _endReloadLock = true;
+  _endReloadPromise = (async () => {
+    try {
+      await reloadEndRowsAndRestoreTimers();
+    } finally {
+      _endReloadLock = false;
+      _endReloadPromise = null;
+    }
+  })();
+
+  return _endReloadPromise;
 };
 
 const reloadEndRowsAndRestoreTimers = async () => {
-//async function reloadEndRowsAndRestoreTimers() {
-  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID })
-  await getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID })
+  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID })
 
   await nextTick();
+  //console.log(
+  //  '[End][timerElMap] after fetch keys=',
+  //  Array.from(timerElMap.keys())
+  //)
 
-  // 讓 End 畫面每一列都能「還原目前是否在跑、已跑幾秒」
-  //for (const row of materials_and_assembles_by_user.value) {
-  //  await ensureRestored(row)
-  //}
+  //await getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID })
 
-  //for (const row of materials_and_assembles_by_user.value || []) {
+  //await nextTick();
+
   for (const row of materials_and_assembles_by_user.value) {
-    // 只同步：已開始(有 begin_time 或 process_id) 且未結束 的列
-    //const started = !!(row.begin_time || row.process_id)
-    //const closed  = isRowClosed(row);
-
-    //if (started && !closed) {
-    //if (!closed) {
-      //await ensureRestored(row, currentUser.value.empID);
+    try {
       await ensureRestored(row);
-    //}
+    } catch (e) {
+      console.warn('[End] ensureRestored failed, assemble_id=', row.assemble_id, e);
+    }
   }
 }
 
@@ -3040,7 +2896,7 @@ const onClickAbnormal = async (rawItem) => {
     // ===== 2) 夾限 & 計算新值 =====
     const remain = Number(item.must_receive_end_qty) || 0
     if (remain <= 0) {
-      abnormal_qty_alarm.value = '目前無可扣減的應結數量。'
+      abnormal_qty_alarm.value = '目前無可扣減的完成數量。'
       rawItem.abnormal_tooltipVisible = true
       setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
       return
@@ -3048,22 +2904,24 @@ const onClickAbnormal = async (rawItem) => {
 
     const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
     const newRemain = Math.max(0, remain - abnormalQty)
+    console.log("注意, 注意, newRemain:", newRemain)
     if (abnormalQty !== parsedQty) {
       abnormal_qty_alarm.value = `異常數量自動調整為 ${abnormalQty}（不可超過剩餘 ${remain}）。`
       rawItem.abnormal_tooltipVisible = true
       setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
     }
 
-    // ===== 3) UI 樂觀更新（一次到位，避免前後不一致）=====
+    // ===== 3) UI更新，避免前後不一致 =====
     const optimisticRow = {
       ...(targetIndex !== -1 ? list[targetIndex] : rawItem),
-      alarm_enable: false,                 // 異常 → 鈴鐺關
-      input_abnormal_disable: true,       // 異常欄位唯讀
-      abnormal_qty: abnormalQty,          // 顯示夾限後數量
-      must_receive_end_qty: newRemain,    // 扣掉異常數量
+      alarm_enable: false,                  // 異常 → 鈴鐺關
+      input_abnormal_disable: true,         // 異常欄位唯讀
+      abnormal_qty: abnormalQty,            // 顯示夾限後數量
+      must_receive_end_qty: newRemain,      // 扣掉異常數量
     }
     if (targetIndex !== -1) {
       materials_and_assembles_by_user.value[targetIndex] = optimisticRow
+      console.log("注意, 注意, newRemain:", materials_and_assembles_by_user.value[targetIndex])
     } else {
       Object.assign(rawItem, optimisticRow)
     }
@@ -3074,6 +2932,8 @@ const onClickAbnormal = async (rawItem) => {
       updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: false }),
       updateMaterial({ id: current_material_id, record_name: 'isAssembleAlarm', record_data: false }),
     ])
+
+    console.log("after 注意, 注意, newRemain:", newRemain)
 
     // B. 寫入異常數量 / 鎖住異常欄位 / 更新剩餘
     await Promise.all([
@@ -3086,33 +2946,33 @@ const onClickAbnormal = async (rawItem) => {
     await copyNewAssemble({
       copy_id: current_assemble_id,
       must_receive_qty: abnormalQty,
+      must_receive_end_qty: newRemain,
     })
-
-    //// ===== 5) 重新拉資料（避免與後端飄移）=====
-    //await Promise.all([
-    //  getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
-    //  getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
-    //])
-
-    //// ===== 6) == TimerDisplay 用 ==（你補的段落）=====
-    //await nextTick()
-    //for (const row of materials_and_assembles_by_user.value) {
-    //  await ensureRestored(row)   // 還原「目前是否在跑、已經跑了幾秒」
-    //}
 
     // ✅ 新的 row 產生後：立刻重撈一次，並 restore timers
     await reloadEndRowsAndRestoreTimers();
+    debugRows('after abnormal fetch')
+
+    await nextTick()
+    debugTimerMounts()
   } catch (err) {
     console.error('onClickAbnormal 發生錯誤：', err)
     // 簡單回滾策略：重新拉資料覆蓋本地樂觀更新
     await Promise.all([
-      getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
-      getCountMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID }),
+      getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID }),
     ])
+
+    await nextTick();
+    console.log(
+      '[End][timerElMap] after fetch keys=',
+      Array.from(timerElMap.keys())
+    )
+
+    //debugRows('after abnormal fetch when error')
+
     abnormal_qty_alarm.value = '提交異常失敗，請稍後再試或聯絡系統管理員。'
     rawItem.abnormal_tooltipVisible = true
     setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
-
   } finally {
     // 清空輸入避免殘值
     rawItem.abnormal_qty = ''
@@ -3476,6 +3336,15 @@ const removelocalStorage = () => {
 
 :deep(.v-switch .v-label) {
   font-weight: 600;
+}
+
+:deep(.employee-select .v-field input) {
+  color: #1976d2 !important;
+}
+
+:deep(.employee-select .v-field input::placeholder) {
+  color: #1976d2 !important;
+  opacity: 1;
 }
 </style>
 

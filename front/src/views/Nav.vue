@@ -414,12 +414,16 @@
 
   <ChangePassword :dialog="openDialog" @update:dialog="updateDialog" />
   <BrowseDirectory :pdf="openPdfDialog" @update:pdf="updatePdfDialog" />
+
+  <ConfirmDialog ref="confirmRef" />
 </template>
 
 <script setup>
 import { ref, reactive, watch, watchEffect, computed, defineComponent, onBeforeMount, onMounted, onBeforeUnmount, onUnmounted } from 'vue';
 
 import { useRouter } from 'vue-router'; // Import useRouter
+
+import ConfirmDialog from "./confirmDialog";
 
 import logo from '../assets/logo.svg';
 
@@ -444,6 +448,8 @@ import { apiOperationB }  from '../mixins/crudB.js';
 //const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
 //const getCountMaterialsAndAssemblesByUser2 = apiOperation('post', '/getCountMaterialsAndAssemblesByUser2');
 const updateSetting = apiOperation('post', '/updateSetting');
+const getMyActiveProcesses = apiOperation('post', '/getMyActiveProcesses');
+const pauseAllMyActiveProcesses = apiOperation('post', '/pauseAllMyActiveProcesses');
 
 // 使用 apiOperationF 函式來建立 API 請求
 const downloadBatFile = apiOperationB('post', '/downloadBatFile');
@@ -477,6 +483,8 @@ const localNavLinks = ref([...props.navLinks]);
 const emit = defineEmits(['update:showFooter']);
 
 //=== data ===
+const confirmRef = ref(null);
+
 const isSegment = ref(false);
 const openDialog = ref(false);
 const openPdfDialog = ref(false);
@@ -862,8 +870,31 @@ const logout = () => {
 };
 */
 
-const logout = () => {
+const logout = async () => {
   console.log("logout...");
+
+  const activeRes = await getMyActiveProcesses({
+    user_id: currentUser.value.empID
+  })
+
+  if (activeRes.data?.length > 0) {
+    showSnackbar(`你還有 ${activeRes.data.length} 筆工單作業中...`, 'red accent-2');
+    return;
+    /*
+    const ok = await confirmRef.value.open({
+      title: '工單未結束登出',
+      message: `你還有 ${activeRes.data.length} 筆工單作業中，確定登出嗎？`,
+      okText: '確定',
+      cancelText: '取消',
+    })
+
+    if (!ok) return
+
+    await pauseAllMyActiveProcesses({
+      user_id: currentUser.value.empID
+    })
+    */
+  }
 
   const raw = localStorage.getItem('loginedUser');
   let payload = null;

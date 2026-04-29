@@ -7,7 +7,7 @@ from dotenv import dotenv_values
 from apscheduler.schedulers.background import BackgroundScheduler
 
 #from flask import Flask, session, jsonify, request
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from ajax.listTable import listTable
@@ -25,6 +25,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from database.tables import Session
 
+from datetime import datetime
 
 from log_util import setup_logger
 logger = setup_logger('main')       # 將 app 取名為 main
@@ -115,6 +116,83 @@ def hello():
     "local_ip": local_ip,
   }
   return jsonify(output)
+
+
+# --------------------------
+
+
+device_state = {
+    "target_on": False,          # Vue 要求的目標狀態
+    "actual_on": False,          # ESP 回報的實際狀態
+    "esp_online": False,
+    "last_report_time": None,
+    "ip": None
+}
+
+
+@app.route("/ping", methods=["GET"])
+def ping():
+  print("ping...")
+
+  return jsonify({
+      "ok": True,
+      "message": "Flask API is alive"
+  })
+
+@app.route("/report", methods=["POST"])
+def report():
+    data = request.get_json(silent=True) or {}
+    print("report data:", data)
+
+    return jsonify({
+        "ok": True,
+        "received": data
+    })
+
+@app.route("/device_status", methods=["GET"])
+def get_device_status():
+    return jsonify({
+        "ok": True,
+        "data": device_state
+    })
+
+@app.route("/device_command", methods=["GET"])
+def get_device_command():
+    return jsonify({
+        "ok": True,
+        "target_on": device_state["target_on"]
+    })
+
+@app.route("/device_set", methods=["POST"])
+def set_device():
+    data = request.get_json(silent=True) or {}
+    target_on = bool(data.get("target_on", False))
+
+    device_state["target_on"] = target_on
+
+    return jsonify({
+        "ok": True,
+        "message": "target updated",
+        "target_on": device_state["target_on"]
+    })
+
+@app.route("/device_report", methods=["POST"])
+def report_device():
+    data = request.get_json(silent=True) or {}
+
+    device_state["actual_on"] = bool(data.get("actual_on", False))
+    device_state["esp_online"] = True
+    device_state["last_report_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    device_state["ip"] = data.get("ip")
+
+    return jsonify({
+        "ok": True,
+        "message": "report received"
+    })
+
+
+# --------------------------
+
 
 #
 @app.teardown_appcontext

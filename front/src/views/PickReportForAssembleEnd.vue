@@ -65,7 +65,7 @@
             class="d-flex align-center pe-2"
             style="font-weight:700;"
           >
-            <div style="display: flex; flex-direction: column;">
+            <div style="display:flex; position:relative; left: 20px;">
               <div>組裝區完成生產報工</div>
 
               <!--客製化 模式switch按鍵-->
@@ -82,10 +82,10 @@
               -->
             </div>
 
-            <v-divider class="mx-2" inset vertical></v-divider>
+            <v-divider class="mx-2" inset vertical style="position:relative; left: 20px;"></v-divider>
 
             <!--客製化 員工選單-->
-            <div class="employee-select" style="position:relative; width:160px; right: 5px;">
+            <div class="employee-select" style="position:relative; width:160px; left: 40px;">
               <v-text-field
                 v-model="selectedEmployee"
                 @keyup.enter="handleEmployeeSearch"
@@ -160,7 +160,7 @@
               :disabled="c_isBlinking"
               color="primary"
               variant="outlined"
-              style="position:relative; left:5px; top:0px; font-weight:700; padding-left:8px;
+              style="position:relative; left:50px; top:0px; font-weight:700; padding-left:8px;
                     padding-right:8px;"
               @click="onClickTrans"
               ref="sendButton"
@@ -232,7 +232,7 @@
             style="display: flex; align-items: center; justify-content: center; cursor: pointer;"
             @click="toggleSort('order_num')"
           >
-            <div style="right:10px; position:relative;">{{ column.title }}</div>
+            <div style="right:50px; position:relative;">{{ column.title }}</div>
             <div style="min-width: 24px;">
               <!-- 僅在滑鼠移入或者正在排序的情況下顯示圖標 -->
               <v-icon v-if="sortBy.includes('order_num') && isHovering" style="margin-left: 2px;">
@@ -240,7 +240,7 @@
               </v-icon>
             </div>
           </div>
-          <div style="right:10px; position:relative; color:#0000FF; font-size:12px; margin-top:2px; font-weight: 600; text-align: center; padding-right: 22px;">
+          <div style="right:50px; position:relative; color:#0000FF; font-size:12px; margin-top:2px; font-weight: 600; text-align: center; padding-right: 22px;">
             (工序)
           </div>
         </v-hover>
@@ -309,7 +309,7 @@
         <div style="display: flex; align-items: center;">
           <!--檢料完成(缺料)-->
           <!--<div style="color: red; margin-right: 2px;" v-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial != 99">-->
-          <div style="color: red; margin-right: 2px;" v-if="item.isAssembleStationShow && item.isLackMaterial != 99">
+          <div style="color:red; margin-right:2px; right:50px; position:relative;" v-if="item.isAssembleStationShow && item.isLackMaterial != 99">
             <div>
               {{ item.order_num }}&nbsp;&nbsp;
               <span style="font-weight: 700; font-size: 16px;">缺料</span>
@@ -319,15 +319,18 @@
 
           <!--檢料完成-->
           <!--<div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial == 99">-->
-          <div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStationShow && item.isLackMaterial == 99">
+          <div style="color:blue; margin-right: 20px; right:50px; position:relative;" v-else-if="item.isAssembleStationShow && item.isLackMaterial == 99">
             <div>{{ item.order_num }}</div>
             <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
           </div>
 
           <!--檢料還未完成-->
-          <div style="margin-right: 20px;" v-else>
-            <div>{{ item.order_num }}</div>
-            <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
+          <div style="right:50px; position:relative; justify-content:flex-start" v-else>
+            <div>{{ item.order_num.trim() }}</div>
+            <div style="color: #a6a6a6; font-size:12px;">
+              {{ item.assemble_work }}
+              <span v-if="item.schedule_name" style="font-weight:600; font-size:12px; color:black;"> [{{ item.schedule_name }}]</span>
+            </div>
           </div>
         </div>
       </template>
@@ -608,6 +611,8 @@ const getMaterialsAndAssemblesAndTime = apiOperation('post', '/getMaterialsAndAs
 //const getEndOkByMaterialIdAndStepCode  = apiOperation('post', '/getEndOkByMaterialIdAndStepCode');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
+const addAssembleScheduleRows = apiOperation('post', '/addAssembleScheduleRows');
+const updateAssembleFieldByAssembleID = apiOperation('post', '/updateAssembleFieldByAssembleID');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
@@ -674,8 +679,8 @@ const footerOptions = [
 
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
-  { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
-  { title: '物料編號', sortable: false, key: 'material_num', width:180 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:200 },
+  { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
   { title: '領取數量', sortable: false, key: 'ask_qty', width:70 },
@@ -684,7 +689,7 @@ const headers = [
   { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
   { title: '異常數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
   //{ title: '說明', align: 'start', sortable: false, key: 'comment' },
-  { title: '交期', sortable: false, key: 'delivery_date', width:100 },
+  { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '', sortable: false, key: 'action', width:300 },
 ];
 
@@ -728,6 +733,40 @@ const pagination = reactive({
   itemsPerPage: 5,                          // 預設值, rows/per page
   page: 1,
 });
+
+const default_assemble_steps = ref([
+  {"id": 1, "name": "組立", "checked": true},
+  {"id": 2, "name": "鋼珠", "checked": false},
+  {"id": 3, "name": "磨斜套", "checked": false},
+  {"id": 4, "name": "鎖緊", "checked": false},
+  {"id": 5, "name": "防鏽", "checked": false},
+  {"id": 6, "name": "黏側蓋", "checked": false},
+  {"id": 7, "name": "端磨", "checked": false},
+  {"id": 8, "name": "拉扭力", "checked": false},
+  {"id": 9, "name": "轉牙+敲pin", "checked": false},
+  {"id": 10, "name": "巡牙", "checked": false},
+  {"id": 11, "name": "量同心", "checked": false},
+  {"id": 12, "name": "磨pin", "checked": false},
+  {"id": 13, "name": "彈簧扣治具", "checked": false},
+  {"id": 14, "name": "合爪+量爪", "checked": false},
+  {"id": 15, "name": "前置作業", "checked": false},
+  {"id": 16, "name": "自動組立", "checked": false},
+  {"id": 17, "name": "自動鎖緊", "checked": false},
+])
+
+const default_check_steps = ref([
+  { id: 1, name: "檢驗", checked: true },
+  { id: 2, name: "壓配+鎖螺絲", checked: false },
+  { id: 3, name: "清洗", checked: false },
+  { id: 4, name: "黏側蓋", checked: false },
+  { id: 5, name: "動平衡", checked: false },
+  { id: 6, name: "止洩帶+鎖水孔", checked: false },
+  { id: 7, name: "塑膠環", checked: false },
+  { id: 8, name: "防鏽", checked: false },
+  { id: 9, name: "轉手感+防鏽", checked: false },
+  { id: 10, name: "左右螺母", checked: false },
+  { id: 11, name: "鎖螺絲", checked: false },
+])
 
 const snackbar = ref(false);
 const snackbar_info = ref('');
@@ -826,11 +865,11 @@ async function handleSyncKey(syncKey) {
   // ✅ 1) 先重撈，讓 b 出現在 End 清單
   await getMaterialsAndAssemblesByUser({ user_id: u })
 
-  //await nextTick();
-  console.log(
-    '[End][timerElMap] after fetch keys=',
-    Array.from(timerElMap.keys())
-  )
+  ////await nextTick();
+  //console.log(
+  //  '[End][timerElMap] after fetch keys=',
+  //  Array.from(timerElMap.keys())
+  //)
 
   //debugRows('after fetch')
 
@@ -842,6 +881,53 @@ async function handleSyncKey(syncKey) {
   if (row) {
     await ensureRestored(row, u)     // ✅ 關鍵：讓 b 在 End 跑起來
   }
+}
+/*
+function getScheduleName(item) {
+  if (!item) return ''
+
+  console.log("getScheduleName...", item)
+  const ps = item.process_steps || {}
+  const workNum = String(item.work_num || '')
+  const scheduleId = Number(item.schedule_id)
+
+  if (!scheduleId) return ''
+  console.log("index, ps, workNum, work_num ,scheduleId:", item.index, ps, workNum, item.work_num, scheduleId)
+  let steps = []
+
+  if (workNum.includes('B109')) {
+    steps = Array.isArray(ps.assemble) ? ps.assemble : []
+  } else if (workNum.includes('B110')) {
+    steps = Array.isArray(ps.check) ? ps.check : []
+  } else {
+    return ''
+  }
+
+  const found = steps.find(x => Number(x.id) === scheduleId)
+  return found?.name || ''
+}
+*/
+function resolveScheduleName(item) {
+  if (!item) return ''
+
+  const ps = item.process_steps || {}
+  const workNum = String(item.work_num || '')
+  const scheduleId = Number(item.schedule_id)
+
+  if (!scheduleId) return ''
+
+  let steps = []
+
+  if (workNum.includes('B109')) {
+    steps = Array.isArray(ps.assemble) ? ps.assemble : []
+  } else if (workNum.includes('B110')) {
+    steps = Array.isArray(ps.check) ? ps.check : []
+  } else {
+    return ''
+  }
+
+  const found = steps.find(x => Number(x.id) === scheduleId)
+  return found?.name || ''
 }
 
 // === watch ===
@@ -1216,12 +1302,14 @@ onMounted(async () => {
             record_data2: 10,
             record_name3: 'show3_ok',
             record_data3: 3,            // 等待組裝中
+            record_name4: 'isWarehouseStationShow',
+            record_data4: true,         // AGV 到成品區後，開啟待入庫顯示
           });
 
           // 將組裝站顯示關閉（用你現有的 API 名稱）
           await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
-
+            assemble_id: current_assemble_id,
             create_at: rec.create_at,
 
             record_name: 'isAssembleStationShow',
@@ -1368,7 +1456,7 @@ onMounted(async () => {
         console.log('targetItem:', rec);
 
         const current_material_id = rec.id;
-
+        const current_assemble_id = rec.assemble_id;
         try {
           // Material：成品站/等待入庫/等待組裝中/目標途程=成品站
           await updateMaterialRecord({
@@ -1394,7 +1482,7 @@ onMounted(async () => {
           // 關閉組裝站顯示
           await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
-
+            assemble_id: current_assemble_id,
             create_at: rec.create_at,
 
             record_name: 'isAssembleStationShow',
@@ -1967,11 +2055,11 @@ const initialize = async () => {
     //};
     await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID });
 
-    //await nextTick();
-    console.log(
-      '[End][timerElMap] after fetch keys=',
-      Array.from(timerElMap.keys())
-    )
+    ////await nextTick();
+    //console.log(
+    //  '[End][timerElMap] after fetch keys=',
+    //  Array.from(timerElMap.keys())
+    //)
 
     // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
     materials_and_assembles_by_user.value.forEach(item => {
@@ -2077,7 +2165,7 @@ const checkReceiveQty = (item) => {
   const total = Number(item.receive_qty) || 0;            //完成數量
 
   const temp = Number(item.must_receive_end_qty)          //應完成總數量
-  const completed = Number(item.total_completed_qty_num)  //已完成總數量
+  const completed = toNum(item.total_completed_qty_num)  //已完成總數量
   const diff = Number(item.abnormal_qty)                  //異常數量
   //  ~ = 應完成總數量 - 已完成總數量 - 異常數量
   //const tmp = temp - completed - diff
@@ -2278,9 +2366,9 @@ const toggleSelect = (item) => {
 
 const onClickTrans = () => {
   if (toggle_exclusive.value == 1) {
-    callForklift();
+    callForklift();   //人力推車
   } else {
-    callAGV();
+    callAGV();        // KUKA AGV
   }
 };
 
@@ -2309,6 +2397,7 @@ const callForklift = async () => {
         continue;
       }
       const mid = rec.id;
+      const current_assemble_id = rec.assemble_id;
 
       await updateMaterialRecord({
         id: mid,
@@ -2339,11 +2428,21 @@ const callForklift = async () => {
       // 關閉組裝站顯示
       await updateAssembleMustReceiveQtyByMaterialIDAndDate({
         material_id: mid,
-
+        assemble_id: current_assemble_id,
         create_at: rec.create_at,
 
         record_name: 'isAssembleStationShow',
         record_data: false
+      });
+
+      // Warehouse頁面顯示用：送出後，進入待入庫清單
+      await updateAssembleMustReceiveQtyByMaterialIDAndDate({
+        material_id: mid,
+        assemble_id: current_assemble_id,
+        create_at: rec.create_at,
+
+        record_name: 'isWarehouseStationShow',
+        record_data: true
       });
 
       // must_allOk_qty 以收料數為準（數值化）
@@ -2504,7 +2603,7 @@ const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
   const temp = Number(item.must_receive_end_qty)          //應完成總數量
-  const completed = Number(item.total_completed_qty_num)  //已完成總數量
+  const completed = toNum(item.total_completed_qty_num)  //已完成總數量
 
   //item.receive_qty = temp - completed
   //item.receive_qty = temp
@@ -2590,7 +2689,7 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
-  let current_total_completed_qty=Number(item.total_completed_qty_num);   //組裝區完成數量的總數(已完成總數量)
+  let current_total_completed_qty=toNum(item.total_completed_qty_num);   //組裝區完成數量的總數(已完成總數量)
   let total = current_total_completed_qty + current_completed_qty;
   item.total_completed_qty_num = total;
 
@@ -2723,6 +2822,30 @@ const onClickEnd = async (item) => {
     id: current_material_id,
     assemble_id: current_assemble_id,
   });
+
+  console.log('updateAssembleProcessStep res =', response);
+
+  // 不管是不是最後工序，都先重撈，讓後端目前群組規則決定畫面顯示
+  await reloadEndLocked();
+
+  // 若 material 全完，再補最後工序標記
+  if (response?.status === true && response?.material_done === true) {
+    payload = {
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 3,
+    };
+    await updateProcessData(payload);
+  } else {
+    payload = {
+      process_id: myProcessId,
+      record_name: 'normal_work_time',
+      record_data: 1,
+    };
+    await updateProcessData(payload);
+  }
+
+  /*
   console.log("確認是否為最後工序或只有1個工序...")
   console.log("response || item.assemble_count == 1", response, item.assemble_count)
 
@@ -2759,6 +2882,8 @@ const onClickEnd = async (item) => {
     //await updateProcessData(payload);
     await reloadEndLocked();
   }
+  */
+
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
@@ -2853,38 +2978,6 @@ const onClickAbnormal = async (rawItem) => {
       return
     }
 
-    /*
-    // ===== 1.x) 先把「目前這一筆檢驗製程」的計時 & process 關掉（關鍵）=====
-    // 只處理「檢驗」那個 step，避免去動到別筆
-    if (item.process_step_code === 2 || String(item.assemble_work || '').includes('B110')) {
-      //// 1) 先凍結當下畫面上的毫秒值（End.vue 那顆 Timer 要停住）
-      //const frozenMs = freezeRowTimer(rawItem)
-
-      //// 2) 確保有一個 process 存在（如果還沒開始會幫你建一筆）
-      //const t = await ensureStarted(rawItem)
-      //const myProcessId = t.processId?.value ?? null
-      //console.log('onClickAbnormal, processId=', myProcessId)
-
-      //// 3) 計算這一筆檢驗實際「正常完成數量」（= 應結 - 異常）
-      //const must  = Number(item.must_receive_end_qty) || 0
-      //const abQty = parsedQty
-      //const goodQty = Math.max(must - abQty, 0)
-
-      //// 4) 關閉這一筆檢驗製程（後端寫 end_time / elapsed_time 等）
-      //await t.closeProcess({
-      //  receive_qty: goodQty,             // 正常完成的數量
-      //  alarm_enable: false,              // 視為異常結束
-      //  isAssembleFirstAlarm: true,
-      //  alarm_message: item.alarm_message || '',
-      //  assemble_id: item.assemble_id,
-      //  elapsed_ms: frozenMs,             // 用剛剛凍結的時間
-      //})
-
-      //// 5) 關閉後把本地 timer / 自動更新都停掉，避免殘留影響其它列
-      //t.dispose?.()
-    }
-    */
-
     // ===== 2) 夾限 & 計算新值 =====
     const remain = Number(item.must_receive_end_qty) || 0
     if (remain <= 0) {
@@ -2897,11 +2990,22 @@ const onClickAbnormal = async (rawItem) => {
     const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
     const newRemain = Math.max(0, remain - abnormalQty)
     console.log("注意, 注意, newRemain:", newRemain)
+
+    if (abnormalQty <= 0) {
+      console.log("注意, 注意, abnormalQty:", abnormalQty)
+      abnormal_qty_alarm.value = '異常數量為負數...'
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+      return
+    }
+
     if (abnormalQty !== parsedQty) {
       abnormal_qty_alarm.value = `異常數量自動調整為 ${abnormalQty}（不可超過剩餘 ${remain}）。`
       rawItem.abnormal_tooltipVisible = true
       setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
     }
+
+
 
     // ===== 3) UI更新，避免前後不一致 =====
     const optimisticRow = {
@@ -2934,12 +3038,19 @@ const onClickAbnormal = async (rawItem) => {
       updateAssemble({ assemble_id: current_assemble_id, record_name: 'must_receive_end_qty', record_data: newRemain }),
     ])
 
-    // C. 產生異常返工/補料單位的「新組裝」應領取數
-    await copyNewAssemble({
-      copy_id: current_assemble_id,
-      must_receive_qty: abnormalQty,
-      must_receive_end_qty: newRemain,
+  //***
+  // C. 產生異常返工/補料單位的「新組裝」應領取數
+
+    const tt=await addAssembleScheduleRows({
+      id: current_material_id,
+      process_steps: {
+        assemble: default_assemble_steps.value,
+        check: default_check_steps.value,
+      },
+      abnormal_qty: abnormalQty,
     })
+
+    console.log('addAssembleScheduleRows res:', tt.status, tt.msg)
 
     // ✅ 新的 row 產生後：立刻重撈一次，並 restore timers
     await reloadEndRowsAndRestoreTimers();
@@ -2955,10 +3066,10 @@ const onClickAbnormal = async (rawItem) => {
     ])
 
     await nextTick();
-    console.log(
-      '[End][timerElMap] after fetch keys=',
-      Array.from(timerElMap.keys())
-    )
+    //console.log(
+    //  '[End][timerElMap] after fetch keys=',
+    //  Array.from(timerElMap.keys())
+    //)
 
     //debugRows('after abnormal fetch when error')
 
@@ -3117,6 +3228,11 @@ const removelocalStorage = () => {
     localStorage.removeItem('Authenticated');
   }
 };
+
+const toNum = (v, def = 0) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : def
+}
 </script>
 
 <style lang="scss" scoped>

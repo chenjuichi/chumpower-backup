@@ -1192,7 +1192,7 @@ const updateItem = async (item) => {
     // 2-a.紀錄該筆的完工應領取數量
     payload = {
       material_id: item.id,
-
+      assemble_id: item.assemble_id,
       create_at: item.create_at,
 
       record_name: 'must_receive_end_qty',

@@ -1154,8 +1154,15 @@ const onClickWarehouseIn = async () => {
       const createProd  = (current_line === 'process') ? createProductP : createProduct;
 
       let d2 = 0;
+
+      //if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
+      //  d2 = Number(row.delivery_qty) || 0;
+      //} else {
+      //  d2 = Number(row.allOk_qty) || 0;
+      //}
+
       if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
-        d2 = Number(row.delivery_qty) || 0;
+        d2 = getRemainQty(row);
       } else {
         d2 = Number(row.allOk_qty) || 0;
       }
@@ -1164,6 +1171,8 @@ const onClickWarehouseIn = async () => {
         showSnackbar('入庫數量不可為 0', 'red accent-2');
         continue;
       }
+
+      console.log("已入庫, 數量:", d2)
 
       const new_total = current_total_qty + d2;
       const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
@@ -1235,14 +1244,17 @@ const onClickWarehouseIn = async () => {
         await updateAssem({
           assemble_id: current_assemble_id,
           record_name: 'isWarehouseStationShow',
-          record_data: true,
+          //record_data: true,
+          record_data: false,
         });
 
-        await updateAssem({
-          assemble_id: current_assemble_id,
-          record_name: 'isStockIn',
-          record_data: true,
-        });
+        if (current_line === 'process') {
+          await updateAssem({
+            assemble_id: current_assemble_id,
+            record_name: 'isStockIn',
+            record_data: true,
+          });
+        }
       }
 
       successCount++;

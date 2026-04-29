@@ -9,12 +9,105 @@
       </v-btn>
     </template>
   </v-snackbar>
-<!--
-  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
-    <LedLights :activeColor="activeColor" />
-  </DraggablePanel>
--->
+
   <ConfirmDialog ref="confirmRef" />
+
+  <v-dialog v-model="scheduling_dialog" max-width="420">
+    <v-card>
+      <v-card-title style="font-weight: 600">
+        <span style="font-size:12px; color:red;">訂單編號{{scheduling_dialog_orde_num}}&nbsp;</span>
+        <span style="font-size:18px;color:black;">工序勾選/排序設定</span>
+      </v-card-title>
+      <v-card-text>
+        <div class="d-flex align-center justify-space-between mb-3">
+          <span class="text-subtitle-2">工序類型</span>
+          <v-switch
+            :model-value="scheduleMode === 'check'"
+            color="indigo"
+                      hide-details
+            @update:modelValue="val => switchScheduleMode(val ? 'check' : 'assemble')"
+          >
+            <template #label>
+              <span class="text-subtitle-2" style="font-weight:600; color:black;">
+                {{ scheduleMode === 'assemble' ? '組裝工序' : '檢驗工序' }}
+              </span>
+            </template>
+          </v-switch>
+        <!--
+          <v-radio-group
+            :model-value="scheduleMode"
+            @update:modelValue="switchScheduleMode"
+            inline
+            class="d-flex justify-center"
+          >
+            <v-radio label="組裝工序" value="assemble" class="mr-4" />
+            <v-radio label="檢驗工序" value="check" />
+          </v-radio-group>
+        -->
+        </div>
+
+        <div class="text-grey-darken-1 mb-3">
+          可勾選工序，並以拖曳改變順序
+        </div>
+
+        <div v-auto-animate class="scheduling-list">
+          <div v-for="(step, index) in schedulingSteps"
+            :key="`${scheduleMode}-${step.id}`"
+            class="scheduling-item"
+            draggable="true"
+            @dragstart="onDragStartStep(index)"
+            @dragover="onDragOverStep"
+            @drop="onDropStep(index)"
+            @dragend="onDragEndStep"
+          >
+            <div class="scheduling-item-left">
+              <v-icon size="18" class="drag-handle me-2">mdi-drag</v-icon>
+            <!--
+              <v-checkbox
+                :model-value="step.checked"
+                hide-details
+                density="compact"
+                class="me-2"
+
+                @click.stop="step.checked = !step.checked"
+              />
+            -->
+              <v-checkbox
+                v-model="step.checked"
+                hide-details
+                density="compact"
+                class="me-2"
+              />
+              <!--<span>{{ index + 1 }}. {{ step.name }}</span>-->
+              <span :class="{ 'text-red-darken-2': step.checked }">
+                {{ step.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </v-card-text>
+
+      <v-card-actions class="justify-center pb-4">
+        <v-btn
+          color="error"
+          prepend-icon="mdi-close"
+          text="取消"
+          class="text-none"
+          variant="flat"
+          @click="closeSchedulingDialog"
+        />
+        <v-btn
+          color="success"
+          prepend-icon="mdi-check"
+          text="確定"
+          class="text-none"
+          variant="flat"
+          :loading="scheduling_dialog_loading"
+          @click="confirmSchedulingDialog"
+        />
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-data-table
     :headers="headers"
@@ -32,6 +125,9 @@
 
     v-model:items-per-page="pagination.itemsPerPage"
     v-model:page="pagination.page"
+
+
+
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
     class="elevation-10 custom-table"
@@ -172,46 +268,52 @@
               </div>
             </v-col>
 
-            <!--整批刪除 按鍵-->
             <v-col cols="auto">
-              <div class="batch-slot" :class="{ 'is-disabled': isInformationEmpty }">
-                <!-- 翻轉效果 -->
-                <div class="flip_btn fixed-flip-btn">
-                  <v-btn
-                    v-if="hasDpRange2"
-                    style="background:#E3F2FD !important;"
+              <div class="batch-slot" v-if="hasDpRange2">
 
-                    class="side default-side thin"
+                <v-btn
+                  v-if="!showBatchActions"
+                  style="background:#E3F2FD !important;"
+                  class="thin"
+                  :disabled="isInformationEmpty"
+                  @click="onClickBatchDelete"
+                >
+                  <v-icon left color="green" style="font-weight:700;">
+                    mdi-sticker-remove-outline
+                  </v-icon>
+                  <span style="color:black; font-weight:600;">整批刪除</span>
+                </v-btn>
+
+                <!-- ===== 狀態2：取消 / 確定 ===== -->
+                <div
+                  v-else
+                  class="batch-actions"
+                >
+                  <!-- 取消 -->
+                  <v-btn
+                    class="action-btn"
                     :disabled="isInformationEmpty"
-                    @mouseenter="!isInformationEmpty && (showFields = true)"
-                    @click="!isInformationEmpty && (showFields = true)"
+                    @click="onCancelBatchDelete"
                   >
-                    <v-icon left color="green" style="font-weight:700;">mdi-sticker-remove-outline</v-icon>
-                    <span style="color:black; font-weight:600;">整批刪除</span>
+                    <v-icon left color="#ff0000">
+                      mdi-window-close
+                    </v-icon>
+                    <span style="color:black; font-weight:600;">取消</span>
                   </v-btn>
 
-                  <div class="side hover-side hover-actions">
-                    <!-- 取消按鍵 -->
-                    <v-btn
-                      class="action-btn"
-                      :disabled="isInformationEmpty"
-                      @click="!isInformationEmpty && (showFields = false)"
-                    >
-                      <v-icon left color="#ff0000">mdi-window-close</v-icon>
-                      <span style="color:black; font-weight:600;">取消</span>
-                    </v-btn>
-
-                    <!-- 確定按鍵 -->
-                    <v-btn
-                      class="action-btn"
-                      :disabled="isInformationEmpty"
-                      @click="!isInformationEmpty && onClickRemoveByDeliveryDateRange()"
-                    >
-                      <v-icon left color="green">mdi-microsoft-excel</v-icon>
-                      <span style="color:black; font-weight:600;">確定</span>
-                    </v-btn>
-                  </div>
+                  <!-- 確定 -->
+                  <v-btn
+                    class="action-btn"
+                    :disabled="isInformationEmpty"
+                    @click="onConfirmBatchDelete"
+                  >
+                    <v-icon left color="green">
+                      mdi-check
+                    </v-icon>
+                    <span style="color:black; font-weight:600;">確定</span>
+                  </v-btn>
                 </div>
+
               </div>
             </v-col>
 
@@ -223,6 +325,7 @@
                   prepend-inner-icon="mdi-magnify"
                   variant="outlined"
                   hide-details
+                  label="全文搜尋"
                   single-line
                   density="compact"
                   class="toolbar-field toolbar-field--24 search-field"
@@ -333,7 +436,12 @@
           </v-icon>
           {{ item.order_num }}
         </div>
-        <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>
+        <!--<div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>-->
+        <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">
+          {{ item.assemble_work }}
+          <span v-if="getScheduleName(item)" style="font-weight:600; font-size:12px; color:black;"> [{{ getScheduleName(item) }}]</span>
+          <!--<span v-if="item.alarm_enable" style="font-weight:600; font-size:12px; color:red;">-異常</span>-->
+        </div>
       </div>
     </template>
 
@@ -345,57 +453,7 @@
       </div>
     </template>
 
-    <!-- 自訂 '需求數量' 欄位的資料欄位 -->
-    <!--<template v-slot:item.req_qty="{ item }">-->
-      <!--
-        v-bind="props":
-        使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
-        當滑鼠移入或移出該 div 時，就能觸發 isHovering 的變化。
-
-        isHovering:
-        根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
-      -->
-  <!--
-      <v-hover v-slot="{ isHovering, props }">
-        <div
-          v-bind="props"
-          style="position: relative; display: inline-block;"
-          @mouseenter="hoveredItemIndexForReqQty = index"
-          @mouseleave="hoveredItemIndexForReqQty = null"
-        >
-          <div>
-            <div>{{ item.req_qty }}</div>
-            <div style="color: #a6a6a6; font-size:12px;">{{ item.total_receive_qty }}</div>
-          </div>
-
-          <span
-            v-if="isHovering"
-            style="
-              position: absolute;
-              top: -5px;
-              left: 35px;
-              background-color: white;
-              padding: 5px;
-              border-radius: 5px;
-              box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
-              font-size: 12px;
-              color: #333;
-              white-space: nowrap;
-            "
-          >
-            目前領取順序為[
-            <span v-for="(pickItem, idx) in item.pickBegin" :key="idx">
-              {{ pickItem }}
-              <span v-if="idx < item.pickBegin.length - 1">, </span>
-            </span>
-            ]
-          </span>
-        </div>
-      </v-hover>
-    </template>
-  -->
     <!-- 自訂 '應領取數量'欄位的資料欄位 -->
-<!--  :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"-->
     <template v-slot:item.must_receive_qty="{ item }">
       <div style="display: flex; align-items: center;">
         <template v-if="item.process_step_code == 3 && item.is_copied_from_id == null && item.begin_records == 0"> <!--組裝途程-->
@@ -426,39 +484,7 @@
       </div>
     </template>
 
-    <!-- 自訂 '領取數量' 輸入欄位 -->
-  <!--ready modify 2025-09-15
-    <template v-slot:item.receive_qty="{ item }">
-      <div style="position: relative; display: inline-block;">
-        <v-text-field
-          v-model="item.receive_qty"
-          dense
-          hide-details
-          :id="`receiveQtyID-${item.assemble_id}`"
-          @keydown="handleKeyDown"
-          @update:modelValue="checkReceiveQty(item)"
-          @update:focused="(focused) => checkTextEditField(focused, item)"
-          @keyup.enter="updateItem2(item)"
-          :disabled="isButtonDisabled(item)"
-        />
-        <span
-          v-show="item.tooltipVisible"
-          style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
-        >
-          {{ receive_qty_alarm }}
-        </span>
-      </div>
-    </template>
-  -->
-
     <!-- 自訂 '說明' 欄位的資料欄位 -->
-  <!--
-    <template v-slot:item.comment="{ item }">
-      <div>
-        <div style="text-align:left; color: #669999; font-size:12px; font-family: '微軟正黑體', sans-serif;">{{ item.comment }}</div>
-      </div>
-    </template>
-  -->
     <template v-slot:item.comment="{ item }">
       <v-tooltip location="bottom">
         <template #activator="{ props }">
@@ -526,6 +552,49 @@
       </v-hover>
     </template>
 
+    <!-- 自訂 '+工序' 按鍵欄位 -->
+  <!--
+    <template #item.add_process="{ item }">
+      <v-btn
+        size="small"
+        class="btn-add-process"
+        :class="{ 'btn-add-process--disabled': item.process_step_enable }"
+        :disabled="checkBegin(item)"
+        @click="openSchedulingDialog(item)"
+      >
+        +工序
+      </v-btn>
+    </template>
+  -->
+    <template #item.add_process="{ item }">
+      <v-btn
+        size="small"
+        class="btn-add-process"
+        :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
+        :disabled="isAddProcessDisabledV2(item) ||
+                   item.top_work_rank != item.process_step_code ||
+                   item.delivery_qty != item.must_receive_qty"
+        @click="openSchedulingDialog(item)"
+      >
+        +工序
+      </v-btn>
+    </template>
+
+    <!-- 自訂 '-工序' 按鍵欄位 -->
+  <!--
+    <template #item.remove_process="{ item }">
+      <v-btn
+        size="small"
+        class="btn-remove-process"
+        :class="{ 'btn-remove-process--disabled': !item.process_step_enable }"
+        :disabled="!item.process_step_enable"
+        @click="removeSchedulingDialog(item)"
+      >
+        -工序
+      </v-btn>
+    </template>
+  -->
+
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
@@ -560,15 +629,16 @@
           class="me-1"
         >
         -->
-        <!-- :style="item.show_name === userId ? { position: 'relative', left: '70px' } : {position: 'relative', left: '117px'}" -->
           <v-btn
             size="small"
             variant="tonal"
             class="begin-btn"
-            :disabled="isButtonDisabled(item)"
+            :class="{ 'begin-btn--disabled': !canBeginBySchedule(item) }"
+            :disabled="!canBeginBySchedule(item)"
+
             @click="onClickBegin(item)"
             prepend-icon = "mdi-play"
-            color="indigo-darken-4"
+
           >
             <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
             開 始
@@ -604,9 +674,6 @@ import ConfirmDialog from "./confirmDialog";
 
 import eventBus from '../mixins/enentBus.js';
 
-//import LedLights from './LedLights.vue';
-//import DraggablePanel from './DraggablePanel.vue';
-
 import { useRoute } from 'vue-router';
 
 const search = ref('');
@@ -615,6 +682,7 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 
 // +++
+const isFlipped = ref(false);
 
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
 const menuOpen = ref(false)
@@ -622,47 +690,45 @@ const today = new Date()
 const menuKey = ref(0)
 const settingDefaultRange = ref(false)
 
-const dpRange = ref(null)             // 外部值（清空用 null，不要 []）
 const dpRange2 = ref([])
-const dpInternal = ref(null)          // 內部值：選取當下就會更新
 const formattedDateRange = ref('')    // 綁給 <v-text-field>
 const dateFieldActive = ref(false)
-
 
 import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { materials_and_assembles, assembles_active_user_count, boms, socket_server_ip }  from '../mixins/crud.js';
-import { temp_isLackMaterial }  from '../mixins/crud.js';
-import { begin_count, end_count }  from '../mixins/crud.js';
+import { materials_and_assembles, assembles_active_user_count, boms,  socket_server_ip }  from '../mixins/crud.js';
+//import { temp_isLackMaterial }  from '../mixins/crud.js';
+//import { begin_count, end_count }  from '../mixins/crud.js';
 import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
 //const listWaitForAssemble = apiOperation('get', '/listWaitForAssemble');
-const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
+//const listSocketServerIP = apiOperation('get', '/listSocketServerIP');
 
 const updateAssembleMustReceiveQtyByMaterialIDAndDate = apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDate');
 
-const copyAssemble = apiOperation('post', '/copyAssemble');
+//const copyAssemble = apiOperation('post', '/copyAssemble');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
-const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
+const updateAssembleScheduleRows = apiOperation('post', '/updateAssembleScheduleRows');
+//const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 //const createProcess = apiOperation('post', '/createProcess');
 const getBoms = apiOperation('post', '/getBoms');
 
 const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
 
-const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
-const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
+//const updateAssembleAlarmMessage = apiOperation('post', '/updateAssembleAlarmMessage');
+//const getActiveCountMap = apiOperation('post', '/getActiveCountMap');
 //const getCountMaterialsAndAssemblesByUser = apiOperation('post', '/getCountMaterialsAndAssemblesByUser');
 
 const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 const removeMaterialsAndRelationTableByDeliveryDateRange = apiOperation('post', '/removeMaterialsAndRelationTableByDeliveryDateRange');
 
-const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
+//const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
 
 //=== component name ==
 defineComponent({ name: 'PickReportForAssembleBegin' });
@@ -681,21 +747,16 @@ const confirmRef = ref(null);
 
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
 const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
-const hoveredItemIndexForReqQty = ref(null);
 const inputIDs = ref([]);
+
+const myBoms = ref([]);
 
 const showBackWarning = ref(true);
 
 const station2_trans_ready = ref(false);    // false:堆高機沒有動作
-const station2_trans_empID = ref('');
-const station2_trans_empName = ref('');
-const station2_trans_show1 = ref(false);
-const station2_trans_password = ref('password');
+
 const requiredRule = value => !!value || '必須輸入資料...';
 const passwordRule = value => /^(?=.*\d)(?=.*[a-z])[0-9a-zA-Z]{6,}$/.test(value) || '需6個字以上，且含數字和小寫字母!';
-
-//const showText = ref(true) // 控制閃爍
-//let blinkInterval = null
 
 const bar_code = ref('');
 const barcodeInput = ref(null);
@@ -719,7 +780,7 @@ const footerOptions = [
 const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
-  { title: '訂單編號', sortable: true, key: 'order_num', width:180 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:220 },
   { title: '物料編號', sortable: false, key: 'material_num', width:160},
   { title: '需求數量', sortable: false, key: 'req_qty', width:60 },
   { title: '備料數量', sortable: false, key: 'delivery_qty', width:60 },
@@ -728,6 +789,8 @@ const headers = [
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:120 },
   { title: '交期', align: 'start', sortable: false, key: 'delivery_date', width:100 },
   { title: '', sortable: false, key: 'gif' },
+  { title: '', sortable: false, key: 'add_process' },
+  //{ title: '', sortable: false, key: 'remove_process' },
   { title: '', sortable: false, key: 'action' },
 ];
 // 初始化Socket連接
@@ -739,19 +802,11 @@ const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, ap
 const sortBy = ref(['order_num'])
 const sortDesc = ref([false])
 
-const receive_qty_alarm = ref('');
-
-//const from_agv_input_order_num = ref('');
-//const isBlinking = ref(false);          // 控制按鍵閃爍
-//const order_num_on_agv_blink=ref('');
-
-//const inputStr = ref('');
 const outputStatus = ref({
   step1: null,
   step2: null
 });
 
-//const currentUser = ref({});
 const currentUser = ref(null);
 
 const componentKey = ref(0) // key 值用於強制重新渲染
@@ -777,12 +832,14 @@ function loadCurrentUser() {
   }
 }
 
-//const currentBoms = ref([]);
-
 const pagination = reactive({
   itemsPerPage: 5,              // 預設值, rows/per page
   page: 1,
 });
+
+const highlightedRowId = ref(null)
+//const currentPage = ref(1)
+//const itemsPerPage = ref(10)   // 依你實際綁定值
 
 const panelX = ref(820);
 const panelY = ref(10);
@@ -802,6 +859,41 @@ const abnormalDialog_display = ref(true);
 
 const abnormalDialog_record = ref(null);
 
+const scheduling_dialog = ref(false);
+const scheduling_target_item = ref(null);
+const scheduling_dialog_loading = ref(false);
+const scheduling_dialog_orde_num = ref('');
+const schedulingSteps = ref([])   // dialog 內顯示的工序清單
+const dragFromIndex = ref(null)   // 記錄拖曳來源 index
+
+// ===== 預設工序 =====
+const assemble_steps = ref([
+  /*
+  { id: 1, name: 'a1', checked: true },
+  { id: 2, name: 'a2', checked: true },
+  { id: 3, name: 'a3', checked: false },
+  { id: 4, name: 'a4', checked: false },
+  { id: 5, name: 'a5', checked: false },
+  { id: 6, name: 'a6', checked: false },
+  { id: 7, name: 'a7', checked: false },
+  { id: 8, name: 'a8', checked: false },
+  */
+])
+
+const check_steps = ref([
+  /*
+  { id: 1, name: 't1', checked: true },
+  { id: 2, name: 't2', checked: true },
+  { id: 3, name: 't3', checked: false },
+  { id: 4, name: 't4', checked: false },
+  { id: 5, name: 't5', checked: false },
+  { id: 6, name: 't6', checked: false },
+  { id: 7, name: 't7', checked: true },
+  { id: 8, name: 't8', checked: true },
+  */
+])
+const scheduleMode = ref('assemble')  // 工序模式（assemble / check）
+
 const refreshing = ref(false);
 
 const timerMap = new Map();
@@ -815,6 +907,9 @@ const activeMap = reactive({
 })
 
 const selectedAsmId = ref(null);
+
+// 控制是否顯示 確定/取消
+const showBatchActions = ref(false)
 
 //=== watch ===
 setupGetBomsWatcher();
@@ -839,34 +934,31 @@ watch(menuOpen, (open) => {
   }
 })
 
-//watch([() => pagination.page, () => pagination.itemsPerPage], () => {
-//  runQueryDebounced();
-//})
-
 watch(() => pagination.itemsPerPage, (val) => {
-    if (!currentUser.value?.empID) return
-    //if (!currentUser.value) return
+  if (!currentUser.value?.empID) return
 
-    currentUser.value.setting_items_per_page = Number(val) || 10
+  currentUser.value.setting_items_per_page = Number(val) || 10
 
-    localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
-    sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
-  },
-  { immediate: true }
+  localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
+  sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
+},
+
+{ immediate: true }
 )
 
-watch(  () => safeUserId.value, async (uid) => {
-    if (!uid) return;
+watch(() => safeUserId.value, async (uid) => {
+  if (!uid) return;
 
-    console.log('[safeUserId watcher] current user ready:', uid);
+  console.log('[safeUserId watcher] current user ready:', uid);
 
-    await nextTick();
+  await nextTick();
 
-    if ((materials_and_assembles.value || []).length > 0) {
-      await restoreActiveTimersOnly();
-    }
-  },
-  { immediate: true }
+  if ((materials_and_assembles.value || []).length > 0) {
+    await restoreActiveTimersOnly();
+  }
+},
+
+{ immediate: true }
 );
 
 // 畫面控制
@@ -879,24 +971,27 @@ watch(dpRange2, ([start, end]) => {
   }
 })
 
-// 資料查詢, 日期變更就查
-//watch([dpRange2], () => {
-//  if (settingDefaultRange.value) return   // ⭐ 防止初始化觸發
-//  pagination.page = 1;
-//  runQueryDebounced();
-//}, { deep: true })
-
-//=== computed ===
-
+/*
 const hasDpRange2 = computed(() => {
   return Array.isArray(dpRange2.value) &&
     dpRange2.value.length > 0 &&
     dpRange2.value.every(v => !!v);
 });
+*/
+const hasDpRange2 = computed(() => {
+  return Array.isArray(dpRange2.value)
+    && dpRange2.value.length === 2
+    && !!dpRange2.value[0]
+    && !!dpRange2.value[1]
+})
 
-const hasDeliveryRangeText = computed(() => {
-  return !!String(dateRangeText.value ?? '').trim();
-});
+watch(hasDpRange2, (val) => {
+  if (!val) {
+    showFields.value = false
+  }
+})
+
+//=== computed ===
 
 const isInformationEmpty = computed(() => {
   return materials_and_assembles.value.length === 0;
@@ -993,21 +1088,9 @@ onMounted(async () => {
   console.log("current routeName:", routeName.value);
 
   //user define
-  /*
-  let userRaw = sessionStorage.getItem('auth_user');
-  if (!userRaw) {
-    // 只在第一次開分頁時，從 localStorage 複製一份
-    userRaw = localStorage.getItem('loginedUser');
-    if (userRaw) {
-      sessionStorage.setItem('auth_user', userRaw);
-    }
-  }
-  currentUser.value = userRaw ? JSON.parse(userRaw) : null;
-  */
   loadCurrentUser();
 
   if (currentUser.value?.empID) {
-  //if (currentUser.value) {
     pagination.itemsPerPage = Number(currentUser.value.setting_items_per_page) || 5
     currentUser.value.setting_lastRoutingName = routeName.value
 
@@ -1031,16 +1114,8 @@ onMounted(async () => {
     barcodeInput.value.focus();
   }
 
-  //await initialize_for_mounted();
-
-  //await listMaterialsAndAssembles()
   await safeRefresh();
 
-  ///* materials_and_assembles.value.map(it => ({
-  ///*   ...it,
-  ///*   pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
-  ///*   count: typeof it.count === 'number' ? it.count : 0,
-  ///* }));
   materials_and_assembles.value = materials_and_assembles.value.map(it => ({
     ...it,
     pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
@@ -1051,7 +1126,6 @@ onMounted(async () => {
   await nextTick()
 
   if (safeUserId.value) {         // 逐列 t.restoreProcess(...)
-    //await restoreAllMyTimers()
     await restoreActiveTimersOnly();
   } else {
     console.warn('[mounted] skip initial restore: current user not ready');
@@ -1091,14 +1165,11 @@ onMounted(async () => {
 
     socket.value.on('station2_trans_ready', async (data) => {
       console.log("收到 station2_trans_ready訊息...", data);
-      //station2_trans_empID.value =data.empID;
-      //station2_trans_empName.value =data.empName;
+
       station2_trans_ready.value = true;
       forkliftNoticeFun();
 
       await safeRefresh();
-      //await initialize_for_created();
-      //initialize();
     })
 
     socket.value.on('triggerLogout', async (data) => {
@@ -1140,10 +1211,7 @@ onMounted(async () => {
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
   window.removeEventListener('popstate', handlePopState)
 
-  //clearInterval(intervalId);
   window.removeEventListener('mousemove', updateMousePosition);
-
-  //clearInterval(blinkInterval);
 
   eventBus.off('merge_work_orders', handleMaterialUpdate)
 
@@ -1179,18 +1247,58 @@ onDeactivated(() => { disposeAllTimersOnce(); });
 onBeforeMount(() => {
   console.log("Employer, created()...")
 
-  //pagination.itemsPerPage = currentUser.value.setting_items_per_page;
-
   initAxios();
-  //initialize_for_created();
 });
 
 onBeforeUnmount(() => {
-  //2025-11-18 if (pollId)
-  //2025-11-18   clearInterval(pollId);
+
 });
 
 //=== method ===
+const deepClone = (arr) => JSON.parse(JSON.stringify(arr || []))
+
+/*
+function parseProcessStepsV2(str) {
+  const result = {
+    assemble_steps: [],
+    check_steps: [],
+  }
+
+  if (!str || typeof str !== 'string') return result
+
+  const parts = str.split(';')
+
+  const parsePart = (part) => {
+    if (!part || !part.trim()) return []
+
+    return part
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean)
+      .map(item => {
+        const arr = item.split(':')
+
+        if (arr.length < 3) return null
+
+        const id = arr[0].trim()
+        const name = arr[1].trim()
+        const checkedRaw = arr[2].trim().toLowerCase()
+
+        return {
+          id: Number(id) || id,
+          name,
+          checked: checkedRaw === 't',
+        }
+      })
+      .filter(Boolean)
+  }
+
+  result.assemble_steps = parsePart(parts[0] || '')
+  result.check_steps = parsePart(parts[1] || '')
+
+  return result
+}
+*/
 
 const fmt = (d) => {
   if (!d) return ''
@@ -1286,17 +1394,6 @@ function disposeAllTimersOnce() {
   } finally {
     timerMap.clear();
   }
-
-  /* //2025-11-18
-  // 2) 清掉頁面用的輪詢（Begin.vue 有使用）
-  try {
-    if (typeof pollId !== 'undefined' && pollId) {
-      clearInterval(pollId);
-      // @ts-ignore
-      pollId = null;
-    }
-  } catch (_e) {}
-  */
 }
 
 // 下面這三個轉接器, 可避免在模板裡出現「函式呼叫＋屬性賦值」，VS Code 會比較乾淨
@@ -1344,7 +1441,6 @@ function idOf(row) {
 }
 
 async function restoreAllMyTimers() {
-  //const me = currentUser.value.empID      // 登入人員代號
   const me = safeUserId.value;      // 登入人員代號
   if (!me) {
     console.warn('[restoreAllMyTimers] skip: current user not ready');
@@ -1366,36 +1462,6 @@ async function restoreAllMyTimers() {
   }
 }
 
-/*
-const shouldRestoreRow = (row) => {
-  // 依你目前資料結構調整
-  // 先用最保守條件：只有「已開始、未結束、屬於目前使用者」才 restore
-
-  //const me = String(currentUser.value?.empID ?? '')
-  const me = safeUserId.value;
-
-  const started =
-    row?.hasStarted === true ||
-    row?.has_started === true ||
-    Number(row?.hasStarted || 0) === 1 ||
-    Number(row?.has_started || 0) === 1 ||
-    Number(row?.startStatus || 0) === 1
-
-  //const notClosed =
-  //  row?.isClosed !== true &&
-  //  row?.end_time == null &&
-  //  row?.process_end_time == null
-
-  const sameUser =
-    String(row?.user_id ?? row?.process_user_id ?? row?.empID ?? '') === me ||
-    String(row?.isOpenEmpId ?? '') === me ||
-    String(row?.show_name ?? '') === me;
-
-  //return started && notClosed && sameUser
-  return started && sameUser
-
-}
-*/
 const shouldRestoreRow = (row) => {
   const me = safeUserId.value;
   if (!me || !row) return false;
@@ -1434,36 +1500,6 @@ const shouldRestoreRow = (row) => {
   return ok;
 };
 
-/*
-async function restoreActiveTimersOnly() {
-  //const me = currentUser.value.empID
-  const me = safeUserId.value;
-  if (!me) {
-    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
-    return;
-  }
-
-  const rows = (materials_and_assembles.value || []).filter(shouldRestoreRow)
-
-  console.log('[restoreActiveTimersOnly] rows to restore =', rows.map(r => r.id))
-
-  for (const row of rows) {
-    const t = getT(row)
-    if (!t?.restoreProcess) continue
-
-    try {
-      await t.restoreProcess(
-        row.id,
-        processTypeOf(row),
-        me,
-        row.assemble_id
-      )
-    } catch (e) {
-      console.warn('restore fail for row', row.id, e)
-    }
-  }
-}
-*/
 async function restoreActiveTimersOnly() {
   const me = safeUserId.value;
   if (!me) {
@@ -1581,9 +1617,6 @@ function hasAnyoneStarted(row) {
   console.log("@@@@t?.processId?.value: ",t, t.processId.value, t.isPaused.value)
   console.log("@@@@pos: ", pos, "user count:", assembles_active_user_count.value[idx])
   return assembles_active_user_count.value[idx] > 0
-  //return !!t?.processId?.value && t?.isPaused?.value === false // 自己已經按過開始鍵(不含暫停), 且正在跑
-  //return !!t?.processId?.value    // 自己按過開始鍵(含暫停), 且正在跑
-
 }
 
 // 統一取得 row 的狀態（只算一次，O(1) 查 Map）
@@ -1610,26 +1643,19 @@ function badgeProps(row) {
 
   const targetIndex = materials_and_assembles.value.findIndex(
     (kk) => kk.index === row.index
-    //(kk) => kk.index === selectedAsmId.value
   );
-  console.log("targetIndex:", targetIndex)
+  //console.log("targetIndex:", targetIndex)
 
-  console.log("count:", count)
-  //if (materials_and_assembles.value[targetIndex].index==selectedAsmId.value && selectedAsmId.value ==null ) {
+  //console.log("count:", count)
+
   materials_and_assembles.value[targetIndex].count=count
-  //selectedAsmId.value =null;
-  //}
 
-  console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
+  //console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
 
   return {
     modelValue: started, // 對應 :model-value
     //content: count,      // 對應 :content（若想點狀顯示就不要設 content）
   };
-}
-
-function reachTarget(row) {
-  return Number(row.total_ask_qty_end || 0) >= Number(row.must_receive_end_qty || 0)
 }
 
 async function nudgeResume () {
@@ -1674,14 +1700,7 @@ async function onClickBegin(row) {
   row.show_timer = true;
   row.show_name = me;
 
-  //t.elapsedMs.value = t.elapsedMs.value || 0;
-  //t.isPaused.value = false;
-
   await nextTick();
-
-  //t.timerRef?.value?.setState?.(0, false);
-  //t.timerRef?.value?.resume?.();
-  //
 
   // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
   if (!t.processId?.value) {
@@ -1702,7 +1721,6 @@ async function onClickBegin(row) {
 
   // 若後端回來是 paused，再切成 running
   if (t.isPaused.value) {
-    //await t.nudgeResume?.()
     await t.toggleTimer();    // paused -> active（後端寫 begin_time）
     t.isPaused.value = false;
   }
@@ -1803,17 +1821,14 @@ const removeMaterialsAndRelationTableFun = async (id) => {
   }
 
   showSnackbar("刪除工單完成!", "green darken-1")
-  return true
-
+  return true;
 }
 
 const onClickRemoveByDeliveryDateRange = async () => {
-
   let ok = false
   let result = null
 
   try {
-
     const payload = {
       dpRange2: dpRange2.value,
       delete_copies: true,
@@ -1826,7 +1841,6 @@ const onClickRemoveByDeliveryDateRange = async () => {
     console.log("remove result:", result)
 
   } catch (err) {
-
     console.error(
       "DELETE API failed:",
       err?.response?.status,
@@ -1845,16 +1859,35 @@ const onClickRemoveByDeliveryDateRange = async () => {
 
   // 刪除前端資料
   if (Array.isArray(result.deleted_ids) && result.deleted_ids.length > 0) {
-
     const deleteSet = new Set(result.deleted_ids)
 
-    materials_and_assembles.value =
-      materials_and_assembles.value.filter(
-        row => !deleteSet.has(row.id)
-      )
+    materials_and_assembles.value = materials_and_assembles.value.filter(row => !deleteSet.has(row.id))
   }
 
   showSnackbar(`整批刪除成功，共刪除 ${result.deleted_count ?? 0} 筆!`, "green darken-1")
+}
+
+// 點擊「整批刪除」
+const onClickBatchDelete = () => {
+  if (!hasDpRange2.value || isInformationEmpty.value) return
+  showBatchActions.value = true
+}
+
+// 取消
+const onCancelBatchDelete = () => {
+  //showBatchActions.value = false;
+  resetBatchDeleteState();
+}
+
+// 確定
+const onConfirmBatchDelete = async () => {
+  if (isInformationEmpty.value) return
+
+  try {
+    await onClickRemoveByDeliveryDateRange()
+  } finally {
+    resetBatchDeleteState()
+  }
 }
 
 const initialize = async () => {
@@ -1886,50 +1919,10 @@ const initialize = async () => {
     // 4) 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
     await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
 
-    // 5) 再抓「有人開工」的綠點數（不只自己）
-    //2025-11-18 await refreshActiveCounts();
-
-    // 還原計時器（依後端真實狀態）
-    //await restoreMyTimers();
-
-    //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
-
-const initialize_for_created = async () => {
-  //await listMaterialsAndAssembles();
-  await safeRefresh();
-
-  materials_and_assembles.value.map(it => ({
-    ...it,
-    pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
-    count: typeof it.count === 'number' ? it.count : 0,
-  }));
-};
-
-const initialize_for_mounted = async () => {
-  await nextTick();
-  materials_and_assembles.value.forEach(r => getT(r));
-  await nextTick();
-
-  await restoreAllMyTimers();
-
-  //2025-11-18 await refreshActiveCounts();
-
-  //2025-11-18 if (pollId) clearInterval(pollId);
-  //2025-11-18 pollId = setInterval(refreshActiveCounts, refreshPollIdTimerMs.value);
-};
-
-/*
-const customFilter =  (value, query, item)  => {
-  return value != null &&
-    query != null &&
-    typeof value === 'string' &&
-    value.toString().toLocaleUpperCase().indexOf(query) !== -1
-}
-*/
 
 const customFilter = (value, query, item) => {
   if (value == null || query == null) return false
@@ -1937,13 +1930,16 @@ const customFilter = (value, query, item) => {
   return String(value).toUpperCase().includes(String(query).toUpperCase())
 }
 
-const handleBarCode = () => {
+const handleBarCode = async () => {
   if (bar_code.value.length !== 12) {
     console.warn('條碼長度不正確')
     return
   }
 
   console.log('處理條碼：', bar_code.value)
+
+  await showMatchedItem(bar_code.value)
+  /*
   let myBarcode = materials_and_assembles.value.find(m => m.order_num == bar_code.value);
 
   // 在這裡做條碼比對、查詢、上傳等邏輯
@@ -1956,14 +1952,21 @@ const handleBarCode = () => {
     showSnackbar('找不到對應條碼資料！', 'red accent-2');
     console.warn('找不到對應條碼資料!')
   }
+  */
 }
 
+/*
 const focusItemField = async (item) => {
   console.log("focusItemField()...");
 
   await nextTick() // 確保 DOM 已更新
   // 找到外層 v-text-field DOM
-  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  //const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  setTimeout(() => {
+    const wrapper = document.getElementById(`receiveQtyID-${item.id}`)
+    wrapper?.focus()
+  }, 50)
+
   if (wrapper) {
     // 聚焦到 v-text-field 本身
     console.log("wrapper ok...")
@@ -1989,6 +1992,104 @@ const focusItemField = async (item) => {
   }
 }
 
+const getRowProps = ({ item }) => {
+  return {
+    id: `row-${item.id}`,
+    class: highlightedRowId.value === item.id ? 'highlight-row' : '',
+  }
+}
+*/
+
+const showMatchedItem = async (barcode) => {
+  console.log('處理條碼：', barcode)
+
+  const idx = materials_and_assembles.value.findIndex(
+    x => String(x.order_num || '').trim() === String(barcode).trim()
+  )
+
+  if (idx === -1) {
+    console.warn('找不到條碼對應項目:', barcode)
+    return
+  }
+
+  const item = materials_and_assembles.value[idx]
+  console.log('找到條碼對應項目:', item.id)
+
+  // 切到該筆所在頁
+  pagination.page = Math.floor(idx / pagination.itemsPerPage) + 1
+
+  // 高亮
+  highlightedRowId.value = item.id
+
+  await nextTick()
+
+  setTimeout(() => {
+    const rowEl = document.getElementById(`row-${item.id}`)
+    if (rowEl) {
+      rowEl.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    }
+  }, 80)
+
+  // 幾秒後取消高亮
+  setTimeout(() => {
+    if (highlightedRowId.value === item.id) {
+      highlightedRowId.value = null
+    }
+  }, 3000)
+}
+
+const hasDateRange = computed(() => {
+  return !!start_date.value && !!end_date.value
+})
+
+const resetBatchDeleteState = () => {
+  showBatchActions.value = false
+
+  // 清空日期範圍
+  //dpRange2.value = null
+  dpRange2.value = []
+
+  // 清掉顯示字串
+  formattedDateRange.value = ''
+
+  // 強制 VueDatePicker 重建
+  menuKey.value++
+
+  // 關閉 menu
+  menuOpen.value = false
+
+  // 如果你另外有 start_date / end_date，也一起清空
+  start_date.value = ''
+  end_date.value = ''
+}
+
+const openBatchDeleteActions = () => {
+  if (isInformationEmpty.value || !hasDpRange2.value) {
+    showFields.value = false
+    return
+  }
+  showFields.value = true
+}
+
+const closeBatchDeleteActions = () => {
+  showFields.value = false
+}
+
+const onDeleteHoverEnter = () => {
+  if (!hasDateRange.value) {
+    isFlipped.value = false
+    return
+  }
+  isFlipped.value = true
+}
+
+const onDeleteHoverLeave = () => {
+  isFlipped.value = false
+}
+
 const forkliftNoticeFun = () => {
   console.log("forkliftNoticeFun()...");
 
@@ -2007,13 +2108,272 @@ const handlePopState = () => {
   }
 }
 
-const isButtonDisabled = (item) => {
-  //return (item.whichStation != 2 || item.input_disable) || !item.process_step_enable || item.isLackMaterial ==0;
-  return item.whichStation != 2 || item.isLackMaterial ==0;
+const isProcessStepEnabled = (item) => {
+  const raw = item?.process_step_enable;
+  if (raw === true || raw === 1 || raw === '1') return true;
+  if (raw === false || raw === 0 || raw === '0' || raw == null || raw === '') return false;
+  return Boolean(raw);
 };
 
+//const isAddProcessDisabled = (item) => isProcessStepEnabled(item);
+
+// ===== 切換時複製（重要：不能直接指向）=====
+//const cloneSteps = (arr) => arr.map(x => ({ ...x }))
+const cloneSteps = (arr) => (arr || []).map(x => ({ ...x }))
+
+const saveCurrentSchedulingSteps = (mode) => {
+  console.log("test...saveCurrentSchedulingSteps...", mode)
+
+  if (mode === 'assemble') {
+    console.log("test...save assemble step")
+    assemble_steps.value = deepClone(schedulingSteps.value)
+  } else {
+    console.log("test...save check step")
+    check_steps.value = deepClone(schedulingSteps.value)
+  }
+
+  console.log("test...assemble_steps:", assemble_steps.value)
+  console.log("test...check_steps:", check_steps.value)
+}
+
+const loadSchedulingStepsByMode = (mode) => {
+  console.log("test...loadSchedulingStepsByMode...", mode)
+
+  if (mode === 'assemble') {
+    console.log("test...load assemble step")
+    schedulingSteps.value = deepClone(assemble_steps.value)
+  } else {
+    console.log("test...load check step")
+    schedulingSteps.value = deepClone(check_steps.value)
+  }
+
+  console.log("test...schedulingSteps:", schedulingSteps.value)
+  console.log("test...assemble_steps:", assemble_steps.value)
+  console.log("test...check_steps:", check_steps.value)
+}
+
+const switchScheduleMode = (newMode) => {
+  console.log("test...switchScheduleMode...", newMode)
+
+  const oldMode = scheduleMode.value
+  console.log("test...oldMode:", oldMode, "newMode:", newMode)
+
+  // 先把目前畫面內容存回舊 mode
+  saveCurrentSchedulingSteps(oldMode)
+
+  // 再切換 mode
+  scheduleMode.value = newMode
+
+  // 再載入新 mode 的資料
+  loadSchedulingStepsByMode(newMode)
+}
+
+/*
+const openSchedulingDialog = (item) => {
+  if (isProcessStepEnabled(item)) return;
+  scheduling_target_item.value = item;
+
+  console.log("process_steps:", item.process_steps)
+  //const parsed = parseProcessStepsV2(item.process_steps)
+
+  const ps = item.process_steps || {}
+  //assemble_steps.value = ps.assemble || []
+  //check_steps.value = ps.check || []
+  assemble_steps.value = deepClone(ps.assemble)
+  check_steps.value = deepClone(ps.check)
+
+  scheduleMode.value = 'assemble'  // 預設組裝
+  //schedulingSteps.value = cloneSteps(assemble_steps.value)
+  schedulingSteps.value = deepClone(assemble_steps.value)
+
+  scheduling_dialog_orde_num.value=item.order_num;
+  scheduling_dialog.value = true;
+
+  console.log("test...schedulingSteps:", schedulingSteps.value);
+  console.log("test...assemble_steps:", assemble_steps.value);
+  console.log("test...check_steps:", check_steps.value);
+  console.log("test...1.scheduleMode:", scheduleMode.value)
+};
+*/
+const openSchedulingDialog = (item) => {
+  if (isProcessStepEnabled(item)) return
+
+  scheduling_target_item.value = item
+
+  console.log("process_steps:", item.process_steps)
+
+  const ps = item.process_steps || {}
+
+  assemble_steps.value = deepClone(ps.assemble || [])
+  check_steps.value = deepClone(ps.check || [])
+
+  scheduleMode.value = 'assemble'
+  schedulingSteps.value = deepClone(assemble_steps.value)
+
+  scheduling_dialog_orde_num.value = item.order_num
+  scheduling_dialog.value = true
+
+  console.log("test...schedulingSteps:", schedulingSteps.value)
+  console.log("test...assemble_steps:", assemble_steps.value)
+  console.log("test...check_steps:", check_steps.value)
+  console.log("test...1.scheduleMode:", scheduleMode.value)
+}
+
+const toggleSchedulingStep = (index) => {
+  schedulingSteps.value[index].checked = !schedulingSteps.value[index].checked
+}
+
+const onDragStartStep = (index) => {
+  dragFromIndex.value = index
+}
+
+const onDragOverStep = (event) => {
+  event.preventDefault()
+}
+
+const onDropStep = (dropIndex) => {
+  if (dragFromIndex.value === null || dragFromIndex.value === dropIndex) return
+
+  const list = [...schedulingSteps.value]
+  const [movedItem] = list.splice(dragFromIndex.value, 1)
+  list.splice(dropIndex, 0, movedItem)
+
+  schedulingSteps.value = list
+  dragFromIndex.value = null
+}
+
+const onDragEndStep = () => {
+  dragFromIndex.value = null
+}
+
+//const removeSchedulingDialog = (item) => {
+//  if (!isAddProcessDisabled(item)) return;
+//};
+
+const fetchBomsV2 = async (payload) => {
+  try {
+    await getBoms(payload)
+    console.log("temp_boms:", currentBoms.value, boms.value)
+    //myBoms.value = tempres?.data?.boms || []
+  } catch (e) {
+    console.error(e)
+    //myBoms.value = []
+  }
+}
+
+const closeSchedulingDialog = () => {
+  scheduling_dialog.value = false;
+  scheduling_target_item.value = null;
+};
+
+const confirmSchedulingDialog = async () => {
+  if (!scheduling_target_item.value?.id) {
+    closeSchedulingDialog();
+    return;
+  }
+
+  saveCurrentSchedulingSteps(scheduleMode.value);
+
+  // 先把 dialog 目前編輯的資料，寫回來源
+  //if (scheduleMode.value === 'assemble') {
+  //  assemble_steps.value = cloneSteps(schedulingSteps.value)
+  //} else {
+  //  check_steps.value = cloneSteps(schedulingSteps.value)
+  //}
+
+  console.log("process_steps, assemble: ", assemble_steps.value)
+  console.log("process_steps, check: ", check_steps.value)
+
+  scheduling_dialog_loading.value = true
+
+  try {
+    const tt=await updateAssembleScheduleRows({
+      id: scheduling_target_item.value.id,
+      process_steps: {
+        assemble: assemble_steps.value,
+        check: check_steps.value
+      }
+    })
+
+    console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
+    // 重新抓最新資料
+    await safeRefresh();
+
+    showSnackbar('已完成工序設定', 'success')
+    closeSchedulingDialog()
+  } catch (error) {
+    console.error('confirmSchedulingDialog error:', error)
+    showSnackbar('工序設定失敗', 'red-darken-2')
+  } finally {
+    scheduling_dialog_loading.value = false
+  }
+}
+
+function hasAnyStartedInSameOrder(row) {
+  if (!row?.order_num) return false
+
+  return (materials_and_assembles.value || []).some(item => {
+    if (item.order_num !== row.order_num) return false
+
+    const t = getT(item)
+    return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
+  })
+}
+
+function isAddProcessDisabledV2(row) {
+  return hasAnyStartedInSameOrder(row)
+}
+
+function getScheduleName(item) {
+  if (!item) return ''
+  console.log("getScheduleName...")
+
+  const ps = item.process_steps || {}
+  const workNum = String(item.work_num || '')
+  const scheduleId = Number(item.schedule_id)
+
+  if (!scheduleId) return ''
+
+  let steps = []
+
+  if (workNum.includes('B109')) {
+    steps = Array.isArray(ps.assemble) ? ps.assemble : []
+  } else if (workNum.includes('B110')) {
+    steps = Array.isArray(ps.check) ? ps.check : []
+  } else {
+    return ''
+  }
+  console.log("getScheduleName, steps:", workNum, steps)
+  const found = steps.find(x => Number(x.id) === scheduleId)
+  console.log("getScheduleName, found:", found)
+  return found?.name || ''
+}
+
+function checkBegin(row) {
+  const t = getT(row);
+
+  if (t && t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+    return true;
+  }
+  return false;
+}
+
+function canBeginBySchedule(item) {
+  // 已經開始中的，這裡可依你原本 timer/process 邏輯再擋
+  //const t = getT(item)
+  //if (t && t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+  //  return false
+  //}
+
+  // 只要這筆有 schedule_id，就允許開始
+  return item.schedule_id > 0;
+}
+
+//const isButtonDisabled = (item) => {
+//  return item.whichStation != 2 || item.isLackMaterial == 0 || !item.process_step_enable;
+//};
+
 const isGifDisabled = (item) => {
-  //return item.whichStation != 2 || item.input_disable || !item.process_step_enable;
   return item.whichStation != 2
 };
 
@@ -2165,7 +2525,7 @@ const updateItem = async (item) => {
     // 2-a.紀錄該筆的完工應領取數量
     payload = {
       material_id: item.id,
-
+      assemble_id: item.assemble_id,
       create_at: item.create_at,
 
       record_name: 'must_receive_end_qty',
@@ -2205,18 +2565,6 @@ const updateItem = async (item) => {
   };
   await updateAssemble(payload);
 
-  //2025-12-22 mark
-  /*
-  if (item.assemble_work.includes('109')) {
-    payload = {
-      assemble_id: item.assemble_id,
-      record_name: 'input_abnormal_disable',
-      record_data: true,
-    };
-    await updateAssemble(payload);
-  }
-  */
-
   // 取得組裝區目前途程的show2_ok訊息類型(開始)
   checkInputStr(item.assemble_work);
   console.log("outputStatus:", outputStatus.value, typeof(outputStatus.value.step1), typeof(outputStatus.value.step1))
@@ -2236,7 +2584,6 @@ const updateItem = async (item) => {
   payload = {
     assemble_id: item.assemble_id,
     record_name: 'show2_ok',
-    //record_data: true,
     record_data: outputStatus.value.step1
   };
   await updateAssemble(payload);
@@ -2255,15 +2602,13 @@ const updateItem = async (item) => {
   payload = {
     assemble_id: item.assemble_id,
     record_name: 'show3_ok',
-    //record_data: true,
     record_data: outputStatus.value.step1
   };
   await updateAssemble(payload);
 
   let temp = Number(item.req_qty)
   // 確認 已領取數量總數=需求數量(訂單數量)
-  console.log("total == temp ?",total, temp)
-  //if (total == temp) {    // 2025-06-16 mark, 改順序
+  //console.log("total == temp ?",total, temp)
 
   if (startDisabled(item)) {
     // 記錄當前紀錄, 不能再輸入
@@ -2291,53 +2636,14 @@ const checkInputStr = (inputStr) => {
   if (inputStr.includes('109')) {             //組裝
     outputStatus.value = { step1: 4, step2: 5, };
   } else if (inputStr.includes('106')) {      //雷射
-    // 2025-06-12, 改順序
-    //outputStatus.value = { step1: 6, step2: 7 };
     outputStatus.value = { step1: 8, step2: 9 };
   } else if (inputStr.includes('110')) {      //檢驗
-    // 2025-06-12, 改順序
-    //outputStatus.value = { step1: 8, step2: 9 };
     outputStatus.value = { step1: 6, step2: 7 };
   } else {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
 };
-/*
-// 計算兩個時間字串的差值，返回格式化的時間差
-const calculatePeriodTimeStr = (startTime, endTime) => {
-  const startDate = new Date(startTime);
-  const endDate = new Date(endTime);
 
-  // 確保 startTime 和 endTime 都有效
-  //if (isNaN(startDate) || isNaN(endDate)) {
-  //  return '無效的時間格式';
-  //}
-
-  // 計算毫秒差異
-  const diffInMs = endDate - startDate;
-
-  // 計算天、時、分、秒
-  const diffInSeconds = Math.floor(diffInMs / 1000);
-  const days = Math.floor(diffInSeconds / (24 * 60 * 60));
-  const hours = Math.floor((diffInSeconds % (24 * 60 * 60)) / (60 * 60));
-  const minutes = Math.floor((diffInSeconds % (60 * 60)) / 60);
-  const seconds = diffInSeconds % 60;
-
-  // 將時間差格式化為字串
-  return `${days} 天, ${hours} 小時, ${minutes} 分鐘, ${seconds} 秒`;
-};
-
-const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
-  const diffMs = end - start;                     // 差異時間（毫秒）
-  const diffSeconds = Math.floor(diffMs / 1000);  // 轉換為秒
-
-  const hours = Math.floor(diffSeconds / 3600);
-  const minutes = Math.floor((diffSeconds % 3600) / 60);
-  const seconds = diffSeconds % 60;
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-};
-*/
 const formatDateTime = (date) => {
   if (!date || !(date instanceof Date)) {
     console.error("Invalid date passed to formatDateTime:", date);
@@ -2374,16 +2680,6 @@ const toggleSort = (key) => {
   }
 }
 
-const refreshComponent = () => {
-  console.log('更新訂單按鈕已點擊');
-
-  // 透過重新加載當前路由，來刷新組件
-  //router.go(0);
-
-  // 改變 key 值，Vue 會重新渲染整個元件
-  componentKey.value += 1;
-};
-
 // 滑鼠移入圖片，顯示表格
 const handleGifClick = async (item, index) => {
   console.log(`GIF 點擊事件觸發，資料索引: ${index}, 資料內容:`, item);
@@ -2395,11 +2691,7 @@ const handleGifClick = async (item, index) => {
   hoveredItemIndex.value = index;
   isTableVisible.value = true;    // 設置表格可見
 
-  //await getBoms({id: item.id});
-  await fetchBoms(item)
-  //await getOrderPickedBoms({ order_num: item.order_num });
-  //console.log('Current hovered item index:', hoveredItemIndex.value);
-  //console.log("bom[]:", boms.value)
+  await fetchBomsV2(item)
 };
 
 const fetchBoms = async (item) => {
@@ -2408,9 +2700,9 @@ const fetchBoms = async (item) => {
     return;
   }
 
-  try {
-    let res;
+  let res;
 
+  try {
     if (item.merge_enabled) {
       res = await getOrderPickedBoms({
         order_num: item.order_num,
@@ -2420,12 +2712,14 @@ const fetchBoms = async (item) => {
         id: item.id,
       });
     }
+    boms.value = res?.data?.boms || [];
   } catch (e) {
     console.error("fetchBoms failed:", e);
     boms.value = [];
+    //return;
   }
 
-  boms.value = res.data?.boms || [];
+  //boms.value = res.data?.boms || [];
 };
 
 // 滑鼠移入表格時，保持表格顯示
@@ -2509,14 +2803,6 @@ const removelocalStorage = () => {
   //border: 1px solid #000;     // 表格的外框
   border-radius: 0 0 20px 20px;
 }
-
-//:deep(.v-table) {
-//  border-collapse: collapse; // 讓表格邊框不會分開
-//}
-
-//:deep(.v-table th, .v-table td) {
-//  border: 1px solid #ddd;   // 邊框顏色
-//}
 
 :deep(.show_table thead th) {
   padding: 3px !important;
@@ -2603,8 +2889,6 @@ const removelocalStorage = () => {
   white-space: pre-wrap;     // 保留換行
 }
 
-//===
-
 .slide-enter-from
 {
   transform: translateX(-100%);
@@ -2615,7 +2899,6 @@ const removelocalStorage = () => {
 }
 
 //===過場特效
-
 .flip_btn {
   position: relative;
   top: -5px;
@@ -2703,8 +2986,6 @@ const removelocalStorage = () => {
   width: 140%;
 }
 
-// ===
-
 .toolbar-row {
   display: flex;
   align-items: center;
@@ -2763,8 +3044,8 @@ const removelocalStorage = () => {
 }
 
 .action-btn {
-  width: 86px;
-  min-width: 86px;
+  width: 76px;
+  min-width: 76px;
   border-radius: 6px;
   border-width: 1.5px;
   border-color: #64B5F6;
@@ -2829,12 +3110,12 @@ const removelocalStorage = () => {
   top: 7px;
 }
 
-// ***
-
 .batch-slot.is-disabled {
   cursor: not-allowed !important;
+  opacity: 0.65;
 }
 
+/*
 .batch-slot.is-disabled * {
   cursor: not-allowed !important;
 }
@@ -2850,39 +3131,273 @@ const removelocalStorage = () => {
 .batch-slot.is-disabled .default-side {
   pointer-events: auto !important;
 }
-// ===
+*/
+.fixed-flip-btn {
+  position: relative;
+  width: 180px;
+  height: 40px;
+}
+
+.fixed-flip-btn .side {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fixed-flip-btn .default-side {
+  opacity: 1;
+  pointer-events: auto;
+  transform: rotateY(0deg);
+}
+
+.fixed-flip-btn .hover-side {
+  opacity: 0;
+  pointer-events: none;
+  transform: rotateY(90deg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fixed-flip-btn.show-fields .default-side {
+  opacity: 0;
+  pointer-events: none;
+  transform: rotateY(-90deg);
+}
+
+.fixed-flip-btn.show-fields .hover-side {
+  opacity: 1;
+  pointer-events: auto;
+  transform: rotateY(0deg);
+}
+
+.hover-actions .action-btn {
+  min-width: 72px;
+}
+
+//=
+/* 正常狀態 */
+.btn-add-process {
+  background: #c8e6c9;
+  color: #1b5e20;
+  //transition: none !important;
+}
+
+/* hover（正常時） */
+.btn-add-process:hover {
+  background: #a5d6a7;
+  //color: #1b5e20;
+}
+
+/* 🔥 disabled 狀態 */
+.btn-add-process--disabled {
+  background: #e0e0e0 !important;
+  color: #9e9e9e !important;
+
+  //cursor: not-allowed !important;
+  //pointer-events: none !important;
+  //pointer-events: auto !important;
+
+  box-shadow: none !important;
+  opacity: 1 !important; /* 防止 Vuetify 自己降透明 */
+
+  //filter: grayscale(20%);
+}
+
+/* 🔥 防止 hover 影響 */
+.btn-add-process--disabled:hover {
+  background: #e0e0e0 !important;
+  color: #9e9e9e !important;
+}
+
+.btn-add-process--disabled,
+.btn-add-process--disabled * {
+  cursor: not-allowed !important;
+}
+//
+.btn-add-process {
+  transform: translateX(20px);
+}
+//
+//=
+
+// 正常狀態（淡綠)
+//.btn-add-process {
+//  background: #c8e6c9 !important;
+//  color: #1b5e20 !important;
+//  font-weight: 600;
+//}
+
+// disabled 狀態（淡灰 + 文字灰 + 禁止滑鼠)
+//.btn-add-process--disabled {
+//  background: #e0e0e0 !important;
+//  color: #9e9e9e !important;
+//  cursor: not-allowed !important;
+//  pointer-events: auto !important; // 保留 cursor 效果
+//}
+
+// hover 完全無效果
+//.btn-add-process:hover {
+//  background: #c8e6c9 !important;
+//}
+
+//.btn-add-process--disabled:hover {
+//  background: #e0e0e0 !important;
+//}
+
+// Vuetify disabled 預設會降低 opacity → 關掉
+//:deep(.v-btn--disabled.btn-add-process--disabled) {
+:deep(.v-btn--disabled) {
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+// 正常狀態（淡紅)
+.btn-remove-process {
+  background: #ffcdd2 !important;   // 淡紅
+  color: #b71c1c !important;        // 深紅字
+  font-weight: 600;
+}
+
+// disabled 狀態（淡灰）
+.btn-remove-process--disabled {
+  background: #e0e0e0 !important;
+  color: #9e9e9e !important;
+  cursor: not-allowed !important;
+  pointer-events: auto !important;
+}
+
+// hover 無效果
+.btn-remove-process:hover {
+  background: #ffcdd2 !important;
+}
+
+.btn-remove-process--disabled:hover {
+  background: #e0e0e0 !important;
+}
+
+// 關掉 Vuetify disabled opacity
+:deep(.v-btn--disabled.btn-remove-process--disabled) {
+  opacity: 1 !important;
+}
 
 .begin-cell {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
-  min-width: 160px;   /* 可依畫面再微調 */
-  position: relative;
-  left: 120px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
 .begin-timer-slot {
-  width: 92px;        /* 固定保留計時器空間，按鍵就不會被擠走 */
-  min-width: 92px;
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 90px;
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
 }
 
 .begin-timer-text {
-  color: #4000ff;
-  font-variant-numeric: tabular-nums;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .begin-timer {
-  min-width: 88px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .begin-btn {
-  font-size: 14px;
-  font-weight: 700;
-  font-family: '微軟正黑體', sans-serif;
-  flex: 0 0 auto;     /* 按鍵固定，不被擠壓 */
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+  white-space: nowrap;
 }
+
+/* 正常 */
+.begin-btn {
+  background: #3949ab;   /* indigo */
+  color: white;
+}
+
+/* hover */
+.begin-btn:hover {
+  background: #303f9f;
+}
+
+/* 🔥 disabled */
+.begin-btn--disabled {
+  background: #e0e0e0 !important;
+  color: #9e9e9e !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+/* 禁止 hover */
+.begin-btn--disabled:hover {
+  background: #e0e0e0 !important;
+}
+
+.scheduling-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scheduling-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  //padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  background: #fafafa;
+  cursor: grab;
+  user-select: none;
+
+  padding: 0px;
+  min-height: 36px;
+}
+
+.scheduling-item:active {
+  cursor: grabbing;
+}
+
+.scheduling-item:hover {
+  background: #f5f5f5;
+}
+
+.scheduling-item-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.drag-handle {
+  color: #757575;
+  cursor: grab;
+}
+
+.process-btn {
+  letter-spacing: 0;
+}
+
+/*
+.highlight-row td {
+  background-color: #A7FFEB !important;
+  transition: background-color 0.3s ease;
+}
+*/
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+}
+
 </style>

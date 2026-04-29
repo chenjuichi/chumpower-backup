@@ -3,6 +3,31 @@ import { ref, reactive, watch } from 'vue';
 
 //import { snackbar, snackbar_info, snackbar_color } from './snackbarStore';
 
+
+// for PickReportForAssembleEnd.vue
+function resolveScheduleName(item) {
+  if (!item) return ''
+
+  const ps = item.process_steps || {}
+  const workNum = String(item.work_num || '')
+  const scheduleId = Number(item.schedule_id)
+
+  if (!scheduleId) return ''
+
+  let steps = []
+
+  if (workNum.includes('B109')) {
+    steps = Array.isArray(ps.assemble) ? ps.assemble : []
+  } else if (workNum.includes('B110')) {
+    steps = Array.isArray(ps.check) ? ps.check : []
+  } else {
+    return ''
+  }
+
+  const found = steps.find(x => Number(x.id) === scheduleId)
+  return found?.name || ''
+}
+
 // for countExcelFiles
 export const fileCount = ref(0);         //定義 fileCount 狀態變數
 
@@ -348,7 +373,10 @@ export const apiOperation = (operation, path, payload) => {
             return temp;
           }
 
-          if (path == '/updateAssembleTableData') {
+          if (path == '/updateAssembleTableData' ||
+              path == '/updateAssembleScheduleRows' ||
+              path == '/addAssembleScheduleRows' ||
+              path == '/updateAssembleFieldByAssembleID') {
             return res.data;
           }
 
@@ -386,6 +414,7 @@ export const apiOperation = (operation, path, payload) => {
 
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
+              path == '/pauseAllMyActiveProcesses' || path == '/getMyActiveProcesses' ||
               path == '/exportToExcelForError' ||
               path == '/exportToExcelForAssembleInformation' ||
               path == '/exportToExcelForAssembleInformationByWorkDate' ||
@@ -564,9 +593,18 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/copyNewIdAssemble') {
             return res.data;
           }
-
+          /*
           if (path == '/getMaterialsAndAssemblesByUser') {
             materials_and_assembles_by_user.value = [...res.data.materials_and_assembles_by_user];
+          }
+          */
+          if (path == '/getMaterialsAndAssemblesByUser') {
+            const rows = res.data.materials_and_assembles_by_user || []
+
+            materials_and_assembles_by_user.value = rows.map(r => ({
+              ...r,
+              schedule_name: resolveScheduleName(r),
+            }))
           }
 
           if (path == '/getCountMaterialsAndAssemblesByUser') {

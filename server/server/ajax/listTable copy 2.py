@@ -2674,26 +2674,22 @@ def list_materials_and_assembles():
             shortage_note = "(缺料)" if order_num in shortage_order_set else ""
 
             for assemble_record in assemble_records:
+                # 返工流程：B110 是預備檢驗列，必須等 B109 返工完成後才顯示
+                if (
+                    assemble_record.work_num == 'B110'
+                    and assemble_record.is_copied_from_id is not None
+                    and not bool(assemble_record.isAssembleStationShow)
+                    and int(assemble_record.process_step_code or 0) == 2
+                ):
+                    continue
+
                 # 20260417 add
                 try:
                     row_step = int(assemble_record.process_step_code or 0)
                 except Exception:
                     row_step = 0
 
-                # ✅ 已開始、未結束的計時資料，一律保留顯示
-                is_running_row = (
-                    getattr(assemble_record, 'currentStartTime', None) is not None
-                    and getattr(assemble_record, 'currentEndTime', None) is None
-                )
-
-                # 只顯示「目前群組」，但 running row 不可被濾掉
-                if current_group_step > 0:
-                    if row_step != current_group_step and not is_running_row:
-                        continue
-                else:
-                    if not is_running_row:
-                        continue
-                #
+                ## 只顯示「目前群組」
                 #if current_group_step > 0:
                 #    if row_step != current_group_step:
                 #        continue
@@ -2701,7 +2697,35 @@ def list_materials_and_assembles():
                 #    # 全部都 0，代表這個 material 目前沒有待顯示工序
                 #    continue
                 #
-                if (assemble_record.must_receive_qty or 0) <= 0:
+                # 只排除已完成 step=0
+                # 不要只用 max(process_step_code) 顯示單一群組，
+                # 否則「檢驗計時中 step=2」會被「組裝待開始 step=3」蓋掉。
+                if row_step <= 0:
+                    continue
+                #
+                #if (assemble_record.must_receive_qty or 0) <= 0:
+                #    continue
+                #
+                # 已開始計時的列，即使 must_receive_qty 是 0，也要顯示
+                has_running_or_started_process = False
+
+                work = assemble_record.work_num or ''
+                target_pt = None
+                if 'B109' in work:
+                    target_pt = 21
+                elif 'B110' in work:
+                    target_pt = 22
+                elif 'B106' in work:
+                    target_pt = 23
+
+                if target_pt is not None:
+                    g = process_group_map.get(
+                        (assemble_record.material_id, assemble_record.id, target_pt),
+                        {}
+                    )
+                    has_running_or_started_process = int(g.get('matched_count', 0) or 0) > 0
+
+                if (assemble_record.must_receive_qty or 0) <= 0 and not has_running_or_started_process:
                     continue
 
                 temp_isLackMaterial = material_record.isLackMaterial
@@ -2752,28 +2776,6 @@ def list_materials_and_assembles():
                     0
                 )
                 ok = process_total < int(assemble_record.must_receive_end_qty or 0)
-
-                # ✅ 只要同一 material 還有任何工序未完成，已完成總數量就顯示 0
-                unfinished_rows = [
-                    a for a in assemble_records
-                    if int(getattr(a, 'process_step_code', 0) or 0) > 0
-                ]
-
-                display_total_completed_qty = 0
-
-                if len(unfinished_rows) == 0:
-                    display_total_completed_qty = int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
-
-                ut = assemble_record.update_time
-                max_step_code = max_by_ut.get(ut)
-
-                if max_step_code is None:
-                    if not is_running_row:
-                        continue
-                    max_step_code = step
-
-                if step != max_step_code and not is_running_row:
-                    continue
                 #
                 #ut = assemble_record.update_time
                 #max_step_code = max_by_ut.get(ut)
@@ -2782,6 +2784,8 @@ def list_materials_and_assembles():
                 #if step != max_step_code:
                 #    continue
                 #
+                max_step_code = step
+
                 num = int(getattr(assemble_record, 'show2_ok', 0) or 0)
                 base = str2[num] if 0 <= num < len(str2) else '00/00/00'
                 total_ask_end = getattr(assemble_record, 'total_ask_qty_end', None)
@@ -2804,10 +2808,8 @@ def list_materials_and_assembles():
                     'assemble_id': assemble_record.id,
                     'req_qty': material_record.material_qty,
                     'delivery_qty': material_record.delivery_qty,
-                    #'total_receive_qty': f"({getattr(assemble_record, 'total_ask_qty', 0)})",
-                    #'total_receive_qty_num': getattr(assemble_record, 'total_ask_qty', 0),
-                    'total_receive_qty': f"({display_total_completed_qty})",
-                    'total_receive_qty_num': display_total_completed_qty,
+                    'total_receive_qty': f"({getattr(assemble_record, 'total_ask_qty', 0)})",
+                    'total_receive_qty_num': getattr(assemble_record, 'total_ask_qty', 0),
 
                     'must_receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
                     'receive_qty': getattr(assemble_record, 'must_receive_qty', 0),
@@ -2824,8 +2826,7 @@ def list_materials_and_assembles():
                     'tooltipVisible': False,
                     'input_disable': getattr(assemble_record, 'input_disable', False),
 
-                    #'process_step_code': max_step_code,
-                    'process_step_code': step,
+                    'process_step_code': max_step_code,
                     'isLackMaterial': temp_isLackMaterial,
                     'Incoming1_Abnormal': getattr(assemble_record, 'Incoming1_Abnormal', '') == '',
                     'is_copied_from_id': getattr(assemble_record, 'is_copied_from_id', None),

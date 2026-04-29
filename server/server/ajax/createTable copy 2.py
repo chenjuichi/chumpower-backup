@@ -483,6 +483,7 @@ def copy_assemble():
   })
 
 
+"""
 @createTable.route("/copyAssembleForDifference", methods=['POST'])
 def copy_assemble_for_difference():
   print("copyAssembleForDifference....")
@@ -606,9 +607,9 @@ def copy_assemble_for_difference():
   return jsonify({
     'assemble_data': new_ids,
   })
-
-
 """
+
+
 @createTable.route("/copyAssembleForDifference", methods=['POST'])
 def copy_assemble_for_difference():
   print("copyAssembleForDifference....")
@@ -846,7 +847,7 @@ def copy_assemble_for_difference():
 
   finally:
     s.close()
-"""
+
 
 @createTable.route("/copyAssembleForDifferenceP", methods=['POST'])
 def copy_assemble_for_difference_p():

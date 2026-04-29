@@ -309,7 +309,7 @@
         <div style="display: flex; align-items: center;">
           <!--檢料完成(缺料)-->
           <!--<div style="color: red; margin-right: 2px;" v-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial != 99">-->
-          <div style="color:red; margin-right:2px; right:50px; position:relative;" v-if="item.isAssembleStationShow && item.isLackMaterial != 99">
+          <div style="color:red; margin-right:2px; right:50px; position:relative;" v-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial != 99">
             <div>
               {{ item.order_num }}&nbsp;&nbsp;
               <span style="font-weight: 700; font-size: 16px;">缺料</span>
@@ -319,7 +319,7 @@
 
           <!--檢料完成-->
           <!--<div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial == 99">-->
-          <div style="color:blue; margin-right: 20px; right:50px; position:relative;" v-else-if="item.isAssembleStationShow && item.isLackMaterial == 99">
+          <div style="color:blue; margin-right: 20px; right:50px; position:relative;" v-else-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial == 99">
             <div>{{ item.order_num }}</div>
             <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
           </div>
@@ -514,7 +514,7 @@
             density="comfortable"
             variant="tonal"
             :prepend-icon = "getIcon(isPausedOf(item))"
-            :disabled="item.isAssembleStationShow"
+            :disabled="item.isAssembleStationShow && item.input_end_disable"
             :style="{ background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B', color: isPausedOf(item) ? '#fff' : '#000' }"
 
             @click="onPauseToggle(item)"
@@ -611,7 +611,7 @@ const getMaterialsAndAssemblesAndTime = apiOperation('post', '/getMaterialsAndAs
 //const getEndOkByMaterialIdAndStepCode  = apiOperation('post', '/getEndOkByMaterialIdAndStepCode');
 const updateAssemble = apiOperation('post', '/updateAssemble');
 const updateMaterial = apiOperation('post', '/updateMaterial');
-const addAssembleScheduleRows = apiOperation('post', '/addAssembleScheduleRows');
+//const addAssembleScheduleRows = apiOperation('post', '/addAssembleScheduleRows');
 const updateAssembleFieldByAssembleID = apiOperation('post', '/updateAssembleFieldByAssembleID');
 const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
 const createProcess = apiOperation('post', '/createProcess');
@@ -2639,6 +2639,17 @@ const onClickEnd = async (item) => {
 
   const q = Number(item.receive_qty || 0);
 
+  const mustEndQty = Number(item.must_receive_end_qty || 0)
+
+  if (q > mustEndQty) {
+    receive_qty_alarm.value = `完成數量不可大於應完成總數量 ${mustEndQty}`
+    item.tooltipVisible = true
+    setTimeout(() => {
+      item.tooltipVisible = false
+    }, 2000)
+    return
+  }
+
   if (!(await confirmRef.value.open({
     title: endTitle.value,
     message: endMessage.value,
@@ -2703,6 +2714,45 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
+//===
+  let d0 = Number(item.must_receive_end_qty || 0)  // 應完成數量
+  let d1 = Number(item.receive_qty || 0)           // 本次完成數量
+
+  let difference = d0 - d1
+
+  if (difference > 0) {
+    console.log("應完成數量 > 完成數量，建立補差紀錄:", {
+      difference,
+      d0,
+      d1,
+      assemble_id: current_assemble_id,
+    })
+
+    payload = {
+      copy_id: current_assemble_id,
+      pre_must_receive_qty: d1,
+      must_receive_qty: difference,
+      d1: d1,
+      copy_mode: 'end_difference',
+    }
+
+    await copyAssembleForDifference(payload)
+
+    await reloadEndLocked()
+    debugRows('after fetch')
+  }
+
+  if (difference < 0) {
+    receive_qty_alarm.value = `完成數量不可大於應完成總數量 ${d0}`
+    item.tooltipVisible = true
+    setTimeout(() => {
+      item.tooltipVisible = false
+    }, 2000)
+    return
+  }
+//===
+
+  /*
   // 新增完成數量與完成數量不同時, 新紀錄的應領取數量
   let d0 = Number(item.must_receive_end_qty)
   let d1 = Number(item.receive_qty)
@@ -2726,6 +2776,7 @@ const onClickEnd = async (item) => {
 
     debugRows('after fetch')
   }
+  */
 
   // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
   let temp_qty=1  //組裝
@@ -2948,13 +2999,29 @@ const onClickAbnormal = async (rawItem) => {
   try {
     console.log("onClickAbnormal(), 組裝異常資料:", item)
 
-    // ===== 1) 基本驗證 =====
     const parsedQty = Number(item.abnormal_qty)
+    const abnormalQty = parsedQty
+    const remain = Number(item.must_receive_end_qty) || 0
+
+    // ===== 1) 基本驗證 =====
+
     if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
       abnormal_qty_alarm.value = '異常數量不可為空白或 0！'
       rawItem.abnormal_tooltipVisible = true
-      setTimeout(() => { rawItem.abnormal_tooltipVisible = false; rawItem.abnormal_qty = '' }, 2000)
-      console.error('異常數量不可為空白或 0！')
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false;
+        rawItem.abnormal_qty = ''
+      }, 2000)
+      //console.error('異常數量不可為空白或 0！')
+      return
+    }
+
+    if (abnormalQty > remain) {
+      abnormal_qty_alarm.value = `異常數量不可大於應完成數量 ${remain}`
+      rawItem.abnormal_tooltipVisible = true
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false
+      }, 2000)
       return
     }
 
@@ -2973,39 +3040,35 @@ const onClickAbnormal = async (rawItem) => {
     if (!current_assemble_id || !current_material_id) {
       abnormal_qty_alarm.value = '系統資料不完整（缺少組裝/訂單識別），請重整後再試。'
       rawItem.abnormal_tooltipVisible = true
-      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
-      console.error('缺少 assemble_id 或 material_id')
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false
+      }, 2000)
+      //console.error('缺少 assemble_id 或 material_id')
       return
     }
 
     // ===== 2) 夾限 & 計算新值 =====
-    const remain = Number(item.must_receive_end_qty) || 0
     if (remain <= 0) {
       abnormal_qty_alarm.value = '目前無可扣減的完成數量。'
       rawItem.abnormal_tooltipVisible = true
-      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false
+      }, 2000)
       return
     }
 
-    const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
-    const newRemain = Math.max(0, remain - abnormalQty)
+    //abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
+    //const newRemain = Math.max(0, remain - abnormalQty)
+    const newRemain = remain - abnormalQty
     console.log("注意, 注意, newRemain:", newRemain)
-
-    if (abnormalQty <= 0) {
-      console.log("注意, 注意, abnormalQty:", abnormalQty)
-      abnormal_qty_alarm.value = '異常數量為負數...'
-      rawItem.abnormal_tooltipVisible = true
-      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
-      return
-    }
 
     if (abnormalQty !== parsedQty) {
       abnormal_qty_alarm.value = `異常數量自動調整為 ${abnormalQty}（不可超過剩餘 ${remain}）。`
       rawItem.abnormal_tooltipVisible = true
-      setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false
+      }, 2000)
     }
-
-
 
     // ===== 3) UI更新，避免前後不一致 =====
     const optimisticRow = {
@@ -3040,17 +3103,29 @@ const onClickAbnormal = async (rawItem) => {
 
   //***
   // C. 產生異常返工/補料單位的「新組裝」應領取數
+    //
+    //const tt=await addAssembleScheduleRows({
+    //  id: current_material_id,
+    //  process_steps: {
+    //    assemble: default_assemble_steps.value,
+    //    check: default_check_steps.value,
+    //  },
+    //  abnormal_qty: abnormalQty,
+    //})
+    //
+    //console.log('addAssembleScheduleRows res:', tt.status, tt.msg)
 
-    const tt=await addAssembleScheduleRows({
-      id: current_material_id,
-      process_steps: {
-        assemble: default_assemble_steps.value,
-        check: default_check_steps.value,
-      },
-      abnormal_qty: abnormalQty,
+    // 1. 原 B110 寫 abnormal_qty
+    // 2. 原 B110 input_abnormal_disable = true
+    // 3. 原 B110 must_receive_end_qty = newRemain
+    // 4. 建立返工 B109 / B110
+    const res = await copyAssembleForDifference({
+      copy_id: current_assemble_id,
+      must_receive_qty: abnormalQty,
+      pre_must_receive_qty: newRemain,
     })
 
-    console.log('addAssembleScheduleRows res:', tt.status, tt.msg)
+    console.log('copyAssembleForDifference res:', res?.status, res?.message)
 
     // ✅ 新的 row 產生後：立刻重撈一次，並 restore timers
     await reloadEndRowsAndRestoreTimers();

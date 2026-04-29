@@ -33,6 +33,42 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+def sum_done_qty_for_assemble_chain(s, material_id, assemble_id, process_type):
+    src = s.query(Assemble).filter(Assemble.id == assemble_id).first()
+    if not src:
+        return 0
+
+    ids = [assemble_id]
+
+    if src.is_copied_from_id:
+        ids.append(src.is_copied_from_id)
+
+    child_ids = [
+        r[0] for r in (
+            s.query(Assemble.id)
+             .filter(Assemble.material_id == material_id)
+             .filter(Assemble.is_copied_from_id == assemble_id)
+             .all()
+        )
+    ]
+
+    ids.extend(child_ids)
+    ids = list(set(ids))
+
+    total = (
+        s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+         .filter(Process.material_id == material_id)
+         .filter(Process.assemble_id.in_(ids))
+         .filter(Process.process_type == process_type)
+         .filter(Process.has_started.is_(True))
+         .filter(Process.end_time.isnot(None))
+         .filter(Process.end_time != '')
+         .scalar()
+    ) or 0
+
+    return int(total)
+
+
 def is_delegate_active_now(delegate_rows, now_dt):
     WORK_START = time(8, 0, 0)
     WORK_END = time(17, 0, 0)
@@ -4536,10 +4572,182 @@ def get_Warehouse_For_assemble_by_history():
                 s, ProcessCls, material_id, assemble_id, process_type=31
             )
 
-            delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            #delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            #remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
+            #can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
+            #
+            # ------------------------------------------------------------
+            # 組裝線待入庫：到庫數量不可只看目前代表列的 process_work_time_qty
+            # 例如 3377=950 + 3379=50，應顯示 1000，不是 50
+            # ------------------------------------------------------------
+
+            """
+            if line == "assemble":
+                delivery_qty = (
+                    s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.process_type == 22)      # B110 / 檢驗完成數
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .filter(Process.process_work_time_qty > 0)
+                    .scalar()
+                ) or 0
+
+                delivery_qty = int(delivery_qty or 0)
+            else:
+                delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            """
+
+            """
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # 待入庫數量：先找 chain root
+                # 例：
+                # 目前 row 若是 3379，3379.is_copied_from_id = 3377
+                # root_id 應改成 3377
+                # 然後加總 3377 + 3377 的 B110 子列，也就是 3379
+                # ------------------------------------------------------------
+                current_asm = (
+                    s.query(Assemble)
+                    .filter(Assemble.id == assemble_id)
+                    .first()
+                )
+
+                if current_asm and current_asm.is_copied_from_id:
+                    root_assemble_id = int(current_asm.is_copied_from_id)
+                else:
+                    root_assemble_id = int(assemble_id)
+
+                chain_ids = [root_assemble_id]
+
+                child_ids = [
+                    int(r[0])
+                    for r in (
+                        s.query(Assemble.id)
+                        .filter(Assemble.material_id == material_id)
+                        .filter(Assemble.is_copied_from_id == root_assemble_id)
+                        .filter(Assemble.work_num.like('%B110%'))
+                        .all()
+                    )
+                ]
+
+                chain_ids.extend(child_ids)
+                chain_ids = list(set(chain_ids))
+
+                print("WAREHOUSE B110 CHAIN:", {
+                    "material_id": material_id,
+                    "current_assemble_id": assemble_id,
+                    "root_assemble_id": root_assemble_id,
+                    "chain_ids": chain_ids,
+                })
+
+                delivery_qty = (
+                    s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.assemble_id.in_(chain_ids))
+                    .filter(Process.process_type == 22)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .filter(Process.process_work_time_qty > 0)
+                    .scalar()
+                ) or 0
+
+                delivery_qty = int(delivery_qty or 0)
+            """
+
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # Warehouse 到庫數量：
+                # 只取「最後一個已完成 B110 排程 root」
+                #
+                # 沒異常：
+                #   3375=1000, 3376=1000, 3377=1000
+                #   只取 schedule_id 最大的 3377 => 1000
+                #
+                # 有異常：
+                #   3377=950, 3379=50
+                #   root=3377，child=3379 => 1000
+                # ------------------------------------------------------------
+
+                # 1) 找此 material 最後一個已完成的 B110 root
+                #    注意：不要用 is_copied_from_id 回推，因為 3377 copied_from=3375 是排程關聯
+                root_asm = (
+                    s.query(Assemble)
+                    .join(Process, Process.assemble_id == Assemble.id)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num.like('%B110%'))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.process_type == 22)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .filter(Process.process_work_time_qty > 0)
+                    # 排除異常返工 child，例如 3379 copied_from=3377 且 parent.abnormal_qty > 0
+                    .filter(
+                        ~Assemble.is_copied_from_id.in_(
+                            s.query(Assemble.id)
+                              .filter(Assemble.material_id == material_id)
+                              .filter(Assemble.abnormal_qty > 0)
+                        )
+                    )
+                    .order_by(
+                        Assemble.schedule_id.desc(),
+                        Assemble.id.desc()
+                    )
+                    .first()
+                )
+
+                if not root_asm:
+                    delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+                else:
+                    root_assemble_id = int(root_asm.id)
+
+                    # 2) root + root 的異常返工 B110 child
+                    chain_ids = [root_assemble_id]
+
+                    child_ids = [
+                        int(r[0])
+                        for r in (
+                            s.query(Assemble.id)
+                            .filter(Assemble.material_id == material_id)
+                            .filter(Assemble.is_copied_from_id == root_assemble_id)
+                            .filter(Assemble.work_num.like('%B110%'))
+                            .all()
+                        )
+                    ]
+
+                    chain_ids.extend(child_ids)
+                    chain_ids = list(set(chain_ids))
+
+                    print("WAREHOUSE FINAL CHAIN:", {
+                        "material_id": material_id,
+                        "current_assemble_id": assemble_id,
+                        "root_assemble_id": root_assemble_id,
+                        "chain_ids": chain_ids,
+                    })
+
+                    delivery_qty = (
+                        s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                        .filter(Process.material_id == material_id)
+                        .filter(Process.assemble_id.in_(chain_ids))
+                        .filter(Process.process_type == 22)
+                        .filter(Process.has_started.is_(True))
+                        .filter(Process.end_time.isnot(None))
+                        .filter(Process.end_time != '')
+                        .filter(Process.process_work_time_qty > 0)
+                        .scalar()
+                    ) or 0
+
+                    delivery_qty = int(delivery_qty or 0)
+
+            else:
+                delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+
             remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
             can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
-
+            #
             index += 1
             results.append({
                 "index": index,
@@ -6506,17 +6714,7 @@ def get_materials_and_assembles_by_user():
         # ------------------------------------------------------------
         # 1) 一次把 Material + Assemble + Process 載進來
         # ------------------------------------------------------------
-        #
-        #_objects = (
-        #    s.query(Material)
-        #     .options(
-        #         selectinload(Material._assemble),
-        #         selectinload(Material._process),
-        #     )
-        #     .all()
-        #)
-        #material_ids_all = [m.id for m in _objects]
-        #
+
         _objects = (
             s.query(Material)
             .filter(Material.isShow == 1)
@@ -6723,16 +6921,7 @@ def get_materials_and_assembles_by_user():
         # 7) 建 user_proc_map
         #    key = (material_id, process_type)
         # ------------------------------------------------------------
-        #user_proc_map = {}
-        #for m in _objects:
-        #    for p in (m._process or []):
-        #        if p.user_id != _user_id:
-        #            continue
-        #        key = (p.material_id, p.process_type)
-        #        old = user_proc_map.get(key)
-        #        if old is None or (p.id or 0) > (old.id or 0):
-        #            user_proc_map[key] = p
-        #
+
         latest_user_proc_subq = (
             s.query(
                 Process.material_id.label("material_id"),
@@ -6742,7 +6931,6 @@ def get_materials_and_assembles_by_user():
             )
             .filter(Process.material_id.in_(material_ids_all))
             .filter(Process.user_id == _user_id)
-            #.group_by(Process.material_id, Process.process_type)                     # 20260427 modify
             .group_by(Process.material_id, Process.assemble_id, Process.process_type) # 20260427 modify
             .subquery()
         )
@@ -6754,7 +6942,6 @@ def get_materials_and_assembles_by_user():
         )
 
         user_proc_map = {
-            #(int(p.material_id), int(p.process_type)): p                           # 20260427 modify
             (int(p.material_id), int(p.assemble_id or 0), int(p.process_type)): p   # 20260427 modify
             for p in latest_user_proc_rows
         }
@@ -6771,50 +6958,6 @@ def get_materials_and_assembles_by_user():
 
             assemble_records = material_record._assemble or []
 
-            '''
-            #process_records = material_record._process or []
-
-            # ✅ 同一 material_id 的已完成總數量
-            # 只加 B110 檢驗完成量，避免 B109 + B110 重複計算
-            #material_completed_total = sum(
-            #    int(getattr(a, 'completed_qty', 0) or 0)
-            #    for a in assemble_records
-            #    if 'B110' in str(getattr(a, 'work_num', '') or '')
-            #    and (
-            #        int(getattr(a, 'process_step_code', 0) or 0) == 0
-            #        or getattr(a, 'currentEndTime', None) is not None
-            #    )
-            #)
-            #
-            material_completed_total = 0
-
-            for a in assemble_records:
-                work = str(getattr(a, 'work_num', '') or '')
-                if 'B110' not in work:
-                    continue
-
-                aid = int(getattr(a, 'id', 0) or 0)
-                mid = int(getattr(a, 'material_id', 0) or 0)
-
-                # B110 對應 process_type = 22
-                material_completed_total += int(
-                    process_qty_map.get((mid, aid, 22), 0) or 0
-                )
-
-            # ✅ 判斷此 material 是否還有未完成工序
-            unfinished_rows = [
-                a for a in assemble_records
-                if int(getattr(a, 'process_step_code', 0) or 0) > 0
-            ]
-
-            all_finished = len(unfinished_rows) == 0
-
-            final_b110_completed_total = sum(
-                int(getattr(a, 'completed_qty', 0) or 0)
-                for a in assemble_records
-                if 'B110' in str(getattr(a, 'work_num', '') or '')
-            )
-            '''
             order_num_id = material_record.id
             max_step_code = max_step_code_per_order.get(order_num_id, 0)
 
@@ -6844,34 +6987,6 @@ def get_materials_and_assembles_by_user():
 
             material_completed_total = int(material_completed_total or 0)
 
-            #
-            # ===== 新增：依 material + work_num + schedule_id 做完成數量加總 =====
-            """
-            schedule_completed_rows = (
-                s.query(
-                    Assemble.material_id,
-                    Assemble.work_num,
-                    Assemble.schedule_id,
-                    func.coalesce(func.sum(Assemble.completed_qty), 0)
-                )
-                .group_by(
-                    Assemble.material_id,
-                    Assemble.work_num,
-                    Assemble.schedule_id
-                )
-                .all()
-            )
-
-            schedule_completed_sum_map = {
-                (
-                    int(mid),
-                    str(work_num or '').strip(),
-                    int(schedule_id or 0)
-                ): int(total or 0)
-                for mid, work_num, schedule_id, total in schedule_completed_rows
-            }
-            """
-            #
             for assemble_record in assemble_records:
                 if assemble_record.process_step_code == 0 and not assemble_record.isAssembleStationShow:
                     continue
@@ -6886,20 +7001,7 @@ def get_materials_and_assembles_by_user():
                     target_pt = 23
 
                 matched_count = 0
-                """
-                if target_pt is not None:
-                    matched_count = sum(
-                        1 for p in process_records
-                        if (
-                            p.material_id == assemble_record.material_id
-                            and p.assemble_id == assemble_record.id
-                            and p.process_type == target_pt
-                            and p.user_id == _user_id
-                            and p.begin_time
-                            and (p.end_time is None or str(p.end_time).strip() != '')
-                        )
-                    )
-                """
+
                 if target_pt is not None:
                   matched_count = user_started_count_map.get(
                       (
@@ -6947,9 +7049,6 @@ def get_materials_and_assembles_by_user():
                     assemble_record.id, pt), 0)
                 ok = process_total < int(assemble_record.must_receive_end_qty or 0)
 
-                #r = user_proc_map.get((                  # 20260427 modify
-                #    assemble_record.material_id, pt
-                #))
                 r = user_proc_map.get((                   # 20260427 modify
                     int(assemble_record.material_id),
                     int(assemble_record.id or 0),
@@ -6988,18 +7087,30 @@ def get_materials_and_assembles_by_user():
 
                 # 單筆完成數（保持原樣）
                 completed_qty = int(getattr(assemble_record, 'completed_qty', 0) or 0)
-                #
-                '''
-                # ✅ 已完成總數量顯示邏輯
-                display_total_completed_qty = 0
 
-                if all_finished:
-                    # 全部完成後，B110 顯示總完成量，例如 950 + 50 = 1000
-                    if 'B110' in str(getattr(assemble_record, 'work_num', '') or ''):
-                        display_total_completed_qty = final_b110_completed_total
-                    else:
-                        display_total_completed_qty = int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
-                '''
+                #display_total = int(material_completed_total or 0)
+                #display_total_text = '' if display_total == 0 else f"({display_total})"
+
+                display_total = 0
+
+                if 'B110' in str(getattr(assemble_record, 'work_num', '') or ''):
+                    display_total = int(
+                        process_qty_map.get((int(assemble_record.material_id), int(assemble_record.id), 22), 0) or 0
+                    )
+
+                    child_ids = [
+                        int(a.id)
+                        for a in assemble_records
+                        if int(getattr(a, 'is_copied_from_id', 0) or 0) == int(assemble_record.id)
+                        and 'B110' in str(getattr(a, 'work_num', '') or '')
+                    ]
+
+                    for child_id in child_ids:
+                        display_total += int(
+                            process_qty_map.get((int(assemble_record.material_id), child_id, 22), 0) or 0
+                        )
+
+                display_total_text = '' if display_total == 0 else f"({display_total})"
                 _object = {
                     'index': index,
                     'id': material_record.id,
@@ -7018,35 +7129,23 @@ def get_materials_and_assembles_by_user():
                     'must_receive_end_qty': int(getattr(assemble_record, 'must_receive_end_qty', 0) or 0),
                     'abnormal_qty': int(getattr(assemble_record, 'abnormal_qty', 0) or 0),
                     'completed_qty': int(getattr(assemble_record, 'completed_qty', 0) or 0),
-                    #
-                    #'total_completed_qty': f"({int(getattr(assemble_record, 'total_completed_qty', 0) or 0)})",
-                    #'total_completed_qty_num': record_sum_map.get(
-                    #    material_record.id,
-                    #    int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
-                    #),
-                    #
+
                     'completed_qty': completed_qty,
 
-                    #'total_completed_qty': f"({group_completed_total})",
-                    #'total_completed_qty_num': group_completed_total,
-                    #'total_receive_qty': f"({int(display_total_completed_qty or 0)})",
-                    #'total_receive_qty_num': display_total_completed_qty,
-                    #'total_receive_qty_num': int(display_total_completed_qty or 0),
+                    #'total_receive_qty': f"({int(material_completed_total or 0)})",
+                    #'total_receive_qty_num': int(material_completed_total or 0),
 
-                    'total_receive_qty': f"({int(material_completed_total or 0)})",
-                    'total_receive_qty_num': int(material_completed_total or 0),
+                    'total_completed_qty': display_total_text,
+                    'total_completed_qty_num': display_total,
 
-
+                    # 保留舊欄位，避免其他程式還有用到
+                    'total_receive_qty': display_total_text,
+                    'total_receive_qty_num': display_total,
 
                     # 不要改這個
                     'receive_qty': completed_qty,
-                    #'receive_qty': assemble_record.completed_qty,
-                    #
-                    'process_total_qty': int(process_total or 0),
 
-                    #'show_timer': bool(matched_count > 0),
-                    #'show_name': _user_id if matched_count > 0 else '',
-                    #'process_total': int(process_total or 0),
+                    'process_total_qty': int(process_total or 0),
 
                     'delivery_date': material_record.material_delivery_date,
                     'delivery_qty': material_record.delivery_qty,
@@ -7112,16 +7211,7 @@ def get_materials_and_assembles_by_user():
               int(getattr(a, 'process_step_code', 0) or 0) == 0
               for a in rows
           )
-        #
-        #all_zero_by_mid = {}
-        #for r in _results:
-        #    mid = str(r['id'])
-        #    code = int((r.get('process_step_code') or 0))
-        #    if mid not in all_zero_by_mid:
-        #        all_zero_by_mid[mid] = True
-        #    if code != 0:
-        #        all_zero_by_mid[mid] = False
-        #
+
         filtered_results = []
         for row in _results:
             mid = str(row['id'])
@@ -7130,16 +7220,6 @@ def get_materials_and_assembles_by_user():
             if bool(row.get('isStockInDone')):
                 continue
 
-            #if int(row.get('isAssembleStationShow') or 0) == 1 and all_zero_by_mid.get(mid, False):
-            #    filtered_results.append(row)
-            #    continue
-            #
-            ## ✅ 已完成且全部 step=0，保留顯示等待入庫資料
-            #if bool(row.get('isAssembleStationShow')) and all_zero_by_mid.get(mid, False):
-            #    filtered_results.append(row)
-            #    index = index - 1
-            #    continue
-            #
             # ✅ 已完成且 DB 內全部 step=0，保留顯示等待入庫資料
             if bool(row.get('isAssembleStationShow')) and all_zero_by_mid_db.get(mid, False):
                 filtered_results.append(row)

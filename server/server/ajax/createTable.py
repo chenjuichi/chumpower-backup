@@ -483,6 +483,7 @@ def copy_assemble():
   })
 
 
+"""
 @createTable.route("/copyAssembleForDifference", methods=['POST'])
 def copy_assemble_for_difference():
   print("copyAssembleForDifference....")
@@ -501,7 +502,6 @@ def copy_assemble_for_difference():
 
   # 根據 copy_id 尋找現有的 Material 資料
   #exist = s.query(Assemble).filter_by(id = _copy_id).first()
-
 
   # 1. 取得原始 assemble 記錄
   source_assemble = s.query(Assemble).get(_copy_id)
@@ -606,6 +606,191 @@ def copy_assemble_for_difference():
   return jsonify({
     'assemble_data': new_ids,
   })
+"""
+
+
+@createTable.route("/copyAssembleForDifference", methods=['POST'])
+def copy_assemble_for_difference():
+  print("copyAssembleForDifference....")
+
+  data = request.get_json() or {}
+
+  copy_id = data.get('copy_id')
+  abnormal_qty = data.get('must_receive_qty')
+  pre_must_qty = data.get('pre_must_receive_qty')
+
+  s = Session()
+
+  try:
+    copy_id = int(copy_id)
+    abnormal_qty = int(abnormal_qty or 0)
+    pre_must_qty = int(pre_must_qty or 0)
+
+    if abnormal_qty <= 0:
+      return jsonify({
+        'status': False,
+        'message': '異常數量必須大於 0',
+        'assemble_data': []
+      }), 400
+
+    source = (
+      s.query(Assemble)
+       .filter(Assemble.id == copy_id)
+       .with_for_update()
+       .first()
+    )
+
+    if not source:
+      return jsonify({
+        'status': False,
+        'message': f'找不到來源 assemble_id={copy_id}',
+        'assemble_data': []
+      }), 404
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # ✅ 原異常列：保留在 End 顯示，但異常欄 disabled
+    source.abnormal_qty = abnormal_qty
+    source.input_abnormal_disable = True
+    source.update_time = now_str
+
+    if pre_must_qty > 0:
+      source.must_receive_end_qty = pre_must_qty
+
+    material_id = source.material_id
+    schedule_id = 1
+
+    # ✅ 防重複：若已經有 3377 產生的返工列，不再新增 3380/3381
+    existed = (
+      s.query(Assemble)
+       .filter(Assemble.material_id == material_id)
+       .filter(Assemble.is_copied_from_id == source.id)
+       .filter(Assemble.must_receive_qty == abnormal_qty)
+       .filter(Assemble.work_num.in_(['B109', 'B110']))
+       .order_by(Assemble.id.asc())
+       .all()
+    )
+
+    if existed:
+      s.commit()
+      return jsonify({
+        'status': True,
+        'message': '返工列已存在，不重複建立',
+        'assemble_data': [r.id for r in existed]
+      })
+
+    def make_rework_row(work_num, step_code, show_code, show_in_begin):
+      new_row = Assemble(
+        material_id=source.material_id,
+
+        # ✅ 全部以來源 assemble 3377 為準，避免 material 1927 comment 錯
+        material_num=source.material_num,
+        material_comment=source.material_comment,
+        seq_num=source.seq_num,
+
+        work_num=work_num,
+        process_step_code=step_code,
+        schedule_id=schedule_id,
+
+        must_receive_qty=abnormal_qty,
+        must_receive_end_qty=abnormal_qty,
+        ask_qty=abnormal_qty,
+        total_ask_qty=abnormal_qty,
+        total_ask_qty_end=0,
+
+        abnormal_qty=0,
+        completed_qty=0,
+        total_completed_qty=0,
+        allOk_qty=0,
+
+        user_id='',
+        writer_id=None,
+        write_date=None,
+
+        good_qty=0,
+        total_good_qty=0,
+        non_good_qty=0,
+        meinh_qty=0,
+
+        reason='',
+        confirm_comment='',
+        is_assemble_ok=False,
+
+        currentStartTime=None,
+        currentEndTime=None,
+
+        input_disable=False,
+        input_end_disable=False,
+        input_allOk_disable=False,
+        input_abnormal_disable=False,
+
+        # B109 先出現在 Begin；B110 等 B109 結束後再顯示
+        isAssembleStationShow=show_in_begin,
+        isWarehouseStationShow=False,
+
+        alarm_enable=True,
+        alarm_message='',
+        isAssembleFirstAlarm=False,
+        isAssembleFirstAlarm_message='',
+        isAssembleFirstAlarm_qty=0,
+
+        whichStation=1,
+        show1_ok=1,
+        show2_ok=show_code,
+        show3_ok=show_code,
+
+        update_time=now_str,
+        create_at=now_str,
+
+        # ✅ 3378、3379 都要指向異常來源 3377
+        is_copied_from_id=source.id,
+      )
+
+      s.add(new_row)
+      s.flush()
+      return new_row
+
+    new_b109 = make_rework_row(
+      work_num='B109',
+      step_code=3,
+      show_code=3,
+      show_in_begin=True
+    )
+
+    new_b110 = make_rework_row(
+      work_num='B110',
+      step_code=2,
+      show_code=5,
+      show_in_begin=False
+    )
+
+    material = s.query(Material).filter(Material.id == material_id).first()
+    if material:
+      material.process_step_enable = True
+      material.hasStarted = False
+      material.startStatus = False
+      material.isOpen = False
+      material.isOpenEmpId = ''
+
+    s.commit()
+
+    return jsonify({
+      'status': True,
+      'message': '異常返工流程已建立：B109 -> B110',
+      'assemble_data': [new_b109.id, new_b110.id]
+    })
+
+  except Exception as e:
+    s.rollback()
+    print("copyAssembleForDifference ERROR:", repr(e))
+    return jsonify({
+      'status': False,
+      'message': str(e),
+      'assemble_data': []
+    }), 500
+
+  finally:
+    s.close()
 
 
 """

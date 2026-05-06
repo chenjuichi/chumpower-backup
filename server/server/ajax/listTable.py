@@ -2621,11 +2621,20 @@ def list_materials_and_assembles():
         for material_record in _objects:
             merge_enabled = merge_map.get(material_record.order_num, True)
 
-            # 併單：只顯示 root；拆單不顯示
+            ## 併單：只顯示 root；拆單不顯示
+            #if merge_enabled and material_record.is_copied_from_id is not None:
+            #    continue
+            #
+            # 併單時，如果 root 還沒送出、copy 已送出，要顯示 copy
             if merge_enabled and material_record.is_copied_from_id is not None:
-                continue
+                if int(material_record.delivery_qty or 0) <= 0:
+                    continue
 
             if not material_record.isShow:
+                continue
+
+            # root delivery_qty=0 不應該顯示
+            if int(material_record.delivery_qty or 0) <= 0:
                 continue
 
             process_records = material_record._process or []
@@ -2691,8 +2700,12 @@ def list_materials_and_assembles():
                     if row_step != current_group_step and not is_running_row:
                         continue
                 else:
-                    if not is_running_row:
-                        continue
+                    #if not is_running_row:
+                    #    continue
+                    #
+                    # 未排程時，不要把資料濾掉
+                    # 讓它顯示，給使用者按 +工序
+                    pass
                 #
                 #if current_group_step > 0:
                 #    if row_step != current_group_step:
@@ -2701,8 +2714,14 @@ def list_materials_and_assembles():
                 #    # 全部都 0，代表這個 material 目前沒有待顯示工序
                 #    continue
                 #
+                #if (assemble_record.must_receive_qty or 0) <= 0:
+                #    continue
+                #
+                # ✅ 一般已送出 copy material 要有 must_receive_qty 才顯示
+                # ✅ 但未排程 process_step_enable=0 時，也要先顯示，讓使用者按 +工序
                 if (assemble_record.must_receive_qty or 0) <= 0:
-                    continue
+                    if bool(getattr(material_record, 'process_step_enable', False)):
+                        continue
 
                 temp_isLackMaterial = material_record.isLackMaterial
                 step = int(assemble_record.process_step_code or 0)
@@ -2767,10 +2786,15 @@ def list_materials_and_assembles():
                 ut = assemble_record.update_time
                 max_step_code = max_by_ut.get(ut)
 
+                #if max_step_code is None:
+                #    if not is_running_row:
+                #        continue
+                #    max_step_code = step
+                #
                 if max_step_code is None:
-                    if not is_running_row:
-                        continue
-                    max_step_code = step
+                  if not is_running_row and bool(getattr(material_record, 'process_step_enable', False)):
+                      continue
+                  max_step_code = step
 
                 if step != max_step_code and not is_running_row:
                     continue

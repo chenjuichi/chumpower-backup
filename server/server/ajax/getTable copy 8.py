@@ -3815,23 +3815,6 @@ def get_processes_by_order_num():
                 temp_period_time = record.period_time or ""
         # else: 5/6 不計時長
 
-        #
-        #
-        # 依照 process.assemble_id 找到對應的 assemble
-        assemble_record = None
-        if record.assemble_id:
-            assemble_record = next(
-                (a for a in assemble_records if a.id == record.assemble_id),
-                None
-            )
-
-        # process_steps 是 material table 的欄位
-        process_steps_value = material.process_steps
-        if not process_steps_value:
-            process_steps_value = default_process_steps()
-        #
-        #
-
         _object = {
             'seq_num': seq_num,
             'id': material.id,
@@ -3855,11 +3838,7 @@ def get_processes_by_order_num():
 
             'normal_type': ' - 異常整修' if (not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm) else '',
             'user_comment': alarm_msg_string,
-            #
-            'work_num': assemble_record.work_num if assemble_record else '',
-            'schedule_id': assemble_record.schedule_id if assemble_record else None,
-            'process_steps': process_steps_value,
-            #
+
             'create_at': record.create_at,
         }
         _results.append(_object)
@@ -4438,74 +4417,98 @@ def get_Warehouse_For_assemble_by_history():
     data = request.json
     raw_history_flag = data.get('history_flag', False)
     if isinstance(raw_history_flag, str):
-      history_flag = raw_history_flag.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+        history_flag = raw_history_flag.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
     else:
-      history_flag = bool(raw_history_flag)
-    #print("history_flag:", history_flag)
+        history_flag = bool(raw_history_flag)
+    print("history_flag:", history_flag)
 
     def to_int(v, default=0):
-      try:
-          return int(v)
-      except Exception:
-          return default
-
-    def g(obj, name, default=None):
-      return getattr(obj, name, default) if obj is not None else default
+        try:
+            return int(v)
+        except Exception:
+            return default
 
     s = Session()
     try:
+        # 組裝線
+        #q = (
+        #    s.query(Material, Assemble, Process)
+        #     .join(Process, Process.material_id == Material.id)
+        #     .join(Assemble, Assemble.id == Process.assemble_id)
+        #     .filter(Process.has_started.is_(True))
+        #     .filter(Process.end_time.isnot(None))
+        #     .filter(Process.end_time != '')
+        #     #.filter(Process.normal_work_time.in_([2, 3]))   # 最後工序
+        #     .filter(Process.process_type.in_([21, 22, 23, 31]))        # 組裝/檢驗/雷射/入庫
+        #)
+
         # 組裝線：每個 assemble 只取最新一筆已完成 process
         assemble_latest_proc_subq = (
-          s.query(
-            Process.assemble_id.label("assemble_id"),
-            func.max(Process.id).label("max_pid")
-          )
-          .filter(Process.has_started.is_(True))
-          .filter(Process.end_time.isnot(None))
-          .filter(Process.end_time != '')
-          .filter(Process.process_type.in_([21, 22, 23, 31]))
-          .group_by(Process.assemble_id)
-          .subquery()
+            s.query(
+                Process.assemble_id.label("assemble_id"),
+                func.max(Process.id).label("max_pid")
+            )
+            .filter(Process.has_started.is_(True))
+            .filter(Process.end_time.isnot(None))
+            .filter(Process.end_time != '')
+            .filter(Process.process_type.in_([21, 22, 23, 31]))
+            .group_by(Process.assemble_id)
+            .subquery()
         )
 
         q = (
-          s.query(Material, Assemble, Process)
-            .join(Assemble, Assemble.material_id == Material.id)
-            .join(
-              assemble_latest_proc_subq,
-              assemble_latest_proc_subq.c.assemble_id == Assemble.id
-            )
-            .join(Process, Process.id == assemble_latest_proc_subq.c.max_pid)
+            s.query(Material, Assemble, Process)
+             .join(Assemble, Assemble.material_id == Material.id)
+             .join(
+                 assemble_latest_proc_subq,
+                 assemble_latest_proc_subq.c.assemble_id == Assemble.id
+             )
+             .join(Process, Process.id == assemble_latest_proc_subq.c.max_pid)
         )
+
+
+        # 加工線
+        #p_q = (
+        #    s.query(P_Material, P_Assemble, P_Process)
+        #     .join(P_Process, P_Process.material_id == P_Material.id)
+        #     .join(P_Assemble, P_Assemble.id == P_Process.assemble_id)
+        #     .filter(P_Process.has_started.is_(True))
+        #     .filter(P_Process.end_time.isnot(None))
+        #     .filter(P_Process.end_time != '')
+        #     .filter(P_Process.normal_work_time.in_([3]))    # 最後製程
+        #)
 
         # 加工線：每個 p_assemble 只取最新一筆已完成 process
         p_assemble_latest_proc_subq = (
-          s.query(
-            P_Process.assemble_id.label("assemble_id"),
-            func.max(P_Process.id).label("max_pid")
-          )
-          .filter(P_Process.has_started.is_(True))
-          .filter(P_Process.end_time.isnot(None))
-          .filter(P_Process.end_time != '')
-          .filter(P_Process.process_type.in_([21, 22, 23, 31]))
-          .group_by(P_Process.assemble_id)
-          .subquery()
+            s.query(
+                P_Process.assemble_id.label("assemble_id"),
+                func.max(P_Process.id).label("max_pid")
+            )
+            .filter(P_Process.has_started.is_(True))
+            .filter(P_Process.end_time.isnot(None))
+            .filter(P_Process.end_time != '')
+            .filter(P_Process.process_type.in_([21, 22, 23, 31]))
+            .group_by(P_Process.assemble_id)
+            .subquery()
         )
 
         p_q = (
-          s.query(P_Material, P_Assemble, P_Process)
-            .join(P_Assemble, P_Assemble.material_id == P_Material.id)
-            .join(
-              p_assemble_latest_proc_subq,
-              p_assemble_latest_proc_subq.c.assemble_id == P_Assemble.id
-            )
-            .join(P_Process, P_Process.id == p_assemble_latest_proc_subq.c.max_pid)
+            s.query(P_Material, P_Assemble, P_Process)
+             .join(P_Assemble, P_Assemble.material_id == P_Material.id)
+             .join(
+                 p_assemble_latest_proc_subq,
+                 p_assemble_latest_proc_subq.c.assemble_id == P_Assemble.id
+             )
+             .join(P_Process, P_Process.id == p_assemble_latest_proc_subq.c.max_pid)
         )
 
         rows = []
         rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
         rows.extend([(m, a, p, "process") for (m, a, p) in p_q.all()])
         print("rows:", len(rows))
+
+        def g(obj, name, default=None):
+            return getattr(obj, name, default) if obj is not None else default
 
         seen = set()
         results = []
@@ -4539,19 +4542,25 @@ def get_Warehouse_For_assemble_by_history():
                     # 組裝線：已進歷史
                     if not isWarehouseStationShow:
                         continue
+                else:
+                    # 加工線：已入庫 + 已進歷史
+                    if not isStockIn:
+                        continue
+                    if not isWarehouseStationShow:
+                        continue
             else:
                 # 待入庫
                 if line == "assemble":
                     # 組裝線：只要已送到倉儲待入庫就顯示
                     if not isWarehouseStationShow:
                         continue
-                    if isAllOk:
-                        continue
                 else:
-                    if not isStockIn:
+                    # 加工線：已可入庫但尚未進歷史
+                    if (not isStockIn) or isWarehouseStationShow:
                         continue
-                    if not isWarehouseStationShow:
-                        continue
+                    else:
+                      if (not isStockIn) or isWarehouseStationShow:
+                          continue
 
             cleaned_comment = (g(m, "material_comment", "") or "").strip()
             material_id = g(m, "id")
@@ -4562,6 +4571,91 @@ def get_Warehouse_For_assemble_by_history():
             total_allOk_qty = sum_process_work_qty(
                 s, ProcessCls, material_id, assemble_id, process_type=31
             )
+
+            #delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            #remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
+            #can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
+            #
+            # ------------------------------------------------------------
+            # 組裝線待入庫：到庫數量不可只看目前代表列的 process_work_time_qty
+            # 例如 3377=950 + 3379=50，應顯示 1000，不是 50
+            # ------------------------------------------------------------
+
+            """
+            if line == "assemble":
+                delivery_qty = (
+                    s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.process_type == 22)      # B110 / 檢驗完成數
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .filter(Process.process_work_time_qty > 0)
+                    .scalar()
+                ) or 0
+
+                delivery_qty = int(delivery_qty or 0)
+            else:
+                delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
+            """
+
+            """
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # 待入庫數量：先找 chain root
+                # 例：
+                # 目前 row 若是 3379，3379.is_copied_from_id = 3377
+                # root_id 應改成 3377
+                # 然後加總 3377 + 3377 的 B110 子列，也就是 3379
+                # ------------------------------------------------------------
+                current_asm = (
+                    s.query(Assemble)
+                    .filter(Assemble.id == assemble_id)
+                    .first()
+                )
+
+                if current_asm and current_asm.is_copied_from_id:
+                    root_assemble_id = int(current_asm.is_copied_from_id)
+                else:
+                    root_assemble_id = int(assemble_id)
+
+                chain_ids = [root_assemble_id]
+
+                child_ids = [
+                    int(r[0])
+                    for r in (
+                        s.query(Assemble.id)
+                        .filter(Assemble.material_id == material_id)
+                        .filter(Assemble.is_copied_from_id == root_assemble_id)
+                        .filter(Assemble.work_num.like('%B110%'))
+                        .all()
+                    )
+                ]
+
+                chain_ids.extend(child_ids)
+                chain_ids = list(set(chain_ids))
+
+                print("WAREHOUSE B110 CHAIN:", {
+                    "material_id": material_id,
+                    "current_assemble_id": assemble_id,
+                    "root_assemble_id": root_assemble_id,
+                    "chain_ids": chain_ids,
+                })
+
+                delivery_qty = (
+                    s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.assemble_id.in_(chain_ids))
+                    .filter(Process.process_type == 22)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .filter(Process.process_work_time_qty > 0)
+                    .scalar()
+                ) or 0
+
+                delivery_qty = int(delivery_qty or 0)
+            """
 
             if line == "assemble":
                 # ------------------------------------------------------------
@@ -4688,6 +4782,19 @@ def get_Warehouse_For_assemble_by_history():
                 "transport_mode": "自" if bool(g(m, "move_by_automatic_or_manual_2", False)) else "人",
             })
 
+        #results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
+        #
+        #return jsonify({
+        #    "status": len(results) > 0,
+        #    "warehouse_for_assemble": results
+        #})
+        #
+        # ------------------------------------------------------------
+        # 同一 material 只保留 1 筆待入庫資料
+        # 規則：
+        # 1) 優先保留 must_allOk_qty > 0 的
+        # 2) 其餘再比 assemble_id / process_id 較新的
+        # ------------------------------------------------------------
         dedup_map = {}
 
         def _safe_int(v, default=0):
@@ -7113,18 +7220,11 @@ def get_materials_and_assembles_by_user():
             if bool(row.get('isStockInDone')):
                 continue
 
-            ## ✅ 已完成且 DB 內全部 step=0，保留顯示等待入庫資料
-            #if bool(row.get('isAssembleStationShow')) and all_zero_by_mid_db.get(mid, False):
-            #    filtered_results.append(row)
-            #    continue
-            #
-            # ✅ 已按結束報工的資料，要繼續留在 End.vue
-            # 等人工/AGV送出後，sendAssembleToWarehouse() 會把 isAssembleStationShow 改 False，
-            # 到時才會從 End.vue 消失
-            if int(row.get('isAssembleStationShow') or 0) == 1:
+            # ✅ 已完成且 DB 內全部 step=0，保留顯示等待入庫資料
+            if bool(row.get('isAssembleStationShow')) and all_zero_by_mid_db.get(mid, False):
                 filtered_results.append(row)
                 continue
-            #
+
             ptype = map_pt_from_step_code(int(row['process_step_code'] or 0))
             ulist = pick_user_list(user_ids_by_type, ptype, mid)
 

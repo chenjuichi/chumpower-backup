@@ -395,6 +395,7 @@
                         <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
                           {{ process_item.process_type }}
                           <span style="color:red">{{ process_item.normal_type }}</span>
+                          <span v-if="process_item.schedule_name" style="font-weight:600; font-size:12px; color:black;">[{{ process_item.schedule_name }}]</span>
                         </td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>

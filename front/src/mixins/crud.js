@@ -28,6 +28,40 @@ function resolveScheduleName(item) {
   return found?.name || ''
 }
 
+
+function resolveScheduleName2(process_item) {
+  if (!process_item) return ''
+
+  let ps = process_item.process_steps || {}
+
+  if (typeof ps === 'string') {
+    try {
+      ps = JSON.parse(ps)
+    } catch (e) {
+      console.warn('process_steps JSON parse failed:', ps)
+      ps = {}
+    }
+  }
+
+  const workNum = String(process_item.work_num || '')
+  const scheduleId = Number(process_item.schedule_id || 0)
+
+  if (!scheduleId) return ''
+
+  let steps = []
+
+  if (workNum.includes('B109')) {
+    steps = Array.isArray(ps.assemble) ? ps.assemble : []
+  } else if (workNum.includes('B110')) {
+    steps = Array.isArray(ps.check) ? ps.check : []
+  } else {
+    return ''
+  }
+
+  const found = steps.find(x => Number(x.id) === scheduleId)
+  return found?.name || ''
+}
+
 // for countExcelFiles
 export const fileCount = ref(0);         //定義 fileCount 狀態變數
 
@@ -354,6 +388,7 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateProcessData' ||
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
               path == '/updateAssembleMustReceiveQtyByMaterialIDAndDate' ||
+              path == '/sendAssembleToWarehouse' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
               //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
@@ -376,7 +411,9 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/updateAssembleTableData' ||
               path == '/updateAssembleScheduleRows' ||
               path == '/addAssembleScheduleRows' ||
-              path == '/updateAssembleFieldByAssembleID') {
+              path == '/updateAssembleFieldByAssembleID' ||
+              path == '/listServerFiles' ||
+              path == '/moveServerFile') {
             return res.data;
           }
 
@@ -497,9 +534,15 @@ export const apiOperation = (operation, path, payload) => {
           }
 
           if (path == '/getProcessesByOrderNum') {
-            console.log("hello, test")
-            processes.value = [...res.data.processes];
+            //console.log("hello, test")
+            //processes.value = [...res.data.processes];
+            const rows = res.data.processes || []
+            processes.value = rows.map(r => ({
+              ...r,
+              schedule_name: resolveScheduleName2(r),
+            }))
           }
+
           /*
           if (path === '/saveFile') {
             console.log(res.data instanceof Blob); // 應該顯示 true

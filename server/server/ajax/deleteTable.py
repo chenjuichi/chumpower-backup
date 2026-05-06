@@ -2,6 +2,8 @@ import os
 import sys
 import argparse
 
+from pathlib import Path
+
 from datetime import datetime, timedelta
 
 from typing import List
@@ -15,6 +17,8 @@ from database.p_tables import P_Material, P_Assemble, P_Product, P_Bom, P_Proces
 import pymysql
 from sqlalchemy import select, delete, update, exc
 from sqlalchemy.exc import SQLAlchemyError
+
+import shutil
 
 import traceback
 
@@ -623,3 +627,191 @@ def remove_materials_and_relation_table_p():
         except Exception:
             pass
         return jsonify(False), 200
+
+
+@deleteTable.route("/moveServerFile", methods=["POST"])
+def move_server_file():
+    data = request.get_json(silent=True) or {}
+    print("moveServerFile data:", data)
+    filename = (data.get("filename") or "").strip()
+    print("filename:", filename)
+
+    # line 參數（預設 true）
+    line = data.get("line", True)
+    print("line:", line)
+
+    # 轉成 bool（避免前端傳 "false" 變成 True）
+    if isinstance(line, str):
+        line = line.lower() == "true"
+
+    if not filename:
+        return jsonify({"ok": False, "msg": "filename 不可為空"}), 200  # 400
+
+    # 禁止路徑攻擊
+    if "/" in filename or "\\" in filename:
+        return jsonify({"ok": False, "msg": "禁止傳入路徑"}), 200       # 400
+
+    # -------- 取得目標資料夾 --------
+    def get_out_dir(base_dir: str) -> str:
+        p = Path(base_dir)
+        name = p.name
+
+        idx = name.find("_in")
+        if idx == -1:
+            raise ValueError(f"invalid folder name: {name}")
+
+        prefix = name[:idx]
+        return str(p.parent / f"{prefix}_out")
+
+    _base_dir = current_app.config['baseDir']
+    base_path = Path(_base_dir).resolve()
+
+    # line = false → 改成 _in_p
+    if not line:
+        name = base_path.name
+        if "_in" not in name:
+            return jsonify({"ok": False, "msg": "資料夾名稱不包含 _in"}), 200     # 400
+
+        new_name = name.replace("_in", "_in_p", 1)
+        base_path = base_path.parent / new_name
+
+    try:
+        _target_dir = get_out_dir(_base_dir)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"取得目標目錄失敗: {str(e)}"}), 200  # 500
+
+    print("來源:", _base_dir)
+    print("目標:", _target_dir)
+
+    # -------- 轉成 Path --------
+    #base_path = Path(_base_dir).resolve()
+    target_path = Path(_target_dir).resolve()
+
+    # -------- 組來源檔案 --------
+    src = (base_path / filename).resolve()
+
+    # 安全檢查（防跳目錄）
+    try:
+        src.relative_to(base_path)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "非法路徑"}), 200
+
+    if not src.exists():
+        return jsonify({"ok": False, "msg": "檔案不存在"}), 200 # 404
+
+    if not src.is_file():
+        return jsonify({"ok": False, "msg": "只允許檔案"}), 200 # 400
+
+    # 副檔名限制
+    allowed_ext = {".pdf", ".xlsx", ".xls", ".txt"}
+    if src.suffix.lower() not in allowed_ext:
+        return jsonify({"ok": False, "msg": "副檔名不允許"}), 400
+
+    # -------- 建立目標路徑 --------
+    dst = (target_path / filename).resolve()
+
+    try:
+        dst.relative_to(target_path)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "目標路徑非法"}), 200 # 400
+
+    # 建立目標資料夾
+    target_path.mkdir(parents=True, exist_ok=True)
+
+    # 防止覆蓋
+    #if dst.exists():
+    #    return jsonify({"ok": False, "msg": f"目標已存在同名檔案: {filename}"}), 400
+    #
+    # -------- 自動避免重複檔名 --------
+    stem = src.stem
+    suffix = src.suffix
+
+    #dst = target_path / filename
+    dst = (target_path / filename).resolve()
+
+    counter = 1
+    max_try = 1000
+    while dst.exists() and counter < max_try:
+        new_name = f"{stem}_{counter}{suffix}"
+        #dst = target_path / new_name
+        dst = (target_path / new_name).resolve()
+        counter += 1
+
+    if dst.exists():
+      return jsonify({
+          "ok": False,
+          "msg": f"目標檔名重複太多，已嘗試到 _{max_try}: {filename}"
+      }), 200   # 400
+
+    try:
+        dst.relative_to(target_path)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "目標路徑非法"}), 200   # 400
+
+    # -------- 執行移動 --------
+    try:
+        shutil.move(str(src), str(dst))
+        return jsonify({
+            "ok": True,
+            "msg": f"已移動: {filename}",
+            "from": str(src),
+            "to": str(dst)
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@deleteTable.route("/listServerFiles", methods=["POST"])
+def list_server_files():
+    data = request.get_json(silent=True) or {}
+
+    # line 參數（預設 true）
+    line = data.get("line", True)
+
+    # 轉成 bool
+    if isinstance(line, str):
+        line = line.lower() == "true"
+
+    _base_dir = current_app.config['baseDir']
+    folder = Path(_base_dir).resolve()
+
+    # line = false → 讀取 excel_in_p
+    if not line:
+        name = folder.name
+
+        if "_in" not in name:
+            return jsonify({"ok": False, "msg": "資料夾名稱不包含 _in"}), 400
+
+        new_name = name.replace("_in", "_in_p", 1)
+        folder = folder.parent / new_name
+
+    print("listServerFiles 讀取目錄:", folder)
+
+    if not folder.exists() or not folder.is_dir():
+        return jsonify({
+            "ok": False,
+            "msg": f"資料夾不存在: {str(folder)}"
+        }), 404
+
+    try:
+        files = []
+
+        for p in folder.iterdir():
+            if p.is_file():
+                files.append({
+                    "name": p.name,
+                    "size": p.stat().st_size,
+                    "suffix": p.suffix.lower(),
+                })
+
+        files.sort(key=lambda x: x["name"].lower())
+
+        return jsonify({
+            "ok": True,
+            "files": files,
+            "line": line,
+            "folder": str(folder),
+        })
+
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500

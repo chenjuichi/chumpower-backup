@@ -618,6 +618,7 @@ const createProcess = apiOperation('post', '/createProcess');
 const updateAGV = apiOperation('post', '/updateAGV');
 const getAGV = apiOperation('post', '/getAGV');
 const updateAssembleProcessStep  = apiOperation('post', '/updateAssembleProcessStep');
+const sendAssembleToWarehouse = apiOperation('post', '/sendAssembleToWarehouse');
 const updateAssmbleDataByMaterialID = apiOperation('post', '/updateAssmbleDataByMaterialID');
 const updateProcessData = apiOperation('post', '/updateProcessData');
 const updateAssembleTableData = apiOperation('post', '/updateAssembleTableData');
@@ -1302,10 +1303,17 @@ onMounted(async () => {
             record_data2: 10,
             record_name3: 'show3_ok',
             record_data3: 3,            // 等待組裝中
-            record_name4: 'isWarehouseStationShow',
-            record_data4: true,         // AGV 到成品區後，開啟待入庫顯示
+            //record_name4: 'isWarehouseStationShow',
+            //record_data4: true,         // AGV 到成品區後，開啟待入庫顯示
           });
-
+          //
+          // AGV 確認到成品區後，才允許進 Ware~.vue 待入庫
+          await sendAssembleToWarehouse({
+            id: current_material_id,
+            assemble_id: current_assemble_id,
+            mode: 'agv'
+          });
+          //
           // 將組裝站顯示關閉（用你現有的 API 名稱）
           await updateAssembleMustReceiveQtyByMaterialIDAndDate({
             material_id: current_material_id,
@@ -2435,15 +2443,23 @@ const callForklift = async () => {
         record_data: false
       });
 
-      // Warehouse頁面顯示用：送出後，進入待入庫清單
-      await updateAssembleMustReceiveQtyByMaterialIDAndDate({
-        material_id: mid,
+      //// Warehouse頁面顯示用：送出後，進入待入庫清單
+      //await updateAssembleMustReceiveQtyByMaterialIDAndDate({
+      //  material_id: mid,
+      //  assemble_id: current_assemble_id,
+      //  create_at: rec.create_at,
+      //
+      //  record_name: 'isWarehouseStationShow',
+      //  record_data: true
+      //});
+      //
+      // 人工送出後，才允許進 Ware~.vue 待入庫
+      await sendAssembleToWarehouse({
+        id: mid,
         assemble_id: current_assemble_id,
-        create_at: rec.create_at,
-
-        record_name: 'isWarehouseStationShow',
-        record_data: true
+        mode: 'manual'
       });
+      //
 
       // must_allOk_qty 以收料數為準（數值化）
       await updateMaterial({

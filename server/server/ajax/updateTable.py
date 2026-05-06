@@ -1088,9 +1088,15 @@ def update_assemble_process_step():
             )
 
             if final_row:
+                # 報工完成後，仍留在 End.vue / 組裝結束狀態
+
                 final_row.isAssembleStationShow = True
-                final_row.isWarehouseStationShow = True
-                final_row.show2_ok = 10  # 等待入庫作業
+                # 但還沒 AGV / 人工送出，所以不能進 Ware~.vue
+                final_row.isWarehouseStationShow = False
+                # 先不要設成 10「等待入庫作業」
+                # 依你的流程，B110 結束通常可用 9：檢驗已結束
+                #final_row.show2_ok = 10  # 等待入庫作業
+                final_row.show2_ok = 9                  # 檢驗/組裝已完成，但尚未送入庫
                 final_row.input_end_disable = True
 
             s.commit()
@@ -1151,6 +1157,92 @@ def update_assemble_process_step():
             "status": False,
             "message": str(e)
         }), 500
+    finally:
+        s.close()
+
+
+@updateTable.route('/sendAssembleToWarehouse', methods=['POST'])
+def send_assemble_to_warehouse():
+    print("sendAssembleToWarehouse.")
+
+    data = request.get_json(silent=True) or {}
+    material_id = data.get('id')
+    assemble_id = data.get('assemble_id')
+    mode = data.get('mode', 'manual')  # agv / manual
+
+    if not material_id:
+        return jsonify({
+            "status": False,
+            "message": "缺少 material id"
+        }), 400
+
+    s = Session()
+    try:
+        material = s.query(Material).filter(Material.id == material_id).first()
+        if not material:
+            return jsonify({
+                "status": False,
+                "message": f"找不到 material id={material_id}"
+            }), 404
+
+        if assemble_id:
+            target = (
+                s.query(Assemble)
+                 .filter(Assemble.id == assemble_id)
+                 .filter(Assemble.material_id == material_id)
+                 .first()
+            )
+        else:
+            target = (
+                s.query(Assemble)
+                 .filter(Assemble.material_id == material_id)
+                 .filter(Assemble.work_num.like('%B110%'))
+                 .order_by(
+                     cast(Assemble.must_receive_end_qty, Integer).desc(),
+                     Assemble.id.desc()
+                 )
+                 .first()
+            )
+
+        if not target:
+            return jsonify({
+                "status": False,
+                "message": "找不到可送入庫的 assemble row"
+            }), 404
+
+        # 先關掉同 material 其他入庫顯示，避免同工單多筆出現在 Ware~.vue
+        s.query(Assemble).filter(
+            Assemble.material_id == material_id
+        ).update({
+            Assemble.isWarehouseStationShow: False
+        }, synchronize_session=False)
+
+        # 只有按 AGV / 人工送出時，才打開 Ware~.vue 顯示
+        target.isWarehouseStationShow = True
+        target.isAssembleStationShow = False
+        target.show2_ok = 10  # 等待入庫作業
+
+        # 紀錄運送方式：True=自，False=人
+        material.move_by_automatic_or_manual_2 = True if mode == 'agv' else False
+        material.whichStation = 3
+        material.show3_ok = 11  # 等待入庫作業
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": "已送到成品區，Ware~.vue 可顯示",
+            "assemble_id": target.id
+        })
+
+    except Exception as e:
+        s.rollback()
+        traceback.print_exc()
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
     finally:
         s.close()
 

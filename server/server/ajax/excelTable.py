@@ -2405,6 +2405,49 @@ def export_to_excel_for_assemble_information():
                 #process_name = code_to_name.get(ptype, '空白')
                 process_name_base = code_to_name.get(ptype, '空白')
 
+                #
+                assemble_record = None
+                if process.assemble_id:
+                    assemble_record = s.query(Assemble).filter_by(id=process.assemble_id).first()
+
+                material_record = s.query(Material).filter_by(id=process.material_id).first()
+
+                import json
+                process_steps = {}
+
+                raw_ps = getattr(material_record, "process_steps", None)
+                if raw_ps:
+                    if isinstance(raw_ps, str):
+                        try:
+                            process_steps = json.loads(raw_ps)
+                        except Exception:
+                            process_steps = {}
+                    else:
+                        process_steps = raw_ps
+
+                schedule_name = ''
+
+                if assemble_record and assemble_record.schedule_id:
+                    work_num = str(assemble_record.work_num or '')
+                    schedule_id = int(assemble_record.schedule_id)
+
+                    if 'B109' in work_num:
+                        steps = process_steps.get('assemble', [])
+                    elif 'B110' in work_num:
+                        steps = process_steps.get('check', [])
+                    else:
+                        steps = []
+
+                    for step in steps:
+                        if int(step.get('id', 0)) == schedule_id:
+                            schedule_name = step.get('name', '')
+                            break
+
+                # ===== 組合 =====
+                if schedule_name:
+                    process_name_base = f"{process_name_base}({schedule_name})"
+                #
+
                 ## ✅ 若該工序為異常：process.normal_work_time = 0 或 2 → 工序名稱加上 '- 異常整修'
                 #nwt = getattr(process, "normal_work_time", None)
                 #try:

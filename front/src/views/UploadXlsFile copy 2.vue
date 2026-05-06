@@ -1,192 +1,121 @@
 <template>
-  <div
-    :class="['page_contain', { 'no-footer': !showFooter }]"
-    :style="containerStyle"
-    :key="componentKey"
+<div :class="['page_contain', { 'no-footer': !showFooter }]" :style="containerStyle" :key="componentKey">
+	<!-- Snackbar -->
+	<v-snackbar v-model="snackbar" location="top right" timeout="2000" :color="snackbar_color">
+		{{ snackbar_info }}
+		<template v-slot:actions>
+			<v-btn color="#adadad" @click="snackbar = false">
+				<v-icon dark>mdi-close-circle</v-icon>
+			</v-btn>
+		</template>
+	</v-snackbar>
+
+  <v-dialog
+    v-model="uploadDialog"
+    max-width="400"
+    @update:model-value="onDialogClose"
   >
-    <!-- Snackbar -->
-    <v-snackbar
-      v-model="snackbar"
-      location="top right"
-      timeout="2000"
-      :color="snackbar_color"
-    >
-      {{ snackbar_info }}
-
-      <template v-slot:actions>
-        <v-btn color="#adadad" @click="snackbar = false">
-          <v-icon dark>mdi-close-circle</v-icon>
-        </v-btn>
-      </template>
-    </v-snackbar>
-
-    <!-- 上傳類型選單 -->
-    <v-dialog
-      v-model="uploadDialog"
-      max-width="400"
-      @update:model-value="onDialogClose"
-    >
-      <v-card class="align-center pa-5 red-elevation" elevation="16">
-        <v-card-title class="text-h6">
-          選擇上傳類型
-        </v-card-title>
-
-        <v-card-text class="d-flex flex-column align-center">
-          <v-radio-group v-model="uploadType" column>
-            <v-radio value="excel">
-              <template #label>
-                上傳組裝線工單 (Excel
-                <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
-                )
-              </template>
-            </v-radio>
-
-            <v-radio value="excelm">
-              <template #label>
-                上傳組裝線修正工單 (Excel
-                <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
-                )
-              </template>
-            </v-radio>
-
-            <v-radio value="excelp">
-              <template #label>
-                上傳加工線工單 (Excel
-                <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
-                )
-              </template>
-            </v-radio>
-
-            <v-radio value="pdf">
-              <template #label>
-                上傳物料清單 (PDF
-                <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
-                )
-              </template>
-            </v-radio>
-
-            <v-radio value="pdf1">
-              <template #label>
-                上傳領退料單 (PDF
-                <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
-                )
-              </template>
-            </v-radio>
-          </v-radio-group>
-        </v-card-text>
-
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="outlined" color="primary" @click="cancelAndGo">
-            取消
-          </v-btn>
-          <v-btn variant="outlined" color="primary" @click="confirmUploadType">
-            確定
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- 主卡片區域 -->
-    <v-card class="align-center pa-5">
-      <v-card-title>
-        {{ uploadTitle }}
-      </v-card-title>
-
+    <v-card class="align-center pa-5 red-elevation" elevation="16">
+      <v-card-title class="text-h6">選擇上傳類型</v-card-title>
       <v-card-text class="d-flex flex-column align-center">
-        <v-file-input
-          v-model="file"
-          :label="uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm'
-            ? '選擇 Excel 檔案'
-            : '選擇 PDF 檔案 (最多複選2個檔案, 按住Shift鍵)'"
-          :accept="uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm'
-            ? '.xlsx,.xls'
-            : '.pdf'"
-          :multiple="uploadType !== 'excel' && uploadType !== 'excelp' && uploadType !== 'excelm'"
-          show-size
-          prepend-icon="mdi-file-arrow-left-right"
-          variant="underlined"
-          style="min-width:500px; max-width:500px;"
-        />
+        <v-radio-group v-model="uploadType" column>
+          <v-radio value="excel">
+            <template #label>
+              上傳組裝線工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
 
-        <!-- 按鈕同一行 -->
-        <div class="d-flex ga-3 mt-3">
-          <v-btn color="primary" @click="handleUpload">
-            上傳
-          </v-btn>
+          <v-radio value="excelm">
+            <template #label>
+              上傳組裝線修正工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
 
-          <v-btn
-            color="error"
-            @click="toggleFileTable"
+          <v-radio value="excelp">
+            <template #label>
+              上傳加工線工單 (Excel
+              <v-icon class="ms-2" color="green">mdi-microsoft-excel</v-icon>
+              )
+            </template>
+          </v-radio>
 
-            v-if="canDeleteFile"
-          >
-            {{ showFileTable ? '關閉已上傳檔案清單' : '刪除已上傳檔案' }}
-          </v-btn>
-        </div>
+          <v-radio value="pdf">
+            <template #label>
+              上傳物料清單 (PDF
+              <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
+              )
+            </template>
+          </v-radio>
+
+          <v-radio value="pdf1">
+            <template #label>
+              上傳領退料單 (PDF
+              <v-icon color="red" class="ms-2">mdi-file-pdf-box</v-icon>
+              )
+            </template>
+          </v-radio>
+        </v-radio-group>
       </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="outlined" color="primary" @click="cancelAndGo">取消</v-btn>
+        <v-btn variant="outlined" color="primary" @click="confirmUploadType">確定</v-btn>
+      </v-card-actions>
     </v-card>
+  </v-dialog>
+  <!-- 主卡片區域 -->
+  <v-card class="align-center pa-5">
+    <v-card-title>
+      {{ uploadTitle }}
+    </v-card-title>
+    <v-card-text class="d-flex flex-column align-center">
+      <v-file-input
+        v-model="file"
+        :label ="uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm' ? '選擇 Excel 檔案' : '選擇 PDF 檔案 (最多複選2個檔案, 按住Shift鍵)'"
+        :accept = "uploadType === 'excel' || uploadType === 'excelp' || uploadType === 'excelm'? '.xlsx,.xls' : '.pdf'"
+        :multiple = "uploadType != 'excel' &&  uploadType != 'excelp' &&  uploadType != 'excelm'"
+        show-size
+        prepend-icon="mdi-file-arrow-left-right"
 
-    <v-btn
-      color="info"
-      class="ma-5"
-      @click="uploadDialog = true"
-      v-if="!showFileTable"
-    >
-      開啟上傳選單
-    </v-btn>
+        variant="underlined"
+        style="min-width:500px; max-width:500px;"
+      />
 
-    <!-- 檔案清單表格 -->
-    <v-expand-transition>
-      <v-card v-if="showFileTable" class="ma-5">
-        <v-card-title class="d-flex align-center">
-          已上傳檔案清單
-          <span v-if="uploadType == 'excel'">(組裝線工單)</span>
-          <span v-else>(加工線工單)</span>
-          <v-spacer />
-          <div class="d-flex ga-2">
-            <v-btn color="primary" variant="outlined" @click="fetchDirectory">
-              重新整理
-            </v-btn>
+      <div class="d-flex ga-3 mt-3">
+        <v-btn color="primary" @click="handleUpload">上傳</v-btn>
 
-            <v-btn
-              color="success"
-              variant="outlined"
-              :disabled="selected.length === 0"
-              @click="handleConfirmSelected"
-            >
-              確定
-            </v-btn>
-          </div>
-        </v-card-title>
+        <v-btn color="primary" @click="toggleFileTable">
+          {{ showFileTable ? '關閉檔案清單' : '刪除檔案' }}
+        </v-btn>
+      </div>
+    </v-card-text>
+  </v-card>
+  <v-btn color="info" class="ma-5" @click="uploadDialog = true">開啟上傳選單</v-btn>
 
-        <v-data-table
-          v-model="selected"
-          :headers="headers"
-          :items="files"
-          item-value="name"
-          show-select
-          select-strategy="single"
-          class="elevation-2 ma-5"
-          :row-props="getRowProps"
-        >
-          <template #item.name="{ item }">
-            <span
-              @click="handleMoveOne(item)"
-              style="cursor: pointer; color: blue;"
-            >
-              {{ item.name }}
-            </span>
-          </template>
+  <v-data-table
+    v-if="showFileTable"
+    v-model="selected"
+    :headers="headers"
+    :items="files"
+    item-value="name"
+    show-select
+    class="elevation-2 ma-5"
+  >
+    <template #item.name="{ item }">
+      <span @click="handleMoveOne(item)" style="cursor: pointer; color: blue;">
+        {{ item.name }}
+      </span>
+    </template>
 
-          <template #item.size="{ item }">
-            {{ formatSize(item.size) }}
-          </template>
-        </v-data-table>
-
-      </v-card>
-    </v-expand-transition>
-  </div>
+    <template #item.size="{ item }">
+      {{ formatSize(item.size) }}
+    </template>
+  </v-data-table>
+</div>
 </template>
 
 <script setup>
@@ -204,8 +133,7 @@ const uploadExcelFile = apiOperationF('post', '/uploadExcelFile');
 const uploadPdfFiles = apiOperationF('post', '/uploadPdfFiles');
 
 import { apiOperation }  from '../mixins/crud.js';
-const listServerFiles = apiOperation('post', '/listServerFiles');
-const moveServerFile = apiOperation('post', '/moveServerFile');
+const listServerFiles = apiOperationF('post', '/listServerFiles');
 
 //=== component name ==
 defineComponent({ name: 'UploadXlsFile' });
@@ -234,8 +162,8 @@ const pagination = reactive({
   page: 1,
 });
 
-const files = ref([]);
-const selected = ref([]);
+const files = ref([])
+const selected = ref([])
 const headers = [
   { title: "檔名", key: "name" },
   { title: "大小", key: "size" },
@@ -269,10 +197,6 @@ const uploadTitle = computed(() => {
     default:
       return '請選擇上傳類型'
   }
-})
-
-const canDeleteFile = computed(() => {
-  return uploadType.value === 'excel' || uploadType.value === 'excelp'
 })
 
 //=== mounted ===
@@ -449,7 +373,7 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
-/*
+
 const fetchDirectory = async (line = true) => {
   try {
     const res = await listServerFiles({
@@ -466,35 +390,12 @@ const fetchDirectory = async (line = true) => {
     alert("讀取失敗")
   }
 }
-*/
-//const fetchDirectory = async (line = true) => {
-const fetchDirectory = async () => {
-  try {
-    selected.value = [];
-
-    //if (uploadType.value=="excelp")
-    //  line=false;
-
-    const res = await listServerFiles({
-      line: uploadType.value == "excel",
-    })
-
-    if (res.ok) {
-      files.value = res.files || []
-    } else {
-      showSnackbar(res.msg, 'red accent-2');
-    }
-  } catch (err) {
-    console.error(err)
-    showSnackbar("讀取失敗", 'red accent-2');
-  }
-}
 
 const toggleFileTable = async () => {
   showFileTable.value = !showFileTable.value
 
   if (showFileTable.value) {
-    fetchDirectory();
+    await fetchDirectory()
   } else {
     selected.value = []
   }
@@ -505,44 +406,6 @@ function formatSize(size) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(2)} KB`
   return `${(n / 1024 / 1024).toFixed(2)} MB`
-}
-
-function getRowProps({ item }) {
-  const row = item?.raw || item
-  const selectedName = selected.value[0]
-
-  if (selectedName === row.name) {
-    return {
-      class: "selected-file-row"
-    }
-  }
-  return {}
-}
-
-const handleConfirmSelected = async () => {
-  //if (!selected.value.length) {
-  //  alert("請先選擇一個檔案")
-  //  return
-  //}
-
-  const filename = selected.value[0]
-
-  //if (uploadType.value=="excelp")
-  //    line=false;
-
-  //const yes = window.confirm(`確定要移動檔案：${filename}？`)
-  //if (!yes) return
-  const res = await moveServerFile({
-    filename: filename,
-    line: uploadType.value == "excel",
-  })
-
-  if (res.ok) {
-  	showSnackbar(res.msg, '#008184');
-    fetchDirectory()
-  } else {
-    showSnackbar(res.msg, 'red accent-2');
-  }
 }
 </script>
 
@@ -569,15 +432,6 @@ const handleConfirmSelected = async () => {
 
 :deep(.red-elevation) {
   box-shadow: 0px 10px 30px -5px rgba(255, 0, 0, 0.6) !important;
-}
-
-.highlight-row {
-  background-color: #e3f2fd !important; /* 淺藍色 */
-}
-
-:deep(.selected-file-row) {
-  background-color: #bbdefb !important;
-  font-weight: bold;
 }
 </style>
 

@@ -89,14 +89,6 @@
 
       <v-card-actions class="justify-center pb-4">
         <v-btn
-          color="error"
-          prepend-icon="mdi-close"
-          text="取消"
-          class="text-none"
-          variant="flat"
-          @click="closeSchedulingDialog"
-        />
-        <v-btn
           color="success"
           prepend-icon="mdi-check"
           text="確定"
@@ -104,6 +96,67 @@
           variant="flat"
           :loading="scheduling_dialog_loading"
           @click="confirmSchedulingDialog"
+        />
+
+        <v-btn
+          color="error"
+          prepend-icon="mdi-close"
+          text="取消"
+          class="text-none"
+          variant="flat"
+          @click="closeSchedulingDialog"
+        />
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+    <!-- 工序資料檢查 Alert -->
+  <v-dialog v-model="scheduleAlertDialog" max-width="420" persistent>
+    <v-card>
+      <v-card-title class="text-h6" style="font-weight:700;">
+        工序資料提醒
+      </v-card-title>
+
+      <v-card-text>
+        <div
+          class="erp-alert-box"
+          :class="scheduleAlertType === 'all-empty' ? 'erp-alert-error' : 'erp-alert-warning'"
+        >
+          <v-icon
+            size="34"
+            class="mr-3"
+            :color="scheduleAlertType === 'all-empty' ? 'red-darken-2' : 'blue-darken-2'"
+          >
+            {{ scheduleAlertType === 'all-empty' ? 'mdi-alert-circle' : 'mdi-information' }}
+          </v-icon>
+
+          <div
+            class="erp-alert-message"
+            :class="scheduleAlertType === 'all-empty' ? 'erp-alert-message-error' : 'erp-alert-message-warning'"
+          >
+            {{ scheduleAlertMessage }}
+          </div>
+        </div>
+      </v-card-text>
+
+      <v-card-actions class="justify-center pb-4">
+        <v-btn
+          color="error"
+          prepend-icon="mdi-arrow-left"
+          text="返回"
+          class="text-none"
+          variant="flat"
+          @click="backToSchedulingDialog"
+        />
+
+        <v-btn
+          v-if="scheduleAlertType === 'partial'"
+          color="success"
+          prepend-icon="mdi-check"
+          text="確定"
+          class="text-none"
+          variant="flat"
+          @click="continueConfirmSchedulingDialog"
         />
       </v-card-actions>
     </v-card>
@@ -566,6 +619,8 @@
       </v-btn>
     </template>
   -->
+
+  <!--
     <template #item.add_process="{ item }">
       <v-btn
         size="small"
@@ -579,6 +634,44 @@
         +工序
       </v-btn>
     </template>
+  -->
+
+<!--
+    <template #item.add_process="{ item }">
+  <v-btn
+    size="small"
+    :prepend-icon="isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus'"
+          text="工序"
+
+    class="btn-add-process"
+    :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
+    :disabled="isProcessStepEnabled(item) ||
+               isAddProcessDisabledV2(item) ||
+               item.top_work_rank != item.process_step_code ||
+               item.delivery_qty != item.must_receive_qty"
+    @click="openSchedulingDialog(item)"
+  >
+  </v-btn>
+</template>
+-->
+<template #item.add_process="{ item }">
+  <v-btn
+    size="small"
+    class="btn-add-process"
+    :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
+    :disabled="isProcessStepEnabled(item) ||
+               isAddProcessDisabledV2(item) ||
+               item.top_work_rank != item.process_step_code ||
+               item.delivery_qty != item.must_receive_qty"
+    @click="openSchedulingDialog(item)"
+  >
+    <v-icon start size="18">
+      {{ isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus' }}
+    </v-icon>
+
+    工序
+  </v-btn>
+</template>
 
     <!-- 自訂 '-工序' 按鍵欄位 -->
   <!--
@@ -893,6 +986,10 @@ const check_steps = ref([
   */
 ])
 const scheduleMode = ref('assemble')  // 工序模式（assemble / check）
+const scheduleAlertDialog = ref(false)
+const scheduleAlertMessage = ref('')
+const scheduleAlertType = ref('')     // none / all-empty / partial
+const scheduledMaterialIds = ref(new Set())
 
 const refreshing = ref(false);
 
@@ -2108,12 +2205,29 @@ const handlePopState = () => {
   }
 }
 
+/*
 const isProcessStepEnabled = (item) => {
   const raw = item?.process_step_enable;
   if (raw === true || raw === 1 || raw === '1') return true;
   if (raw === false || raw === 0 || raw === '0' || raw == null || raw === '') return false;
   return Boolean(raw);
 };
+*/
+
+const isProcessStepEnabled = (item) => {
+  if (!item) return false
+
+  if (scheduledMaterialIds.value.has(Number(item.id))) {
+    return true
+  }
+
+  const raw = item?.process_step_enable
+
+  if (raw === true || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 0 || raw === '0' || raw == null || raw === '') return false
+
+  return Boolean(raw)
+}
 
 //const isAddProcessDisabled = (item) => isProcessStepEnabled(item);
 
@@ -2266,6 +2380,7 @@ const closeSchedulingDialog = () => {
   scheduling_target_item.value = null;
 };
 
+/*
 const confirmSchedulingDialog = async () => {
   if (!scheduling_target_item.value?.id) {
     closeSchedulingDialog();
@@ -2298,6 +2413,107 @@ const confirmSchedulingDialog = async () => {
     console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
     // 重新抓最新資料
     await safeRefresh();
+
+    showSnackbar('已完成工序設定', 'success')
+    closeSchedulingDialog()
+  } catch (error) {
+    console.error('confirmSchedulingDialog error:', error)
+    showSnackbar('工序設定失敗', 'red-darken-2')
+  } finally {
+    scheduling_dialog_loading.value = false
+  }
+}
+*/
+
+const confirmSchedulingDialog = async () => {
+  if (!scheduling_target_item.value?.id) {
+    closeSchedulingDialog()
+    return
+  }
+
+  // 先保存目前畫面 mode 的勾選狀態
+  saveCurrentSchedulingSteps(scheduleMode.value)
+
+  const hasAssemble = hasCheckedStep(assemble_steps.value)
+  const hasCheck = hasCheckedStep(check_steps.value)
+
+  // 1. 組裝 + 檢驗 都沒選
+  if (!hasAssemble && !hasCheck) {
+    scheduleAlertType.value = 'all-empty'
+    scheduleAlertMessage.value = '在組裝及檢驗還沒有工序資料'
+    scheduleAlertDialog.value = true
+    return
+  }
+
+  // 2. 其中一種沒選
+  if (!hasAssemble || !hasCheck) {
+    scheduleAlertType.value = 'partial'
+
+    if (!hasAssemble) {
+      scheduleAlertMessage.value = '在組裝工序的工序資料不完整'
+    } else {
+      scheduleAlertMessage.value = '在檢驗工序的工序資料不完整'
+    }
+
+    scheduleAlertDialog.value = true
+    return
+  }
+
+  // 3. 兩種都有選，直接走原本程序
+  await doConfirmSchedulingDialog()
+}
+
+const doConfirmSchedulingDialog = async () => {
+  console.log("process_steps, assemble: ", assemble_steps.value)
+  console.log("process_steps, check: ", check_steps.value)
+
+  scheduling_dialog_loading.value = true
+
+  try {
+    const tt = await updateAssembleScheduleRows({
+      id: scheduling_target_item.value.id,
+      process_steps: {
+        assemble: assemble_steps.value,
+        check: check_steps.value
+      }
+    })
+
+
+    //console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
+    //
+    //scheduling_target_item.value.process_step_enable = true;
+    //
+    //await safeRefresh()
+    //
+    //
+    console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
+
+    const targetId = Number(scheduling_target_item.value.id)
+
+    scheduling_target_item.value.process_step_enable = true
+    scheduledMaterialIds.value.add(targetId)
+
+    materials_and_assembles.value = materials_and_assembles.value.map(row => {
+      if (Number(row.id) === targetId) {
+        return {
+          ...row,
+          process_step_enable: true
+        }
+      }
+      return row
+    })
+
+    await safeRefresh()
+
+    materials_and_assembles.value = materials_and_assembles.value.map(row => {
+      if (Number(row.id) === targetId) {
+        return {
+          ...row,
+          process_step_enable: true
+        }
+      }
+      return row
+    })
 
     showSnackbar('已完成工序設定', 'success')
     closeSchedulingDialog()
@@ -2748,6 +2964,31 @@ const removelocalStorage = () => {
     localStorage.removeItem('Authenticated');
   }
 };
+
+const hasCheckedStep = (steps) => {
+  return (steps || []).some(step => step.checked === true)
+}
+
+const resetSchedulingDialogToInitialMode = () => {
+  scheduleMode.value = 'assemble'
+  schedulingSteps.value = deepClone(assemble_steps.value)
+}
+
+const backToSchedulingDialog = () => {
+  scheduleAlertDialog.value = false
+
+  if (scheduleAlertType.value === 'all-empty') {
+    resetSchedulingDialogToInitialMode()
+  }
+
+  scheduleAlertType.value = ''
+}
+
+const continueConfirmSchedulingDialog = async () => {
+  scheduleAlertDialog.value = false
+  scheduleAlertType.value = ''
+  await doConfirmSchedulingDialog()
+}
 </script>
 
 <style lang="scss" scoped>
@@ -3400,4 +3641,37 @@ const removelocalStorage = () => {
   gap: 8px;
 }
 
+.erp-alert-box {
+  display: flex;
+  align-items: center;
+  min-height: 76px;
+  padding: 16px 18px;
+  border-radius: 8px;
+  border-left: 6px solid;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.erp-alert-error {
+  background: #fff5f5;
+  border-left-color: #d32f2f;
+}
+
+.erp-alert-warning {
+  background: #f2f7ff;
+  border-left-color: #1976d2;
+}
+
+.erp-alert-message {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.erp-alert-message-error {
+  color: #c62828;
+}
+
+.erp-alert-message-warning {
+  color: #1565c0;
+}
 </style>

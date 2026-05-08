@@ -2405,7 +2405,7 @@ def export_to_excel_for_assemble_information():
                 #process_name = code_to_name.get(ptype, '空白')
                 process_name_base = code_to_name.get(ptype, '空白')
 
-                #
+                # 取得擴充工序名稱
                 assemble_record = None
                 if process.assemble_id:
                     assemble_record = s.query(Assemble).filter_by(id=process.assemble_id).first()

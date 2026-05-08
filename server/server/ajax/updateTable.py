@@ -1247,6 +1247,72 @@ def send_assemble_to_warehouse():
         s.close()
 
 
+@updateTable.route('/sendProcessToWarehouse', methods=['POST'])
+def send_process_to_warehouse():
+    print("sendProcessToWarehouse.")
+
+    data = request.get_json(silent=True) or {}
+    material_id = data.get('id')
+    assemble_id = data.get('assemble_id')
+    mode = data.get('mode', 'manual')
+
+    if not material_id or not assemble_id:
+        return jsonify({
+            "status": False,
+            "message": "缺少 id 或 assemble_id"
+        }), 400
+
+    s = Session()
+    try:
+        material = s.query(P_Material).filter(P_Material.id == material_id).first()
+        row = (
+            s.query(P_Assemble)
+             .filter(P_Assemble.id == assemble_id)
+             .filter(P_Assemble.material_id == material_id)
+             .first()
+        )
+
+        if not material or not row:
+            return jsonify({
+                "status": False,
+                "message": "找不到 P_Material 或 P_Assemble"
+            }), 404
+
+        # 同一張加工工單只保留一筆進 Ware
+        s.query(P_Assemble).filter(
+            P_Assemble.material_id == material_id
+        ).update({
+            P_Assemble.isWarehouseStationShow: False
+        }, synchronize_session=False)
+
+        row.isAssembleStationShow = False
+        row.isWarehouseStationShow = True
+        row.isStockIn = True
+
+        material.move_by_automatic_or_manual_2 = True if mode == 'agv' else False
+        material.whichStation = 3
+        material.show2_ok = 6   # 等待入庫作業
+        material.show3_ok = 11  # 等待入庫作業 / 成品區
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": "加工件已送到成品區，可在 Ware~.vue 顯示"
+        })
+
+    except Exception as e:
+        s.rollback()
+        traceback.print_exc()
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
+
+
 @updateTable.route('/updateAssembleProcessStepP', methods=['POST'])
 def update_assemble_process_step_p():
   print("updateAssembleProcessStepP....")
@@ -1287,9 +1353,18 @@ def update_assemble_process_step_p():
     material_record.isAssembleStation3TakeOk = True
     assemble_record.isAssembleStationShow = True
 
-    # ✅ 完工 → 進倉儲等待入庫
-    assemble_record.isWarehouseStationShow = True
-    assemble_record.isStockIn = False   # 尚未入庫（等待入庫清單要看這個）
+    ## ✅ 完工 → 進倉儲等待入庫
+    #assemble_record.isWarehouseStationShow = True
+    #assemble_record.isStockIn = False   # 尚未入庫（等待入庫清單要看這個）
+    #
+    # 加工結束後，仍留在 ~ProcessEnd.vue
+    # 不可直接進 Ware~.vue
+    assemble_record.isAssembleStationShow = True
+    assemble_record.isWarehouseStationShow = False
+
+    # 這個表示「需要入庫」，但尚未送到成品區
+    assemble_record.isStockIn = True
+    #
 
     return_value = True
   else:

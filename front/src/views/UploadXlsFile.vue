@@ -157,10 +157,20 @@
             >
               確定
             </v-btn>
+
+            <v-btn
+              color="grey-darken-1"
+              variant="outlined"
+              @click="handleCancelFileTable"
+            >
+              取消
+            </v-btn>
           </div>
         </v-card-title>
 
         <v-data-table
+          v-if="showFileTable"
+
           v-model="selected"
           :headers="headers"
           :items="files"
@@ -519,13 +529,24 @@ function getRowProps({ item }) {
   return {}
 }
 
+const handleCancelFileTable = () => {
+  // 關閉表格, 同時重置按鈕文字狀態（回到「刪除已上傳檔案」）
+  showFileTable.value = false;
+
+  // 清空選取
+  selected.value = [];
+
+  // 清空資料（讓畫面更乾淨）
+  files.value = [];
+}
+
 const handleConfirmSelected = async () => {
   //if (!selected.value.length) {
   //  alert("請先選擇一個檔案")
   //  return
   //}
 
-  const filename = selected.value[0]
+  const filename = selected.value[0];
 
   //if (uploadType.value=="excelp")
   //    line=false;
@@ -539,7 +560,7 @@ const handleConfirmSelected = async () => {
 
   if (res.ok) {
   	showSnackbar(res.msg, '#008184');
-    fetchDirectory()
+    fetchDirectory();
   } else {
     showSnackbar(res.msg, 'red accent-2');
   }

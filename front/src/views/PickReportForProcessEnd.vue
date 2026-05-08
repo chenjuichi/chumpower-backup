@@ -413,7 +413,7 @@
               density="comfortable"
               variant="tonal"
               :prepend-icon = "getIcon(isPausedOf(item))"
-              :disabled="item.isAssembleStationShow"
+              :disabled="!item.process_id"
               :style="{ background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B', color: isPausedOf(item) ? '#fff' : '#000' }"
 
               @click="onPauseToggle(item)"
@@ -508,6 +508,7 @@ const getMaterialsAndAssemblesAndTime = apiOperation('post', '/getMaterialsAndAs
 const updateAGV = apiOperation('post', '/updateAGV');
 const getAGV = apiOperation('post', '/getAGV');
 const updateAssembleTableData = apiOperation('post', '/updateAssembleTableData');
+const sendProcessToWarehouse = apiOperation('post', '/sendProcessToWarehouse')
 
 //=== p_tables維護用 api ==
 import { p_apiOperation }  from '../mixins/p_crud.js';
@@ -990,6 +991,14 @@ onMounted(async () => {
             record_name: 'isAssembleStationShow',
             record_data: false,
           });
+
+          //
+          await sendProcessToWarehouse({
+            id: current_material_id,
+            assemble_id: current_assemble_id,
+            mode: 'manual'
+          });
+          //
 
           // must_allOk_qty 用收料數（轉數值）
           await updateMaterial({
@@ -1924,7 +1933,7 @@ const callForklift = async () => {
     console.log('trans_end 處理步驟1...');
 
     // 步驟1：更新各種狀態欄位（成品站 / 等待入庫 / 關閉組裝站顯示 / 堆高機標記 / must_allOk_qty）
-    for (const idx of selectedIdx) {
+    for (const idx of selectedIdx) {  // for_loop_a
       const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
       if (!rec) {
         console.warn('找不到資料，index =', idx);
@@ -1959,15 +1968,22 @@ const callForklift = async () => {
         record_data: false
       });
 
-      // 關閉組裝站顯示
-      await updateAssembleMustReceiveQtyByMaterialIDAndDate({
-        material_id: mid,
+      //// 關閉組裝站顯示
+      //await updateAssembleMustReceiveQtyByMaterialIDAndDate({
+      //  material_id: mid,
+      //  assemble_id: current_assemble_id,
+      //  create_at: rec.create_at,
+      //
+      //  record_name: 'isAssembleStationShow',
+      //  record_data: false
+      //});
+      //
+      await sendProcessToWarehouse({
+        id: mid,
         assemble_id: current_assemble_id,
-        create_at: rec.create_at,
-
-        record_name: 'isAssembleStationShow',
-        record_data: false
-      });
+        mode: 'manual'
+      })
+      //
 
       // must_allOk_qty 以收料數為準（數值化）
       await updateMaterial({
@@ -1975,12 +1991,12 @@ const callForklift = async () => {
         record_name: 'must_allOk_qty',
         record_data: Number(rec.receive_qty) || 0
       });
-    }
+    } //end for_loop_a
 
     console.log('agv_end 處理步驟2...');
 
     // 步驟2：建立 Process（成品區）＋ 完成數量/狀態寫回
-    for (const idx of selectedIdx) {
+    for (const idx of selectedIdx) {  // for_loop_b
       const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
       if (!rec) continue;
 
@@ -2007,13 +2023,13 @@ const callForklift = async () => {
       });
       console.log('步驟2-3...');
 
-      await updateMaterial({
-        id: rec.id,
-        record_name: 'isAssembleStationShow',
-        record_data: true
-      });
+      //await updateMaterial({
+      //  id: rec.id,
+      //  record_name: 'isAssembleStationShow',
+      //  record_data: true
+      //});
       console.log('步驟2-4...');
-    }
+    } // end for_loop_b
 
     // 插入延遲 3 秒
     await delay(3000);
@@ -2031,10 +2047,15 @@ const callForklift = async () => {
     await delay(3000);
 
     isCallForklift.value = false;
-  }
-  //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
-//##
+  } // end try_catch_finally
+
+  ////待待
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  //
+  await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
+  await nextTick();
+  //
+  //##
 };
 
 

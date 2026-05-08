@@ -389,6 +389,7 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
               path == '/updateAssembleMustReceiveQtyByMaterialIDAndDate' ||
               path == '/sendAssembleToWarehouse' ||
+              path == '/sendProcessToWarehouse' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
               //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||

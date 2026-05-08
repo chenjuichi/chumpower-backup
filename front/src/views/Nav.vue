@@ -878,7 +878,7 @@ const logout = async () => {
   })
 
   if (activeRes.data?.length > 0) {
-    showSnackbar(`你還有 ${activeRes.data.length} 筆工單作業中...`, 'red accent-2');
+    showSnackbar(`你還有 ${activeRes.data.length} 筆工單作業中, 請先結束作業或暫停計時...`, 'red accent-2');
     return;
     /*
     const ok = await confirmRef.value.open({

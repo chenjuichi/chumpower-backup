@@ -1131,7 +1131,7 @@ const onClickBegin =  async (row) => {
   console.log("t.processId.value:", t.processId.value, t)
 
   if (t.processId?.value && t.hasStarted?.value && !t.isPaused?.value) {
-    showSnackbar("已經領料了...", "orange-darken-2")
+    showSnackbar("已經領料生產報工了...", "orange-darken-2")
     return
   }
 

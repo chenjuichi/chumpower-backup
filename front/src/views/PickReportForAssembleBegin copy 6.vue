@@ -502,13 +502,11 @@
           </span>
 
           <span
-            v-if="item.is_abnormal_process"
+            v-if="item.is_abnormal_process_2"
             class="abnormal-process-text"
           >
             -異常
           </span>
-
-
         </div>
       </div>
     </template>

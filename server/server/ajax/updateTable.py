@@ -20,6 +20,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import cast, Integer
 
 from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
+from database.tables import default_process_steps
+
 from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
 
 from werkzeug.security import generate_password_hash
@@ -38,6 +40,260 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 # ------------------------------------------------------------------
+
+
+def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        print("material not found:", material_id)
+        return
+
+    process_steps = process_steps or default_process_steps()
+
+    all_rows = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .all()
+    )
+
+    def get_base_by_work_num(work_num):
+        for row in all_rows:
+            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
+                return row
+        return None
+
+    def get_any_template_base():
+        for row in all_rows:
+            if row.is_copied_from_id is None:
+                return row
+        return all_rows[0] if all_rows else None
+
+    def build_base_row_from_template(template, work_num, process_step_code):
+        new_base = Assemble(
+            material_id=material.id,
+            material_num=material.material_num,
+            material_comment=material.material_comment,
+            seq_num=getattr(template, 'seq_num', 10) if template else 10,
+            work_num=work_num,
+            process_step_code=process_step_code,
+            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
+            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
+            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
+            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
+            writer_id=getattr(template, 'writer_id', None) if template else None,
+            write_date=getattr(template, 'write_date', None) if template else None,
+            good_qty=getattr(template, 'good_qty', 0) if template else 0,
+            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
+            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
+            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
+            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
+            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
+            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
+            reason=getattr(template, 'reason', '') if template else '',
+            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
+            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
+            currentStartTime=None,
+            currentEndTime=None,
+            input_disable=getattr(template, 'input_disable', 1) if template else 1,
+            input_end_disable=getattr(template, 'input_end_disable', 0) if template else 0,
+            input_allOk_disable=getattr(template, 'input_allOk_disable', 0) if template else 0,
+            input_abnormal_disable=getattr(template, 'input_abnormal_disable', 0) if template else 0,
+            isAssembleStationShow=getattr(template, 'isAssembleStationShow', 0) if template else 0,
+            isWarehouseStationShow=getattr(template, 'isWarehouseStationShow', 0) if template else 0,
+            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
+            alarm_message=getattr(template, 'alarm_message', '') if template else '',
+            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
+            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
+            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
+            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
+            show1_ok=getattr(template, 'show1_ok', material.show1_ok) if template else material.show1_ok,
+            show2_ok=getattr(template, 'show2_ok', material.show2_ok) if template else material.show2_ok,
+            show3_ok=getattr(template, 'show3_ok', material.show3_ok) if template else material.show3_ok,
+            schedule_id=None,
+            is_copied_from_id=None
+        )
+        session.add(new_base)
+        session.flush()
+        return new_base
+
+    def ensure_base_row(work_num, process_step_code, target_steps):
+        if work_num == 'B109':
+            process_type = 21
+        elif work_num == 'B110':
+            process_type = 22
+        else:
+            process_type = None
+
+        completed_schedule_ids = set()
+
+        if process_type:
+            completed_schedule_ids = {
+                int(r[0])
+                for r in (
+                    session.query(Assemble.schedule_id)
+                    .join(Process, Process.assemble_id == Assemble.id)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num == work_num)
+                    .filter(Assemble.schedule_id.isnot(None))
+                    .filter(Process.process_type == process_type)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .all()
+                )
+                if r[0] is not None
+            }
+
+        #checked_ids = [
+        #    int(x.get('id'))
+        #    for x in (target_steps or [])
+        #    if (
+        #        x.get('checked')
+        #        and x.get('id') is not None
+        #        and int(x.get('id')) not in completed_schedule_ids
+        #    )
+        #]
+        #
+        checked_ids = [
+            int(x.get('id'))
+            for x in (target_steps or [])
+            if (
+                x.get('checked')
+                and not x.get('deleted', False)
+                and x.get('id') is not None
+                and int(x.get('id')) not in completed_schedule_ids
+            )
+        ]
+        #
+
+        base = get_base_by_work_num(work_num)
+
+        if not base and checked_ids:
+            template = get_any_template_base()
+            base = build_base_row_from_template(template, work_num, process_step_code)
+            all_rows.append(base)
+
+        if not base:
+            return
+
+        session.query(Assemble).filter(
+            Assemble.is_copied_from_id == base.id
+        ).delete(synchronize_session='fetch')
+
+        if not checked_ids:
+            base.schedule_id = None
+            base.process_step_code = 0
+            base.isAssembleStationShow = False
+            base.isWarehouseStationShow = False
+            base.input_disable = True
+            base.input_end_disable = True
+            base.input_allOk_disable = True
+            base.input_abnormal_disable = True
+            base.show1_ok = 0
+            base.show2_ok = 0
+            base.show3_ok = 0
+            base.must_receive_qty = 0
+            base.ask_qty = 0
+            base.total_ask_qty = 0
+            base.must_receive_end_qty = 0
+            base.total_ask_qty_end = 0
+            return
+
+        base.process_step_code = process_step_code
+        base.input_disable = False
+        base.input_end_disable = False
+        base.input_allOk_disable = False
+        base.input_abnormal_disable = False
+        base.isAssembleStationShow = False
+        base.isWarehouseStationShow = False
+        base.show1_ok = material.show1_ok
+        base.show2_ok = material.show2_ok
+        base.show3_ok = material.show3_ok
+
+        base_qty = (
+            qty
+            or material.delivery_qty
+            or material.total_delivery_qty
+            or material.material_qty
+            or 0
+        )
+
+        base.must_receive_qty = base_qty
+        base.ask_qty = base_qty
+        base.total_ask_qty = base_qty
+        base.must_receive_end_qty = base_qty
+
+        if qty is not None and qty != '':
+          base.abnormal_qty = int(base_qty or 0)
+          base.reason = '異常返工'
+
+        base.schedule_id = checked_ids[0]
+
+        for sid in checked_ids[1:]:
+            new_row = Assemble(
+                material_id=base.material_id,
+                material_num=base.material_num,
+                material_comment=base.material_comment,
+                seq_num=base.seq_num,
+                work_num=base.work_num,
+                process_step_code=base.process_step_code,
+                Incoming1_Abnormal=base.Incoming1_Abnormal,
+                must_receive_qty=base.must_receive_qty,
+                ask_qty=base.ask_qty,
+                total_ask_qty=base.total_ask_qty,
+                total_ask_qty_end=base.total_ask_qty_end,
+                must_receive_end_qty=base.must_receive_end_qty,
+                abnormal_qty=base.abnormal_qty,
+                user_id=base.user_id,
+                writer_id=base.writer_id,
+                write_date=base.write_date,
+                good_qty=base.good_qty,
+                total_good_qty=base.total_good_qty,
+                non_good_qty=base.non_good_qty,
+                meinh_qty=base.meinh_qty,
+                completed_qty=base.completed_qty,
+                total_completed_qty=base.total_completed_qty,
+                allOk_qty=base.allOk_qty,
+                reason=base.reason,
+                confirm_comment=base.confirm_comment,
+                is_assemble_ok=base.is_assemble_ok,
+                currentStartTime=None,
+                currentEndTime=None,
+                input_disable=base.input_disable,
+                input_end_disable=base.input_end_disable,
+                input_allOk_disable=base.input_allOk_disable,
+                input_abnormal_disable=base.input_abnormal_disable,
+                isAssembleStationShow=base.isAssembleStationShow,
+                isWarehouseStationShow=base.isWarehouseStationShow,
+                alarm_enable=base.alarm_enable,
+                alarm_message=base.alarm_message,
+                isAssembleFirstAlarm=base.isAssembleFirstAlarm,
+                isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
+                isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
+                whichStation=base.whichStation,
+                show1_ok=base.show1_ok,
+                show2_ok=base.show2_ok,
+                show3_ok=base.show3_ok,
+                schedule_id=sid,
+                is_copied_from_id=base.id
+            )
+            session.add(new_row)
+
+    ensure_base_row(
+        work_num='B109',
+        process_step_code=3,
+        target_steps=process_steps.get('assemble', [])
+    )
+
+    ensure_base_row(
+        work_num='B110',
+        process_step_code=2,
+        target_steps=process_steps.get('check', [])
+    )
 
 
 def parse_datetime_or_none(val):
@@ -1071,33 +1327,83 @@ def update_assemble_process_step():
             ## ✅ 狀態顯示：等待入庫作業
             #assemble_record.show2_ok = 10
 
-            # 先全部關掉，避免顯示錯的完成列
+            ## 先全部關掉，避免顯示錯的完成列
+            #for r in assemble_records:
+            #    r.isAssembleStationShow = False
+            #
+            ## ✅ 選一筆代表等待入庫的 B110
+            ## 優先選應完成數量最大的 B110，例如 3377 = 950
+            #final_row = (
+            #    s.query(Assemble)
+            #    .filter(Assemble.material_id == material_id)
+            #    .filter(Assemble.work_num.like('%B110%'))
+            #    .order_by(cast(Assemble.must_receive_end_qty, Integer).desc(),
+            #              Assemble.id.desc()
+            #    )
+            #    .first()
+            #)
+            #
+            #if final_row:
+            #    # 報工完成後，仍留在 End.vue / 組裝結束狀態
+            #
+            #    final_row.isAssembleStationShow = True
+            #    # 但還沒 AGV / 人工送出，所以不能進 Ware~.vue
+            #    final_row.isWarehouseStationShow = False
+            #    # 先不要設成 10「等待入庫作業」
+            #    # 依你的流程，B110 結束通常可用 9：檢驗已結束
+            #    #final_row.show2_ok = 10  # 等待入庫作業
+            #    final_row.show2_ok = 9                  # 檢驗/組裝已完成，但尚未送入庫
+            #    final_row.input_end_disable = True
+            #
+            # ------------------------------------------------------------
+            # ✅ 不固定找 B110
+            # 只找「這張工單目前有排程啟用的最後一筆 row」
+            #
+            # 支援：
+            # 1) 只選 assemble mode：最後會是 B109 的最後一道
+            # 2) 只選 check mode：最後會是 B110 的最後一道
+            # 3) assemble + check 都選：最後通常會是 B110 的最後一道
+            # ------------------------------------------------------------
+
+            # 先全部關掉，避免多筆同時留在 End.vue
             for r in assemble_records:
                 r.isAssembleStationShow = False
 
-            # ✅ 選一筆代表等待入庫的 B110
-            # 優先選應完成數量最大的 B110，例如 3377 = 950
-            final_row = (
+            # 只取這張工單真正有排程的列
+            # schedule_id != None 代表是 +工序 產生/啟用的 row
+            scheduled_rows = (
                 s.query(Assemble)
                 .filter(Assemble.material_id == material_id)
-                .filter(Assemble.work_num.like('%B110%'))
-                .order_by(cast(Assemble.must_receive_end_qty, Integer).desc(),
-                          Assemble.id.desc()
+                .filter(Assemble.schedule_id.isnot(None))
+                .order_by(
+                    Assemble.process_step_code.desc(),   # B109=3 先，B110=2 後面會由完成流程處理
+                    Assemble.schedule_id.asc(),
+                    Assemble.id.asc()
                 )
-                .first()
+                .all()
             )
 
-            if final_row:
-                # 報工完成後，仍留在 End.vue / 組裝結束狀態
+            # 如果找不到 schedule row，就退回用目前完成的這筆
+            final_row = None
 
+            if scheduled_rows:
+                # 只選 assemble 或只選 check 都可支援
+                # 重點：不要固定 B110
+                final_row = scheduled_rows[-1]
+            else:
+                final_row = assemble_record
+
+            if final_row:
+                # 按結束後，要留在 End.vue
                 final_row.isAssembleStationShow = True
-                # 但還沒 AGV / 人工送出，所以不能進 Ware~.vue
+
+                # 還沒 AGV / 人工送出，不能進 Ware~.vue
                 final_row.isWarehouseStationShow = False
-                # 先不要設成 10「等待入庫作業」
-                # 依你的流程，B110 結束通常可用 9：檢驗已結束
-                #final_row.show2_ok = 10  # 等待入庫作業
-                final_row.show2_ok = 9                  # 檢驗/組裝已完成，但尚未送入庫
+
+                # 9 = 已完成，等待人工/AGV送出
+                final_row.show2_ok = 9
                 final_row.input_end_disable = True
+            #
 
             s.commit()
             return jsonify({
@@ -2520,211 +2826,6 @@ def sync_assemble_schedule_rows(session, material_id, process_steps):
             session.add(new_row)
 """
 
-def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
-    material = session.query(Material).filter(Material.id == material_id).first()
-    if not material:
-        print("material not found:", material_id)
-        return
-
-    all_rows = (
-        session.query(Assemble)
-        .filter(Assemble.material_id == material_id)
-        .all()
-    )
-
-    def get_base_by_work_num(work_num):
-        for row in all_rows:
-            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
-                return row
-        return None
-
-    def get_any_template_base():
-        # 優先找主列，沒有就找任一列
-        for row in all_rows:
-            if row.is_copied_from_id is None:
-                return row
-        return all_rows[0] if all_rows else None
-
-    def build_base_row_from_template(template, work_num, process_step_code):
-        new_base = Assemble(
-            material_id=material.id,
-            material_num=material.material_num,
-            material_comment=material.material_comment,
-            seq_num=getattr(template, 'seq_num', 10) if template else 10,
-            work_num=work_num,
-            process_step_code=process_step_code,
-
-            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
-            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-
-            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
-
-            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
-
-            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
-            writer_id=getattr(template, 'writer_id', None) if template else None,
-            write_date=getattr(template, 'write_date', None) if template else None,
-
-            good_qty=getattr(template, 'good_qty', 0) if template else 0,
-            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
-            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
-
-            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
-
-            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
-            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
-            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
-
-            reason=getattr(template, 'reason', '') if template else '',
-            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
-            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
-
-            currentStartTime=None,
-            currentEndTime=None,
-
-            input_disable=getattr(template, 'input_disable', 1) if template else 1,
-            input_end_disable=getattr(template, 'input_end_disable', 0) if template else 0,
-            input_allOk_disable=getattr(template, 'input_allOk_disable', 0) if template else 0,
-            input_abnormal_disable=getattr(template, 'input_abnormal_disable', 0) if template else 0,
-
-            isAssembleStationShow=getattr(template, 'isAssembleStationShow', 0) if template else 0,
-            isWarehouseStationShow=getattr(template, 'isWarehouseStationShow', 0) if template else 0,
-
-            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
-            alarm_message=getattr(template, 'alarm_message', '') if template else '',
-
-            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
-            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
-            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
-
-            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
-            show1_ok=getattr(template, 'show1_ok', material.show1_ok) if template else material.show1_ok,
-            show2_ok=getattr(template, 'show2_ok', material.show2_ok) if template else material.show2_ok,
-            show3_ok=getattr(template, 'show3_ok', material.show3_ok) if template else material.show3_ok,
-
-            schedule_id=None,
-            is_copied_from_id=None
-        )
-        session.add(new_base)
-        session.flush()
-        return new_base
-
-    def ensure_base_row(work_num, process_step_code, target_steps):
-        checked_ids = [
-            int(x.get('id'))
-            for x in (target_steps or [])
-            if x.get('checked') and x.get('id') is not None
-        ]
-
-        base = get_base_by_work_num(work_num)
-
-        # 沒有 base，但有勾選 → 自動補建 base
-        if not base and checked_ids:
-            template = get_any_template_base()
-            base = build_base_row_from_template(template, work_num, process_step_code)
-            all_rows.append(base)
-            print(f"created missing base row: material_id={material_id}, work_num={work_num}, base_id={base.id}")
-
-        # 沒有 base 也沒有勾選 → 不必處理
-        if not base:
-            return
-
-        # 先刪掉此 base 底下所有 copied rows
-        session.query(Assemble).filter(
-            Assemble.is_copied_from_id == base.id
-        ).delete(synchronize_session=False)
-
-        # 若該群組完全沒勾選，就把 base 的 schedule_id 清空
-        if not checked_ids:
-            base.schedule_id = None
-            return
-
-        # 主列吃第一個
-        base.schedule_id = checked_ids[0]
-
-        # 其餘建立 copied rows
-        for sid in checked_ids[1:]:
-            new_row = Assemble(
-                material_id=base.material_id,
-                material_num=base.material_num,
-                material_comment=base.material_comment,
-                seq_num=base.seq_num,
-                work_num=base.work_num,
-                process_step_code=base.process_step_code,
-
-                Incoming1_Abnormal=base.Incoming1_Abnormal,
-                must_receive_qty=base.must_receive_qty,
-
-                ask_qty=base.ask_qty,
-                total_ask_qty=base.total_ask_qty,
-                total_ask_qty_end=base.total_ask_qty_end,
-
-                must_receive_end_qty=base.must_receive_end_qty,
-                abnormal_qty=base.abnormal_qty,
-
-                user_id=base.user_id,
-                writer_id=base.writer_id,
-                write_date=base.write_date,
-
-                good_qty=base.good_qty,
-                total_good_qty=base.total_good_qty,
-                non_good_qty=base.non_good_qty,
-
-                meinh_qty=base.meinh_qty,
-
-                completed_qty=base.completed_qty,
-                total_completed_qty=base.total_completed_qty,
-                allOk_qty=base.allOk_qty,
-
-                reason=base.reason,
-                confirm_comment=base.confirm_comment,
-                is_assemble_ok=base.is_assemble_ok,
-
-                currentStartTime=None,
-                currentEndTime=None,
-
-                input_disable=base.input_disable,
-                input_end_disable=base.input_end_disable,
-                input_allOk_disable=base.input_allOk_disable,
-                input_abnormal_disable=base.input_abnormal_disable,
-
-                isAssembleStationShow=base.isAssembleStationShow,
-                isWarehouseStationShow=base.isWarehouseStationShow,
-
-                alarm_enable=base.alarm_enable,
-                alarm_message=base.alarm_message,
-
-                isAssembleFirstAlarm=base.isAssembleFirstAlarm,
-                isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
-                isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
-
-                whichStation=base.whichStation,
-                show1_ok=base.show1_ok,
-                show2_ok=base.show2_ok,
-                show3_ok=base.show3_ok,
-
-                schedule_id=sid,
-                is_copied_from_id=base.id
-            )
-            session.add(new_row)
-
-    # B109 = 組裝
-    ensure_base_row(
-        work_num='B109',
-        process_step_code=3,
-        target_steps=process_steps.get('assemble', [])
-    )
-
-    # B110 = 檢驗
-    ensure_base_row(
-        work_num='B110',
-        process_step_code=2,
-        target_steps=process_steps.get('check', [])
-    )
-
 
 @updateTable.route("/updateAssembleScheduleRows", methods=['POST'])
 def update_assemble_schedule_rows():
@@ -2771,6 +2872,8 @@ def update_assemble_schedule_rows():
 
         material.process_steps = normalized_process_steps
 
+        material.process_step_enable = True
+
         # -------------------------
         # 2️⃣ 同步 assemble rows
         # -------------------------
@@ -2789,6 +2892,21 @@ def update_assemble_schedule_rows():
                 process_steps=normalized_process_steps
             )
 
+        #
+        # 關鍵：sync 內有 delete copied rows，所以先 flush
+        s.flush()
+
+        # 關鍵：清掉 session 內舊的 Assemble ORM 狀態，避免 StaleDataError
+        s.expire_all()
+
+        # 重新抓 material，避免 expire_all 後物件狀態舊
+        material = s.query(Material).filter(Material.id == material_id).first()
+        if material:
+            # material 重新 query 一次，因為 expire_all() 後原物件可能已過期。
+            material.process_steps = normalized_process_steps
+            material.process_step_enable = True
+        #
+
         # -------------------------
         # 3️⃣ commit
         # -------------------------
@@ -2804,7 +2922,10 @@ def update_assemble_schedule_rows():
         s.rollback()
         traceback.print_exc()
         print("updateAssembleScheduleRows ERROR:", repr(e))
-        return jsonify({'status': False, 'msg': str(e)})
+        return jsonify({
+           'status': False,
+           'msg': str(e),
+        })
     finally:
         s.close()
 
@@ -2840,7 +2961,7 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
 
         return all_rows[0] if all_rows else None
 
-    def create_row_from_template(template, work_num, process_step_code, schedule_id, copied_from_id=None):
+    def create_row_from_template(template, work_num, process_step_code, schedule_id, copied_from_id=None, reason_text=''):
         new_row = Assemble(
             material_id=material.id,
             material_num=material.material_num,
@@ -2858,10 +2979,13 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
             must_receive_qty=target_qty,
             ask_qty=target_qty,
             total_ask_qty=target_qty,
-            total_ask_qty_end=0,
+            #total_ask_qty_end=0,
             must_receive_end_qty=target_qty,
+            #reason=reason_text,
 
-            abnormal_qty=0,
+            #abnormal_qty=0,
+            # 異常返工數量
+            abnormal_qty=target_qty,
 
             user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
             writer_id=None,
@@ -2876,7 +3000,10 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
             total_completed_qty=0,
             allOk_qty=0,
 
-            reason='',
+            #reason='',
+            #
+            reason='異常返工',
+            #
             confirm_comment='',
             is_assemble_ok=0,
 
@@ -2928,7 +3055,9 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
             work_num=work_num,
             process_step_code=process_step_code,
             schedule_id=checked_ids[0],
-            copied_from_id=None
+            copied_from_id=None,
+            #target_qty=abnormal_qty,
+            reason_text='異常返工',
         )
 
         created_rows.append(base)
@@ -2940,7 +3069,8 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
                 work_num=work_num,
                 process_step_code=process_step_code,
                 schedule_id=sid,
-                copied_from_id=base.id
+                copied_from_id=base.id,
+                reason_text='異常返工',
             )
             created_rows.append(copied)
 

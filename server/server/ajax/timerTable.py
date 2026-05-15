@@ -2,7 +2,7 @@ import re
 import random
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
-from server.database.x_tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
+from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, Setting, Session
 from database.p_tables import P_Material, P_Assemble, P_Process, P_Part,P_AbnormalCause
 from sqlalchemy import and_, or_, not_, func
 
@@ -144,7 +144,6 @@ def active_count_map_by_assemble_multi(
     { "21": { "6": 1, "38": 0 }, "22": {...}, "23": {...} }
     以「製程別 → assemble_id」分組計數
     """
-    from server.database.x_tables import Process
     result = {str(pt): {} for pt in process_types}
     if not assemble_ids:
         return result

@@ -13,10 +13,12 @@ from flask import Blueprint, jsonify, request, current_app
 from database.tables import User, Session
 from database.tables import Material, Assemble, Product, Bom, Process, association_material_abnormal
 from database.p_tables import P_Material, P_Assemble, P_Product, P_Bom, P_Process, p_association_material_abnormal
+from database.tables import default_process_steps
 
 import pymysql
 from sqlalchemy import select, delete, update, exc
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm.attributes import flag_modified
 
 import shutil
 
@@ -31,6 +33,348 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 # ------------------------------------------------------------------
+
+
+def mark_material_done_after_delete(session, material_id):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        return False
+
+    # 是否還有未完成排程
+    unfinished = (
+        session.query(Assemble.id)
+        .outerjoin(Process, Process.assemble_id == Assemble.id)
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.process_step_code > 0)
+        .filter(Assemble.schedule_id.isnot(None))
+        .filter(
+            (Process.id.is_(None)) |
+            (Process.end_time.is_(None)) |
+            (Process.end_time == '')
+        )
+        .first()
+    )
+
+    if unfinished:
+        return False
+
+    # 走到這裡代表組裝/檢驗都沒有剩餘未完成排程
+    material.isAssembleStation3TakeOk = True
+    material.hasStarted = False
+    material.startStatus = False
+    material.isOpen = False
+    material.isOpenEmpId = ''
+
+    # 關鍵：一次把所有 Begin.vue 會顯示的 row 關掉
+    session.query(Assemble).filter(
+        Assemble.material_id == material_id
+    ).update({
+        Assemble.process_step_code: 0,
+        Assemble.schedule_id: None,
+        Assemble.isAssembleStationShow: False,
+        Assemble.isWarehouseStationShow: False,
+        Assemble.input_disable: True,
+        Assemble.input_end_disable: True,
+        Assemble.input_allOk_disable: True,
+        Assemble.input_abnormal_disable: True,
+        Assemble.show1_ok: 0,
+        Assemble.show2_ok: 0,
+        Assemble.show3_ok: 0,
+    }, synchronize_session=False)
+
+    session.flush()
+
+    # 找最後一筆已完成報工，作為 End.vue 待送出代表列
+    final_row = (
+        session.query(Assemble)
+        .join(Process, Process.assemble_id == Assemble.id)
+        .filter(Assemble.material_id == material_id)
+        .filter(Process.has_started.is_(True))
+        .filter(Process.end_time.isnot(None))
+        .filter(Process.end_time != '')
+        .order_by(Process.end_time.desc(), Assemble.id.desc())
+        .first()
+    )
+
+    if not final_row:
+        final_row = (
+            session.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .order_by(Assemble.id.desc())
+            .first()
+        )
+
+    if final_row:
+        final_row.process_step_code = 0
+        final_row.schedule_id = None
+
+        # 讓 ~End.vue 顯示可送出
+        final_row.isAssembleStationShow = True
+        final_row.isWarehouseStationShow = False
+
+        final_row.input_disable = True
+        final_row.input_end_disable = True
+        final_row.input_allOk_disable = False
+        final_row.input_abnormal_disable = True
+
+        final_row.show1_ok = 0
+        final_row.show2_ok = 9
+        final_row.show3_ok = 0
+
+    return True
+
+
+def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        print("material not found:", material_id)
+        return
+
+    process_steps = process_steps or default_process_steps()
+
+    all_rows = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .all()
+    )
+
+    def get_base_by_work_num(work_num):
+        for row in all_rows:
+            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
+                return row
+        return None
+
+    def get_any_template_base():
+        for row in all_rows:
+            if row.is_copied_from_id is None:
+                return row
+        return all_rows[0] if all_rows else None
+
+    def build_base_row_from_template(template, work_num, process_step_code):
+        new_base = Assemble(
+            material_id=material.id,
+            material_num=material.material_num,
+            material_comment=material.material_comment,
+            seq_num=getattr(template, 'seq_num', 10) if template else 10,
+            work_num=work_num,
+            process_step_code=process_step_code,
+            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
+            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
+            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
+            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
+            writer_id=getattr(template, 'writer_id', None) if template else None,
+            write_date=getattr(template, 'write_date', None) if template else None,
+            good_qty=getattr(template, 'good_qty', 0) if template else 0,
+            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
+            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
+            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
+            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
+            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
+            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
+            reason=getattr(template, 'reason', '') if template else '',
+            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
+            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
+            currentStartTime=None,
+            currentEndTime=None,
+            input_disable=getattr(template, 'input_disable', 1) if template else 1,
+            input_end_disable=getattr(template, 'input_end_disable', 0) if template else 0,
+            input_allOk_disable=getattr(template, 'input_allOk_disable', 0) if template else 0,
+            input_abnormal_disable=getattr(template, 'input_abnormal_disable', 0) if template else 0,
+            isAssembleStationShow=getattr(template, 'isAssembleStationShow', 0) if template else 0,
+            isWarehouseStationShow=getattr(template, 'isWarehouseStationShow', 0) if template else 0,
+            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
+            alarm_message=getattr(template, 'alarm_message', '') if template else '',
+            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
+            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
+            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
+            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
+            show1_ok=getattr(template, 'show1_ok', material.show1_ok) if template else material.show1_ok,
+            show2_ok=getattr(template, 'show2_ok', material.show2_ok) if template else material.show2_ok,
+            show3_ok=getattr(template, 'show3_ok', material.show3_ok) if template else material.show3_ok,
+            schedule_id=None,
+            is_copied_from_id=None
+        )
+        session.add(new_base)
+        session.flush()
+        return new_base
+
+    def ensure_base_row(work_num, process_step_code, target_steps):
+        if work_num == 'B109':
+            process_type = 21
+        elif work_num == 'B110':
+            process_type = 22
+        else:
+            process_type = None
+
+        completed_schedule_ids = set()
+
+        if process_type:
+            completed_schedule_ids = {
+                int(r[0])
+                for r in (
+                    session.query(Assemble.schedule_id)
+                    .join(Process, Process.assemble_id == Assemble.id)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num == work_num)
+                    .filter(Assemble.schedule_id.isnot(None))
+                    .filter(Process.process_type == process_type)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .all()
+                )
+                if r[0] is not None
+            }
+
+        #checked_ids = [
+        #    int(x.get('id'))
+        #    for x in (target_steps or [])
+        #    if (
+        #        x.get('checked')
+        #        and x.get('id') is not None
+        #        and int(x.get('id')) not in completed_schedule_ids
+        #    )
+        #]
+        #
+        checked_ids = [
+            int(x.get('id'))
+            for x in (target_steps or [])
+            if (
+                x.get('checked')
+                and not x.get('deleted', False)
+                and x.get('id') is not None
+                and int(x.get('id')) not in completed_schedule_ids
+            )
+        ]
+
+        base = get_base_by_work_num(work_num)
+
+        if not base and checked_ids:
+            template = get_any_template_base()
+            base = build_base_row_from_template(template, work_num, process_step_code)
+            all_rows.append(base)
+
+        if not base:
+            return
+
+        session.query(Assemble).filter(
+            Assemble.is_copied_from_id == base.id
+        ).delete(synchronize_session='fetch')
+
+        if not checked_ids:
+            base.schedule_id = None
+            base.process_step_code = 0
+            base.isAssembleStationShow = False
+            base.isWarehouseStationShow = False
+            base.input_disable = True
+            base.input_end_disable = True
+            base.input_allOk_disable = True
+            base.input_abnormal_disable = True
+            base.show1_ok = 0
+            base.show2_ok = 0
+            base.show3_ok = 0
+            base.must_receive_qty = 0
+            base.ask_qty = 0
+            base.total_ask_qty = 0
+            base.must_receive_end_qty = 0
+            base.total_ask_qty_end = 0
+            return
+
+        base.process_step_code = process_step_code
+        base.input_disable = False
+        base.input_end_disable = False
+        base.input_allOk_disable = False
+        base.input_abnormal_disable = False
+        base.isAssembleStationShow = False
+        base.isWarehouseStationShow = False
+        base.show1_ok = material.show1_ok
+        base.show2_ok = material.show2_ok
+        base.show3_ok = material.show3_ok
+
+        base_qty = (
+            qty
+            or material.delivery_qty
+            or material.total_delivery_qty
+            or material.material_qty
+            or 0
+        )
+
+        base.must_receive_qty = base_qty
+        base.ask_qty = base_qty
+        base.total_ask_qty = base_qty
+        base.must_receive_end_qty = base_qty
+
+        base.schedule_id = checked_ids[0]
+
+        for sid in checked_ids[1:]:
+            new_row = Assemble(
+                material_id=base.material_id,
+                material_num=base.material_num,
+                material_comment=base.material_comment,
+                seq_num=base.seq_num,
+                work_num=base.work_num,
+                process_step_code=base.process_step_code,
+                Incoming1_Abnormal=base.Incoming1_Abnormal,
+                must_receive_qty=base.must_receive_qty,
+                ask_qty=base.ask_qty,
+                total_ask_qty=base.total_ask_qty,
+                total_ask_qty_end=base.total_ask_qty_end,
+                must_receive_end_qty=base.must_receive_end_qty,
+                abnormal_qty=base.abnormal_qty,
+                user_id=base.user_id,
+                writer_id=base.writer_id,
+                write_date=base.write_date,
+                good_qty=base.good_qty,
+                total_good_qty=base.total_good_qty,
+                non_good_qty=base.non_good_qty,
+                meinh_qty=base.meinh_qty,
+                completed_qty=base.completed_qty,
+                total_completed_qty=base.total_completed_qty,
+                allOk_qty=base.allOk_qty,
+                reason=base.reason,
+                confirm_comment=base.confirm_comment,
+                is_assemble_ok=base.is_assemble_ok,
+                currentStartTime=None,
+                currentEndTime=None,
+                input_disable=base.input_disable,
+                input_end_disable=base.input_end_disable,
+                input_allOk_disable=base.input_allOk_disable,
+                input_abnormal_disable=base.input_abnormal_disable,
+                isAssembleStationShow=base.isAssembleStationShow,
+                isWarehouseStationShow=base.isWarehouseStationShow,
+                alarm_enable=base.alarm_enable,
+                alarm_message=base.alarm_message,
+                isAssembleFirstAlarm=base.isAssembleFirstAlarm,
+                isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
+                isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
+                whichStation=base.whichStation,
+                show1_ok=base.show1_ok,
+                show2_ok=base.show2_ok,
+                show3_ok=base.show3_ok,
+                schedule_id=sid,
+                is_copied_from_id=base.id
+            )
+            session.add(new_row)
+
+    ensure_base_row(
+        work_num='B109',
+        process_step_code=3,
+        target_steps=process_steps.get('assemble', [])
+    )
+
+    ensure_base_row(
+        work_num='B110',
+        process_step_code=2,
+        target_steps=process_steps.get('check', [])
+    )
+
+
+# ------------------------------------------------------------------
+
 
 @deleteTable.route("/removeUser", methods=['POST'])
 def remove_user():
@@ -815,3 +1159,307 @@ def list_server_files():
 
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@deleteTable.route("/deleteAssembleScheduleRow", methods=["POST"])
+def delete_assemble_schedule_row():
+    print("deleteAssembleScheduleRow.")
+
+    data = request.get_json(silent=True) or {}
+
+    material_id = data.get("id")
+    assemble_id = data.get("assemble_id")
+    schedule_id = data.get("schedule_id")
+    work_num = (data.get("work_num") or "").strip()
+
+    s = Session()
+
+    try:
+        material = s.query(Material).filter(Material.id == material_id).first()
+        if not material:
+            return jsonify({"status": False, "msg": "material not found"})
+
+        target = (
+            s.query(Assemble)
+             .filter(
+                 Assemble.id == assemble_id,
+                 Assemble.material_id == material_id
+             )
+             .first()
+        )
+
+        if not target:
+            return jsonify({"status": False, "msg": "assemble row not found"})
+
+        # 已開始/已完成的 row 不允許刪除
+        used_process = (
+            s.query(Process.id)
+             .filter(
+                 Process.material_id == material_id,
+                 Process.assemble_id == assemble_id
+             )
+             .first()
+        )
+
+        if used_process:
+            return jsonify({
+                "status": False,
+                "msg": "此工序已有報工紀錄，不可刪除"
+            })
+
+        try:
+            schedule_id = int(schedule_id or target.schedule_id or 0)
+        except Exception:
+            schedule_id = 0
+
+        if not schedule_id:
+            return jsonify({"status": False, "msg": "missing schedule_id"})
+
+        process_steps = material.process_steps or default_process_steps()
+
+        if "B109" in work_num:
+            mode = "assemble"
+        elif "B110" in work_num:
+            mode = "check"
+        else:
+            mode = None
+
+        if not mode:
+            return jsonify({"status": False, "msg": "unknown work_num"})
+
+        #
+        # ------------------------------------------------------------
+        # 如果整張訂單目前只剩最後一個「未完成排程」，
+        # 不允許刪除，避免 Begin.vue 無工序可顯示
+        # ------------------------------------------------------------
+        def get_process_type_by_work_num(work_num):
+            if work_num == "B109":
+                return 21   # 組裝
+            if work_num == "B110":
+                return 22   # 檢驗
+            return None
+
+        def is_step_completed(schedule_id, work_num):
+            process_type = get_process_type_by_work_num(work_num)
+            if not process_type:
+                return False
+
+            done = (
+                s.query(Process.id)
+                .join(Assemble, Process.assemble_id == Assemble.id)
+                .filter(Assemble.material_id == material_id)
+                .filter(Assemble.work_num == work_num)
+                .filter(Assemble.schedule_id == schedule_id)
+                .filter(Process.process_type == process_type)
+                .filter(Process.has_started.is_(True))
+                .filter(Process.end_time.isnot(None))
+                .filter(Process.end_time != '')
+                .first()
+            )
+
+            return done is not None
+
+        remain_unfinished_steps = []
+
+        for step in (process_steps.get("assemble") or []):
+            if not step.get("checked"):
+                continue
+
+            sid = int(step.get("id") or 0)
+            if sid and not is_step_completed(sid, "B109"):
+                remain_unfinished_steps.append(("assemble", sid))
+
+        for step in (process_steps.get("check") or []):
+            if not step.get("checked"):
+                continue
+
+            sid = int(step.get("id") or 0)
+            if sid and not is_step_completed(sid, "B110"):
+                remain_unfinished_steps.append(("check", sid))
+
+        '''
+        # 如果目前只剩一個未完成製程，而且就是現在要刪的這個，禁止刪除
+        if (
+            len(remain_unfinished_steps) == 1
+            and remain_unfinished_steps[0][1] == int(schedule_id or 0)
+        ):
+            return jsonify({
+                "status": False,
+                "code": "ONLY_ONE_PROCESS_LEFT",
+                "msg": f"{material.order_num}訂單目前唯一製程不能刪除"
+            })
+        '''
+        #
+        # ------------------------------------------------------------
+        # 只有「整張訂單原本就只有 1 個製程」時，才禁止刪除
+        # 若前面已有完成製程，例如 a1/a2/a3/c1 已完成，只剩 c2，
+        # 刪除 c2 應視為全部完成，允許刪除
+        # ------------------------------------------------------------
+
+        checked_total_steps = 0
+
+        for step in (process_steps.get("assemble") or []):
+            if step.get("checked") and not step.get("deleted", False):
+                checked_total_steps += 1
+
+        for step in (process_steps.get("check") or []):
+            if step.get("checked") and not step.get("deleted", False):
+                checked_total_steps += 1
+
+        completed_total_steps = 0
+
+        for step in (process_steps.get("assemble") or []):
+            sid = int(step.get("id") or 0)
+            if sid and is_step_completed(sid, "B109"):
+                completed_total_steps += 1
+
+        for step in (process_steps.get("check") or []):
+            sid = int(step.get("id") or 0)
+            if sid and is_step_completed(sid, "B110"):
+                completed_total_steps += 1
+
+        # 只剩最後一個未完成製程
+        is_deleting_last_unfinished = (
+            len(remain_unfinished_steps) == 1
+            and remain_unfinished_steps[0][1] == int(schedule_id or 0)
+        )
+
+        # 真正不可刪除的情況：
+        # 整張訂單目前沒有任何已完成製程，而且總製程數只有 1
+        if (
+            is_deleting_last_unfinished
+            and completed_total_steps == 0
+            and checked_total_steps <= 1
+        ):
+            return jsonify({
+                "status": False,
+                "code": "ONLY_ONE_PROCESS_LEFT",
+                "msg": f"{material.order_num}訂單目前唯一製程不能刪除"
+            })
+        #
+
+        # checkbox 改為不勾選
+        found = False
+        for step in process_steps.get(mode, []):
+            try:
+                sid = int(step.get("id") or 0)
+            except Exception:
+                sid = 0
+
+            if sid == schedule_id:
+                step["checked"] = False
+                step["deleted"] = True
+                found = True
+                break
+
+        if not found:
+            return jsonify({
+                "status": False,
+                "msg": f"process_steps 找不到 schedule_id={schedule_id}"
+            })
+        #
+
+        material.process_steps = process_steps
+
+        # 這個 JSON 欄位雖然是同一個 Python object，
+        # 但裡面的內容已經被修改了，
+        # commit 時一定要 UPDATE DB。
+        flag_modified(material, "process_steps")
+        #
+        #has_any_checked = any(
+        #    bool(x.get("checked"))
+        #    for x in (process_steps.get("assemble") or [])
+        #) or any(
+        #    bool(x.get("checked"))
+        #    for x in (process_steps.get("check") or [])
+        #)
+        #
+        #material.process_step_enable = bool(has_any_checked)
+        #
+        # ------------------------------------------------------------
+        # 刪除排程前，先清掉同 mode 的未完成 assemble row
+        # 避免 a1/a2/a3 重建後殘留或回跳
+        # ------------------------------------------------------------
+        target_work_num = "B109" if mode == "assemble" else "B110"
+
+        rows_to_clear = (
+            s.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .filter(Assemble.work_num == target_work_num)
+            .all()
+        )
+
+        for r in rows_to_clear:
+            done_process = (
+                s.query(Process.id)
+                .filter(Process.material_id == material_id)
+                .filter(Process.assemble_id == r.id)
+                .filter(Process.has_started.is_(True))
+                .filter(Process.end_time.isnot(None))
+                .filter(Process.end_time != '')
+                .first()
+            )
+
+            # 已完成的歷史 row 不動
+            if done_process:
+                continue
+
+            # 未完成 row 全部清成不顯示
+            r.schedule_id = None
+            r.process_step_code = 0
+            r.isAssembleStationShow = False
+            r.isWarehouseStationShow = False
+            r.input_disable = True
+            r.input_end_disable = True
+            r.input_allOk_disable = True
+            r.input_abnormal_disable = True
+            r.show1_ok = 0
+            r.show2_ok = 0
+            r.show3_ok = 0
+        #
+
+        # 重新同步 assemble rows
+        sync_assemble_schedule_rows(
+            session=s,
+            material_id=material_id,
+            process_steps=process_steps
+        )
+
+        # 關鍵：sync 內有 delete copied rows，所以先 flush
+        s.flush()
+
+        # 關鍵：清掉 session 內舊的 Assemble ORM 狀態，避免 StaleDataError
+        s.expire_all()
+
+        done_after_delete = mark_material_done_after_delete(s, material_id)
+
+        # 如果刪除後已經進入完成待送出，代表不該再能新增/編輯工序
+        #if done_after_delete:
+        #    material.process_step_enable = False
+        #
+        if done_after_delete:
+          # material 重新 query 一次，因為 expire_all() 後原物件可能已過期。
+          material = s.query(Material).filter(Material.id == material_id).first()
+          material.process_step_enable = False
+        #
+
+        s.commit()
+        #
+
+        return jsonify({
+            "status": True,
+            "process_steps": material.process_steps,
+            "process_step_enable": material.process_step_enable,
+            "msg": "deleted"
+        })
+
+    except Exception as e:
+        s.rollback()
+        traceback.print_exc()
+        return jsonify({
+            "status": False,
+            "msg": str(e)
+        })
+
+    finally:
+        s.close()

@@ -422,6 +422,10 @@ export const apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
+          if (path == '/deleteAssembleScheduleRow') {
+            return res.data;
+          }
+
           if (path == '/createDelegate') {
             return res.data;
           }
@@ -452,7 +456,8 @@ export const apiOperation = (operation, path, payload) => {
 
 
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
-              path == '/pauseAllMyActiveProcesses' || path == '/getMyActiveProcesses' ||
+              path == '/pauseAllMyActiveProcesses' ||
+              path == '/getMyActiveProcesses' || path == '/getTodayUnfinishedProcesses' ||
               path == '/exportToExcelForError' ||
               path == '/exportToExcelForAssembleInformation' ||
               path == '/exportToExcelForAssembleInformationByWorkDate' ||

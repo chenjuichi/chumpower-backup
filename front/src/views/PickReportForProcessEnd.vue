@@ -273,7 +273,7 @@
         <template v-slot:item.order_num="{ item }">
           <div style="display: flex; align-items: center;">
             <!--檢料完成-->
-            <div style="color: blue; margin-right: 20px;" v-if="item.isAssembleStationShow">
+            <div style="color: blue; margin-right: 20px;" v-if="Number(item.receive_qty || 0) > 0">
               <div>{{ item.order_num }}</div>
               <div style="color:#0000FF; font-size:12px; font-weight:400;">
                 {{ item.assemble_work }}
@@ -847,7 +847,7 @@ onMounted(async () => {
   console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
   //+++
 
-    // ###
+  // ###
   await nextTick()           // 等 DOM 真正 render 完
   calcTransportRange()
 
@@ -1188,43 +1188,6 @@ const updateTableWidth = () => {
  * = 按鍵右邊界 + 10px
  * 再換算成「相對於 table 的 left」
  */
-const calcTransportLeft = () => {
-  if (!sendButton.value || !tableWrapRef.value) return
-
-  const btnRect = sendButton.value.$el
-    ? sendButton.value.$el.getBoundingClientRect()   // Vuetify v-btn
-    : sendButton.value.getBoundingClientRect()
-
-  const tableRect = tableWrapRef.value.getBoundingClientRect()
-
-  // 起點 = 按鍵右側 + 10px（轉成 table 內座標）
-  transportLeft.value = Math.max(
-    0,
-    Math.round(btnRect.right - tableRect.left + 10)
-  )
-}
-
-/*
-const calcTransportRange = () => {
-  if (!sendButton.value || !tableWrapRef.value) return
-
-  // v-btn 在 Vuetify 下要取 $el
-  const btnEl = sendButton.value.$el ?? sendButton.value
-  const btnRect = btnEl.getBoundingClientRect()
-  const tableRect = tableWrapRef.value.getBoundingClientRect()
-
-  const GAP = 10
-
-  // 起點（相對於 table）
-  const startX = btnRect.right - tableRect.left + GAP
-
-  // 終點（相對於 table）
-  const endX = tableRect.right - tableRect.left
-
-  transportLeft.value = Math.round(startX)
-  transportWidth.value = Math.max(0, Math.round(endX - startX))
-}
-*/
 
 const calcTransportRange = () => {
   if (!sendButton.value || !tableWrapRef.value) return

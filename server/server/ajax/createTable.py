@@ -619,6 +619,9 @@ def copy_assemble_for_difference():
   abnormal_qty = data.get('must_receive_qty')
   pre_must_qty = data.get('pre_must_receive_qty')
 
+  #copy_mode = data.get('copy_mode') or 'abnormal_click'
+  #new_alarm_enable = True if copy_mode == 'end_difference' else False
+
   s = Session()
 
   try:
@@ -658,7 +661,9 @@ def copy_assemble_for_difference():
       source.must_receive_end_qty = pre_must_qty
 
     material_id = source.material_id
-    schedule_id = 1
+    #schedule_id = 1
+    #
+    schedule_id = source.schedule_id
 
     # ✅ 防重複：若已經有 3377 產生的返工列，不再新增 3380/3381
     existed = (
@@ -679,6 +684,7 @@ def copy_assemble_for_difference():
         'assemble_data': [r.id for r in existed]
       })
 
+    '''
     def make_rework_row(work_num, step_code, show_code, show_in_begin):
       new_row = Assemble(
         material_id=source.material_id,
@@ -749,7 +755,233 @@ def copy_assemble_for_difference():
       s.add(new_row)
       s.flush()
       return new_row
+    '''
 
+
+    def make_rework_row(work_num, step_code, show_code, show_in_begin, alarm_enable_value):
+        new_row = Assemble(
+            material_id=source.material_id,
+            material_num=source.material_num,
+            material_comment=source.material_comment,
+            seq_num=source.seq_num,
+
+            work_num=work_num,
+            process_step_code=step_code,
+            schedule_id=schedule_id,
+
+            must_receive_qty=abnormal_qty,
+            must_receive_end_qty=abnormal_qty,
+            ask_qty=abnormal_qty,
+            total_ask_qty=abnormal_qty,
+            total_ask_qty_end=0,
+
+            abnormal_qty=0,
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+            user_id='',
+            writer_id=None,
+            write_date=None,
+
+            good_qty=0,
+            total_good_qty=0,
+            non_good_qty=0,
+            meinh_qty=0,
+
+            reason='',
+            confirm_comment='',
+            is_assemble_ok=False,
+
+            currentStartTime=None,
+            currentEndTime=None,
+
+            input_disable=False,
+            input_end_disable=False,
+            input_allOk_disable=False,
+            input_abnormal_disable=False,
+
+            isAssembleStationShow=show_in_begin,
+            isWarehouseStationShow=False,
+
+            alarm_enable=alarm_enable_value,
+            alarm_message='',
+            isAssembleFirstAlarm=False,
+            isAssembleFirstAlarm_message='',
+            isAssembleFirstAlarm_qty=0,
+
+            whichStation=1,
+            show1_ok=1,
+            show2_ok=show_code,
+            show3_ok=show_code,
+
+            update_time=now_str,
+            create_at=now_str,
+            is_copied_from_id=source.id,
+        )
+
+        s.add(new_row)
+        s.flush()
+        return new_row
+
+    '''
+    new_rows = []
+
+    copy_mode = data.get('copy_mode') or 'abnormal_click'
+    new_alarm_enable = True if copy_mode == 'end_difference' else False
+
+    def make_rework_row_from_source():
+        new_row = Assemble(
+            material_id=source.material_id,
+            material_num=source.material_num,
+            material_comment=source.material_comment,
+            seq_num=source.seq_num,
+
+            # 重點：只複製目前這一筆 a1
+            work_num=source.work_num,
+            process_step_code=source.process_step_code,
+            schedule_id=source.schedule_id,
+
+            must_receive_qty=abnormal_qty,
+            must_receive_end_qty=abnormal_qty,
+            ask_qty=abnormal_qty,
+            total_ask_qty=abnormal_qty,
+            total_ask_qty_end=0,
+
+            abnormal_qty=0,
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+            user_id='',
+            input_disable=False,
+            input_end_disable=False,
+            input_allOk_disable=False,
+            input_abnormal_disable=False,
+
+            # new-a1 要顯示在 Begin
+            isAssembleStationShow=True,
+            isWarehouseStationShow=False,
+
+            # 異常鍵 False；結束補差 True
+            alarm_enable=new_alarm_enable,
+            alarm_message='',
+            isAssembleFirstAlarm=False,
+            isAssembleFirstAlarm_message='',
+            isAssembleFirstAlarm_qty=0,
+
+            whichStation=1,
+            show1_ok=1,
+            show2_ok=3 if source.work_num == 'B109' else 5,
+            show3_ok=3 if source.work_num == 'B109' else 5,
+
+            update_time=now_str,
+            create_at=now_str,
+            is_copied_from_id=source.id,
+        )
+
+        s.add(new_row)
+        s.flush()
+        return new_row
+    '''
+
+    new_rows = []
+
+    copy_mode = data.get('copy_mode') or 'abnormal_click'
+    new_alarm_enable = True if copy_mode == 'end_difference' else False
+
+    def make_rework_row(work_num, step_code, show_code, show_in_begin):
+        new_row = Assemble(
+            material_id=source.material_id,
+            material_num=source.material_num,
+            material_comment=source.material_comment,
+            seq_num=source.seq_num,
+
+            work_num=work_num,
+            process_step_code=step_code,
+            schedule_id=source.schedule_id,
+
+            must_receive_qty=abnormal_qty,
+            must_receive_end_qty=abnormal_qty,
+            ask_qty=abnormal_qty,
+            total_ask_qty=abnormal_qty,
+            total_ask_qty_end=0,
+
+            abnormal_qty=0,
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+            user_id='',
+            writer_id=None,
+            write_date=None,
+
+            input_disable=False,
+            input_end_disable=False,
+            input_allOk_disable=False,
+            input_abnormal_disable=False,
+
+            isAssembleStationShow=show_in_begin,
+            isWarehouseStationShow=False,
+
+            alarm_enable=new_alarm_enable,
+            alarm_message='',
+            isAssembleFirstAlarm=False,
+            isAssembleFirstAlarm_message='',
+            isAssembleFirstAlarm_qty=0,
+
+            whichStation=1,
+            show1_ok=1,
+            show2_ok=show_code,
+            show3_ok=show_code,
+
+            update_time=now_str,
+            create_at=now_str,
+            is_copied_from_id=source.id,
+        )
+
+        s.add(new_row)
+        s.flush()
+        return new_row
+
+
+    if source.work_num == 'B109':
+        # 組裝異常：只產生 a2-a1
+        new_rows.append(make_rework_row(
+            work_num='B109',
+            step_code=3,
+            show_code=3,
+            show_in_begin=True
+        ))
+
+    elif source.work_num == 'B110':
+        # 檢驗異常：產生 c2-a1 + c2-c1
+        new_rows.append(make_rework_row(
+            work_num='B109',
+            step_code=3,
+            show_code=3,
+            show_in_begin=True
+        ))
+
+        new_rows.append(make_rework_row(
+            work_num='B110',
+            step_code=2,
+            show_code=5,
+            show_in_begin=False
+        ))
+
+    else:
+        return jsonify({
+            'status': False,
+            'message': f'目前只支援 B109/B110 異常返工，來源 work_num={source.work_num}',
+            'assemble_data': []
+        }), 400
+
+    #new_row = make_rework_row_from_source()
+    #new_rows.append(new_row)
+
+
+    '''
     new_b109 = make_rework_row(
       work_num='B109',
       step_code=3,
@@ -763,6 +995,53 @@ def copy_assemble_for_difference():
       show_code=5,
       show_in_begin=False
     )
+    '''
+
+    #new_rows = []
+
+    # 異常鍵：新工序 alarm_enable=False
+    # 結束鍵補差：新工序 alarm_enable=True
+    new_alarm_enable = True if copy_mode == 'end_difference' else False
+
+    '''
+    if source.work_num == 'B110':
+        # B110 檢驗異常/補差：建立 B109 + B110
+        new_b109 = make_rework_row(
+            work_num='B109',
+            step_code=3,
+            show_code=3,
+            show_in_begin=True,
+            alarm_enable_value=new_alarm_enable
+        )
+        new_rows.append(new_b109)
+
+        new_b110 = make_rework_row(
+            work_num='B110',
+            step_code=2,
+            show_code=5,
+            show_in_begin=False,
+            alarm_enable_value=new_alarm_enable
+        )
+        new_rows.append(new_b110)
+
+    elif source.work_num == 'B109':
+        # B109 組裝異常/補差：只建立 B109
+        new_b109 = make_rework_row(
+            work_num='B109',
+            step_code=3,
+            show_code=3,
+            show_in_begin=True,
+            alarm_enable_value=new_alarm_enable
+        )
+        new_rows.append(new_b109)
+
+    else:
+        return jsonify({
+            'status': False,
+            'message': f'目前只支援 B109/B110 補差或異常，來源 work_num={source.work_num}',
+            'assemble_data': []
+        }), 400
+    '''
 
     material = s.query(Material).filter(Material.id == material_id).first()
     if material:
@@ -777,7 +1056,10 @@ def copy_assemble_for_difference():
     return jsonify({
       'status': True,
       'message': '異常返工流程已建立：B109 -> B110',
-      'assemble_data': [new_b109.id, new_b110.id]
+      #'assemble_data': [new_b109.id, new_b110.id]
+      #
+      #'assemble_data': [r.id for r in new_rows]
+      'assemble_data': [r.id for r in new_rows]
     })
 
   except Exception as e:

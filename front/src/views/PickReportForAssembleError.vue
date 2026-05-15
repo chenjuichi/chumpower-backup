@@ -629,11 +629,32 @@ const downloadFilePath = ref('');
 const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
 
 //=== watch ===
+/*
 watch(
   () => [causeDlg.form.qty, causeDlg.form.err_msg],
   () => {
     if (!causeDlg.form.msg) {
       causeDlg.form.msg = composedMsg.value
+    }
+  },
+  { deep: true }
+)
+*/
+
+watch(
+  () => [causeDlg.form.qty, causeDlg.form.err_msg],
+  () => {
+    const next = toStr(composedMsg.value).trim()
+    if (!next) return
+
+    const cur = toStr(causeDlg.form.msg).trim()
+
+    // 例：
+    // cur = 混料
+    // next = 3x混料
+    // 兩者去掉數量後都等於 混料，所以直接替換，不 append
+    if (!cur || stripQtyPrefix(cur) === stripQtyPrefix(next)) {
+      causeDlg.form.msg = next
     }
   },
   { deep: true }
@@ -908,6 +929,24 @@ function appendPreviewToMsg () {
   const addRaw = toStr(composedMsg.value).trim()
   if (!addRaw) return
 
+  const isQtyWithReason = (s) => /^\d+\s*x.+$/.test(s)
+  if (!isQtyWithReason(addRaw)) return
+
+  const curRaw = toStr(causeDlg.form.msg || '').trim()
+
+  if (!curRaw || stripQtyPrefix(curRaw) === stripQtyPrefix(addRaw)) {
+    causeDlg.form.msg = addRaw
+    return
+  }
+
+  causeDlg.form.msg = `${curRaw}、${addRaw}`
+}
+
+/*
+function appendPreviewToMsg () {
+  const addRaw = toStr(composedMsg.value).trim()
+  if (!addRaw) return
+
   // 🔸 「只有數量 x」，例如：1x、2x
   const isQtyOnly = (s) => /^\d+\s*x$/.test(s)
 
@@ -946,6 +985,8 @@ function appendPreviewToMsg () {
 
   causeDlg.form.msg = pieces.join('、')
 }
+*/
+
 /*
 function appendPreviewToMsg () {
   const add = toStr(composedMsg.value).trim()
@@ -1674,6 +1715,11 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
+
+function stripQtyPrefix(s) {
+  return toStr(s).trim().replace(/^\d+\s*x\s*/i, '')
+}
+
 </script>
 
 <style lang="scss" scoped>

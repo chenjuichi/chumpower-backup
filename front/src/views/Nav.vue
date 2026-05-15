@@ -449,6 +449,7 @@ import { apiOperationB }  from '../mixins/crudB.js';
 //const getCountMaterialsAndAssemblesByUser2 = apiOperation('post', '/getCountMaterialsAndAssemblesByUser2');
 const updateSetting = apiOperation('post', '/updateSetting');
 const getMyActiveProcesses = apiOperation('post', '/getMyActiveProcesses');
+const getTodayUnfinishedProcesses = apiOperation('post', '/getTodayUnfinishedProcesses');
 const pauseAllMyActiveProcesses = apiOperation('post', '/pauseAllMyActiveProcesses');
 
 // 使用 apiOperationF 函式來建立 API 請求
@@ -873,12 +874,13 @@ const logout = () => {
 const logout = async () => {
   console.log("logout...");
 
-  const activeRes = await getMyActiveProcesses({
+  const activeRes = await getTodayUnfinishedProcesses({
+  //const activeRes = await getMyActiveProcesses({
     user_id: currentUser.value.empID
   })
 
   if (activeRes.data?.length > 0) {
-    showSnackbar(`你還有 ${activeRes.data.length} 筆工單作業中, 請先結束作業或暫停計時...`, 'red accent-2');
+    showSnackbar(`今日, 你還有 ${activeRes.data.length} 筆工單作業中, 請先結束作業或暫停計時...`, 'red accent-2');
     return;
     /*
     const ok = await confirmRef.value.open({

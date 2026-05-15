@@ -54,9 +54,7 @@
           <div v-for="(step, index) in schedulingSteps"
             :key="`${scheduleMode}-${step.id}`"
             class="scheduling-item"
-
-            :draggable="step.locked !== true"
-
+            draggable="true"
             @dragstart="onDragStartStep(index)"
             @dragover="onDragOverStep"
             @drop="onDropStep(index)"
@@ -76,9 +74,6 @@
             -->
               <v-checkbox
                 v-model="step.checked"
-
-                :disabled="step.locked === true"
-
                 hide-details
                 density="compact"
                 class="me-2"
@@ -146,6 +141,15 @@
 
       <v-card-actions class="justify-center pb-4">
         <v-btn
+          color="error"
+          prepend-icon="mdi-arrow-left"
+          text="返回"
+          class="text-none"
+          variant="flat"
+          @click="backToSchedulingDialog"
+        />
+
+        <v-btn
           v-if="scheduleAlertType === 'partial'"
           color="success"
           prepend-icon="mdi-check"
@@ -153,15 +157,6 @@
           class="text-none"
           variant="flat"
           @click="continueConfirmSchedulingDialog"
-        />
-
-        <v-btn
-          color="error"
-          prepend-icon="mdi-arrow-left"
-          text="返回"
-          class="text-none"
-          variant="flat"
-          @click="backToSchedulingDialog"
         />
       </v-card-actions>
     </v-card>
@@ -497,18 +492,8 @@
         <!--<div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">{{ item.assemble_work }}</div>-->
         <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">
           {{ item.assemble_work }}
-          <span v-if="getScheduleName(item)" style="font-weight:600; font-size:12px; color:black;">
-            [{{ getScheduleName(item) }}]
-          </span>
-
-          <span
-            v-if="item.is_abnormal_process"
-            class="abnormal-process-text"
-          >
-            -異常
-          </span>
-
-
+          <span v-if="getScheduleName(item)" style="font-weight:600; font-size:12px; color:black;"> [{{ getScheduleName(item) }}]</span>
+          <!--<span v-if="item.alarm_enable" style="font-weight:600; font-size:12px; color:red;">-異常</span>-->
         </div>
       </div>
     </template>
@@ -621,7 +606,7 @@
     </template>
 
     <!-- 自訂 '+工序' 按鍵欄位 -->
-    <!--
+  <!--
     <template #item.add_process="{ item }">
       <v-btn
         size="small"
@@ -633,9 +618,9 @@
         +工序
       </v-btn>
     </template>
-    -->
+  -->
 
-    <!--
+  <!--
     <template #item.add_process="{ item }">
       <v-btn
         size="small"
@@ -649,113 +634,47 @@
         +工序
       </v-btn>
     </template>
-    -->
-
-    <!--
-    <template #item.add_process="{ item }">
-      <v-btn
-        size="small"
-        :prepend-icon="isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus'"
-              text="工序"
-
-        class="btn-add-process"
-        :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
-        :disabled="isProcessStepEnabled(item) ||
-                  isAddProcessDisabledV2(item) ||
-                  item.top_work_rank != item.process_step_code ||
-                  item.delivery_qty != item.must_receive_qty"
-        @click="openSchedulingDialog(item)"
-      >
-      </v-btn>
-    </template>
-    -->
-
-    <!--
-    <template #item.add_process="{ item }">
-      <v-btn
-        size="small"
-        class="btn-add-process"
-        :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
-        :disabled="isProcessStepEnabled(item) ||
-                  isAddProcessDisabledV2(item) ||
-                  item.top_work_rank != item.process_step_code ||
-                  item.delivery_qty != item.must_receive_qty"
-        @click="openSchedulingDialog(item)"
-      >
-        <v-icon start size="18">
-          {{ isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus' }}
-        </v-icon>
-
-        工序
-      </v-btn>
-    </template>
-    -->
-
-  <!--
-    <template #item.add_process="{ item }">
-      <v-btn
-        size="small"
-        class="btn-add-process"
-        :class="{
-          'btn-add-process--edit': isProcessStepEnabled(item),
-          'btn-add-process--disabled': isAddProcessButtonDisabled(item)
-        }"
-        :disabled="isAddProcessButtonDisabled(item)"
-        @click="openSchedulingDialog(item)"
-      >
-        <v-icon start size="18">
-          {{ isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus' }}
-        </v-icon>
-        工序
-      </v-btn>
-    </template>
   -->
 
-  <template #item.add_process="{ item }">
-    <!-- 尚未設定工序：維持原本 + 工序按鍵 -->
-    <v-btn
-      v-if="!isProcessStepEnabled(item)"
-      size="small"
-      class="btn-add-process"
-      :class="{
-        'btn-add-process--disabled': isAddProcessButtonDisabled(item)
-      }"
-      :disabled="isAddProcessButtonDisabled(item)"
-      @click="openSchedulingDialog(item)"
-    >
-      <v-icon start size="18">mdi-plus</v-icon>
-      工序
-    </v-btn>
+<!--
+    <template #item.add_process="{ item }">
+  <v-btn
+    size="small"
+    :prepend-icon="isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus'"
+          text="工序"
 
-    <!-- 已設定工序：改成 delete + pencil 兩個 icon 按鍵 -->
-    <div
-      v-else
-      class="add-process-icon-group"
-    >
-      <v-btn
-        size="small"
-        icon
-        class="btn-add-process-icon btn-add-process-icon--delete"
-        :disabled="isEditProcessDisabled(item)"
-        @click.stop="onClickDeleteSchedule(item)"
-      >
-        <v-icon size="20" color="red">mdi-delete</v-icon>
-      </v-btn>
+    class="btn-add-process"
+    :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
+    :disabled="isProcessStepEnabled(item) ||
+               isAddProcessDisabledV2(item) ||
+               item.top_work_rank != item.process_step_code ||
+               item.delivery_qty != item.must_receive_qty"
+    @click="openSchedulingDialog(item)"
+  >
+  </v-btn>
+</template>
+-->
+<template #item.add_process="{ item }">
+  <v-btn
+    size="small"
+    class="btn-add-process"
+    :class="{ 'btn-add-process--disabled': isProcessStepEnabled(item) }"
+    :disabled="isProcessStepEnabled(item) ||
+               isAddProcessDisabledV2(item) ||
+               item.top_work_rank != item.process_step_code ||
+               item.delivery_qty != item.must_receive_qty"
+    @click="openSchedulingDialog(item)"
+  >
+    <v-icon start size="18">
+      {{ isProcessStepEnabled(item) ? 'mdi-pencil-outline' : 'mdi-plus' }}
+    </v-icon>
 
-      <v-btn
-        size="small"
-        icon
-        class="btn-add-process-icon btn-add-process-icon--edit"
-        :disabled="isEditProcessDisabled(item)"
-        @click="openSchedulingDialog(item)"
-      >
-        <v-icon size="20" color="blue">mdi-pencil</v-icon>
-      </v-btn>
-    </div>
-  </template>
+    工序
+  </v-btn>
+</template>
 
     <!-- 自訂 '-工序' 按鍵欄位 -->
-    <!--
+  <!--
     <template #item.remove_process="{ item }">
       <v-btn
         size="small"
@@ -767,12 +686,12 @@
         -工序
       </v-btn>
     </template>
-    -->
+  -->
 
     <!-- 自訂 '開始' 按鍵欄位 -->
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
-      <div class="begin-cell begin-cell-shift">
+      <div class="begin-cell">
         <div class="begin-timer-slot">
           <span
             v-if="item._showMyTimer || isMineStarted(item) || item.show_name == userId"
@@ -872,7 +791,6 @@ import { myMixin } from '../mixins/common.js';
 import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
-import { currentBoms, }  from '../mixins/crud.js';
 
 import { materials_and_assembles, assembles_active_user_count, boms,  socket_server_ip }  from '../mixins/crud.js';
 //import { temp_isLackMaterial }  from '../mixins/crud.js';
@@ -902,8 +820,6 @@ const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
 
 const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 const removeMaterialsAndRelationTableByDeliveryDateRange = apiOperation('post', '/removeMaterialsAndRelationTableByDeliveryDateRange');
-
-const deleteAssembleScheduleRow = apiOperation('post', '/deleteAssembleScheduleRow');
 
 //const getMaterialsAndAssembles = apiOperation('post', '/getMaterialsAndAssembles');
 
@@ -1438,7 +1354,48 @@ onBeforeUnmount(() => {
 //=== method ===
 const deepClone = (arr) => JSON.parse(JSON.stringify(arr || []))
 
+/*
+function parseProcessStepsV2(str) {
+  const result = {
+    assemble_steps: [],
+    check_steps: [],
+  }
 
+  if (!str || typeof str !== 'string') return result
+
+  const parts = str.split(';')
+
+  const parsePart = (part) => {
+    if (!part || !part.trim()) return []
+
+    return part
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean)
+      .map(item => {
+        const arr = item.split(':')
+
+        if (arr.length < 3) return null
+
+        const id = arr[0].trim()
+        const name = arr[1].trim()
+        const checkedRaw = arr[2].trim().toLowerCase()
+
+        return {
+          id: Number(id) || id,
+          name,
+          checked: checkedRaw === 't',
+        }
+      })
+      .filter(Boolean)
+  }
+
+  result.assemble_steps = parsePart(parts[0] || '')
+  result.check_steps = parsePart(parts[1] || '')
+
+  return result
+}
+*/
 
 const fmt = (d) => {
   if (!d) return ''
@@ -1828,7 +1785,7 @@ async function onClickBegin(row) {
   console.log("t, t.processId.value, t.hasStarted?.value, t.isPaused.value:", t, t.processId.value, t.hasStarted?.value, t.isPaused.value)
 
   if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
-    showSnackbar("已經領料生產報工了...", "orange-darken-2")
+    showSnackbar("已經領料了...", "orange-darken-2")
     return
   }
 
@@ -1839,14 +1796,6 @@ async function onClickBegin(row) {
   row._showMyTimer = true;
   row.show_timer = true;
   row.show_name = me;
-
-  //
-  // ✅ 按開始後，立即讓 delete / pencil disable
-  row.hasStarted = true;
-  row.startStatus = true;
-  row.isOpen = true;
-  row.isOpenEmpId = me;
-  //
 
   await nextTick();
 
@@ -2265,7 +2214,6 @@ const isProcessStepEnabled = (item) => {
 };
 */
 
-/*
 const isProcessStepEnabled = (item) => {
   if (!item) return false
 
@@ -2280,109 +2228,11 @@ const isProcessStepEnabled = (item) => {
 
   return Boolean(raw)
 }
-*/
-
-const isProcessStepEnabled = (item) => {
-  return (
-    Number(item?.process_step_enable || 0) === 1 ||
-    item?.process_step_enable === true ||
-    scheduledMaterialIds.value.has(item?.id)
-  )
-}
-
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    isAddProcessButtonDisabled(item) ||
-    item?.hasStarted === true ||
-    item?.hasStarted === 1
-  )
-}
-*/
-
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    isAddProcessButtonDisabled(item) ||
-    item?.hasStarted === true ||
-    item?.hasStarted === 1 ||
-    item?.hasStarted === '1' ||
-    item?.startStatus === true ||
-    item?.startStatus === 1 ||
-    item?.startStatus === '1' ||
-    item?.show_timer === true ||
-    item?.show_timer === 1 ||
-    item?.show_timer === '1'
-  )
-}
-*/
-
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    isAddProcessButtonDisabled(item) ||
-
-    // 只看這一筆 row 自己的狀態
-    item?._showMyTimer === true ||
-    item?.show_timer === true ||
-    item?.show_timer === 1 ||
-    item?.show_timer === '1' ||
-
-    // 若後端有回傳 active 狀態，再一起判斷
-    item?.active_count > 0 ||
-    item?.is_active_process === true
-  )
-}
-*/
-/*
-const isEditProcessDisabled = (item) => {
-  const tt = isAddProcessButtonDisabled(item)
-  console.log("order_num, isEditProcessDisabled, isAddProcessButtonDisabled():", item.order_num, tt)
-  return (
-    tt ||
-    (item?._showMyTimer === true && item?.show_timer === true)
-  )
-}
-*/
-
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    isAddProcessButtonDisabled(item) ||
-
-    // 只鎖「目前這一列剛按開始」的前端暫存狀態
-    item?._showMyTimer === true ||
-
-    // 後端若有 process_id，代表這筆 row 有正在報工流程
-    item?.process_id != null &&
-    item?.process_id !== '' &&
-    item?.process_id !== 0
-  )
-}
-*/
-
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    //isAddProcessButtonDisabled(item) &&
-    //item?._showMyTimer === true
-    item?.show_timer === true
-  )
-}
-*/
-
-const isEditProcessDisabled = (item) => {
-  return (
-    item?.show_timer === true ||
-    Number(item?.abnormal_qty || 0) > 0 ||
-    Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
-    item?.is_abnormal_process === true
-  )
-}
 
 //const isAddProcessDisabled = (item) => isProcessStepEnabled(item);
 
 // ===== 切換時複製（重要：不能直接指向）=====
+//const cloneSteps = (arr) => arr.map(x => ({ ...x }))
 const cloneSteps = (arr) => (arr || []).map(x => ({ ...x }))
 
 const saveCurrentSchedulingSteps = (mode) => {
@@ -2434,6 +2284,32 @@ const switchScheduleMode = (newMode) => {
 
 /*
 const openSchedulingDialog = (item) => {
+  if (isProcessStepEnabled(item)) return;
+  scheduling_target_item.value = item;
+
+  console.log("process_steps:", item.process_steps)
+  //const parsed = parseProcessStepsV2(item.process_steps)
+
+  const ps = item.process_steps || {}
+  //assemble_steps.value = ps.assemble || []
+  //check_steps.value = ps.check || []
+  assemble_steps.value = deepClone(ps.assemble)
+  check_steps.value = deepClone(ps.check)
+
+  scheduleMode.value = 'assemble'  // 預設組裝
+  //schedulingSteps.value = cloneSteps(assemble_steps.value)
+  schedulingSteps.value = deepClone(assemble_steps.value)
+
+  scheduling_dialog_orde_num.value=item.order_num;
+  scheduling_dialog.value = true;
+
+  console.log("test...schedulingSteps:", schedulingSteps.value);
+  console.log("test...assemble_steps:", assemble_steps.value);
+  console.log("test...check_steps:", check_steps.value);
+  console.log("test...1.scheduleMode:", scheduleMode.value)
+};
+*/
+const openSchedulingDialog = (item) => {
   if (isProcessStepEnabled(item)) return
 
   scheduling_target_item.value = item
@@ -2456,7 +2332,6 @@ const openSchedulingDialog = (item) => {
   console.log("test...check_steps:", check_steps.value)
   console.log("test...1.scheduleMode:", scheduleMode.value)
 }
-*/
 
 const toggleSchedulingStep = (index) => {
   schedulingSteps.value[index].checked = !schedulingSteps.value[index].checked
@@ -2603,13 +2478,14 @@ const doConfirmSchedulingDialog = async () => {
       }
     })
 
+
     //console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
     //
     //scheduling_target_item.value.process_step_enable = true;
     //
     //await safeRefresh()
     //
-
+    //
     console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
 
     const targetId = Number(scheduling_target_item.value.id)
@@ -2621,11 +2497,7 @@ const doConfirmSchedulingDialog = async () => {
       if (Number(row.id) === targetId) {
         return {
           ...row,
-          process_step_enable: true,
-          process_steps: {
-            assemble: deepClone(assemble_steps.value),
-            check: deepClone(check_steps.value),
-          },
+          process_step_enable: true
         }
       }
       return row
@@ -2650,106 +2522,6 @@ const doConfirmSchedulingDialog = async () => {
     showSnackbar('工序設定失敗', 'red-darken-2')
   } finally {
     scheduling_dialog_loading.value = false
-  }
-}
-
-const lockExistingSteps = (steps = []) => {
-  return deepClone(steps).map(step => ({
-    ...step,
-    checked: !!step.checked,
-    locked: !!step.checked,   // 已經選過的工序鎖住，不能取消
-  }))
-}
-
-const hasUncheckedStep = (steps = []) => {
-  return (steps || []).some(step => !step.checked)
-}
-
-const isAddProcessButtonDisabled = (item) => {
-  const ps = item?.process_steps || {}
-
-  const assemble = Array.isArray(ps.assemble) ? ps.assemble : []
-  const check = Array.isArray(ps.check) ? ps.check : []
-
-  // 組裝與檢驗全部都已經勾完，才不能再新增
-  const noMoreAssemble = !hasUncheckedStep(assemble)
-  const noMoreCheck = !hasUncheckedStep(check)
-
-  if (noMoreAssemble && noMoreCheck) return true
-
-  // 原本這些條件保留
-  if (item.top_work_rank != item.process_step_code) return true
-  if (item.delivery_qty != item.must_receive_qty) return true
-
-  return false
-}
-
-const openSchedulingDialog = (item) => {
-  scheduling_target_item.value = item
-
-  const ps = item.process_steps || {}
-
-  //assemble_steps.value = lockExistingSteps(ps.assemble || [])
-  //check_steps.value = lockExistingSteps(ps.check || [])
-  //
-  assemble_steps.value = lockExistingSteps(
-    (ps.assemble || []).filter(x => !x.deleted)
-  )
-
-  check_steps.value = lockExistingSteps(
-    (ps.check || []).filter(x => !x.deleted)
-  )
-  //
-
-  // 預設打開還可以新增的模式
-  if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-
-const onClickDeleteSchedule = async (item) => {
-  if (isEditProcessDisabled(item)) return
-
-  const scheduleId = Number(item.schedule_id || 0)
-
-  if (!scheduleId) {
-    alert('找不到 schedule_id，無法刪除此工序')
-    return
-  }
-
-  if (!confirm(`確定刪除此工序？\n訂單：${item.order_num}`)) {
-    return
-  }
-
-  try {
-    const tt = await deleteAssembleScheduleRow({
-      id: item.id,
-      assemble_id: item.assemble_id,
-      schedule_id: scheduleId,
-      work_num: item.work_num,
-    })
-
-    if (!tt.status) {
-      showSnackbar(tt.msg || '刪除工序失敗', 'red accent-2');
-
-      // 返回後重新載入，保留原本最後製程資料
-      await listMaterialsAndAssembles();
-
-      return;
-    }
-
-    showSnackbar("刪除工序完成!", "green darken-1");
-    await listMaterialsAndAssembles();
-  } catch (err) {
-    console.error('deleteAssembleScheduleRow error:', err)
-    showSnackbar('刪除工序發生錯誤', 'red accent-2');
   }
 }
 
@@ -3853,83 +3625,8 @@ const continueConfirmSchedulingDialog = async () => {
   cursor: grab;
 }
 
-//.process-btn {
-//  letter-spacing: 0;
-//}
-
-.btn-add-process {
-  background: #c8e6c9 !important;
-  color: #1b5e20 !important;
-  transform: translateX(20px);
-}
-
-.btn-add-process:hover {
-  background: #a5d6a7 !important;
-}
-
-.btn-add-process--edit {
-  background: #fff3cd !important; /* 淡黃色 */
-  color: #7a5b00 !important;
-}
-
-.btn-add-process--edit:hover {
-  background: #ffe8a1 !important;
-}
-
-.btn-add-process--disabled {
-  background: #e0e0e0 !important;
-  color: #9e9e9e !important;
-  cursor: not-allowed !important;
-  box-shadow: none !important;
-  opacity: 1 !important;
-}
-
-.add-process-icon-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  transform: translateX(26px);
-}
-
-.btn-add-process-icon {
-  width: 34px !important;
-  min-width: 34px !important;
-  height: 32px !important;
-  background: #fff3cd !important;
-  color: #7a5b00 !important;
-}
-
-.btn-add-process-icon:hover {
-  background: #ffe8a1 !important;
-}
-
-/*
-.btn-add-process-icon.v-btn--disabled {
-  background: #e0e0e0 !important;
-  opacity: 1 !important;
-}
-
-.btn-add-process-icon.v-btn--disabled .v-icon {
-  color: #9e9e9e !important;
-}
-*/
-
-/* delete / pencil disabled 外觀 = 開始鍵 disabled */
-.btn-add-process-icon.v-btn--disabled {
-  background: #e0e0e0 !important;
-  color: #9e9e9e !important;
-  cursor: not-allowed !important;
-  opacity: 1 !important;
-
-}
-
-.btn-add-process-icon.v-btn--disabled .v-icon {
-  color: rgba(var(--v-theme-on-surface), 0.38) !important;
-}
-
-.begin-cell-shift {
-  transform: translateX(30px);
+.process-btn {
+  letter-spacing: 0;
 }
 
 /*
@@ -3976,11 +3673,5 @@ const continueConfirmSchedulingDialog = async () => {
 
 .erp-alert-message-warning {
   color: #1565c0;
-}
-
-.abnormal-process-text {
-  color: red;
-  font-weight: 700;
-  margin-left: 6px;
 }
 </style>

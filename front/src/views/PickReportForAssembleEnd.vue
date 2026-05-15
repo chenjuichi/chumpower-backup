@@ -17,58 +17,213 @@
 
     <ConfirmDialog ref="confirmRef" />
 
-    <!-- data table -->
-    <v-data-table
-      :headers="headers"
-      :items="materials_and_assembles_by_user"
+    <div ref="tableWrapRef" class="table-area">
+      <!-- data table -->
+      <v-data-table
+        :headers="headers"
+        :items="materials_and_assembles_by_user"
 
-      :search="search"
-      :custom-filter="customFilter"
+        :search="search"
+        :custom-filter="customFilter"
 
-      fixed-header
-      density="comfortable"
-      style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
-      :items-per-page-options="footerOptions"
-      item-key="name"
-      v-model:items-per-page="pagination.itemsPerPage"
-      v-model:page="pagination.page"
+        fixed-header
+        density="comfortable"
+        style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
+        :items-per-page-options="footerOptions"
+        item-key="name"
+        v-model:items-per-page="pagination.itemsPerPage"
+        v-model:page="pagination.page"
 
-      item-value="index"
-      show-select
-      :value="selectedItems"
+        item-value="index"
+        show-select
+        :value="selectedItems"
 
-      :sort-by.sync="sortBy"
-      :sort-desc.sync="sortDesc"
+        :sort-by.sync="sortBy"
+        :sort-desc.sync="sortDesc"
 
-      class="elevation-10 custom-table"
-    >
-      <!-- 客製化 '選擇框' 欄位表頭 -->
-      <template v-slot:header.data-table-select>
-        <span class="custom-header">送料</span>
-      </template>
+        class="elevation-10 custom-table"
+      >
+        <!-- 客製化 '選擇框' 欄位表頭 -->
+        <template v-slot:header.data-table-select>
+          <span class="custom-header">送料</span>
+        </template>
 
-      <!-- 自定義每行的選擇框 -->
-      <template v-slot:item.data-table-select="{ internalItem }">
-        <v-checkbox-btn
-          :model-value="isSelected(internalItem)"
-          :disabled="(!internalItem.raw.isAssembleStationShow || internalItem.raw.receive_qty == 0) && warehouse_in_all_pass=='待完工'"
-          color="primary"
-          @update:model-value="toggleSelect(internalItem)"
-          :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
-        />
-      </template>
+        <!-- 自定義每行的選擇框 -->
+        <template v-slot:item.data-table-select="{ internalItem }">
+          <v-checkbox-btn
+            :model-value="isSelected(internalItem)"
+            :disabled="(!internalItem.raw.isAssembleStationShow || internalItem.raw.receive_qty == 0) && warehouse_in_all_pass=='待完工'"
+            color="primary"
+            @update:model-value="toggleSelect(internalItem)"
+            :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
+          />
+        </template>
 
-      <!-- 客製化 top 區域 -->
-      <template v-slot:top>
-        <v-card>
-          <v-card-title
-            class="d-flex align-center pe-2"
-            style="font-weight:700;"
-          >
-            <div style="display:flex; position:relative; left: 20px;">
-              <div>組裝區完成生產報工</div>
+        <!-- 客製化 top 區域 -->
+        <template v-slot:top>
+          <v-card>
+            <v-card-title
+              class="d-flex align-center pe-2"
+              style="font-weight:700;"
+            >
+              <div style="display:flex; position:relative; left: 20px;">
+                <div>組裝區完成生產報工</div>
 
-              <!--客製化 模式switch按鍵-->
+                <!--客製化 模式switch按鍵-->
+                <!--
+                <v-switch
+                  v-model="warehouse_in_all_pass"
+                  color="indigo"
+                  :label="`模式: ${warehouse_in_all_pass}`"
+                  false-value="待完工"
+                  true-value="待入庫"
+                  hide-details
+
+                />
+                -->
+              </div>
+
+              <v-divider class="mx-2" inset vertical style="position:relative; left: 20px;"></v-divider>
+
+              <!--客製化 員工選單-->
+              <div
+                class="employee-select"
+                style="position:relative; width:160px; transform:translateX(30px);">
+                <v-text-field
+                  v-model="selectedEmployee"
+                  @keyup.enter="handleEmployeeSearch"
+
+                  variant="outlined"
+                  density="comfortable"
+                  style="
+                    min-width: 160px;
+                    width: 160px;
+                    position: absolute;
+                    z-index: 2;
+                    transition: opacity 0.3s ease, visibility 0.3s ease;
+                  "
+                  :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
+                />
+
+                <!-- v-select 用於選擇員工 -->
+                <v-select
+                  v-model="inputSelectEmployee"
+                  :items="formattedDesserts"
+                  item-title="display"
+                  item-value="emp_id"
+                  :placeholder="placeholderTextForEmployee"
+                  variant="outlined"
+                  density="comfortable"
+                  @update:modelValue="updateEmployeeFieldFromSelect"
+                  style="
+                    min-width: 160px;
+                    width: 160px;
+                    position: relative;
+                    top: 23px;
+                    z-index: 1;
+                    transition: opacity 0.3s ease, visibility 0.3s ease;
+                  "
+                  :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
+                />
+              </div>
+
+              <!--客製化 手動推車/AGV切換按鍵-->
+              <div class="button-container">
+                <v-btn-toggle >
+                  <v-btn
+                    variant="outlined"
+                    :style="{
+                      background: toggle_exclusive === 1 ? '#e67e22' : '#e7e9eb',
+                      color: toggle_exclusive === 1 ? '#fff' : '#000',
+                      fontWeight: '700'
+                    }"
+                    @click="setActive(1)"
+                  >
+                    <v-icon right color="#003171">mdi-forklift</v-icon>
+                    <span>手動推車</span>
+                  </v-btn>
+
+                  <v-btn
+                    variant="outlined"
+                    :style="{
+                      background: toggle_exclusive === 2 ? '#27ae60' : '#e7e9eb',
+                      color: toggle_exclusive === 2 ? '#fff' : '#000',
+                      fontWeight: '700'
+                    }"
+                    @click="setActive(2)"
+                  >
+                    <span>AGV送料</span>
+                    <v-icon right color="#003171">mdi-truck-flatbed</v-icon>
+                  </v-btn>
+                </v-btn-toggle>
+              </div>
+
+              <!--客製化 備料送出按鍵-->
+              <v-btn
+                :disabled="!hasSelectedSendableRows"
+                color="primary"
+                variant="outlined"
+                style="position:relative; left:50px; top:0px; font-weight:700; padding-left:8px;
+                      padding-right:8px;"
+                @click="onClickTrans"
+                ref="sendButton"
+              >
+                <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
+                <span>{{ transport_message }}</span>
+              </v-btn>
+
+              <div style="display: flex; flex-direction: column; align-items: center;">
+              <!--
+                <span
+                  style="position:relative; top:30px; right:180px;"
+                  :style="{
+                    'fontSize': '14px',
+                    'display': 'inline-block',
+                    'min-width': '120px',
+                    'visibility': isCallForklift ? 'visible' : 'hidden',
+                  }"
+                >
+                  堆高機送料中
+                </span>
+              -->
+    <TransportLoading
+      v-show="isCallForklift"
+      mode="forklift"
+      status="sending"
+      :width="transportWidth"
+      :top="transportTop"
+      :left="transportLeft"
+      :durationSec="6"
+    />
+
+
+                <!--客製化搜尋-->
+                <v-text-field
+                  id="bar_code"
+
+                  v-model="search"
+
+                  prepend-inner-icon="mdi-magnify"
+                  variant="outlined"
+                  hide-details
+                  single-line
+                  style="position: relative; top: 55px; right: -50px; min-width: 150px;"
+                  density="compact"
+                />
+
+                <!-- 客製化barcode輸入 -->
+                <v-text-field
+                  id="bar_code"
+                  v-model="bar_code"
+                  :value="bar_code"
+                  ref="barcodeInput"
+                  @keyup.enter="handleBarCode"
+                  hide-details="auto"
+                  prepend-icon="mdi-barcode"
+                  style="min-width:200px; position: relative; top: 25px; left:280px;"
+                  class="align-center"
+                  density="compact"
+                />
               <!--
               <v-switch
                 v-model="warehouse_in_all_pass"
@@ -77,494 +232,365 @@
                 false-value="待完工"
                 true-value="待入庫"
                 hide-details
-
-              />
+              ></v-switch>
               -->
-            </div>
+              </div>
+            </v-card-title>
+          </v-card>
+        </template>
 
-            <v-divider class="mx-2" inset vertical style="position:relative; left: 20px;"></v-divider>
-
-            <!--客製化 員工選單-->
-            <div class="employee-select" style="position:relative; width:160px; left: 40px;">
-              <v-text-field
-                v-model="selectedEmployee"
-                @keyup.enter="handleEmployeeSearch"
-
-                variant="outlined"
-                density="comfortable"
-                style="
-                  min-width: 160px;
-                  width: 160px;
-                  position: absolute;
-                  z-index: 2;
-                  transition: opacity 0.3s ease, visibility 0.3s ease;
-                "
-                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
-              />
-
-              <!-- v-select 用於選擇員工 -->
-              <v-select
-                v-model="inputSelectEmployee"
-                :items="formattedDesserts"
-                item-title="display"
-                item-value="emp_id"
-                :placeholder="placeholderTextForEmployee"
-                variant="outlined"
-                density="comfortable"
-                @update:modelValue="updateEmployeeFieldFromSelect"
-                style="
-                  min-width: 160px;
-                  width: 160px;
-                  position: relative;
-                  top: 23px;
-                  z-index: 1;
-                  transition: opacity 0.3s ease, visibility 0.3s ease;
-                "
-                :style="{ opacity: showMenu ? 1 : 0, visibility: showMenu ? 'visible' : 'hidden' }"
-              />
-            </div>
-
-            <!--客製化 手動推車/AGV切換按鍵-->
-            <div class="button-container">
-              <v-btn-toggle >
-                <v-btn
-                  variant="outlined"
-                  :style="{
-                    background: toggle_exclusive === 1 ? '#e67e22' : '#e7e9eb',
-                    color: toggle_exclusive === 1 ? '#fff' : '#000',
-                    fontWeight: '700'
-                  }"
-                  @click="setActive(1)"
-                >
-                  <v-icon right color="#003171">mdi-forklift</v-icon>
-                  <span>手動推車</span>
-                </v-btn>
-
-                <v-btn
-                  variant="outlined"
-                  :style="{
-                    background: toggle_exclusive === 2 ? '#27ae60' : '#e7e9eb',
-                    color: toggle_exclusive === 2 ? '#fff' : '#000',
-                    fontWeight: '700'
-                  }"
-                  @click="setActive(2)"
-                >
-                  <span>AGV送料</span>
-                  <v-icon right color="#003171">mdi-truck-flatbed</v-icon>
-                </v-btn>
-              </v-btn-toggle>
-            </div>
-
-            <!--客製化 備料送出按鍵-->
-            <v-btn
-              :disabled="c_isBlinking"
-              color="primary"
-              variant="outlined"
-              style="position:relative; left:50px; top:0px; font-weight:700; padding-left:8px;
-                    padding-right:8px;"
-              @click="onClickTrans"
-              ref="sendButton"
+        <!-- 客製化 '訂單編號' (order_num) 欄位的表頭 -->
+        <template v-slot:header.order_num="{ column }">
+          <v-hover v-slot="{ isHovering, props }">
+            <div
+              v-bind="props"
+              style="display: flex; align-items: center; justify-content: center; cursor: pointer;"
+              @click="toggleSort('order_num')"
             >
-              <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-              <span>{{ transport_message }}</span>
-            </v-btn>
-
-            <div style="display: flex; flex-direction: column; align-items: center;">
-              <span
-                style="position:relative; top:30px; right:180px;"
-                :style="{
-                  'fontSize': '14px',
-                  'display': 'inline-block',
-                  'min-width': '120px',
-                  'visibility': isCallForklift ? 'visible' : 'hidden',
-                }"
-              >
-                堆高機送料中
-              </span>
-
-              <!--客製化搜尋-->
-              <v-text-field
-                id="bar_code"
-
-                v-model="search"
-
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                single-line
-                style="position: relative; top: 55px; right: -50px; min-width: 150px;"
-                density="compact"
-              />
-
-              <!-- 客製化barcode輸入 -->
-              <v-text-field
-                id="bar_code"
-                v-model="bar_code"
-                :value="bar_code"
-                ref="barcodeInput"
-                @keyup.enter="handleBarCode"
-                hide-details="auto"
-                prepend-icon="mdi-barcode"
-                style="min-width:200px; position: relative; top: 25px; left:280px;"
-                class="align-center"
-                density="compact"
-              />
-            <!--
-            <v-switch
-              v-model="warehouse_in_all_pass"
-              color="indigo"
-              :label="`模式: ${warehouse_in_all_pass}`"
-              false-value="待完工"
-              true-value="待入庫"
-              hide-details
-            ></v-switch>
-            -->
+              <div style="right:50px; position:relative;">{{ column.title }}</div>
+              <div style="min-width: 24px;">
+                <!-- 僅在滑鼠移入或者正在排序的情況下顯示圖標 -->
+                <v-icon v-if="sortBy.includes('order_num') && isHovering" style="margin-left: 2px;">
+                  {{ sortDesc[sortBy.indexOf('order_num')] ? 'mdi-arrow-down' : 'mdi-arrow-up' }}
+                </v-icon>
+              </div>
             </div>
-          </v-card-title>
-        </v-card>
-      </template>
-
-      <!-- 客製化 '訂單編號' (order_num) 欄位的表頭 -->
-      <template v-slot:header.order_num="{ column }">
-        <v-hover v-slot="{ isHovering, props }">
-          <div
-            v-bind="props"
-            style="display: flex; align-items: center; justify-content: center; cursor: pointer;"
-            @click="toggleSort('order_num')"
-          >
-            <div style="right:50px; position:relative;">{{ column.title }}</div>
-            <div style="min-width: 24px;">
-              <!-- 僅在滑鼠移入或者正在排序的情況下顯示圖標 -->
-              <v-icon v-if="sortBy.includes('order_num') && isHovering" style="margin-left: 2px;">
-                {{ sortDesc[sortBy.indexOf('order_num')] ? 'mdi-arrow-down' : 'mdi-arrow-up' }}
-              </v-icon>
+            <div style="right:50px; position:relative; color:#0000FF; font-size:12px; margin-top:2px; font-weight: 600; text-align: center; padding-right: 22px;">
+              (工序)
             </div>
+          </v-hover>
+        </template>
+
+        <!-- 客製化 '物料編號' (material_num) 欄位的表頭 -->
+        <template v-slot:header.material_num="{ column }">
+          <div style="left:20px; position:relative;">{{ column.title }}</div>
+        </template>
+
+        <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 -->
+        <template v-slot:header.req_qty="{ column }">
+          <div style="text-align: center;">
+            <div>需求</div>
+            <div>數量</div>
           </div>
-          <div style="right:50px; position:relative; color:#0000FF; font-size:12px; margin-top:2px; font-weight: 600; text-align: center; padding-right: 22px;">
-            (工序)
+        </template>
+
+        <!-- 客製化 '領取數量' (ask_qty) 欄位的表頭 -->
+        <template v-slot:header.ask_qty="{ column }">
+          <div style="text-align: center;">
+            <div>領取</div>
+            <div>數量</div>
           </div>
-        </v-hover>
-      </template>
+        </template>
 
-      <!-- 客製化 '物料編號' (material_num) 欄位的表頭 -->
-      <template v-slot:header.material_num="{ column }">
-        <div style="left:20px; position:relative;">{{ column.title }}</div>
-      </template>
+        <!-- 客製化 '應完成總數量' (must_receive_end_qty) 欄位的表頭 -->
+        <template v-slot:header.must_receive_end_qty="{ column }">
+          <div style="text-align: center;">
+            <div>應完成</div>
+            <div>總數量</div>
+          </div>
+        </template>
 
-      <!-- 客製化 '作業數量' (req_qty) 欄位的表頭 -->
-      <template v-slot:header.req_qty="{ column }">
-        <div style="text-align: center;">
-          <div>需求</div>
-          <div>數量</div>
-        </div>
-      </template>
+        <!-- 客製化 '已完成總數' (total_completed_qty_num) 欄位的表頭 -->
+        <template v-slot:header.total_completed_qty_num="{ column }">
+          <div style="text-align: center;">
+            <div>已完成</div>
+            <div>總數量</div>
+          </div>
+        </template>
 
-      <!-- 客製化 '領取數量' (ask_qty) 欄位的表頭 -->
-      <template v-slot:header.ask_qty="{ column }">
-        <div style="text-align: center;">
-          <div>領取</div>
-          <div>數量</div>
-        </div>
-      </template>
+        <!-- 客製化 '完成數量' (receive_qty) 欄位的表頭 -->
+        <template v-slot:header.receive_qty="{ column }">
+          <div style="text-align: center;">
+            <div>完成</div>
+            <div>數量</div>
+          </div>
+        </template>
 
-      <!-- 客製化 '應完成總數量' (must_receive_end_qty) 欄位的表頭 -->
-      <template v-slot:header.must_receive_end_qty="{ column }">
-        <div style="text-align: center;">
-          <div>應完成</div>
-          <div>總數量</div>
-        </div>
-      </template>
+        <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 -->
+        <template v-slot:header.abnormal_qty="{ column }">
+          <div style="text-align: center;">
+            <div>異常</div>
+            <div>數量</div>
+          </div>
+        </template>
 
-      <!-- 客製化 '已完成總數' (total_completed_qty_num) 欄位的表頭 -->
-      <template v-slot:header.total_completed_qty_num="{ column }">
-        <div style="text-align: center;">
-          <div>已完成</div>
-          <div>總數量</div>
-        </div>
-      </template>
+        <!-- 自訂 index 欄位的資料欄位 -->
+        <template v-slot:item.index="{ item }">
+          <!-- 空白顯示 -->
+        </template>
 
-      <!-- 客製化 '完成數量' (receive_qty) 欄位的表頭 -->
-      <template v-slot:header.receive_qty="{ column }">
-        <div style="text-align: center;">
-          <div>完成</div>
-          <div>數量</div>
-        </div>
-      </template>
-
-      <!-- 客製化 '異常數量' (abnormal_qty) 欄位的表頭 -->
-      <template v-slot:header.abnormal_qty="{ column }">
-        <div style="text-align: center;">
-          <div>異常</div>
-          <div>數量</div>
-        </div>
-      </template>
-
-      <!-- 自訂 index 欄位的資料欄位 -->
-      <template v-slot:item.index="{ item }">
-        <!-- 空白顯示 -->
-      </template>
-
-      <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
-      <template v-slot:item.order_num="{ item }">
-        <div style="display: flex; align-items: center;">
-          <!--檢料完成(缺料)-->
-          <!--<div style="color: red; margin-right: 2px;" v-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial != 99">-->
-          <div style="color:red; margin-right:2px; right:50px; position:relative;" v-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial != 99">
-            <div>
-              {{ item.order_num }}&nbsp;&nbsp;
-              <span style="font-weight: 700; font-size: 16px;">缺料</span>
+        <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
+        <template v-slot:item.order_num="{ item }">
+          <div style="display: flex; align-items: center;">
+            <!--檢料完成(缺料)-->
+            <!--<div style="color: red; margin-right: 2px;" v-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial != 99">-->
+            <div style="color:red; margin-right:2px; right:50px; position:relative;" v-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial != 99">
+              <div>
+                {{ item.order_num }}&nbsp;&nbsp;
+                <span style="font-weight: 700; font-size: 16px;">缺料</span>
+              </div>
+              <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
             </div>
-            <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-          </div>
 
-          <!--檢料完成-->
-          <!--<div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial == 99">-->
-          <div style="color:blue; margin-right: 20px; right:50px; position:relative;" v-else-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial == 99">
-            <div>{{ item.order_num }}</div>
-            <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
-          </div>
+            <!--檢料完成-->
+            <!--<div style="color: blue; margin-right: 20px;" v-else-if="item.isAssembleStation3TakeOk && item.isAssembleStationShow && item.isLackMaterial == 99">-->
+            <div style="color:blue; margin-right: 20px; right:50px; position:relative;" v-else-if="item.isAssembleStationShow && item.input_end_disable && item.isLackMaterial == 99">
+              <div>{{ item.order_num }}</div>
+              <div style="color: #a6a6a6; font-size:12px;">{{ item.assemble_work }}</div>
+            </div>
 
-          <!--檢料還未完成-->
-          <div style="right:50px; position:relative; justify-content:flex-start" v-else>
-            <div>{{ item.order_num.trim() }}</div>
-            <div style="color: #a6a6a6; font-size:12px;">
-              {{ item.assemble_work }}
-              <span v-if="item.schedule_name" style="font-weight:600; font-size:12px; color:black;"> [{{ item.schedule_name }}]</span>
+            <!--檢料還未完成-->
+            <div style="right:50px; position:relative; justify-content:flex-start" v-else>
+              <div>{{ item.order_num.trim() }}</div>
+              <div style="color: #a6a6a6; font-size:12px;">
+                {{ item.assemble_work }}
+                <span v-if="item.schedule_name" style="font-weight:600; font-size:12px; color:black;">
+                  [{{ item.schedule_name }}]
+                </span>
+
+                <span
+                  v-if="item.is_abnormal_process"
+                  class="abnormal-process-text"
+                >
+                  -異常
+                </span>
+
+              </div>
             </div>
           </div>
-        </div>
-      </template>
+        </template>
 
-      <!-- 自訂 '物料編號' 欄位的資料欄位 -->
-      <template v-slot:item.material_num="{ item }">
-        <div>
-          <div>{{ item.material_num }}</div>
-          <div :style="getStatusStyle(item.assemble_process_num)">{{ item.assemble_process }}</div>
-        </div>
-      </template>
+        <!-- 自訂 '物料編號' 欄位的資料欄位 -->
+        <template v-slot:item.material_num="{ item }">
+          <div>
+            <div>{{ item.material_num }}</div>
+            <div :style="getStatusStyle(item.assemble_process_num)">{{ item.assemble_process }}</div>
+          </div>
+        </template>
 
-      <!-- 自訂 '需求數量' 欄位的資料欄位 -->
-      <!--<template v-slot:item.req_qty="{ item }">-->
+        <!-- 自訂 '需求數量' 欄位的資料欄位 -->
+        <!--<template v-slot:item.req_qty="{ item }">-->
+          <!--
+            v-bind="props":
+            使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
+            當滑鼠移入或移出該 div 時，就能觸發 isHovering 的變化。
+
+            isHovering:
+            根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
+          -->
         <!--
-          v-bind="props":
-          使用 v-bind 將 props 綁定到 div 上，使其具有 v-hover 的 hover 功能，
-          當滑鼠移入或移出該 div 時，就能觸發 isHovering 的變化。
+          <v-hover v-slot="{ isHovering, props }">
+            <div
+              v-bind="props"
+              style="position: relative; display: inline-block;"
+              @mouseenter="hoveredItemIndexForReqQty = index"
+              @mouseleave="hoveredItemIndexForReqQty = null"
+            >
+              <div>
+                <div>{{ item.req_qty }}</div>
+                <div style="color: #a6a6a6; font-size:12px;">{{ item.total_receive_qty }}</div>
+              </div>
 
-          isHovering:
-          根據是否 hover 自動變為 true 或 false，用來控制 span 中的文字顯示。
-        -->
-      <!--
-        <v-hover v-slot="{ isHovering, props }">
-          <div
-            v-bind="props"
-            style="position: relative; display: inline-block;"
-            @mouseenter="hoveredItemIndexForReqQty = index"
-            @mouseleave="hoveredItemIndexForReqQty = null"
-          >
-            <div>
-              <div>{{ item.req_qty }}</div>
-              <div style="color: #a6a6a6; font-size:12px;">{{ item.total_receive_qty }}</div>
+              <span
+                v-if="isHovering"
+                style="
+                  position: absolute;
+                  top: -5px;
+                  left: 35px;
+                  background-color: white;
+                  padding: 5px;
+                  border-radius: 5px;
+                  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+                  font-size: 12px;
+                  color: #333;
+                  white-space: nowrap;
+                "
+              >
+                目前領取順序為[
+                <span v-for="(pickItem, idx) in item.pickEnd" :key="idx">
+                  {{ pickItem }}
+                  <span v-if="idx < item.pickEnd.length - 1">, </span>
+                </span>
+                ]
+              </span>
             </div>
+          </v-hover>
+        </template>
+      -->
 
+        <!-- 自訂 '應完成數量'欄位 -->
+        <template v-slot:item.must_receive_end_qty="{ item }">
+          {{ item.must_receive_end_qty }}
+        </template>
+
+        <!-- 自訂 '完成數量' 輸入欄位 -->
+        <template v-slot:item.receive_qty="{ item }">
+          <div style="position: relative; display: inline-block;">
+            <v-text-field
+              v-model="item.receive_qty"
+              dense
+              hide-details
+              style="max-width: 60px; text-align: center; z-index: 1;"
+              :id="`receiveQtyID-${item.assemble_id}`"
+              @keydown="handleKeyDown"
+              @update:modelValue="checkReceiveQty(item)"
+              @update:focused="(focused) => checkTextEditField(focused, item)"
+              @keyup.enter="updateItem2(item)"
+              :disabled="item.input_end_disable"
+            />
             <span
-              v-if="isHovering"
+              v-show="item.tooltipVisible"
               style="
                 position: absolute;
-                top: -5px;
-                left: 35px;
+                left: 60px;
+                top: 0;
+                z-index: 2;
                 background-color: white;
-                padding: 5px;
-                border-radius: 5px;
-                box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
-                font-size: 12px;
-                color: #333;
+                padding: 0;
+                min-width: 120px;
                 white-space: nowrap;
-              "
+                color:red;
+                text-align: left;
+                font-weight: 700;"
             >
-              目前領取順序為[
-              <span v-for="(pickItem, idx) in item.pickEnd" :key="idx">
-                {{ pickItem }}
-                <span v-if="idx < item.pickEnd.length - 1">, </span>
-              </span>
-              ]
+              {{ receive_qty_alarm }}
             </span>
           </div>
-        </v-hover>
-      </template>
-    -->
+        </template>
 
-      <!-- 自訂 '應完成數量'欄位 -->
-      <template v-slot:item.must_receive_end_qty="{ item }">
-        {{ item.must_receive_end_qty }}
-      </template>
+        <!-- 自訂 '異常數量' 輸入欄位 -->
+        <template v-slot:item.abnormal_qty = "{ item }">
+          <div style="position: relative; display: inline-block;">
+            <v-text-field
+              v-model="item.abnormal_qty"
+              dense
+              hide-details
+              style="max-width: 60px; text-align: center; z-index: 1;"
+              :id="`abnormalQtyID-${item.assemble_id}`"
+              @keydown="handleKeyDown"
 
-      <!-- 自訂 '完成數量' 輸入欄位 -->
-      <template v-slot:item.receive_qty="{ item }">
-        <div style="position: relative; display: inline-block;">
-          <v-text-field
-            v-model="item.receive_qty"
-            dense
-            hide-details
-            style="max-width: 60px; text-align: center; z-index: 1;"
-            :id="`receiveQtyID-${item.assemble_id}`"
-            @keydown="handleKeyDown"
-            @update:modelValue="checkReceiveQty(item)"
-            @update:focused="(focused) => checkTextEditField(focused, item)"
-            @keyup.enter="updateItem2(item)"
-            :disabled="item.input_end_disable"
-          />
-          <span
-            v-show="item.tooltipVisible"
-            style="
-              position: absolute;
-              left: 60px;
-              top: 0;
-              z-index: 2;
-              background-color: white;
-              padding: 0;
-              min-width: 120px;
-              white-space: nowrap;
-              color:red;
-              text-align: left;
-              font-weight: 700;"
-          >
-            {{ receive_qty_alarm }}
-          </span>
-        </div>
-      </template>
+              @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
+              @update:focused="(focused) => checkAbnormalField(focused, item)"
 
-      <!-- 自訂 '異常數量' 輸入欄位 -->
-      <template v-slot:item.abnormal_qty = "{ item }">
-        <div style="position: relative; display: inline-block;">
-          <v-text-field
-            v-model="item.abnormal_qty"
-            dense
-            hide-details
-            style="max-width: 60px; text-align: center; z-index: 1;"
-            :id="`abnormalQtyID-${item.assemble_id}`"
-            @keydown="handleKeyDown"
-
-            @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
-            @update:focused="(focused) => checkAbnormalField(focused, item)"
-
-            :disabled="item.input_abnormal_disable"
-          />
-          <span
-            v-show="item.abnormal_tooltipVisible"
-            style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
-          >
-            {{ abnormal_qty_alarm }}
-          </span>
-        </div>
-      </template>
-
-      <!-- 自訂 '說明' 欄位的資料欄位 -->
-      <!--
-      <template v-slot:item.comment="{ item }">
-        <div>
-          <div style="text-align:left; color: #669999; font-size:12px; font-family: '微軟正黑體', sans-serif;">{{ item.comment }}</div>
-        </div>
-      </template>
-      -->
-
-      <!-- 自訂 '結束' 按鍵欄位 -->
-      <!--
-      z-index: 2;
-              transition: opacity 0.3s ease, visibility 0.3s ease;
-              "
-            :style="{
-              opacity: enableDialogBtn ? 1 : 0,
-              visibility: enableDialogBtn ? 'visible' : 'hidden'}"
-      -->
-
-      <template v-slot:item.action="{ item }">
-        <div class="action-cell">
-          <!--計時器-->
-          <span
-            style="
-              color:#4000ff;
-              width:88px;
-              min-width:88px;
-              font-variant-numeric:tabular-nums;"
-          >
-            <TimerDisplay
-              :key="makeKey(item)"
-
-              :fontSize="16"
-              :autoStart="false"
-              :show="true"
-
-              :ref="el => setTimerEl(item, el)"
-
-              :initialMs="getInitialMs(item)"
-
-              :isPaused="isPausedOf(item)"
-
-              :displayMs="closedDisplayMs(item)"
-
-              @update:time="ms => onTickOf(makeKey(item), item, ms)"
-
-              class="me-2"
-              style="min-width:88px; display:inline-block;"
+              :disabled="item.input_abnormal_disable"
             />
-          </span>
-          <!-- 自訂 暫停/開始 按鍵欄位-->
-          <v-btn
-            size="small"
-            density="comfortable"
-            variant="tonal"
-            :prepend-icon = "getIcon(isPausedOf(item))"
-            :disabled="item.isAssembleStationShow && item.input_end_disable"
-            :style="{ background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B', color: isPausedOf(item) ? '#fff' : '#000' }"
+            <span
+              v-show="item.abnormal_tooltipVisible"
+              style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
+            >
+              {{ abnormal_qty_alarm }}
+            </span>
+          </div>
+        </template>
 
-            @click="onPauseToggle(item)"
-            style="font-size:13px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
-          >
-            <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
-            {{ isPausedOf(item) ? '開始' : '暫停' }}
-          </v-btn>
+        <!-- 自訂 '說明' 欄位的資料欄位 -->
+        <!--
+        <template v-slot:item.comment="{ item }">
+          <div>
+            <div style="text-align:left; color: #669999; font-size:12px; font-family: '微軟正黑體', sans-serif;">{{ item.comment }}</div>
+          </div>
+        </template>
+        -->
 
-          <!-- 自訂 '結束' 按鍵欄位 -->
-          <v-btn
-            size="small"
-            density="comfortable"
-            class="mr-2"
-            variant="tonal"
-            :disabled="item.input_end_disable"
-            @click="onClickEnd(item)"
-            color="indigo-darken-4"
-            style="
-              font-size: 13px;
-              font-weight: 700;
-              font-family: '微軟正黑體', sans-serif;
-              padding: 0 5px !important;
-            "
-          >
-            結 束
-            <v-icon color="indigo-darken-4" start>mdi-close-circle-outline</v-icon>
-          </v-btn>
+        <!-- 自訂 '結束' 按鍵欄位 -->
+        <!--
+        z-index: 2;
+                transition: opacity 0.3s ease, visibility 0.3s ease;
+                "
+              :style="{
+                opacity: enableDialogBtn ? 1 : 0,
+                visibility: enableDialogBtn ? 'visible' : 'hidden'}"
+        -->
 
-          <!-- 自訂 '異常' 按鍵欄位 -->
-          <v-btn
-            size="small"
-            density="comfortable"
-            variant="tonal"
+        <template v-slot:item.action="{ item }">
+          <div class="action-cell">
+            <!--計時器-->
+            <span
+              style="
+                color:#4000ff;
+                width:88px;
+                min-width:88px;
+                font-variant-numeric:tabular-nums;"
+            >
+              <TimerDisplay
+                :key="makeKey(item)"
 
-            @click="onClickAbnormal(item)"
-            style="padding: 0 5px !important;"
-            :style="getBtnStyle(item)"
-            :disabled="item.input_abnormal_disable"
-          >
-            異 常
-            <v-icon start :style="getBtnStyle(item)">mdi-alert-circle-outline</v-icon>
-          </v-btn>
-        </div>
-      </template>
+                :fontSize="16"
+                :autoStart="false"
+                :show="true"
 
-      <template #no-data>
-        <strong><span style="color: red;">目前沒有資料</span></strong>
-      </template>
-    </v-data-table>
+                :ref="el => setTimerEl(item, el)"
+
+                :initialMs="getInitialMs(item)"
+
+                :isPaused="isPausedOf(item)"
+
+                :displayMs="closedDisplayMs(item)"
+
+                @update:time="ms => onTickOf(makeKey(item), item, ms)"
+
+                class="me-2"
+                style="min-width:88px; display:inline-block;"
+              />
+            </span>
+            <!-- 自訂 暫停/開始 按鍵欄位-->
+            <v-btn
+              size="small"
+              density="comfortable"
+              variant="tonal"
+              :prepend-icon = "getIcon(isPausedOf(item))"
+              :disabled="item.isAssembleStationShow && item.input_end_disable"
+              :style="{ background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B', color: isPausedOf(item) ? '#fff' : '#000' }"
+
+              @click="onPauseToggle(item)"
+              style="font-size:13px; font-weight:700; font-family: '微軟正黑體', sans-serif;"
+            >
+              <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
+              {{ isPausedOf(item) ? '開始' : '暫停' }}
+            </v-btn>
+
+            <!-- 自訂 '結束' 按鍵欄位 -->
+            <v-btn
+              size="small"
+              density="comfortable"
+              class="mr-2"
+              variant="tonal"
+              :disabled="item.input_end_disable"
+              @click="onClickEnd(item)"
+              color="indigo-darken-4"
+              style="
+                font-size: 13px;
+                font-weight: 700;
+                font-family: '微軟正黑體', sans-serif;
+                padding: 0 5px !important;
+              "
+            >
+              結 束
+              <v-icon color="indigo-darken-4" start>mdi-close-circle-outline</v-icon>
+            </v-btn>
+
+            <!-- 自訂 '異常' 按鍵欄位 -->
+            <v-btn
+              size="small"
+              density="comfortable"
+              variant="tonal"
+
+              @click="onClickAbnormal(item)"
+              style="padding: 0 5px !important;"
+              :style="getBtnStyle(item)"
+              :disabled="item.input_abnormal_disable"
+            >
+              異 常
+              <v-icon start :style="getBtnStyle(item)">mdi-alert-circle-outline</v-icon>
+            </v-btn>
+          </div>
+        </template>
+
+        <template #no-data>
+          <strong><span style="color: red;">目前沒有資料</span></strong>
+        </template>
+      </v-data-table>
+    </div>
   </div>
   </template>
 
@@ -575,6 +601,9 @@ import { onBeforeRouteLeave } from 'vue-router';
 import TimerDisplay from "./TimerDisplayBegin.vue";
 import { useProcessTimer } from "../mixins/useProcessTimerBegin.js";
 import ConfirmDialog from "./confirmDialog";
+
+//import ForkliftLoading from "./ForkliftLoading.vue";
+import TransportLoading from './TransportLoading.vue'
 
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
@@ -640,6 +669,14 @@ const endTitle = ref('完成組裝生產工單');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
+const tableWrapRef = ref(null);
+const tableWidth = ref(0);
+const transportLeft = ref(0);
+const transportWidth = ref(0);
+const transportTop   = ref(0);
+
+let resizeObserver = null;
+
 const transport_message = ref('組裝完成自動送出')
 
 const history = ref(false);               // 設定歷史紀錄為不顯示
@@ -680,7 +717,7 @@ const footerOptions = [
 
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
-  { title: '訂單編號', sortable: true, key: 'order_num', width:200 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:250 },
   { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
@@ -715,7 +752,6 @@ const outputStatus = ref({
   step2: null
 });
 
-//const currentUser = ref({});
 const currentUser = ref(null);
 
 const componentKey = ref(0)                 // key值用於強制重新渲染
@@ -735,6 +771,7 @@ const pagination = reactive({
   page: 1,
 });
 
+/*
 const default_assemble_steps = ref([
   {"id": 1, "name": "組立", "checked": true},
   {"id": 2, "name": "鋼珠", "checked": false},
@@ -754,7 +791,9 @@ const default_assemble_steps = ref([
   {"id": 16, "name": "自動組立", "checked": false},
   {"id": 17, "name": "自動鎖緊", "checked": false},
 ])
+*/
 
+/*
 const default_check_steps = ref([
   { id: 1, name: "檢驗", checked: true },
   { id: 2, name: "壓配+鎖螺絲", checked: false },
@@ -768,6 +807,7 @@ const default_check_steps = ref([
   { id: 10, name: "左右螺母", checked: false },
   { id: 11, name: "鎖螺絲", checked: false },
 ])
+*/
 
 const snackbar = ref(false);
 const snackbar_info = ref('');
@@ -813,8 +853,7 @@ const getUid = () => (currentUser.value?.empID ? String(currentUser.value?.empID
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
-// makeKey 一律走 keyOf + getUid，避免 undefined
-const makeKey = (row) => keyOf(row, getUid())
+const makeKey = (row) => keyOf(row, getUid())     // keyOf + getUid，避免 undefined
 
 function debugTimerMounts() {
   console.log('[End][timerElMap] size=', timerElMap.size)
@@ -882,53 +921,6 @@ async function handleSyncKey(syncKey) {
   if (row) {
     await ensureRestored(row, u)     // ✅ 關鍵：讓 b 在 End 跑起來
   }
-}
-/*
-function getScheduleName(item) {
-  if (!item) return ''
-
-  console.log("getScheduleName...", item)
-  const ps = item.process_steps || {}
-  const workNum = String(item.work_num || '')
-  const scheduleId = Number(item.schedule_id)
-
-  if (!scheduleId) return ''
-  console.log("index, ps, workNum, work_num ,scheduleId:", item.index, ps, workNum, item.work_num, scheduleId)
-  let steps = []
-
-  if (workNum.includes('B109')) {
-    steps = Array.isArray(ps.assemble) ? ps.assemble : []
-  } else if (workNum.includes('B110')) {
-    steps = Array.isArray(ps.check) ? ps.check : []
-  } else {
-    return ''
-  }
-
-  const found = steps.find(x => Number(x.id) === scheduleId)
-  return found?.name || ''
-}
-*/
-function resolveScheduleName(item) {
-  if (!item) return ''
-
-  const ps = item.process_steps || {}
-  const workNum = String(item.work_num || '')
-  const scheduleId = Number(item.schedule_id)
-
-  if (!scheduleId) return ''
-
-  let steps = []
-
-  if (workNum.includes('B109')) {
-    steps = Array.isArray(ps.assemble) ? ps.assemble : []
-  } else if (workNum.includes('B110')) {
-    steps = Array.isArray(ps.check) ? ps.check : []
-  } else {
-    return ''
-  }
-
-  const found = steps.find(x => Number(x.id) === scheduleId)
-  return found?.name || ''
 }
 
 // === watch ===
@@ -1014,6 +1006,20 @@ const formattedDesserts = computed(() =>
 
 const c_isBlinking = computed(() => selectedItems.value.length === 0);
 
+const hasSelectedSendableRows = computed(() => {
+  const selectedIdx = Array.isArray(selectedItems.value)
+    ? selectedItems.value
+    : []
+
+  return selectedIdx.some(idx => {
+    const row = materials_and_assembles_by_user.value.find(
+      item => item.index === idx
+    )
+
+    return canSendToWarehouse(row)
+  })
+})
+
 const todayStr = computed(() => {
   const today = new Date()
   const year = today.getFullYear()
@@ -1052,6 +1058,17 @@ onMounted(async () => {
 
   console.log(`估算螢幕尺寸約為：${diagonalInches} 吋`);
   //+++
+
+  // ###
+  await nextTick()           // 等 DOM 真正 render 完
+  calcTransportRange()
+
+  resizeObserver = new ResizeObserver(() => {
+    updateTableWidth()
+  })
+
+  resizeObserver.observe(tableWrapRef.value)
+  // ###
 
   // 阻止直接後退，但保留 Vue Router 的 state
   window.history.replaceState(window.history.state, '', document.URL);
@@ -1268,11 +1285,24 @@ onMounted(async () => {
         console.warn('沒有選取任何項目');
         return;
       }
+      //
+      const sendableIdx = selectedIdx.filter(idx => {
+        const row = materials_and_assembles_by_user.value.find(
+          item => item.index === idx
+        )
+        return canSendToWarehouse(row)
+      })
+
+      if (sendableIdx.length === 0) {
+        console.warn('選取資料沒有可送出的完成列')
+        return
+      }
+      //
 
       // === 步驟1：更新 Material/Assemble 顯示狀態與欄位 ===
       let step1Success = 0;
-
-      for (const idx of selectedIdx) {
+      //for (const idx of selectedIdx) {
+      for (const idx of sendableIdx) {
         const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
         if (!rec) {
           console.warn('找不到資料，index =', idx);
@@ -1344,7 +1374,8 @@ onMounted(async () => {
       // === 步驟2：建立 Process + 更新完成數量與顯示 ===
       let step2Success = 0;
 
-      for (const idx of selectedIdx) {
+      //for (const idx of selectedIdx) {
+      for (const idx of sendableIdx) {
         const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
         if (!rec) continue;
         console.log('targetItem:', rec);
@@ -1453,9 +1484,23 @@ onMounted(async () => {
         console.warn('沒有選取任何項目');
         return;
       }
+      //
+      const sendableIdx = selectedIdx.filter(idx => {
+        const row = materials_and_assembles_by_user.value.find(
+          item => item.index === idx
+        )
+        return canSendToWarehouse(row)
+      })
+
+      if (sendableIdx.length === 0) {
+        console.warn('選取資料沒有可送出的完成列')
+        return
+      }
+      //
 
       // === 步驟1：狀態欄位更新（成品站 / 等待入庫 / 關閉組裝站顯示 / 手動搬運標記 等）===
-      for (const idx of selectedIdx) {
+      //for (const idx of selectedIdx) {
+      for (const idx of sendableIdx) {
         const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
         if (!rec) {
           console.warn('找不到資料，index =', idx);
@@ -1539,7 +1584,8 @@ onMounted(async () => {
       console.log('forklift 運行 Period    :', transPeriodTime);
 
       // === 步驟2：建立 Process（成品區）＋ 完成數量寫回 ===
-      for (const idx of selectedIdx) {
+      //for (const idx of selectedIdx) {
+      for (const idx of sendableIdx) {
         const rec = materials_and_assembles_by_user.value.find(kk => kk.index === idx);
         if (!rec) continue;
         console.log('targetItem:', rec);
@@ -1718,7 +1764,19 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => window.removeEventListener('storage', onStorageSync))
+onBeforeUnmount(() => {
+  // 移除 storage 事件
+  window.removeEventListener('storage', onStorageSync)
+
+  // ###
+  if (resizeObserver && tableWrapRef.value) {
+    resizeObserver.unobserve(tableWrapRef.value)
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  // ###
+})
+
 
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時）
@@ -1746,6 +1804,52 @@ onBeforeMount(() => {
 });
 
 //=== method ===
+
+const updateTableWidth = () => {
+  if (!tableWrapRef.value) return
+  tableWidth.value = tableWrapRef.value.clientWidth
+}
+
+const calcTransportRange = () => {
+  if (!sendButton.value || !tableWrapRef.value) return
+
+  const btnEl = sendButton.value.$el ?? sendButton.value      // 取得 DOM 實體
+  const btnRect = btnEl.getBoundingClientRect()               // 取得整個畫面（viewport）座標
+  const wrapRect = tableWrapRef.value.getBoundingClientRect() // 取得「動畫定位容器（table-area）」的位置
+
+  /*
+  btnRect = {
+    left, right, top, bottom, width, height
+  }
+
+  wrapRect = {
+    left, top, width, height
+  }
+
+  這些座標都是「相對於瀏覽器視窗（viewport）」，不是相對於 v-data-table
+  */
+
+  const GAP_X = 10
+  const ICON_H = 44         // forklift / agv 的高度
+  const TRACK_OFFSET = 6
+
+  // 起點：按鍵右側 + 10（換算成 table-area 內座標）
+  // 從 table-area 的左邊開始算 → 到「按鍵右邊 + 10px」
+  const startX = btnRect.right - wrapRect.left + GAP_X
+  // 終點：table-area 的右邊界（用 width 即可）
+  const endX   = wrapRect.width
+
+  const topY =
+    btnRect.top
+    + btnRect.height
+    - ICON_H
+    - TRACK_OFFSET
+    - wrapRect.top
+
+  transportLeft.value  = Math.round(startX)
+  transportWidth.value = Math.max(0, Math.round(endX - startX))
+  transportTop.value   = Math.max(0, Math.round(topY))
+}
 
 //== timerDisplay用 ==
 
@@ -2295,22 +2399,26 @@ const getBtnStyle = (item) => {
     //paddingLeft: '4px',
     //paddingRright: '4px',
     background: computed(() => {
-      if (item.process_step_code == 3) {
-        return item.isAssembleFirstAlarm ? '#e8eaf6' : '#ff0000'
-      } else {
-        return item.alarm_enable ? '#e8eaf6' : '#ff0000'
-      }
+      return item.input_abnormal_disable ? '#e8eaf6' : '#ff0000'
+      //if (item.process_step_code == 3) {
+      //  return item.isAssembleFirstAlarm ? '#e8eaf6' : '#ff0000'
+      //} else {
+      //  return item.alarm_enable ? '#e8eaf6' : '#ff0000'
+      //}
     }).value,
 
     color: computed(() => {
-      if (item.process_step_code == 3) {
-        return item.isAssembleFirstAlarm ? '#000' : '#fff'
-      } else {
-        return item.alarm_enable ? '#000' : '#fff'
-      }
+      return item.input_abnormal_disable ? '#000' : '#fff'
+      //if (item.process_step_code == 3) {
+      //  return item.isAssembleFirstAlarm ? '#000' : '#fff'
+      //} else {
+      //  return item.alarm_enable ? '#000' : '#fff'
+      //}
     }).value,
   }
 }
+
+
 
 const setActive = (value) => {
   toggle_exclusive.value = value;       // 設置當前活動按鈕
@@ -2380,11 +2488,14 @@ const toggleSelect = (item) => {
   }
 };
 
-const onClickTrans = () => {
+const onClickTrans = async () => {
   if (toggle_exclusive.value == 1) {
-    callForklift();   //人力推車
+    await nextTick()      // 確保 DOM 是最新位置
+    calcTransportRange()
+
+    callForklift();       //人力推車
   } else {
-    callAGV();        // KUKA AGV
+    callAGV();            // KUKA AGV
   }
 };
 
@@ -3112,7 +3223,8 @@ const onClickAbnormal = async (rawItem) => {
     // ===== 4) 後端更新（盡量併發）=====
     // A. 先把 alarm 與 material 狀態落地（你的語意：true=正常、false=異常）
     await Promise.all([
-      updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: false }),
+      //updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: false }),
+      updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: true }),
       updateMaterial({ id: current_material_id, record_name: 'isAssembleAlarm', record_data: false }),
     ])
 
@@ -3147,6 +3259,7 @@ const onClickAbnormal = async (rawItem) => {
       copy_id: current_assemble_id,
       must_receive_qty: abnormalQty,
       pre_must_receive_qty: newRemain,
+      copy_mode: 'abnormal_click',   // 異常鍵
     })
 
     console.log('copyAssembleForDifference res:', res?.status, res?.message)
@@ -3332,6 +3445,12 @@ const toNum = (v, def = 0) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : def
 }
+
+const canSendToWarehouse = (item) => {
+  return item?.isAssembleStationShow === true ||
+         item?.isAssembleStationShow === 1 ||
+         item?.isAssembleStationShow === '1'
+}
 </script>
 
 <style lang="scss" scoped>
@@ -3486,7 +3605,7 @@ const toNum = (v, def = 0) => {
 // 選擇框
 :deep(span.custom-header) {
   display: block;
-  width: 80px;      // 設定最小寬度
+  width: 80px;            // 設定最小寬度
 }
 
 // 客製化 手推車/AGV切換按鍵
@@ -3495,6 +3614,7 @@ const toNum = (v, def = 0) => {
   width: fit-content;     // 可調整寬度以適應按鈕
 
   top: 0px;
+  transform: translateX(40px);
 }
 
 .hidden-column {
@@ -3529,7 +3649,6 @@ const toNum = (v, def = 0) => {
 
 .blue-text {
   color: #003171;   // 設置字體顏色為深藍色
-  //color: red;
   font-weight: 700;
 }
 
@@ -3552,6 +3671,23 @@ const toNum = (v, def = 0) => {
 :deep(.employee-select .v-field input::placeholder) {
   color: #1976d2 !important;
   opacity: 1;
+}
+
+.abnormal-process-text {
+  color: red;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.table-area{
+  position: relative;   // 讓 overlay 以這個區塊為定位基準
+}
+
+// 讓 TransportLoading 浮起來，不佔 layout
+.table-area :deep(.wrap){
+  position: absolute !important;
+  z-index: 50;
+  pointer-events: none; /* 避免擋住 table 點擊 */
 }
 </style>
 

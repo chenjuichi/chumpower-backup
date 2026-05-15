@@ -337,30 +337,9 @@
             <v-col cols="3" />
           </v-row>
           <div class="pa-4 text-center">
-            <!-- 裝配報工紀錄 dialog -->
-            <v-dialog
-              v-model="process_dialog"
-              width="1260"
-              max-width="95vw"
-              scrollable
-
-              persistent
-            >
-              <v-card
-                ref="dragCard"
-                class="draggable-dialog"
-                :style="dialogStyleForTop"
-              >
-                <v-card-title
-                  class="drag-handle"
-                  style="
-                    cursor: move;
-                    background:#1b4965;
-                    color:white;
-                    user-select:none;
-                  "
-                  @mousedown="startDrag"
-                >
+            <v-dialog v-model="process_dialog" min-width="1260px">
+              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   裝配報工紀錄 -
                   <span style="font-size: 20px;">{{ current_order_num }}</span>
                   <v-fade-transition mode="out-in">
@@ -415,22 +394,8 @@
                         <td>{{ process_item.seq_num }}</td>
                         <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
                           {{ process_item.process_type }}
-                          <!--<span style="color:red">{{ process_item.normal_type }}</span>-->
-
-                          <span v-if="process_item.normal_type" style="color:red; font-weight:700;">
-                            {{ process_item.normal_type }}
-                          </span>
-
-                          <span v-if="process_item.abnormal_message" style="color:#d32f2f; font-weight:700; margin-left:4px;">
-                            {{ process_item.abnormal_message }}
-                          </span>
-
-                          <span
-                            v-if="process_item.schedule_name && !String(process_item.process_type).includes('成品入庫')"
-                            style="font-weight:600; font-size:12px; color:black;"
-                          >
-                            [{{ process_item.schedule_name }}]
-                          </span>
+                          <span style="color:red">{{ process_item.normal_type }}</span>
+                          <span v-if="process_item.schedule_name" style="font-weight:600; font-size:12px; color:black;">[{{ process_item.schedule_name }}]</span>
                         </td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
@@ -760,19 +725,6 @@ const switchValue = ref("OFF");
 //const switchValue_string = ref("顯示訂單編號");
 const switchValue_string = ref("只顯示未完成訂單編號");
 
-//=======
-
-const dialogX = ref(0)
-const dialogY = ref(0)
-
-const isDragging = ref(false)
-
-const startMouseX = ref(0)
-const startMouseY = ref(0)
-
-const startDialogX = ref(0)
-const startDialogY = ref(0)
-
 //=== watch ===
 setupGetBomsWatcher();
 
@@ -862,16 +814,6 @@ watch([dpInternal, dpRange], () => {
 }, { deep: true })
 
 //=== computed ===
-
-const dialogStyleForTop = computed(() => ({
-  transform: `translate(${dialogX.value}px, ${dialogY.value}px)`,
-  maxHeight: processes.value.length > 5 ? '500px' : 'unset',
-  overflowY: processes.value.length > 5 ? 'auto' : 'unset'
-}))
-
-const dialogStyle = computed(() => ({
-  transform: `translate(${dialogX.value}px, ${dialogY.value}px)`
-}))
 
 /*
 page：第幾頁（1-based）
@@ -1607,51 +1549,6 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
-/*
-const startDrag = (e) => {
-  isDragging.value = true
-
-  startMouseX.value = e.clientX
-  startMouseY.value = e.clientY
-
-  startDialogX.value = dialogX.value
-  startDialogY.value = dialogY.value
-
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
-}
-*/
-const onDrag = (e) => {
-  if (!isDragging.value) return
-
-  const dx = e.clientX - startMouseX.value
-  const dy = e.clientY - startMouseY.value
-
-  dialogX.value = startDialogX.value + dx
-  dialogY.value = startDialogY.value + dy
-}
-
-const stopDrag = () => {
-  isDragging.value = false
-
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-}
-
-const startDrag = (e) => {
-  e.preventDefault()
-
-  isDragging.value = true
-
-  startMouseX.value = e.clientX
-  startMouseY.value = e.clientY
-
-  startDialogX.value = dialogX.value
-  startDialogY.value = dialogY.value
-
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
-}
 </script>
 
 <style lang="scss" scoped>
@@ -2087,24 +1984,5 @@ const startDrag = (e) => {
 
 :deep(.v-radio .v-label) {
   color:blue;
-}
-
-.abnormal-type {
-  color: red;
-  font-weight: 700;
-}
-
-.abnormal-msg {
-  color: #d32f2f;
-  font-weight: 700;
-  margin-left: 4px;
-}
-
-.draggable-dialog {
-  position: relative;
-}
-
-.drag-handle {
-  cursor: move;
 }
 </style>

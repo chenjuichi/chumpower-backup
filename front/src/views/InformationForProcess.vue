@@ -313,8 +313,15 @@
           </v-row>
 
           <div class="pa-4 text-center">
-            <v-dialog v-model="process_dialog" min-width="1260px">
-              <v-card :style="{ maxHeight: boms.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }">
+            <v-dialog
+              v-model="process_dialog"
+              min-width="1260px"
+              max-width="95vw"
+              scrollable
+            >
+              <v-card
+                :style="{ maxHeight: processes.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }"
+              >
                 <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
                   加工報工紀錄 -
                   <span style="font-size: 20px;">{{ current_order_num }}</span>

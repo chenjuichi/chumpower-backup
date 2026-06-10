@@ -279,6 +279,7 @@
               <!--客製化搜尋-->
               <v-text-field
                 v-model="search"
+                label="資料搜尋"
 
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
@@ -291,10 +292,12 @@
               <!-- 客製化barcode輸入 -->
               <v-text-field
                 v-model="bar_code"
+                label="條碼"
+
                 :value="bar_code"
                 ref="barcodeInput"
                 @keyup.enter="handleBarCode"
-                hide-details="auto"
+                hide-details
                 prepend-icon="mdi-barcode"
                 style="min-width:200px; position: relative; top: 18px;"
                 class="align-center"
@@ -626,7 +629,6 @@
         <strong><span style="color: red;">目前沒有資料</span></strong>
       </template>
     </v-data-table>
-
   </div>
 </div>
 </template>

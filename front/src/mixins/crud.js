@@ -84,6 +84,8 @@ export const materials = ref([]);
 // for listWarehouseForAssemble
 export const warehouses = ref([]);
 
+export const warehouse_history = ref([]);
+
 // for getProcessesByOrderNum
 export const processes = ref([]);
 
@@ -115,6 +117,7 @@ export const begin_count = ref(0);
 export const end_count = ref(0);
 
 // for listWorkingOrderStatus
+export const not_prepare_count = ref(0);
 export const order_count = ref(0);
 export const prepare_count = ref(0);
 export const assemble_count = ref(0);
@@ -298,10 +301,29 @@ export const apiOperation = (operation, path, payload) => {
             assembles_active_user_count.value = res.data.assemble_active_users;
             temp_isLackMaterial.value = res.data.temp_isLackMaterial;
           }
-
+/*
           if (path == '/listInformations') {
             informations.value = [...res.data.informations];
+            return res.data;
           }
+*/
+          if (path == '/listInformations') {
+  informations.value = [...(res.data.informations || [])];
+
+  not_prepare_count.value =
+    res.data.status_counts?.not_prepare || 0;
+
+  prepare_count.value =
+    res.data.status_counts?.prepare || 0;
+
+  assemble_count.value =
+    res.data.status_counts?.assemble || 0;
+
+  warehouse_count.value =
+    res.data.status_counts?.warehouse || 0;
+
+  return res.data;
+}
 
           if (path == '/listProducts') {
             return res.data
@@ -393,11 +415,16 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
               //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
-              path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+              //path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
+              path == '/updateModifyMaterialAndBoms'||
               path == '/copyFile' || path == '/updateAssembleAlarmMessage' || path == '/login2' ||
               path == 'updateBomXorReceive') {
             //console.log("res.data:", res.data);
             return res.data.status;
+          }
+
+          if (path == '/updateAssembleProcessStep') {
+            return res.data;
           }
 
           if (path == '/getUsersDepsProcesses') {
@@ -539,6 +566,10 @@ export const apiOperation = (operation, path, payload) => {
             warehouses.value = [...res.data.warehouse_for_assemble];
           }
 
+          if (path == '/getWarehouseHistory') {
+            warehouse_history.value = [...res.data.warehouse_history];
+          }
+
           if (path == '/getProcessesByOrderNum') {
             //console.log("hello, test")
             //processes.value = [...res.data.processes];
@@ -598,11 +629,30 @@ export const apiOperation = (operation, path, payload) => {
             return res.data.content;
           }
 
+          //if (path == '/getBoms') {
+          //  //console.log("res.data.boms:", res.data.boms);
+          //  temp_boms.value = [...res.data.boms];
+          //  console.log("getBoms, fun, boms:", temp_boms.value)
+          //
+          //  currentBoms.value = res.data.boms;
+          //  list_table_is_ok.value = true;
+          //}
+          //
           if (path == '/getBoms') {
-            //console.log("res.data.boms:", res.data.boms);
+            const rows = res.data.boms || []
+
+            boms.value = rows
+            currentBoms.value = rows
+            list_table_is_ok.value = true;
+            return rows
+          }
+
+          if (path == '/getBomAll') {
             temp_boms.value = [...res.data.boms];
+            console.log("getBomAll, fun, boms:", temp_boms.value)
             currentBoms.value = res.data.boms;
             list_table_is_ok.value = true;
+            //return res.data.boms || [];
           }
 
           if (path == '/getOrderPickedBoms') {
@@ -624,7 +674,6 @@ export const apiOperation = (operation, path, payload) => {
             //console.log("copyMaterial(), material_copy_id:", res.data.material_data.id)
             material_copy_id.value = res.data.material_data.id;
           }
-
 
           if (path == '/copyAssemble') {
             //console.log("copyAssemble(), assemble_copy_ids:", res.data.assemble_data)
@@ -675,6 +724,26 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/getMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
+          }
+
+          if (path == '/archiveWarehouseOrders') {
+            return res.data;
+          };
+
+          if (path == '/restoreWarehouseOrders') {
+            return res.data;
+          };
+
+          if (path == '/listArchiveBatches') {
+            return res.data;
+          };
+
+          if (path == '/listWarehouseArchiveHistory') {
+            return res.data;
+          };
+
+          if (path == '/restoreWarehouseArchiveRows') {
+            return res.data;
           }
 
 
@@ -746,6 +815,7 @@ export const setupGetBomsWatcher = () => {
     if (val) {
       boms.value = Object.assign([], temp_boms.value);
       list_table_is_ok.value = false;
+      console.log("watcher, boms:", boms.value)
     }
   });
 };

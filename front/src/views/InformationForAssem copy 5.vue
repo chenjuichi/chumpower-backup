@@ -12,7 +12,7 @@
 
   <v-row>
     <v-col cols="6" class="d-flex justify-center align-center pb-0">
-      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">加工區在製品生產資訊</span>
+      <span style="font-size:24px; font-weight:600; font-family: 'cwTeXYen', sans-serif;">組裝區在製品生產資訊</span>
     </v-col>
     <v-col cols="2" class="d-flex justify-end align-center pb-0">
     <!--
@@ -51,7 +51,31 @@
     <!--日期範圍-->
     <v-col cols="3" class="d-flex justify-end align-center pt-0 pb-0" style="position: relative; left:100px;">
       <Transition name="slide">
-        <div v-if="showFields" style="min-width:290px;">
+        <!--<div v-if="showFields" style="min-width:290px;">-->
+        <div
+          v-if="showFields"
+          style="
+            min-width:290px;
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+          "
+        >
+          <v-radio-group
+            v-model="select_date"
+            inline
+            style="position:relative; top:30px; right:-50px; font-size:14px;"
+          >
+            <v-radio
+              label="交期"
+              value="1"
+            ></v-radio>
+            <v-radio
+              label="工作日期"
+              value="2"
+            ></v-radio>
+          </v-radio-group>
+
           <v-menu
             v-model="menuOpen"
             :close-on-content-click="false"
@@ -67,12 +91,13 @@
             <template #activator="{ props }">
               <v-text-field
                 v-bind="props"
-                label="交期範圍"
+
+                :label="select_date === '1' ? '交期範圍' : '工作日期範圍'"
                 v-model="formattedDateRange"
                 readonly
                 variant="underlined"
                 density="compact"
-                style="margin-top:20px;"
+
                 placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
                 prepend-icon="mdi-calendar-check"
                 class="dateicon"
@@ -82,20 +107,20 @@
               />
             </template>
               <div class="dp-stretch">
-                <VueDatePicker
-                  :key="menuKey"
-                  :start-date="today"
-                  v-model="dpRange2"
-                  :enable-time-picker="false"
-                  range
-                  :inline="true"
+              <VueDatePicker
+                :key="menuKey"
+                :start-date="today"
+                v-model="dpRange2"
+                :enable-time-picker="false"
+                range
+                :inline="true"
 
-                  :auto-apply="true"
-                  locale="zh-TW"
-                  week-num-name=""
+                :auto-apply="true"
+                locale="zh-TW"
+                week-num-name=""
 
-                  :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
-                />
+                :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+              />
               </div>
           </v-menu>
         </div>
@@ -116,7 +141,7 @@
             prepend-icon="mdi-magnify"
             placeholder="例：1212*、*6134、1212????6134、??34"
             clearable
-            style="margin-top:20px; min-width:260px; width:260px; position:relative; top:5px;"
+            style="margin-top:20px; min-width:290px; width:290px; position:relative; top:5px;"
           />
 
           <!-- 2) 下拉多選（顯示符合搜尋的工單） -->
@@ -125,7 +150,7 @@
             :items="filteredOrderItems"
             item-title="title"
             item-value="value"
-            label="工單勾選(可多選)"
+            label="符合的工單（可多選）"
             multiple
             chips
             closable-chips
@@ -133,7 +158,7 @@
             density="comfortable"
             prepend-icon="mdi-archive-check-outline"
             :menu-props="{ maxHeight: 360 }"
-            style="margin-top:15px; min-width:260px; width:260px;"
+            style="margin-top:15px; min-width:290px; width:290px;"
             class="select_papericon"
           >
             <!-- Select All -->
@@ -166,7 +191,7 @@
     <!-- 未完成工單顯示switch-->
     <v-col cols="2" class="d-flex justify-start align-center pt-0 pb-0">
       <Transition name="slide">
-        <div v-if="showFields" style="position:relative; left:50px;" class="checkbox-container">
+        <div v-if="showFields" style="position:relative; left:70px;" class="checkbox-container">
           <label class="switch">
               <input
                 type="checkbox"
@@ -191,12 +216,12 @@
       <div class="flip_btn">
         <v-btn
           color="white"
-          style="min-width:90px; max-height:34px; border-radius:6px; border-width:1.5px; border-color:#64B5F6;"
+          style="min-width: 90px; max-height: 34px; border-radius: 6px; border-width:1.5px; border-color:#64B5F6;"
           class="side default-side primary thin mt-1 mx-auto"
           :disable="isInformationEmpty"
           @mouseenter="showFields = true"
         >
-          <v-icon left color="#664343" style="font-weight:700;">mdi-magnify</v-icon>
+          <v-icon left color="green" style="font-weight:700;">mdi-magnify</v-icon>
           <span style="color:black; font-weight:600;">搜尋</span>
         </v-btn>
         <div class="side hover-side">
@@ -259,9 +284,10 @@
         <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; ">
           <v-row style="margin-left:3vw;">
             <v-col cols="9">
-              <div style="display:flex; justify-content:center; gap:45px; font-size:20px; color:blue">
+              <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span style="font-size: 16px;">~ 至 {{ twoWeeksAgoDate }}</span>
+                  <!--<span style="font-size: 16px;">{{ todayDate }} 至 {{ twoWeeksAgoDate }}</span>-->
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
@@ -270,7 +296,8 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>領料準備中</span>
+                  <!--<span>備料送出</span>-->
+                  <span>備料準備中</span>
                   <v-progress-circular
                     :model-value="progress_value2"
                     :rotate="360"
@@ -283,7 +310,7 @@
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>加工進行中</span>
+                  <span>組裝進行中</span>
                   <v-progress-circular
                     :model-value="progress_value3"
                     :rotate="360"
@@ -311,19 +338,32 @@
             </v-col>
             <v-col cols="3" />
           </v-row>
-
           <div class="pa-4 text-center">
+            <!-- 裝配報工紀錄 dialog -->
             <v-dialog
               v-model="process_dialog"
-              min-width="1260px"
+              width="1260"
               max-width="95vw"
               scrollable
+
+              persistent
             >
               <v-card
-                :style="{ maxHeight: processes.length > 5 ? '500px' : 'unset', overflowY: boms.length > 5 ? 'auto' : 'unset' }"
+                ref="dragCard"
+                class="draggable-dialog"
+                :style="dialogStyleForTop"
               >
-                <v-card-title class="text-h5 sticky-title" style="background-color: #1b4965; color: white;">
-                  加工報工紀錄 -
+                <v-card-title
+                  class="drag-handle"
+                  style="
+                    cursor: move;
+                    background:#1b4965;
+                    color:white;
+                    user-select:none;
+                  "
+                  @mousedown="startDrag"
+                >
+                  裝配報工紀錄 -
                   <span style="font-size: 20px;">{{ current_order_num }}</span>
                   <v-fade-transition mode="out-in">
                     <v-btn
@@ -341,36 +381,14 @@
                 </v-card-title>
 
                 <v-card-text>
-
-                  <div class="d-flex flex-wrap align-center" style="gap:8px; margin:8px 0 12px 0;">
-                    <v-chip variant="elevated" density="comfortable">
-                      工序總筆數：{{ totalRows }}
-                    </v-chip>
-
-                    <v-chip variant="elevated" density="comfortable" style="color:red; font-weight:800;">
-                      總廢品數：{{ totalScrap }}
-                    </v-chip>
-
-                    <v-chip variant="elevated" density="comfortable" style="color:green; font-weight:800;">
-                      總入庫數：{{ totalStockin }}
-                    </v-chip>
-                  <!--
-                    <v-chip variant="tonal" density="comfortable">
-                      工單：{{ current_order_num || "(空白)" }}
-                    </v-chip>
-                  -->
-                  </div>
-
                   <v-table class="inner" density="compact" fixed-header>
                     <thead style="color: black;">
                       <tr>
                         <th class="text-left"></th>
-                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">領料/加工</th>
+                        <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">備料/組裝</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">開始時間</th>
                         <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">結束時間</th>
                         <th class="text-left" style="padding-left:0px; padding-right:0px;">數量</th>
-                        <th class="text-left" style="padding-left:0px; padding-right:0px;">廢品數量</th>
-                        <th class="text-left" style="padding-left:0px; padding-right:0px;">入庫數量</th>
                         <th class="text-left" style="padding-left:0px; padding-right:0px;">
                           實際耗時
                         </th>
@@ -399,43 +417,28 @@
                         <td>{{ process_item.seq_num }}</td>
                         <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
                           {{ process_item.process_type }}
-                          <span style="color:red">{{ process_item.normal_type }}</span>
+                          <!--<span style="color:red">{{ process_item.normal_type }}</span>-->
+
+                          <span v-if="process_item.normal_type" style="color:red; font-weight:700;">
+                            {{ process_item.normal_type }}
+                          </span>
+
+                          <span v-if="process_item.abnormal_message" style="color:#d32f2f; font-weight:700; margin-left:4px;">
+                            {{ process_item.abnormal_message }}
+                          </span>
+
+                          <span
+                            v-if="process_item.schedule_name && !String(process_item.process_type).includes('成品入庫')"
+                            style="font-weight:600; font-size:12px; color:black;"
+                          >
+                            [{{ process_item.schedule_name }}]
+                          </span>
                         </td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
                         <!--<td>{{ process_item.total_delivery_qty }}</td>-->
                         <td>{{ process_item.process_work_time_qty }}</td>
-                        <!--<td>{{ process_item.abnormal_qty }}</td>-->
-                        <td>
-                        <!-- 廢品：>0 才紅色；0 不上色；空值顯示 (空白) -->
-                          <span
-                            v-if="toNum(process_item.abnormal_qty) > 0"
-                            style="color:red; font-weight:700;"
-                          >
-                            <!--🔴{{ displayBlank(process_item.abnormal_qty) }}-->
-                            🔴{{ process_item.abnormal_qty }}
-                          </span>
-                          <span v-else>
-                            <!--{{ displayBlank(process_item.abnormal_qty) }}-->
-                            {{ process_item.abnormal_qty }}
-                          </span>
-                        </td>
-                        <!--<td>{{ process_item.completed_qty }}</td>-->
-                        <td>
-                          <!-- 入庫：>0 才綠色；0 不上色；空值顯示 (空白) -->
-                          <span
-                            v-if="toNum(process_item.completed_qty) > 0"
-                            style="color:green; font-weight:700;"
-                          >
-                            <!--🟢{{ displayBlank(process_item.completed_qty) }}-->
-                            🟢{{ process_item.completed_qty }}
-                          </span>
-                          <span v-else>
-                            <!--{{ displayBlank(process_item.completed_qty) }}-->
-                            {{ process_item.completed_qty }}
-                          </span>
-                        </td>
-                        <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.period_time }}</td>
+                        <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
                         <td>{{ process_item.single_std_time }}</td>
                         <td style="font-size:12px; font-weight: 600;">{{ process_item.user_comment }}</td>
@@ -496,7 +499,8 @@
                     <!-- onLine 欄位，依值改背景色 -->
                     <template v-slot:item.online="{ item }">
                       <div class="text-center pa-1" :style="getOnlineCellStyle(item.online)">
-                        {{ item.online }}
+                        <!--{{ item.online }}-->
+                        {{ getOnlineText(item.online) }}
                       </div>
                     </template>
                   </v-data-table>
@@ -526,36 +530,27 @@
       >
         <span>{{ column.title }}</span>
       </div>
-      <!--
       <div
         style="color: #a6a6a6; font-size: 10px; font-weight: 600; text-align: center; line-height: 1; margin-left: -10px;"
       >
         組裝/檢驗/雷射
       </div>
-    	-->
     </template>
 
     <!-- 自訂 '訂單編號' 欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: start;">
-        <div style="margin-right: 20px;" :class="{ 'text-red': isOrderInList(item.order_num) }">
+        <div style="margin-right: 20px;">
           {{ item.order_num }}
         </div>
       </div>
     </template>
 
-    <!-- 自訂 '交期' 欄位 -->
-		<template v-slot:item.delivery_date="{ item }">
-			<span :class="{ 'text-red': isOrderInList(item.order_num) }">
-				{{ item.delivery_date }}
-			</span>
-		</template>
-
     <!-- 自訂 '現況進度' 欄位 -->
     <template v-slot:item.show1_ok="{ item }">
       <div>
         <div style="font-weight:600;">{{ item.show1_ok }}</div>
-        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok }}</div>
+        <div style="color: #1a1aff; font-size:12px;">{{ item.show2_ok}}</div>
       </div>
     </template>
 
@@ -583,10 +578,11 @@
     <!-- 定義 '詳情' 按鍵外觀 -->
     <template v-slot:item.action="{ item }">
       <v-btn
-        :disabled="(item.isBom && !item.isTakeOk) || item.total_process_records == 0"
+        :disabled="!item.isTakeOk && item.whichStation == 1"
         size="small"
         variant="tonal"
-        style="font-size:16px; font-weight:400; font-family: 'cwTeXYen', sans-serif;"
+        style="font-size: 16px; font-weight: 400; font-family: 'cwTeXYen', sans-serif;"
+
         @click="toggleExpand(item)"
       >
         詳 情
@@ -617,39 +613,31 @@ import { myMixin } from '../mixins/common.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
-import { boms, fileCount }  from '../mixins/crud.js';
+import { informations, boms, fileCount }  from '../mixins/crud.js';
+import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
 import { apiOperationB } from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
-const countExcelFiles = apiOperation('get', '/countExcelFiles');
+const listInformations = apiOperation('get', '/listInformations');
+const listWorkingOrderStatus = apiOperation('get', '/listWorkingOrderStatus');
 
-const getBoms = apiOperation('post', '/getBoms');
-const updateBoms = apiOperation('post', '/updateBoms');
-const updateMaterial = apiOperation('post', '/updateMaterial');
-const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
+//const getBoms = apiOperation('post', '/getBoms');
+//const updateBoms = apiOperation('post', '/updateBoms');
+//const updateMaterial = apiOperation('post', '/updateMaterial');
+//const updateMaterialRecord = apiOperation('post', '/updateMaterialRecord');
+
+const getProcessesByOrderNum = apiOperation('post', '/getProcessesByOrderNum');
+const exportToExcelForAssembleInformation = apiOperation('post', '/exportToExcelForAssembleInformation');
+const exportToExcelForAssembleInformationByWorkDate = apiOperation('post', '/exportToExcelForAssembleInformationByWorkDate');
+const getUsersDepsProcesses = apiOperation('post', '/getUsersDepsProcesses');
 
 const downloadFile = apiOperationB('post', '/downloadXlsxFile');
 
-//=== p_tables維護用 api ==
-import { p_apiOperation }  from '../mixins/p_crud.js';
-
-import { informations }  from '../mixins/p_crud.js';
-import { processes }  from '../mixins/p_crud.js';
-import { order_count, prepare_count, assemble_count, warehouse_count, order_num_list }  from '../mixins/p_crud.js';
-
-const listInformations = p_apiOperation('get', '/listInformationsP');
-const listWorkingOrderStatus = p_apiOperation('get', '/listWorkingOrderStatusP');
-
-const exportToExcelForProcessInformation = p_apiOperation('post', '/exportToExcelForProcessInformation');
-const getProcessesByOrderNum = p_apiOperation('post', '/getProcessesByOrderNumP');
-const getUsersDepsProcesses = p_apiOperation('post', '/getUsersDepsProcessesP');
-
 //=== component name ==
-defineComponent({ name: 'InformationForProcess' });
+defineComponent({ name: 'InformationForAssem' });
 
 // === mix ==
 const { initAxios } = myMixin();
@@ -659,16 +647,18 @@ const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
 let _qTimer = null;
-let intervalId = null;                    // 5分鐘, 倒數計時器
-let intervalIdForProgressCircle = null;   // 5分鐘, 倒數計時器
+let intervalId = null;                    // 5分, 倒數計時器
+let intervalIdForProgressCircle = null;   // 5分, 倒數計時器
 
 const route = useRoute();                 // Initialize router
 
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
 const menuOpen = ref(false)
-const today = ref(new Date())
+const today = new Date()
 const menuKey = ref(0)
 const settingDefaultRange = ref(false)
+
+const select_date = ref("1");
 
 const dpRange = ref(null)             // 外部值（清空用 null，不要 []）
 const dpRange2 = ref([])
@@ -689,7 +679,6 @@ const screenWidth = ref(window.innerWidth);
 // 取得今日日期 (格式：YYYY/MM/DD)
 const todayDate = ref(new Date().toISOString().split("T")[0].replace(/-/g, "/"));
 
-
 const formatDate = (date) => {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -702,6 +691,7 @@ const getTwoWeeksAgoFromString = (dateStr) => {
   base.setDate(base.getDate() + 12)
   return formatDate(base)
 }
+
 const twoWeeksAgoDate = ref(getTwoWeeksAgoFromString(todayDate.value))
 
 const footerOptions = [
@@ -713,11 +703,11 @@ const footerOptions = [
 const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num' },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:150 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:220 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:170 },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },
-  { title: '說明', align: 'start', sortable: false, key: 'comment', width:230 },
+  { title: '說明', align: 'start', sortable: false, key: 'comment' },
   { title: '', sortable: false, key: 'action' },
 ];
 
@@ -739,8 +729,8 @@ const workHourOptions = ref([
   { label: '一星期內', value: 7 },
 ])
 
-const onlineDialog = ref(false)   // 在線員工 dialog
-const allOnlineUsers = ref([])    // 原始員工資料（等你從後端拿）
+const onlineDialog = ref(false)     // 在線員工 dialog
+const allOnlineUsers = ref([])      // 原始員工資料（等你從後端拿）
 
 // 部門下拉選單 + 目前選取的部門
 const selectedDeptForOnline = ref('全部')
@@ -772,6 +762,19 @@ const switchValue = ref("OFF");
 //const switchValue_string = ref("顯示訂單編號");
 const switchValue_string = ref("只顯示未完成訂單編號");
 
+//=======
+
+const dialogX = ref(0)
+const dialogY = ref(0)
+
+const isDragging = ref(false)
+
+const startMouseX = ref(0)
+const startMouseY = ref(0)
+
+const startDialogX = ref(0)
+const startDialogY = ref(0)
+
 //=== watch ===
 setupGetBomsWatcher();
 
@@ -798,10 +801,12 @@ watch(menuOpen, (open) => {
     // 每次開都回今天那個月
     menuKey.value++
 
-    //如果希望「使用者已經選過日期就不要覆蓋」
-    if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
-      // 每次開都預設今天~+7天
-      setDefaultRange()
+    if (select_date.value === '1') {
+      //如果希望「使用者已經選過日期就不要覆蓋」
+      if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
+        // 每次開都預設今天~+7天
+        setDefaultRange()
+      }
     }
   }
 })
@@ -827,11 +832,11 @@ watch([dpRange2, selectedOrderNums, orderWildcard, switchValue], () => {
   runQueryDebounced();
 }, { deep: true })
 
-watch(() => informations.value || [], (newVal) => {
-    console.log("Updated informations...", newVal);
-  },
-  { deep: true }
-);
+//watch(() => informations.value || [], (newVal) => {
+//    console.log("Updated informations...", newVal);
+//  },
+//  { deep: true }
+//);
 
 watch(fromDateValStart, (val) => {
   console.log("watch(), fromDateValStart:", fromDateValStart.value)
@@ -859,6 +864,16 @@ watch([dpInternal, dpRange], () => {
 }, { deep: true })
 
 //=== computed ===
+
+const dialogStyleForTop = computed(() => ({
+  transform: `translate(${dialogX.value}px, ${dialogY.value}px)`,
+  maxHeight: processes.value.length > 5 ? '500px' : 'unset',
+  overflowY: processes.value.length > 5 ? 'auto' : 'unset'
+}))
+
+const dialogStyle = computed(() => ({
+  transform: `translate(${dialogX.value}px, ${dialogY.value}px)`
+}))
 
 /*
 page：第幾頁（1-based）
@@ -901,7 +916,8 @@ const isInformationEmpty = computed(() => {
 // 過濾符合條件的資訊
 const filteredInformations = computed(() => {
   const filtered = informations.value.filter(item => {
-    const isWithinDateRange = checkDateInRange(item.delivery_date);
+    //const isWithinDateRange = checkDateInRange(item.delivery_date);
+    const isWithinDateRange = select_date.value === '2' ? true : checkDateInRange(item.delivery_date)
     const isWithinOrderRange = checkOrderInRange(item.order_num);
     return isWithinDateRange && isWithinOrderRange;
   });
@@ -909,46 +925,59 @@ const filteredInformations = computed(() => {
   // 去重：同 order_num 只保留一筆（保留最後一筆）
   /*
   const map = new Map();
-  for (const it of filtered) map.set(it.order_num, it);
+  for (const it of filtered) {
+    map.set(it.order_num, it);
+  }
+
   return Array.from(map.values());
   */
 
   // 去重：同 order_num 只保留 1 筆
-  // 不要保留最後一筆，避免 copy 資料蓋掉 root 資料
+  // 不要保留最後一筆，避免缺料 copy 蓋掉 root 資料
+
   const scoreOf = (item) => {
-    let score = 0;
+    let score = 0
 
     // root material 優先
     if (
       item.is_copied_from_id === null ||
       item.is_copied_from_id === undefined
     ) {
-      score += 100;
+      score += 100
     }
 
-    // 已送加工 / 已進流程的資料優先
+    // 已送組裝區優先
     if (item.isTakeOk) {
-      score += 20;
+      score += 20
     }
 
+    // 已顯示在 Begin 優先
     if (item.isShow) {
-      score += 10;
+      score += 10
     }
 
-    return score;
-  };
+    return score
+  }
 
-  const map = new Map();
+  const map = new Map()
 
   for (const it of filtered) {
-    const old = map.get(it.order_num);
+    const old = map.get(it.order_num)
 
-    if (!old || scoreOf(it) > scoreOf(old)) {
-      map.set(it.order_num, it);
+    if (!old) {
+      map.set(it.order_num, it)
+      continue
+    }
+
+    const oldScore = scoreOf(old)
+    const newScore = scoreOf(it)
+
+    if (newScore > oldScore) {
+      map.set(it.order_num, it)
     }
   }
 
-  return Array.from(map.values());
+  return Array.from(map.values())
 });
 
 //=== mounted ===
@@ -958,6 +987,7 @@ onMounted(async () => {
   console.log("裝置像素比 (DPR):", window.devicePixelRatio);
 
   console.log("current routeName:", routeName.value);
+
 /*
   let userData = JSON.parse(localStorage.getItem('loginedUser'));
   console.log("current userData:", userData);
@@ -1073,7 +1103,7 @@ const onClickOnlineUsers = async () => {
   // 先開 dialog，避免資料還沒回來就看不到反應
   onlineDialog.value = true
 
-  // 你可以先用假資料測，排除 template / reactivity 問題
+  // 可以先用假資料測，排除 template / reactivity 問題
   const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
   allOnlineUsers.value = resp || [];
 
@@ -1087,32 +1117,12 @@ const onClickOnlineUsers = async () => {
 
 //=== method ===
 
-/*
-const getDateRangePayload = () => {
-  const a = dpRange2.value;
-  if (!Array.isArray(a) || a.length < 2 || !a[0] || !a[1]) {
-    return { start_date: "", end_date: "" };
-  }
-  return {
-    start_date: dayjs(a[0]).format('YYYY-MM-DD'),
-    end_date:   dayjs(a[1]).format('YYYY-MM-DD'),
-  };
-};
-*/
-
-/*
-const buildQueryPayload = () => {
-  const { start_date, end_date } = getDateRangePayload();
-  return {
-    start_date,
-    end_date,
-    order_nums: Array.isArray(selectedOrderNums.value) ? selectedOrderNums.value : [],
-    order_wildcard: (orderWildcard.value || "").trim(),
-    unfinished_only: !!switchValue.value,   // 你的 ON/OFF
-    limit: 2000,                            // 先給安全上限（可調）
-  };
-};
-*/
+const getOnlineText = (val) => {
+  if (val === 0) return '請假'
+  if (val === 1) return '在線'
+  if (val === 2) return '離線'
+  return ''
+}
 
 const runQuery = async () => {
   const payload = buildListInformationsPayload();
@@ -1135,6 +1145,7 @@ const runQueryDebounced = () => {
 
 // ===
 
+/*
 // 日期比較工具（統一格式）
 const toDateOnly = (v) => {
   if (!v) return null
@@ -1156,6 +1167,7 @@ const toDateOnly = (v) => {
 
   return null
 }
+*/
 
 // 加天數
 const addDays = (date, days)=>{
@@ -1188,7 +1200,7 @@ const clearDates = () => {
   menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
 }
 
-const isEmpty = (v) => v === "" || v === null || v === undefined;
+//const isEmpty = (v) => v === "" || v === null || v === undefined;
 
 // ✅ 空值顯示成 "(空白)"
 //const displayBlank = (v) => (isEmpty(v) ? "(空白)" : String(v));
@@ -1216,7 +1228,7 @@ const totalRows = computed(() => (processes.value || []).length);
 
 // 把萬用字元 pattern 轉成可用的比對函式
 // 規則：
-// - 若包含 * 或 ? ：用「整段匹配」
+// - 若包含 * 或 ? ：用「整段匹配」(像檔案總管常見的 pattern)
 // - 若不含萬用字元：用「包含」(substring)
 const buildWildcardMatcher = (pattern) => {
   const p = (pattern ?? '').trim();
@@ -1224,17 +1236,19 @@ const buildWildcardMatcher = (pattern) => {
 
   const hasWildcard = /[*?]/.test(p);
 
-  // escape regex special chars（除了 * ?）
+  // escape regex special chars (除了 * ?)
   const escaped = p.replace(/[.+^${}()|[\]\\]/g, '\\$&');
   const regexStr = hasWildcard
     ? '^' + escaped.replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
-    : escaped; // 無萬用字元：用 contains（不加 ^$）
+    : escaped; // 無萬用字元：用 contains
 
   const re = new RegExp(regexStr, 'i');
-  return (s) => re.test(String(s ?? ''));
+  return hasWildcard
+    ? (s) => re.test(String(s ?? ''))
+    : (s) => re.test(String(s ?? '')); // contains（因為沒加 ^$）
 };
 
-// 全部工單候選（從 informations 去重）
+// 全部工單候選（去重排序）
 const allOrderItems = computed(() => {
   const uniq = new Set(
     (informations.value || [])
@@ -1242,7 +1256,9 @@ const allOrderItems = computed(() => {
       .filter(Boolean)
       .map(x => String(x))
   );
-  return [...uniq].sort().map(o => ({ title: o, value: o }));
+  return [...uniq]
+    .sort()
+    .map(o => ({ title: o, value: o }));
 });
 
 // 依萬用字元輸入過濾後的候選清單（顯示在 v-select）
@@ -1251,6 +1267,7 @@ const filteredOrderItems = computed(() => {
   return allOrderItems.value.filter(it => match(it.value));
 });
 
+// 目前「搜尋結果」對應的 value 清單
 const filteredOrderValues = computed(() => filteredOrderItems.value.map(x => x.value));
 
 // Select All 狀態：針對「目前搜尋結果」集合
@@ -1275,11 +1292,13 @@ const toggleSelectAllOrders = () => {
   }
 
   if (likesAllFilteredOrders.value) {
-    // 取消目前搜尋結果（保留不在搜尋結果內、你先前可能選的）
-    selectedOrderNums.value = selectedOrderNums.value.filter(v => !vals.includes(v));
+    // 取消目前搜尋結果（但保留不在搜尋結果內、你先前可能選的）
+    const keep = selectedOrderNums.value.filter(v => !vals.includes(v));
+    selectedOrderNums.value = keep;
   } else {
     // 加入目前搜尋結果（去重）
-    selectedOrderNums.value = [...new Set([...(selectedOrderNums.value || []), ...vals])];
+    const merged = new Set([...(selectedOrderNums.value || []), ...vals]);
+    selectedOrderNums.value = [...merged];
   }
 };
 
@@ -1323,26 +1342,32 @@ const initialize = async () => {
       offset: offset.value,
     });
     await listWorkingOrderStatus();
+
+    /*
+    //allOnlineUsers.value = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
+    allOnlineUsers.value = resp || [];
+
+    const depts = Array.from(
+      new Set(src.map(u => u.dep_name).filter(Boolean))
+    );
+    deptOptionsForOnline.value = ['全部', ...depts];
+    */
   } catch (error) {
     console.error("Error during initialize():", error);
   }
 };
 
 // 檢查 item.delivery_date 是否落在 fromDateValStart 範圍內
-const checkDateInRange = (deliveryDate) => {
+const checkDateInRange = (date) => {
+  if (!fromDateValStart.value.length) return true; // 沒選日期 -> 全部顯示
 
-  // 沒選日期 → 全部通過
-  if (!dpRange2.value || !dpRange2.value[0] || !dpRange2.value[1])
-    return true
+  const formattedDates = fromDateValStart.value.map(d => formatDate3(d));
+  const minDate = formattedDates[0];
+  const maxDate = formattedDates[formattedDates.length - 1];
 
-  const start = toDateOnly(dpRange2.value[0])
-  const end   = toDateOnly(dpRange2.value[1])
-  const d     = toDateOnly(deliveryDate)
-
-  if (!d || !start || !end) return false
-
-  return d >= start && d <= end   // 含邊界
-}
+  return date >= minDate && date <= maxDate;
+};
 
 // == 工單範圍 v-select 用 begin ==
 
@@ -1358,7 +1383,7 @@ const checkOrderInRange = (orderNum) => {
     return selectedOrderNums.value.includes(o);
   }
 
-  // 2) 萬用字元/文字
+  // 2) 萬用字元 / 文字搜尋
   const pat = (orderWildcard.value ?? '').trim();
   if (pat) {
     const match = buildWildcardMatcher(pat);
@@ -1368,6 +1393,16 @@ const checkOrderInRange = (orderNum) => {
   return true;
 };
 // == 工單範圍 v-select 用 end ==
+
+const formatDateYMD = (d) => {
+  if (!d) return ''
+  const dt = new Date(d)
+  if (Number.isNaN(dt.getTime())) return ''
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const day = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 const exportToExcelFun = async () => {
   console.log('InformationForAssem.vue, exportToExcelFun()...');
@@ -1394,13 +1429,34 @@ const exportToExcelFun = async () => {
   }));
   console.log("3. updatedData: ", updatedData);
 
+  //let object_Desserts = [obj, ...updatedData];
+  //console.log("4. object_Desserts: ", object_Desserts);
+
   let payload = {
     blocks: updatedData,
-    name: currentUser.value.name,
+    name: currentUser.value?.name || '',
+    //select_date: select_date.value,
+    //start_date: dpRange2?.[0] ? dayjs(dpRange2[0]).format('YYYY-MM-DD') : '',
+    //end_date: dpRange2?.[1] ? dayjs(dpRange2[1]).format('YYYY-MM-DD') : '',
   };
 
+
   try {
-    const export_file_data = await exportToExcelForProcessInformation(payload);
+      let export_file_data=null;
+
+      if (select_date.value === '1') {
+        // 交期匯出
+        export_file_data = await exportToExcelForAssembleInformation(payload);
+      } else {
+        // 工作日期匯出
+        export_file_data = await exportToExcelForAssembleInformationByWorkDate({
+          start_date: formatDateYMD(dpRange2.value?.[0]),
+          end_date: formatDateYMD(dpRange2.value?.[1]),
+        })
+      }
+
+
+    //const export_file_data = await exportToExcelForAssembleInformation(payload);
     console.log("export_file_dat:", export_file_data);
 
     if (export_file_data.status) {
@@ -1412,7 +1468,7 @@ const exportToExcelFun = async () => {
       let temp_message = '轉檔完成!';
       showSnackbar(temp_message, '#008184');
     } else {
-      showSnackbar(excel_file_data.message, 'red accent-2');
+      showSnackbar(export_file_data.message, 'red accent-2');
     }
   } catch (error) {
     console.error("Error during execution:", error);
@@ -1605,6 +1661,51 @@ const showSnackbar = (message, color) => {
   snackbar_color.value = color;
   snackbar.value = true;
 };
+/*
+const startDrag = (e) => {
+  isDragging.value = true
+
+  startMouseX.value = e.clientX
+  startMouseY.value = e.clientY
+
+  startDialogX.value = dialogX.value
+  startDialogY.value = dialogY.value
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+}
+*/
+const onDrag = (e) => {
+  if (!isDragging.value) return
+
+  const dx = e.clientX - startMouseX.value
+  const dy = e.clientY - startMouseY.value
+
+  dialogX.value = startDialogX.value + dx
+  dialogY.value = startDialogY.value + dy
+}
+
+const stopDrag = () => {
+  isDragging.value = false
+
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+}
+
+const startDrag = (e) => {
+  e.preventDefault()
+
+  isDragging.value = true
+
+  startMouseX.value = e.clientX
+  startMouseY.value = e.clientY
+
+  startDialogX.value = dialogX.value
+  startDialogY.value = dialogY.value
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+}
 </script>
 
 <style lang="scss" scoped>
@@ -1629,6 +1730,10 @@ const showSnackbar = (message, color) => {
 }
 
 .card_container {
+    // width: 100%;
+    // max-width: 400px;
+    // max-height: 251px;
+    // height: 54vw;
   padding: 20px;
 }
 
@@ -1652,7 +1757,7 @@ const showSnackbar = (message, color) => {
 }
 
 .v-input--custom-text-input-density .v-field--variant-underlined {
-  --v-input-control-height: 30px;   //change here
+  --v-input-control-height: 30px;
   --v-field-padding-top: 0px;
   --v-field-padding-bottom: 0px;
 }
@@ -1666,13 +1771,31 @@ const showSnackbar = (message, color) => {
   overflow: visible;
   text-overflow: clip;
   max-width: none;
+  //width: auto;
+  //position: absolute;
+  //left: 0;
+  //right: 0;
   width: 200px;
 }
+
+//:deep(.v-table.outer .v-table__wrapper) {
+//  overflow-y: hidden;
+//  max-height: 320px;
+//}
+
+//:deep(.v-table.outer .v-table__wrapper) {
+//  overflow-y: auto;
+//  max-height: none;
+//}
 
 :deep(.v-table.outer .v-table__wrapper) {
   max-height: none;
   overflow-y: visible;
 }
+
+//:deep(.v-data-table-footer__items-per-page) {
+//  display: none;
+//}
 
 :deep(.v-table .v-table__wrapper table thead tr th) {
   height: 46px;
@@ -1680,7 +1803,10 @@ const showSnackbar = (message, color) => {
 }
 
 .sticky-card-title {
-  z-index: 10;            // 保证标题在内容上方显示
+  //position: -webkit-sticky;
+  //position: sticky;
+  //top: 50; // 固定在容器顶部
+  z-index: 10; // 保证标题在内容上方显示
   background: white; // 避免内容滚动时标题被遮盖
   top: 10px;
   position: relative;
@@ -1690,7 +1816,8 @@ const showSnackbar = (message, color) => {
 }
 
 .card-container {
-  height: 440px;
+  height: 440px;    // 设置明确的高度以允许滚动
+  //overflow: auto; // 确保容器可以滚动
   overflow-y: hidden;
 }
 
@@ -1708,6 +1835,11 @@ const showSnackbar = (message, color) => {
   border-radius: 5px !important;
 }
 
+//:deep(.v-card .v-data-table-footer) {
+//  padding-top: 0px;
+//  padding-bottom: 0px;
+//}
+
 :deep(.v-card .v-data-table) {
   border-radius: 8px;
   overflow: hidden;
@@ -1723,6 +1855,8 @@ const showSnackbar = (message, color) => {
   top: 0px;
   background-color: white;
   z-index: 10;
+  //padding-top: 10px;
+  //padding-bottom: 10px;
 }
 
 .v-table.inner thead.sticky-thead tr.inner_header th {
@@ -1732,9 +1866,21 @@ const showSnackbar = (message, color) => {
   z-index: 9;
 }
 
+//.table-container {
+//  position: relative; /* 讓 sticky 定位相對於這個元素 */
+//  max-height: 440px; /* 設定合適的高度來產生滾動條 */
+//  overflow-y: auto; /* 允許垂直滾動 */
+//}
+
 .red-text {
   color: red;
 }
+
+//:deep(.v-input__control) {
+//left: 150px;
+//position: relative;
+//width: 250px;
+//}
 
 :deep(.v-field__field) {
   min-height : 20px;
@@ -1744,6 +1890,11 @@ const showSnackbar = (message, color) => {
 :deep(.v-progress-circular__content) {
   font-size: 25px;
 }
+
+//:deep(.v-data-table-footer__info) {
+//min-height : 30px;
+//height: 40px;
+//}
 
 .custom-header theader th {
   background-color: #85aef2; /* 自訂背景顏色 */
@@ -1784,7 +1935,8 @@ const showSnackbar = (message, color) => {
 
 //===
 
-.slide-enter-from {
+.slide-enter-from
+{
   transform: translateX(-100%);
 }
 
@@ -1813,6 +1965,7 @@ const showSnackbar = (message, color) => {
   position: absolute;
   backface-visibility: hidden;
   width: 130px;
+  //width: 100%;
   height: 100%;
   display: flex;
 }
@@ -1870,10 +2023,6 @@ const showSnackbar = (message, color) => {
   color: #F48FB1 !important;
 }
 
-:deep(.papericon > .v-input__prepend .v-icon) {
-  color: #90CAF9 !important;
-}
-
 // 讓 DatePicker 撐滿 v-menu 設定的寬度
 :deep(.dp-stretch .dp__main) {
   width: 100%;
@@ -1881,11 +2030,6 @@ const showSnackbar = (message, color) => {
 
 :deep(.dp__outer_menu_wrap) {
   width: 140%;
-}
-
-:deep(.text-red) {
-  color: #2196F3 !important;
-  font-weight: 600 !important;
 }
 
 // == 工單範圍 v-select 用 begin ==
@@ -1993,5 +2137,28 @@ const showSnackbar = (message, color) => {
   white-space: nowrap;
   position: relative;
   left: 70px;
+}
+
+:deep(.v-radio .v-label) {
+  color:blue;
+}
+
+.abnormal-type {
+  color: red;
+  font-weight: 700;
+}
+
+.abnormal-msg {
+  color: #d32f2f;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.draggable-dialog {
+  position: relative;
+}
+
+.drag-handle {
+  cursor: move;
 }
 </style>

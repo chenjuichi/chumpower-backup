@@ -115,7 +115,7 @@
 
             :style="{
               position: 'relative',
-              right: screenSizeInInches > 20 ? '600px' : '130px',
+              right: screenSizeInInches > 20 ? '600px' : '115px',
               top: '0px',
               fontWeight: '700',
               width: '120px'
@@ -280,11 +280,6 @@
                           </label>
                         </div>
                       </div>
-                    <!--
-                      <div class="example ex1" v-show="group1_radio_btn_disable">
-                        <span class="ex1-title">備註: 備料缺件預設為併單</span>
-                      </div>
-                    -->
                     </v-col>
                   </v-row>
                   <!--第 3 列-->
@@ -339,7 +334,7 @@
           </div>
 
           <!--客製化 員工選單-->
-          <div class="employee-select" style="position: relative; right: 160px; width: 160px;">
+          <div class="employee-select" style="position: relative; right: 140px; width: 160px;">
             <v-text-field
               v-model="selectedEmployee"
               @keyup.enter="handleEmployeeSearch"
@@ -416,7 +411,7 @@
             :disabled="c_isBlinking"
             color="primary"
             variant="outlined"
-            style="position:relative; right:155px; top:0px; font-weight:700; padding-left:8px;
+            style="position:relative; right:130px; top:0px; font-weight:700; padding-left:8px;
                    padding-right:8px;"
             @click="onClickTrans"
             ref="sendButton"
@@ -441,6 +436,7 @@
             <!--客製化搜尋-->
             <v-text-field
               v-model="search"
+              label="資料搜尋"
 
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
@@ -453,10 +449,12 @@
             <!-- 客製化barcode輸入 -->
             <v-text-field
               v-model="bar_code"
+              label="條碼"
+
               :value="bar_code"
               ref="barcodeInput"
               @keyup.enter="handleBarCode"
-              hide-details="auto"
+              hide-details
               prepend-icon="mdi-barcode"
               style="min-width:200px; position: relative; top: 18px;"
               class="align-center"
@@ -670,9 +668,11 @@
         </v-icon>
 
         <!--備料完成(缺料)-->
-        <div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
+        <!--<div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">-->
+        <div style="color:blue;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
           <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
-          <span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>
+          <!--<span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>-->
+          <span style="color:red; font-weight: 700; font-size: 12px; right:25px; position:relative;">缺料</span>
         </div>
 
         <!--備料完成-->
@@ -823,7 +823,7 @@ import { desserts2 }  from '../mixins/crud.js';
 import { materials, boms, currentBoms, currentAGV, material_copy, fileCount }  from '../mixins/crud.js';
 import { socket_server_ip }  from '../mixins/crud.js';
 
-import { setupGetBomsWatcher }  from '../mixins/crud.js';
+//import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
@@ -834,6 +834,7 @@ const listMaterials = apiOperation('get', '/listMaterials');
 const listUsers2 = apiOperation('get', '/listUsers2');
 
 const getBoms = apiOperation('post', '/getBoms');
+//const getBomsAll = apiOperation('post', '/getBomsAll');
 const getAGV = apiOperation('post', '/getAGV');
 const updateBoms = apiOperation('post', '/updateBoms');
 const updateMaterial = apiOperation('post', '/updateMaterial');
@@ -1102,7 +1103,7 @@ const bomDraftCache = reactive({})  // { [materialId]: BomRow[] }
 const isFetching = ref(false);
 
 //=== watch ===
-setupGetBomsWatcher();
+//setupGetBomsWatcher();
 
 watch(group1, async (newVal, oldVal) => {
   if (newVal === oldVal) return
@@ -2464,7 +2465,10 @@ const editOrderNum = async (item) => {
   console.log("fromDateVal:", fromDateVal.value);
 
   let payload = {
+    //order_num: item.order_num,
+
     id: item.id,
+    mode: 'prepare',
   };
   await getBoms(payload);
   console.log("currentBoms:",currentBoms.value)
@@ -2507,7 +2511,7 @@ async function enforceStartPausedIfNew(dlg) {
 
 
 const toggleExpand = async (item) => {
-  console.log("toggleExpand(),item.order_num, item.isOpen:", item.order_num, item.isOpen);
+  console.log("toggleExpand(),id, order_num, item.isOpen:", item.id, item.order_num, item.isOpen);
 
   if (item.isTakeOk) {
     showSnackbar("備料已完成!", "orange-darken-2");
@@ -2533,6 +2537,7 @@ const toggleExpand = async (item) => {
   payload = {
     //order_num: item.order_num,
     id: item.id,
+    mode: 'prepare',
   };
   await getBoms(payload);
 
@@ -2946,7 +2951,8 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   // 2. 更新目前這筆 material 的缺料狀態
   // 缺料 => isLackMaterial = 0
   // 不缺料 => isLackMaterial = 99
-  if (!take_out || (take_out && editedRecord.value.same_order_num_cnts > 1)) {
+  //if (!take_out || (take_out && editedRecord.value.same_order_num_cnts > 1)) {
+  if (!take_out) {
     payload = {
       id: editedRecord.value.id,
       record_name: 'shortage_note',
@@ -3228,6 +3234,7 @@ const callForklift = async () => {
   await delay(3000);
 
   selectedItems.value = [];
+  selectedEmployee.value = null;   // 清空選擇員工
   if (localStorage.getItem('selectedItems')) {
     localStorage.removeItem('selectedItems');
   }
@@ -3887,7 +3894,7 @@ const removelocalStorage = () => {
 .button-container {
   position: relative;
   width: fit-content;     // 調整寬度以適應按鈕
-  right: 150px;
+  right: 125px;
   top: 0px;
 }
 

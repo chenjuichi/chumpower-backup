@@ -48,7 +48,7 @@
             <v-col cols="12" md="2" class="pb-6">
               <v-text-field
                 v-model="search"
-                label="搜尋"
+                label="資料搜尋"
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
                 hide-details
@@ -62,10 +62,12 @@
               <!-- 客製化barcode輸入 -->
               <v-text-field
                 v-model="bar_code"
+                label="條碼"
+
                 :value="bar_code"
                 ref="barcodeInput"
                 @keyup.enter="handleBarCode"
-                hide-details="auto"
+                hide-details
                 prepend-icon="mdi-barcode"
                 style="min-width:200px; width:200px;"
                 class="align-center"

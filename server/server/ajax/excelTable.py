@@ -353,7 +353,8 @@ def read_all_excel_files_p():
   files = [
      f for f in os.listdir(_base_dir)
      if os.path.isfile(os.path.join(_base_dir, f))
-     and f.endswith('.xlsx')
+     #and f.endswith('.xlsx')
+     and f.lower().endswith('.xlsx')
   ]
 
   if not files:
@@ -1249,7 +1250,8 @@ def read_all_excel_files():
   files = [
      f for f in os.listdir(_base_dir)
      if os.path.isfile(os.path.join(_base_dir, f))
-     and f.endswith('.xlsx')
+     #and f.endswith('.xlsx')
+     and f.lower().endswith('.xlsx')
   ]
 
   if not files:

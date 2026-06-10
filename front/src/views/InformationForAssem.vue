@@ -59,6 +59,7 @@
             display:flex;
             flex-direction:column;
             gap:10px;
+
           "
         >
           <v-radio-group
@@ -213,6 +214,7 @@
     <!--搜尋按鍵-->
     <v-col cols="4" class="d-flex justify-center align-center pt-0 pb-0">
       <!-- 翻轉效果 -->
+    <!--
       <div class="flip_btn">
         <v-btn
           color="white"
@@ -225,7 +227,7 @@
           <span style="color:black; font-weight:600;">搜尋</span>
         </v-btn>
         <div class="side hover-side">
-          <!-- 取消按鍵 -->
+
           <v-btn
             style="position:relative; right:3px; top:7px; width:80px; border-radius:6px; border-width:1.5px; border-color:#64B5F6;"
             class="mt-n1 mr-15 mx-auto"
@@ -235,7 +237,7 @@
             <span style="color:black; font-weight:600;">取消</span>
           </v-btn>
 
-          <!-- Excel按鍵 -->
+
           <v-btn
             style="position:relative; left:3px; top:7px; width:80px; border-radius:6px; border-width:1.5px; border-color:#64B5F6;"
             class="mt-n1 mr-15 mx-auto"
@@ -245,6 +247,82 @@
           </v-btn>
         </div>
       </div>
+    -->
+
+<div class="d-flex align-center">
+  <!-- 搜尋按鍵 -->
+  <v-btn
+    v-if="!showFields"
+    color="white"
+    style="
+      position:relative;
+      top:-5px;
+      min-width:90px;
+      height:34px;
+      border-radius:6px;
+      border-width:1.5px;
+      border-color:#64B5F6;
+    "
+    class="primary thin"
+    :disabled="isInformationEmpty"
+    @click="showFields = true"
+  >
+    <v-icon color="green">mdi-magnify</v-icon>
+    <span style="color:black;font-weight:600;">
+      搜尋
+    </span>
+  </v-btn>
+
+  <!-- 顯示後的功能按鍵 -->
+  <template v-else>
+    <div
+      class="d-flex align-center"
+      style="
+        position: relative;
+        left: 40px;
+      "
+    >
+    <!-- 取消 -->
+    <v-btn
+      style="
+        width:80px;
+        height:34px;
+        border-radius:6px;
+        border-width:1.5px;
+        border-color:#64B5F6;
+      "
+      class="mr-2"
+      @click="showFields = false"
+    >
+      <v-icon color="#ff0000">
+        mdi-window-close
+      </v-icon>
+      <span style="color:black;font-weight:600;">
+        取消
+      </span>
+    </v-btn>
+
+    <!-- Excel -->
+    <v-btn
+      style="
+        width:80px;
+        height:34px;
+        border-radius:6px;
+        border-width:1.5px;
+        border-color:#64B5F6;
+      "
+      @click="exportToExcelFun"
+    >
+      <v-icon color="green">
+        mdi-microsoft-excel
+      </v-icon>
+      <span style="color:black;font-weight:600;">
+        Excel
+      </span>
+    </v-btn>
+    </div>
+  </template>
+</div>
 
       <!-- 在線員工按鍵 -->
       <v-btn
@@ -254,8 +332,10 @@
         style="
         position:relative;
         left:50px;
-        top:5px;
-        min-width:110px; max-height:34px; border-radius:6px;"
+        top:-5px;
+        min-width:110px;
+        max-height:34px;
+        border-radius:6px;"
         prepend-icon="mdi-account-details-outline"
         @click="onClickOnlineUsers"
       >
@@ -266,10 +346,12 @@
 
   <v-data-table
     :headers="headers"
-    :items="filteredInformations"
+
+    :items="displayInformations"
     :row-props="getRowProps"
     :search="search"
     :custom-filter="customFilter"
+
     item-value="order_num"
     class="outer custom-header"
     :style="tableStyle"
@@ -285,16 +367,79 @@
           <v-row style="margin-left:3vw;">
             <v-col cols="9">
               <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
+              <!--
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span style="font-size: 16px;">~ 至 {{ twoWeeksAgoDate }}</span>
-                  <!--<span style="font-size: 16px;">{{ todayDate }} 至 {{ twoWeeksAgoDate }}</span>-->
                 </div>
+              -->
+<div style="
+  min-width:290px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  position:relative;
+  left:20px;
+">
+  <v-radio-group
+    v-model="select_date"
+    inline
+    style="position:relative; top:10px; font-size:14px;"
+  >
+    <v-radio label="交期" value="1" />
+    <v-radio label="工作日期" value="2" />
+  </v-radio-group>
+
+  <v-menu
+    v-model="menuOpen"
+    :close-on-content-click="false"
+    location="bottom start"
+    origin="top start"
+    :offset="[0, 8]"
+    :width="480"
+    :min-width="480"
+    transition="fade-transition"
+    :open-on-focus="false"
+    :open-on-hover="false"
+  >
+    <template #activator="{ props }">
+      <v-text-field
+        v-bind="props"
+        :label="select_date === '1' ? '交期範圍' : '工作日期範圍'"
+        v-model="formattedDateRange"
+        readonly
+        variant="underlined"
+        density="compact"
+        placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+        prepend-icon="mdi-calendar-check"
+        class="dateicon"
+        clearable
+        @click="menuOpen = true"
+        @click:clear="clearDates"
+      />
+    </template>
+
+    <div class="dp-stretch">
+      <VueDatePicker
+        :key="menuKey"
+        :start-date="today"
+        v-model="dpRange2"
+        :enable-time-picker="false"
+        range
+        :inline="true"
+        :auto-apply="true"
+        locale="zh-TW"
+        week-num-name=""
+        :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+      />
+    </div>
+  </v-menu>
+</div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span>工單數</span>
-                  <span style="position:relative; top:10px; font-size:30px;">{{ order_count }}</span>
+                  <span style="position:relative; top:10px; font-size:30px;">{{ displayInformations.length }}</span>
                 </div>
+              <!--
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                  <!--<span>備料送出</span>-->
                   <span>備料準備中</span>
                   <v-progress-circular
                     :model-value="progress_value2"
@@ -332,6 +477,80 @@
                     {{ warehouse_count }}
                   </v-progress-circular>
                 </div>
+              -->
+
+<div
+  style="
+    display:flex;
+    gap:20px;
+    position:relative;
+    top:20px;
+  "
+>
+  <v-btn
+    variant="outlined"
+    color="grey-darken-1"
+    height="70"
+    width="120"
+    @click="filterByStatus('not_prepare')"
+  >
+    <div class="d-flex flex-column align-center">
+      <span>未備料</span>
+      <span style="font-size:24px; font-weight:bold;">
+        {{ currentNotPrepareCount }}
+      </span>
+    </div>
+  </v-btn>
+
+  <v-btn
+    variant="outlined"
+    color="primary"
+    height="70"
+    width="120"
+    @click="filterByStatus('prepare')"
+  >
+    <div class="d-flex flex-column align-center">
+      <span>備料準備中</span>
+      <span style="font-size:24px;font-weight:bold;">
+        <!--{{ prepare_count }}-->
+        {{ currentPrepareCount }}
+      </span>
+    </div>
+  </v-btn>
+
+  <v-btn
+    variant="outlined"
+    color="red"
+    height="70"
+    width="120"
+    @click="filterByStatus('assemble')"
+  >
+    <div class="d-flex flex-column align-center">
+      <span>組裝進行中</span>
+      <span style="font-size:24px;font-weight:bold;">
+        <!--{{ assemble_count }}-->
+        {{ currentAssembleCount }}
+      </span>
+    </div>
+  </v-btn>
+
+  <v-btn
+    variant="outlined"
+    color="pink"
+    height="70"
+    width="120"
+    @click="filterByStatus('warehouse')"
+  >
+    <div class="d-flex flex-column align-center">
+      <span>等待入庫中</span>
+      <span style="font-size:24px;font-weight:bold;">
+        <!--{{ warehouse_count }}-->
+        {{ currentWarehouseCount }}
+      </span>
+    </div>
+  </v-btn>
+</div>
+
               </div>
             </v-col>
             <v-col cols="3" />
@@ -650,6 +869,17 @@ let intervalIdForProgressCircle = null;   // 5分, 倒數計時器
 
 const route = useRoute();                 // Initialize router
 
+//#
+const statusIds = reactive({
+  not_prepare: [],
+  prepare: [],
+  assemble: [],
+  warehouse: []
+})
+
+const statusFilter = ref('')
+//#
+
 const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
 const menuOpen = ref(false)
 const today = new Date()
@@ -784,7 +1014,7 @@ watch(switchValue, async (val)=> {
     //switchValue_string.value="顯示訂單編號"
     switchValue_string.value="只顯示未完成訂單編號"
 
-  await listInformations({
+  const response = await listInformations({
     only_unfinished: val ? 1 : 0,
 
     // ✅ 分頁
@@ -792,6 +1022,12 @@ watch(switchValue, async (val)=> {
     limit: limit.value,
     offset: offset.value,
   })
+
+  //#
+  // ===== 新增 =====
+  applyListInformationsResponse(response)
+  //#
+
 })
 
 watch(menuOpen, (open) => {
@@ -910,21 +1146,165 @@ const progress_value4 = computed(() => order_count.value !=0 ? (warehouse_count.
 const isInformationEmpty = computed(() => {
   return informations.value.length === 0;
 });
-
-// 過濾符合條件的資訊
+/*
 const filteredInformations = computed(() => {
   const filtered = informations.value.filter(item => {
-    //const isWithinDateRange = checkDateInRange(item.delivery_date);
-    const isWithinDateRange = select_date.value === '2' ? true : checkDateInRange(item.delivery_date)
-    const isWithinOrderRange = checkOrderInRange(item.order_num);
-    return isWithinDateRange && isWithinOrderRange;
-  });
+    const dateField = select_date.value === '1'
+      ? item.delivery_date
+      : item.material_date
 
-  // 去重：同 order_num 只保留一筆（保留最後一筆）
-  const map = new Map();
-  for (const it of filtered) map.set(it.order_num, it);
-  return Array.from(map.values());
-});
+    const isWithinDateRange = checkDateInRange(dateField)
+    const isWithinOrderRange = checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  return filtered
+})
+*/
+
+/*
+const displayInformations = computed(() => {
+  const map = new Map()
+
+  filteredInformations.value.forEach(item => {
+    if (!map.has(item.order_num)) {
+      map.set(item.order_num, item)
+    }
+  })
+
+  return Array.from(map.values())
+})
+*/
+
+/*
+const displayInformations = computed(() => {
+//const filteredInformations = computed(() => {
+  let filtered = informations.value.filter(item => {
+
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    const isWithinDateRange =
+      checkDateInRange(dateField)
+
+    const isWithinOrderRange =
+      checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  if (statusFilter.value === 'prepare') {
+    filtered = filtered.filter(
+      item => item.show2_ok == 3
+    )
+  }
+
+  if (statusFilter.value === 'assemble') {
+    filtered = filtered.filter(
+      item => item.show2_ok == 5
+    )
+  }
+
+  if (statusFilter.value === 'warehouse') {
+    filtered = filtered.filter(
+      item => item.show2_ok == 9
+    )
+  }
+
+  return filtered
+})
+*/
+
+/*
+const currentNotPrepareCount = computed(() => {
+  return filteredByStatusCount('not_prepare')
+})
+
+const currentPrepareCount = computed(() => {
+  return filteredByStatusCount('prepare')
+})
+
+const currentAssembleCount = computed(() => {
+  return filteredByStatusCount('assemble')
+})
+
+const currentWarehouseCount = computed(() => {
+  return filteredByStatusCount('warehouse')
+})
+*/
+const currentNotPrepareCount = computed(() =>
+  getCurrentStatusCounts.value.not_prepare
+)
+
+const currentPrepareCount = computed(() =>
+  getCurrentStatusCounts.value.prepare
+)
+
+const currentAssembleCount = computed(() =>
+  getCurrentStatusCounts.value.assemble
+)
+
+const currentWarehouseCount = computed(() =>
+  getCurrentStatusCounts.value.warehouse
+)
+
+/*
+const filteredByStatusCount = (type) => {
+  const ids = statusIds[type] || []
+
+  const rows = informations.value.filter(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    return (
+      checkDateInRange(dateField) &&
+      checkOrderInRange(item.order_num) &&
+      ids.includes(Number(item.id))
+    )
+  })
+
+  const uniqueMap = new Map()
+
+  rows.forEach(item => {
+    if (!uniqueMap.has(item.order_num)) {
+      uniqueMap.set(item.order_num, item)
+    }
+  })
+
+  return uniqueMap.size
+}
+*/
+const filteredByStatusCount = (type) => {
+  const ids = statusIds[type] || []
+
+  const rows = informations.value.filter(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    return (
+      checkDateInRange(dateField) &&
+      checkOrderInRange(item.order_num) &&
+      ids.includes(Number(item.id))
+    )
+  })
+
+  const orderSet = new Set()
+
+  rows.forEach(item => {
+    if (item.order_num) {
+      orderSet.add(item.order_num)
+    }
+  })
+
+  return orderSet.size
+}
 
 //=== mounted ===
 onMounted(async () => {
@@ -1072,7 +1452,7 @@ const getOnlineText = (val) => {
 
 const runQuery = async () => {
   const payload = buildListInformationsPayload();
-  await listInformations(payload);
+  const response = await listInformations(payload);
 
   /*
   const payload = buildQueryPayload();
@@ -1082,6 +1462,12 @@ const runQuery = async () => {
   const data = resp?.data || resp;
   informations.value = data?.informations || [];
   */
+
+  //#
+  // ===== 新增 =====
+  applyListInformationsResponse(response)
+  //#
+
 };
 
 const runQueryDebounced = () => {
@@ -1139,11 +1525,18 @@ const setDefaultRange = ()=>{
     settingDefaultRange.value = false
   })
 }
-
+/*
 const clearDates = () => {
   dpRange2.value = [null, null]
   formattedDateRange.value = ''
   menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
+}
+*/
+const clearDates = () => {
+  dpRange2.value = []
+  formattedDateRange.value = ''
+  menuOpen.value = false
+  pagination.page = 1
 }
 
 //const isEmpty = (v) => v === "" || v === null || v === undefined;
@@ -1279,7 +1672,7 @@ const initialize = async () => {
     console.log("initialize()...")
 
     switchValue.value = 0;
-    await listInformations({
+    const response = await listInformations({
       only_unfinished: switchValue.value,
 
       // ✅ 分頁
@@ -1287,6 +1680,12 @@ const initialize = async () => {
       limit: limit.value,
       offset: offset.value,
     });
+
+    //#
+    // ===== 新增 =====
+    applyListInformationsResponse(response)
+    //#
+
     await listWorkingOrderStatus();
 
     /*
@@ -1306,14 +1705,19 @@ const initialize = async () => {
 
 // 檢查 item.delivery_date 是否落在 fromDateValStart 範圍內
 const checkDateInRange = (date) => {
-  if (!fromDateValStart.value.length) return true; // 沒選日期 -> 全部顯示
+  if (!date) return false
 
-  const formattedDates = fromDateValStart.value.map(d => formatDate3(d));
-  const minDate = formattedDates[0];
-  const maxDate = formattedDates[formattedDates.length - 1];
+  const range = dpRange2.value
+  if (!Array.isArray(range) || !range[0] || !range[1]) return true
 
-  return date >= minDate && date <= maxDate;
-};
+  const minDate = formatDateYMD(range[0])
+  const maxDate = formatDateYMD(range[1])
+  const targetDate = formatDateYMD(date)
+
+  return targetDate >= minDate && targetDate <= maxDate
+}
+
+
 
 // == 工單範圍 v-select 用 begin ==
 
@@ -1462,7 +1866,12 @@ const downloadFileFun = async () => {
 
 const listInformationsFun = async () => {
   const payload = buildListInformationsPayload();
-  await listInformations(payload);
+  const response = await listInformations(payload);
+  //#
+  // ===== 新增 =====
+  applyListInformationsResponse(response)
+  //#
+
 };
 
 // 共用 payload builder（含 switchValue）
@@ -1652,6 +2061,315 @@ const startDrag = (e) => {
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', stopDrag)
 }
+
+/*
+const filterByStatus = (type) => {
+  statusFilter.value = statusFilter.value === type ? '' : type
+}
+*/
+const filterByStatus = (type) => {
+
+  const countMap = {
+    not_prepare: currentNotPrepareCount.value,
+    prepare: currentPrepareCount.value,
+    assemble: currentAssembleCount.value,
+    warehouse: currentWarehouseCount.value,
+  }
+
+  // 數量為 0 不處理
+  if ((countMap[type] || 0) === 0) {
+    return
+  }
+
+  statusFilter.value =
+    statusFilter.value === type ? '' : type
+}
+
+const matchStatus = (item, type) => {
+  const show1 = String(item.show1_ok ?? '')
+  const show2 = String(item.show2_ok ?? '')
+  const show3 = String(item.show3_ok ?? '')
+
+  if (type === 'prepare') {
+    return (
+      show1.includes('備料') ||
+      show2.includes('未備料') ||
+      show2.includes('備料中') ||
+      show2.includes('備料完成') ||
+      show3.includes('備料')
+    )
+  }
+
+  if (type === 'assemble') {
+    return (
+      show1.includes('組裝') ||
+      show2.includes('等待組裝') ||
+      show2.includes('組裝進行') ||
+      show2.includes('組裝完成') ||
+      show3.includes('組裝')
+    )
+  }
+
+  if (type === 'warehouse') {
+    return (
+      show1.includes('成品') ||
+      show2.includes('等待入庫') ||
+      show2.includes('待入庫') ||
+      show2.includes('入庫') ||
+      show3.includes('入庫')
+    )
+  }
+
+  return true
+}
+/*
+const displayInformations = computed(() => {
+  let filtered = informations.value.filter(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    const isWithinDateRange = checkDateInRange(dateField)
+    const isWithinOrderRange = checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  if (statusFilter.value) {
+    filtered = filtered.filter(item =>
+      matchStatus(item, statusFilter.value)
+    )
+  }
+
+  return filtered
+})
+*/
+
+/*
+const displayInformations = computed(() => {
+  let filtered = informations.value.filter(item => {
+
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    const isWithinDateRange = checkDateInRange(dateField)
+    const isWithinOrderRange = checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  if (statusFilter.value === 'prepare') {
+    filtered = filtered.filter(item => item.show2_ok == 3)
+  }
+
+  if (statusFilter.value === 'assemble') {
+    filtered = filtered.filter(item => item.show2_ok == 5)
+  }
+
+  if (statusFilter.value === 'warehouse') {
+    filtered = filtered.filter(item => item.show2_ok == 9)
+  }
+
+  // ===== order_num 去重 =====
+  const uniqueMap = new Map()
+
+  filtered.forEach(item => {
+    if (!uniqueMap.has(item.order_num)) {
+      uniqueMap.set(item.order_num, item)
+    }
+  })
+
+  return Array.from(uniqueMap.values())
+})
+*/
+
+/*
+const displayInformations = computed(() => {
+  let filtered = informations.value.filter(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    const isWithinDateRange = checkDateInRange(dateField)
+    const isWithinOrderRange = checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  if (statusFilter.value) {
+    filtered = filtered.filter(item =>
+      matchStatus(item, statusFilter.value)
+    )
+  }
+
+  const uniqueMap = new Map()
+
+  filtered.forEach(item => {
+    if (!uniqueMap.has(item.order_num)) {
+      uniqueMap.set(item.order_num, item)
+    }
+  })
+
+  return Array.from(uniqueMap.values())
+})
+*/
+
+// 暫時
+/*
+const displayInformations = computed(() => {
+
+  let filtered = informations.value.filter(item => {
+
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    const isWithinDateRange = checkDateInRange(dateField)
+    const isWithinOrderRange = checkOrderInRange(item.order_num)
+
+    return isWithinDateRange && isWithinOrderRange
+  })
+
+  if (statusFilter.value) {
+    const ids = statusIds[statusFilter.value] || []
+
+    filtered = filtered.filter(item =>
+      ids.includes(Number(item.id))
+    )
+  }
+
+  // ===== order_num 去重 =====
+  const uniqueMap = new Map()
+
+  filtered.forEach(item => {
+    if (!uniqueMap.has(item.order_num)) {
+      uniqueMap.set(item.order_num, item)
+    }
+  })
+
+  return Array.from(uniqueMap.values())
+})
+*/
+// 暫時
+const displayInformations = computed(() => {
+  let filtered = informations.value.filter(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    return (
+      checkDateInRange(dateField) &&
+      checkOrderInRange(item.order_num)
+    )
+  })
+
+  // ===== 先 order_num 去重 =====
+  const uniqueMap = new Map()
+
+  filtered.forEach(item => {
+    if (!uniqueMap.has(item.order_num)) {
+      uniqueMap.set(item.order_num, item)
+    }
+  })
+
+  filtered = Array.from(uniqueMap.values())
+
+  // ===== 再用目前狀態篩選 =====
+  if (statusFilter.value) {
+    const ids = statusIds[statusFilter.value] || []
+
+    filtered = filtered.filter(item =>
+      ids.includes(Number(item.id))
+    )
+  }
+
+  return filtered
+})
+
+const applyListInformationsResponse = (response) => {
+  //const data = response?.data || response || {}
+
+  console.log("applyListInformationsResponse:", response)
+
+  //informations.value = data.informations || []
+
+  //statusIds.prepare = data.status_ids?.prepare || []
+  //statusIds.assemble = data.status_ids?.assemble || []
+  //statusIds.warehouse = data.status_ids?.warehouse || []
+
+statusIds.not_prepare = response?.status_ids?.not_prepare || [];
+statusIds.prepare = response?.status_ids?.prepare || [];
+statusIds.assemble = response?.status_ids?.assemble || [];
+statusIds.warehouse = response?.status_ids?.warehouse || [];
+
+  //prepare_count.value = data.status_counts?.prepare || 0
+  //assemble_count.value = data.status_counts?.assemble || 0
+  //warehouse_count.value = data.status_counts?.warehouse || 0
+}
+
+const statusPriority = {
+  not_prepare: 1,
+  prepare: 2,
+  assemble: 3,
+  warehouse: 4,
+}
+
+const getCurrentStatusCounts = computed(() => {
+  const result = {
+    not_prepare: 0,
+    prepare: 0,
+    assemble: 0,
+    warehouse: 0,
+  }
+
+  const orderMap = new Map()
+
+  informations.value.forEach(item => {
+    const dateField =
+      select_date.value === '1'
+        ? item.delivery_date
+        : item.material_date
+
+    if (!checkDateInRange(dateField)) return
+    if (!checkOrderInRange(item.order_num)) return
+
+    let type = ''
+
+    if (statusIds.warehouse.includes(Number(item.id))) {
+      type = 'warehouse'
+    } else if (statusIds.assemble.includes(Number(item.id))) {
+      type = 'assemble'
+    } else if (statusIds.prepare.includes(Number(item.id))) {
+      type = 'prepare'
+    } else if (statusIds.not_prepare.includes(Number(item.id))) {
+      type = 'not_prepare'
+    }
+
+    if (!type) return
+
+    const oldType = orderMap.get(item.order_num)
+
+    if (
+      !oldType ||
+      statusPriority[type] > statusPriority[oldType]
+    ) {
+      orderMap.set(item.order_num, type)
+    }
+  })
+
+  orderMap.forEach(type => {
+    result[type] += 1
+  })
+
+  return result
+})
+
 </script>
 
 <style lang="scss" scoped>

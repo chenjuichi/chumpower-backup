@@ -43,10 +43,21 @@
         </template>
 
         <!-- 自定義每行的選擇框 -->
+      <!--
         <template v-slot:item.data-table-select="{ internalItem }">
           <v-checkbox-btn
             :model-value="isSelected(internalItem)"
             :disabled="(!internalItem.raw.isAssembleStationShow || (internalItem.raw.receive_qty == 0 && internalItem.raw.abnormal_qty == 0)) && warehouse_in_all_pass=='待完工'"
+            color="primary"
+            @update:model-value="toggleSelect(internalItem)"
+            :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
+          />
+        </template>
+      -->
+        <template v-slot:item.data-table-select="{ internalItem }">
+          <v-checkbox-btn
+            :model-value="isSelected(internalItem)"
+            :disabled="!internalItem.raw.end_report_done"
             color="primary"
             @update:model-value="toggleSelect(internalItem)"
             :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
@@ -57,7 +68,7 @@
         <template v-slot:top>
           <v-card>
             <v-card-title
-              class="d-flex align-center pe-2"
+              class="d-flex align-center pe-2 process-end-top-title"
               style="font-weight:700;"
             >
               <div style="display: flex; flex-direction: column;">
@@ -159,10 +170,10 @@
 
                 <!--客製化搜尋-->
                 <v-text-field
-                  id="bar_code"
+                  id="search_input"
 
                   v-model="search"
-
+                  label="資料搜尋"
                   prepend-inner-icon="mdi-magnify"
                   variant="outlined"
                   hide-details
@@ -175,10 +186,11 @@
                 <v-text-field
                   id="bar_code"
                   v-model="bar_code"
+                  label="條碼"
                   :value="bar_code"
                   ref="barcodeInput"
                   @keyup.enter="handleBarCode"
-                  hide-details="auto"
+                  hide-details
                   prepend-icon="mdi-barcode"
                   style="min-width:200px; position: relative; top: 25px; left:280px;"
                   class="align-center"
@@ -272,21 +284,18 @@
         <!-- 自訂 '訂單編號(工序)' 欄位的資料欄位 -->
         <template v-slot:item.order_num="{ item }">
           <div style="display: flex; align-items: center;">
-            <!--檢料完成-->
-            <div style="color: blue; margin-right: 20px;" v-if="Number(item.receive_qty || 0) > 0">
+            <div
+              :style="{
+                color: isProcessEndDone(item) ? 'blue' : '',
+                marginRight: '20px'
+              }"
+            >
               <div>{{ item.order_num }}</div>
               <div style="color:#0000FF; font-size:12px; font-weight:400;">
                 {{ item.assemble_work }}
-                <span style="color:#FF2C2C; font-weight:600;">{{ item.isStockIn }}</span>
-              </div>
-            </div>
-
-            <!--檢料還未完成-->
-            <div style="margin-right: 20px;" v-else>
-              <div>{{ item.order_num }}</div>
-              <div style="color:#0000FF; font-size:12px; font-weight:400; font-size:12px;">
-                {{ item.assemble_work }}
-                <span style="color:#FF2C2C; font-weight:600;">{{ item.isStockIn }}</span>
+                <span style="color:#FF2C2C; font-weight:600;">
+                  {{ item.isStockIn }}
+                </span>
               </div>
             </div>
           </div>
@@ -385,29 +394,36 @@
                 min-width:88px;
                 font-variant-numeric:tabular-nums;"
             >
-              <TimerDisplay
-                :key="makeKey(item)"
+<TimerDisplay
+  :key="`${makeKey(item)}:${item.process_id || 0}:${item.process_elapsed_time || 0}:${item.process_end_time || ''}`"
 
-                :fontSize="16"
-                :autoStart="false"
-                :show="true"
+  :fontSize="16"
+  :autoStart="false"
+  :show="true"
 
-                :ref="el => setTimerEl(item, el)"
+  :ref="el => setTimerEl(item, el)"
 
-                :initialMs="getInitialMs(item)"
+  :initialMs="
+    closedDisplayMs(item) != null
+      ? closedDisplayMs(item)
+      : getInitialMs(item)
+  "
 
-                :isPaused="isPausedOf(item)"
+  :isPaused="
+    closedDisplayMs(item) != null
+      ? true
+      : isPausedOf(item)
+  "
 
-                :displayMs="closedDisplayMs(item)"
+  @update:time="ms => onTickOf(makeKey(item), item, ms)"
 
-                @update:time="ms => onTickOf(makeKey(item), item, ms)"
-
-                class="me-2"
-                style="min-width:88px; display:inline-block;"
-              />
+  class="me-2"
+  style="min-width:88px; display:inline-block;"
+/>
             </span>
 
             <!-- 自訂 暫停/開始 按鍵欄位-->
+          <!--
             <v-btn
               size="small"
               density="comfortable"
@@ -422,6 +438,52 @@
               <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
               {{ isPausedOf(item) ? '開始' : '暫停' }}
             </v-btn>
+          -->
+
+<v-btn
+  size="small"
+  density="comfortable"
+  variant="tonal"
+
+  :prepend-icon="getIcon(isPausedOf(item))"
+
+  :disabled="
+    !item.process_id ||
+    !!item.process_end_time ||
+    !!item.end_report_done
+  "
+
+  :style="{
+    background: isPausedOf(item) ? '#4CAF50' : '#FFEB3B',
+    color: isPausedOf(item) ? '#fff' : '#000',
+    opacity:
+      (
+        !item.process_id ||
+        !!item.process_end_time ||
+        !!item.end_report_done
+      )
+        ? 0.5
+        : 1,
+    cursor:
+      (
+        !item.process_id ||
+        !!item.process_end_time ||
+        !!item.end_report_done
+      )
+        ? 'not-allowed'
+        : 'pointer'
+  }"
+
+  @click="onPauseToggle(item)"
+
+  style="font-size:13px; font-weight:700; font-family:'微軟正黑體',sans-serif;"
+>
+  <v-icon start style="font-weight:700;">
+    mdi-timer-outline
+  </v-icon>
+
+  {{ isPausedOf(item) ? '開始' : '暫停' }}
+</v-btn>
 
             <!-- 自訂 '結束' 按鍵欄位 -->
             <v-btn
@@ -469,7 +531,7 @@
 
     </div>
   </div>
-  </template>
+</template>
 
 <script setup>
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onBeforeUnmount, onUnmounted, onBeforeMount, onDeactivated } from 'vue';
@@ -784,8 +846,12 @@ watch(
     //await ensureRestored(row, empID)
     await ensureRestored(row)
 
-    // 如果這筆其實已經開始在跑，保險起見清掉凍結
-    frozenMsMap?.delete?.(k)
+    //// 如果這筆其實已經開始在跑，保險起見清掉凍結
+    //frozenMsMap?.delete?.(k)
+    //
+    if (!isRowClosed(row)) {
+      frozenMsMap.delete(k)
+    }
   }
 }, { immediate: true })
 
@@ -903,7 +969,7 @@ onMounted(async () => {
 
   // 取得每個 v-text-field 的唯一 ID
   inputIDs.value.forEach((item) => {
-    const myIdField = document.getElementById(`receiveQtyID-${item.order_num}`);
+    const myIdField = document.getElementById(`receiveQtyID-${item.id}-${item.assemble_id}`);
     myIdField && (myIdField.addEventListener('keydown', handleKeyDown));
   });
 
@@ -1273,6 +1339,7 @@ function onTimeUpdate(key, row, ms) {
   lastTickMsMap.set(key, Number(ms) || 0)
 }
 
+/*
 function isRowClosed(row) {
   const t = getT(row);
   return !!t?.endTime?.value || !!row?.end_time
@@ -1344,6 +1411,91 @@ function closedDisplayMs(item) {
   // 3) 其他情況 → 視為「進行中」，讓 TimerDisplay 用 live elapsedMs
   return null
 }
+*/
+function isRowClosed(row) {
+  return !!(
+    row?.end_report_done ||
+    row?.process_end_time ||
+    row?.end_time ||
+    row?.isShowLastTime ||
+    Number(row?.input_end_disable) === 1
+  )
+}
+
+function finalMsFromRow(item) {
+  const candidates = [
+    Number(item?.process_elapsed_time) * 1000,
+    Number(item?.elapsedActive_time) * 1000,
+    Number(item?.elapsed_time) * 1000,
+    item?.elapsed_ms,
+    item?.elapsedActive_time_ms,
+    item?.elapsed_time_ms,
+  ]
+
+  for (const v of candidates) {
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+
+  return null
+}
+
+function pickMsFromLocalStorage(row) {
+  const keys = []
+
+  if (row?.process_id) {
+    keys.push(`cp:lastClosedMs:pid:${row.process_id}`)
+  }
+
+  const asm = row?.assemble_id ?? 0
+  const psc = row?.process_step_code ?? row?.process_type
+
+  if (row?.id && psc != null) {
+    keys.push(`cp:lastClosedMs:mat:${row.id}:pt:${psc}:asm:${asm}`)
+  }
+
+  for (const k of keys) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+
+      const obj = JSON.parse(raw)
+      if (obj && Number.isFinite(Number(obj.ms))) {
+        return Number(obj.ms)
+      }
+    } catch {}
+  }
+
+  return null
+}
+
+function closedDisplayMs(item) {
+  if (!item) return null
+
+  const key = makeKey(item)
+
+  if (frozenMsMap.has(key)) {
+    return frozenMsMap.get(key)
+  }
+
+  if (!isRowClosed(item)) {
+    return null
+  }
+
+  const fromRow = finalMsFromRow(item)
+  if (fromRow != null) {
+    frozenMsMap.set(key, fromRow)
+    return fromRow
+  }
+
+  const fromLocal = pickMsFromLocalStorage(item)
+  if (fromLocal != null) {
+    frozenMsMap.set(key, fromLocal)
+    return fromLocal
+  }
+
+  return null
+}
 
 function frozenMsOf(row) {
 
@@ -1402,6 +1554,7 @@ function getInitialMs(row) {
   return Number(t?.elapsedMs?.value ?? 0)
 }
 
+/*
 async function ensureRestored(row, force = false) {
   const k = makeKey(row)
   console.log('[End][ensureRestored] enter', k, 'emp=', currentUser.value?.empID)
@@ -1426,7 +1579,37 @@ async function ensureRestored(row, force = false) {
 
   return t
 }
+*/
+async function ensureRestored(row, force = false) {
+  const k = makeKey(row)
 
+  // ✅ 已結束 / 待送出列：只顯示固定工時，不要 restoreProcess
+  if (isRowClosed(row)) {
+    const ms = finalMsFromRow(row)
+    if (ms != null) {
+      frozenMsMap.set(k, ms)
+    }
+    return getT(row)
+  }
+
+  if (!currentUser.value?.empID) return null
+
+  const uid = getUid()
+  if (!uid) return null
+
+  const t = useRowTimer(row, uid)
+  if (!t) return null
+
+  if (!force && t.__restoredOnce) return t
+  t.__restoredOnce = true
+
+  const pType = processTypeOf(row)
+  await t.restoreProcess(row.id, pType, uid, row.assemble_id || 0)
+
+  return t
+}
+
+/*
 // 依 row.process_step_code → process_type
 function processTypeOf(row) {
   const step = Number(row.process_step_code ?? 0)
@@ -1435,6 +1618,16 @@ function processTypeOf(row) {
   //if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
   //if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
   return step
+}
+*/
+function processTypeOf(row) {
+  const step = Number(row?.process_step_code ?? 0)
+  if (step > 0) return step
+
+  const ptype = Number(row?.process_type ?? 0)
+  if (ptype > 0) return ptype
+
+  return 0
 }
 
 function makeStub() {
@@ -1620,7 +1813,7 @@ const focusItemField = async (item) => {
 
   await nextTick() // 確保 DOM 已更新
   // 找到外層 v-text-field DOM
-  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  const wrapper = document.getElementById(`receiveQtyID-${item.id}-${item.assemble_id}`);
   if (wrapper) {
     // 聚焦到 v-text-field 本身
     console.log("wrapper ok...")
@@ -1999,6 +2192,7 @@ const callForklift = async () => {
 
     // 清理選取
     selectedItems.value = [];
+    selectedEmployee.value = null;   // 清空選擇員工
     if (localStorage.getItem('selectedItems')) {
       localStorage.removeItem('selectedItems');
     }
@@ -2015,6 +2209,18 @@ const callForklift = async () => {
   ////待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   //
+  // ✅ 送出成功後，前端立即移除已送出的列
+  const selectedSet = new Set(selectedIdx)
+
+  materials_and_assembles_by_user.value =
+    materials_and_assembles_by_user.value.filter(
+      row => !selectedSet.has(row.index)
+    )
+
+  selectedItems.value = []
+  localStorage.removeItem('selectedItems')
+
+  // ✅ 再重新撈一次後端資料
   await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
   await nextTick();
   //
@@ -2052,7 +2258,7 @@ const onClickEnd = async (item) => {
   const remain = Number(item.must_receive_end_qty) || 0
   if (remain <= 0) {
     abnormal_qty_alarm.value = '目前無可扣減的完成數量。'
-    rawItem.abnormal_tooltipVisible = true
+    item.abnormal_tooltipVisible = true
     setTimeout(() => { rawItem.abnormal_tooltipVisible = false }, 2000)
     return
   }
@@ -2243,10 +2449,26 @@ const onClickEnd = async (item) => {
 
   if (targetIndex !== -1) {
     // 用 Vue 的方式確保觸發響應式更新
+    /*
     materials_and_assembles_by_user.value[targetIndex] = {
       ...materials_and_assembles_by_user.value[targetIndex],
       input_end_disable: true,
       input_abnormal_disable: true,
+    };
+    */
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      receive_qty: current_completed_qty,
+      completed_qty: current_completed_qty,
+      total_completed_qty_num: total,
+      total_completed_qty: '(' + total.toString().trim() + ')',
+      input_end_disable: true,
+      input_abnormal_disable: true,
+      process_step_code: 0,
+      //isAssembleStationShow: response || item.assemble_count == 1 ? true : item.isAssembleStationShow,
+      isAssembleStationShow: false,
+      end_report_done: false,
+      show2_ok: 5,
     };
   }
 
@@ -2280,6 +2502,17 @@ const onClickEnd = async (item) => {
   });
   console.log("確認是否為最後工序或只有1個工序...")
   console.log("response || item.assemble_count == 1", response, item.assemble_count)
+
+  if (targetIndex !== -1) {
+    materials_and_assembles_by_user.value[targetIndex] = {
+      ...materials_and_assembles_by_user.value[targetIndex],
+      process_step_code: 0,
+      input_end_disable: true,
+      input_abnormal_disable: true,
+      isAssembleStationShow: !!response || item.assemble_count == 1,
+      end_report_done: !!response || item.assemble_count == 1,
+    };
+  }
 
   if (response || item.assemble_count == 1) { //當前工單最終途程或當前工單只有1個途程(組裝)
     console.log("take ok...")
@@ -2315,7 +2548,7 @@ const onClickEnd = async (item) => {
   }
 
   //待待
-  window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+  //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
 const reloadEndRowsAndRestoreTimers = async () => {
@@ -2667,6 +2900,16 @@ const removelocalStorage = () => {
     localStorage.removeItem('Authenticated');
   }
 };
+
+const isProcessEndDone = (item) => {
+  //return (
+  //  item.input_end_disable === true || item.isAssembleStationShow === true
+  //  //item.input_end_disable === true
+  //);
+
+  return Number(item.process_step_code || 0) === 0 && item.end_report_done === true;
+
+};
 </script>
 
 <style lang="scss" scoped>
@@ -2933,6 +3176,13 @@ const removelocalStorage = () => {
   position: absolute !important;
   z-index: 50;
   pointer-events: none; /* 避免擋住 table 點擊 */
+}
+
+.process-end-top-title {
+  height: 86px !important;
+  min-height: 86px !important;
+  max-height: 86px !important;
+  overflow: visible;
 }
 </style>
 

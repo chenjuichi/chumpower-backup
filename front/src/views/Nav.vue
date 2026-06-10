@@ -21,7 +21,7 @@
                 <!--item1, menu 1 在製品生產資訊-->
                 <span :class="{'button-title': localNavLinks[0].isSegment }">{{ localNavLinks[0].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[0].isSegment }]" />
+                  <i :class="['fa-solid', hoveredItems[0] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[0].isSegment }]" />
                 </span>
               </div>
             </button>
@@ -78,7 +78,7 @@
                   <!--item2, menu 6 備料清單-->
                   <span :class="{'button-title': localNavLinks[5].isSegment }">{{ localNavLinks[5].text }}</span>
                   <span class="icon-container">
-                    <i :class="['fas', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[5].isSegment }]" />
+                    <i :class="['fa-solid', hoveredItems[1] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[5].isSegment }]" />
                   </span>
                 </div>
               </button>
@@ -114,7 +114,7 @@
                   <!--item3, menu 9 組裝生產-->
                   <span :class="{'button-title': localNavLinks[8].isSegment }">{{ localNavLinks[8].text }}</span>
                   <span class="icon-container">
-                    <i :class="['fas', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[8].isSegment}]" />
+                    <i :class="['fa-solid', hoveredItems[2] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[8].isSegment}]" />
                   </span>
                 </div>
               </button>
@@ -163,7 +163,7 @@
                 <!--item4, menu 13 成品入庫-->
                 <span :class="{'button-title': localNavLinks[12].isSegment }">{{ localNavLinks[12].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[12].isSegment}]" />
+                  <i :class="['fa-solid', hoveredItems[3] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[12].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -212,7 +212,7 @@
                 <!--item5, menu 17-->
                 <span :class="{'button-title': localNavLinks[16].isSegment }">{{ localNavLinks[16].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[16].isSegment}]" />
+                  <i :class="['fa-solid', hoveredItems[4] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[16].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -258,7 +258,7 @@
                 <!--item6, menu 21 系統設定-->
                 <span :class="{'button-title': localNavLinks[20].isSegment }">{{ localNavLinks[20].text }}</span>
                 <span class="icon-container">
-                  <i :class="['fas', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[20].isSegment}]" />
+                  <i :class="['fa-solid', hoveredItems[5] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : localNavLinks[20].isSegment}]" />
                 </span>
               </div>
             </button>
@@ -331,7 +331,7 @@
             <button class="dropbtnk">
               <em>{{ currentUser ? currentUser.name : '使用者' }}</em>
               <span class="icon-container">
-                <i :class="['fas', hoveredItems[6] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment }]" />
+                <i :class="['fa-solid', hoveredItems[6] ? 'fa-angle-right' : 'fa-angle-down', {'button-icon' : isSegment }]" />
               </span>
             </button>
             <div class="dropdown-contentk">
@@ -876,11 +876,21 @@ const logout = async () => {
 
   const activeRes = await getTodayUnfinishedProcesses({
   //const activeRes = await getMyActiveProcesses({
-    user_id: currentUser.value.empID
+    user_id: currentUser.value?.empID
   })
 
-  if (activeRes.data?.length > 0) {
-    showSnackbar(`今日, 你還有 ${activeRes.data.length} 筆工單作業中, 請先結束作業或暫停計時...`, 'red accent-2');
+  const rows = activeRes.count
+  console.log("rows:", activeRes, activeRes.count)
+  /*
+  const rows =
+    Array.isArray(activeRes?.data?.data) ? activeRes.data.data :
+    Array.isArray(activeRes?.data) ? activeRes.data :
+    Array.isArray(activeRes?.data?.data?.data) ? activeRes.data.data.data :
+    [];
+  */
+  //if (rows.length > 0) {
+  if (rows > 0) {
+    showSnackbar(`今日, 你還有 ${rows} 筆工單作業中, 請先結束作業或暫停計時...`, 'red accent-2');
     return;
     /*
     const ok = await confirmRef.value.open({
@@ -1006,8 +1016,16 @@ const showSnackbar = (message, color) => {
 </script>
 
 <style lang="scss" scoped>
-@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
+//@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
 @import "../styles/variables.scss";
+
+* {
+  font-family:
+    "Microsoft JhengHei",
+    "微軟正黑體",
+    "Noto Sans TC",
+    sans-serif;
+}
 
 .navbar {
   //background: $NAVBAR_COLOR !important;

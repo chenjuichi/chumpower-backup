@@ -102,10 +102,9 @@
           <div style="display: flex; flex-direction: column; align-items: center;">
             <!--客製化搜尋-->
             <v-text-field
-              id="search_input"
+              id="bar_code"
 
               v-model="search"
-              label="資料搜尋"
 
               prepend-inner-icon="mdi-magnify"
               variant="outlined"
@@ -119,12 +118,10 @@
             <v-text-field
               id="bar_code"
               v-model="bar_code"
-              label="條碼"
-
               :value="bar_code"
               ref="barcodeInput"
               @keyup.enter="handleBarCode"
-              hide-details
+              hide-details="auto"
               prepend-icon="mdi-barcode"
               style="min-width:200px; position: relative; top: 15px; right: 50px;"
               class="align-center"
@@ -973,7 +970,6 @@ function idOf(row) {
   //return KEY === 'assemble' ? (row.assemble_id ?? null) : (row.id ?? row.material_id ?? null)
 }
 
-/*
 async function restoreAllMyTimers() {
   const me = currentUser.value.empID      // 你用的登入人員代號
   const rows = materials_and_assembles.value || []
@@ -987,27 +983,6 @@ async function restoreAllMyTimers() {
       // useProcessTimerBegin.js 內已處理：paused 就 pause；running 就啟動本地 ticker + autoUpdate
     } catch (e) {
       console.warn('restore fail for row', row.id, e)
-    }
-  }
-}
-*/
-async function restoreAllMyTimers() {
-  const me = currentUser.value.empID
-  const rows = materials_and_assembles.value || []
-
-  for (const row of rows) {
-    // ✅ 後端說這列不是 running，就不要 restore
-    if (!row.is_running_row && !row.show_timer) {
-      continue
-    }
-
-    const t = getT(row)
-    if (!t?.restoreProcess) continue
-
-    try {
-      await t.restoreProcess(row.id, row.process_step_code, me, row.assemble_id)
-    } catch (e) {
-      console.warn('restore fail for row', row.id, row.assemble_id, e)
     }
   }
 }
@@ -1484,7 +1459,7 @@ const focusItemField = async (item) => {
 
   await nextTick() // 確保 DOM 已更新
   // 找到外層 v-text-field DOM
-  const wrapper = document.getElementById(`receiveQtyID-${item.assemble_id}`);
+  const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
   if (wrapper) {
     // 聚焦到 v-text-field 本身
     console.log("wrapper ok...")

@@ -11,13 +11,17 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from ajax.listTable import listTable
+from ajax.listTableP import listTableP
 from ajax.getTable import getTable
+from ajax.getTableP import getTableP
 from ajax.createTable import createTable
 from ajax.updateTable import updateTable
+from ajax.updateTableP import updateTableP
 from ajax.deleteTable import deleteTable
 from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
 from ajax.hardware import hardware
+from ajax.archiveTable import archiveTable
 
 from ajax.scheduleDoTable import do_read_user_table, delete_log_files, delete_pdf_files, delete_exec_files
 
@@ -40,7 +44,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2026-05-15' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2026-06-11' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -52,14 +56,18 @@ host_ip = local_ip
 app.config['JSON_AS_ASCII'] = False
 
 app.register_blueprint(listTable)
+app.register_blueprint(listTableP)
 app.register_blueprint(getTable)
+app.register_blueprint(getTableP)
 app.register_blueprint(createTable)
 app.register_blueprint(updateTable)
+app.register_blueprint(updateTableP)
 app.register_blueprint(deleteTable)
 app.register_blueprint(excelTable)
 #app.register_blueprint(excelModifyTable)
 app.register_blueprint(browseDirectory)
 app.register_blueprint(hardware)
+app.register_blueprint(archiveTable)
 
 CORS(app, resources={r'/*': {'origins': '*'}})
 #CORS(app, resources={r'/*': {'origins': '*'}}, supports_credentials=True)

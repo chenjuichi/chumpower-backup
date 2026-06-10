@@ -77,7 +77,7 @@
           </v-icon>
         </div>
         <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2026-05-15' }}
+          {{ 'Build 2026-06-11' }}
         </span>
       </div>
   </div>
@@ -184,6 +184,8 @@ const backgroundStyle = ref({
   width: '100vw',
   height: '100vh',
 });
+
+const isSetupListUsersLoading = ref(false)
 
 //=== mounted ===
 onMounted(async () => {
@@ -351,6 +353,12 @@ const updateOnlineStatus = () => {
 }
 
 const setupListUsers = (focused) => {
+  //if (isSetupListUsersLoading.value)
+  //  return
+
+  //isSetupListUsersLoading.value = true
+
+
   if (!focused) { // 當失去焦點時
     console.log("setupListUsers()...");
 

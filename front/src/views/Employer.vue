@@ -1197,11 +1197,19 @@ const expandSelectionWithParents = (items = [], selectedIds = []) => {
 </script>
 
 <style lang="scss" scoped>
-@import url('https://fonts.googleapis.com/css?family=Noto+Sans+TC:400,500&display=swap&subset=chinese-traditional'
-);
-@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
+//@import url('https://fonts.googleapis.com/css?family=Noto+Sans+TC:400,500&display=swap&subset=chinese-traditional'
+//);
+//@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
 
 @import "../styles/variables.scss";
+
+* {
+  font-family:
+    "Microsoft JhengHei",
+    "微軟正黑體",
+    "Noto Sans TC",
+    sans-serif;
+}
 
 .page_contain {
   position: fixed;
@@ -1240,7 +1248,12 @@ const expandSelectionWithParents = (items = [], selectedIds = []) => {
 :deep(.treeview-node__content span) {
   font-size: 14px;
   font-weight: 600;
-  font-family: 'cwTeXYen', sans-serif;
+  font-family:
+  "Microsoft JhengHei",
+  "微軟正黑體",
+  "Noto Sans TC",
+  'cwTeXYen',
+  sans-serif;
 }
 /*
 .tree-view-item[aria-disabled="true"] {

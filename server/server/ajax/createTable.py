@@ -288,6 +288,28 @@ def create_process():
       period_time = str(time_diff).split('.')[0]  # 去除微秒，格式為 'HH:MM:SS'
     print("step2-1...", period_time)
 
+  #
+  # 不要重複建立同一個人/同一工序的 active process
+  if int(_process_type) in (21, 22, 23) and _has_started:
+    existed = (
+        s.query(Process)
+        .filter(Process.material_id == _id)
+        .filter(Process.assemble_id == _assemble_id)
+        .filter(Process.process_type == _process_type)
+        .filter(Process.user_id == _user_id)
+        .filter(Process.has_started.is_(True))
+        .filter(Process.end_time.is_(None))
+        .first()
+    )
+
+    if existed:
+        return jsonify({
+            'status': True,
+            'process_id': existed.id,
+            'message': '此員工此工序已開始，不重複新增'
+        })
+  #
+
   # 3️⃣ 直接新增 process 記錄（無論是否已存在）
   new_process = Process(
     material_id = _id,

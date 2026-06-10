@@ -24,7 +24,7 @@
           <v-switch
             :model-value="scheduleMode === 'check'"
             color="indigo"
-                      hide-details
+            hide-details
             @update:modelValue="val => switchScheduleMode(val ? 'check' : 'assemble')"
           >
             <template #label>
@@ -183,8 +183,6 @@
 
     v-model:items-per-page="pagination.itemsPerPage"
     v-model:page="pagination.page"
-
-
 
     :sort-by.sync="sortBy"
     :sort-desc.sync="sortDesc"
@@ -379,11 +377,12 @@
             <v-col cols="auto">
               <div class="search-slot">
                 <v-text-field
+                  id="search_input"
                   v-model="search"
+                  label="資料搜尋"
                   prepend-inner-icon="mdi-magnify"
                   variant="outlined"
                   hide-details
-                  label="全文搜尋"
                   single-line
                   density="compact"
                   class="toolbar-field toolbar-field--24 search-field"
@@ -397,10 +396,11 @@
                 <v-text-field
                   id="bar_code"
                   v-model="bar_code"
+                  label="條碼"
                   :value="bar_code"
                   ref="barcodeInput"
                   @keyup.enter="handleBarCode"
-                  hide-details="auto"
+                  hide-details
                   prepend-icon="mdi-barcode"
 
                   density="compact"
@@ -468,12 +468,16 @@
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div>
-        <!--<div style="color:black; font-size:12px; margin-right:2px;" v-if="item.isLackMaterial != 99">-->
+        <!--
         <div
           style="color:black; font-size:12px; margin-right:2px;"
           v-if="(String(item.shortage_note || '').includes('缺料') || item.isLackMaterial != 99) &&
-          item.has_receive_true < item.has_bom" >
-
+          item.has_receive_true < item.has_bom">
+        -->
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-if="(String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)"
+        >
           <v-icon
             style="color: green;"
             @click.stop="onDelete(item)"
@@ -481,10 +485,29 @@
           >
             mdi-trash-can-outline
           </v-icon>
-          {{ item.order_num }}&nbsp;&nbsp;
+          {{ item.order_num }}&nbsp;
           <span style="color:red; font-weight:700; font-size:12px;">缺料</span>
         </div>
-        <div style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;" v-else>
+
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-else-if="!item.merge_enabled"
+        >
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
+          {{ item.order_num }}&nbsp;
+          <span style="color:blue; font-weight:700; font-size:12px;">缺料不併單</span>
+        </div>
+
+        <div
+          style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;"
+          v-else
+        >
           <v-icon
             style="color: green;"
             @click.stop="onDelete(item)"
@@ -585,6 +608,7 @@
             style="width: 25px; height: 25px;"
           />
           <!-- 動態顯示表格 -->
+<!--
           <div
             v-if="isTableVisible && boms.length > 0 && !isGifDisabled(item)"
             :style="adjustTablePosition"
@@ -616,6 +640,57 @@
               </tfoot>
             </v-table>
           </div>
+-->
+
+<!--
+<div
+  v-if="
+    isTableVisible &&
+    activeBomItemId === item.id && getFilteredBoms(item).length > 0 && !isGifDisabled(item)"
+  :style="adjustTablePosition"
+>
+-->
+<div
+  v-if="
+    isTableVisible &&
+    String(activeBomItemId) === String(item.id) &&
+    getFilteredBoms(item).length > 0 &&
+    !isGifDisabled(item)
+  "
+  :style="adjustTablePosition"
+>
+
+
+  <v-table style="width: 190px; overflow: hidden;" class="show_table">
+    <thead>
+      <tr>
+        <th style="text-align: left;">編號</th>
+        <th style="text-align: right;">數量</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <tr
+        v-for="(bom_item, index) in getFilteredBoms(item)"
+        :key="bom_item.id || index"
+        :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
+        class="custom-row"
+      >
+        <td style="text-align: left;">{{ bom_item.material_num }}</td>
+        <td style="text-align: right;">{{ bom_item.qty }}</td>
+      </tr>
+    </tbody>
+
+    <tfoot>
+      <tr>
+        <td colspan="2">
+          共 {{ getFilteredBoms(item).length }} 項
+        </td>
+      </tr>
+    </tfoot>
+  </v-table>
+</div>
+
         </div>
       </v-hover>
     </template>
@@ -736,7 +811,7 @@
         size="small"
         icon
         class="btn-add-process-icon btn-add-process-icon--delete"
-        :disabled="isEditProcessDisabled(item)"
+        :disabled="isEditProcessDisabled(item) || item.has_any_running_process"
         @click.stop="onClickDeleteSchedule(item)"
       >
         <v-icon size="20" color="red">mdi-delete</v-icon>
@@ -746,7 +821,7 @@
         size="small"
         icon
         class="btn-add-process-icon btn-add-process-icon--edit"
-        :disabled="isEditProcessDisabled(item)"
+        :disabled="isEditProcessDisabled(item) || item.has_any_running_process"
         @click="openSchedulingDialog(item)"
       >
         <v-icon size="20" color="blue">mdi-pencil</v-icon>
@@ -773,9 +848,16 @@
     <template #item.action="{ item }">
       <!-- 開始鍵左側顯示「自己」的計時值 -->
       <div class="begin-cell begin-cell-shift">
+      <!--<div class="begin-cell begin-cell-shift start-btn-wrap">-->
         <div class="begin-timer-slot">
+        <!--
           <span
             v-if="item._showMyTimer || isMineStarted(item) || item.show_name == userId"
+            class="begin-timer-text"
+          >
+        -->
+          <span
+            v-if="checkShowTimer(item)"
             class="begin-timer-text"
           >
             <TimerDisplay
@@ -803,6 +885,33 @@
           class="me-1"
         >
         -->
+
+        <div class="start-btn-wrap">
+
+          <span
+            v-if="hasOtherUserStarted(item.raw || item)"
+            class="other-user-dot"
+          />
+
+
+
+        <!--
+          <span
+            v-if="getStartedCount(item) > 0"
+            class="other-user-dot"
+          >
+            {{ getStartedCount(item) }}
+          </span>
+        -->
+
+        <!--
+          <span
+            v-if="item.users_for_press_start > 0"
+            class="other-user-dot"
+          >
+            {{ item.users_for_press_start }}
+          </span>
+        -->
           <v-btn
             size="small"
             variant="tonal"
@@ -817,6 +926,7 @@
             <v-icon start style="font-weight:700;">mdi-timer-outline</v-icon>
             開 始
           </v-btn>
+        </div>
         <!--
         </v-badge>
         -->
@@ -877,7 +987,8 @@ import { currentBoms, }  from '../mixins/crud.js';
 import { materials_and_assembles, assembles_active_user_count, boms,  socket_server_ip }  from '../mixins/crud.js';
 //import { temp_isLackMaterial }  from '../mixins/crud.js';
 //import { begin_count, end_count }  from '../mixins/crud.js';
-import { apiOperation, setupGetBomsWatcher }  from '../mixins/crud.js';
+import { apiOperation }  from '../mixins/crud.js';
+//import { setupGetBomsWatcher }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
 const listMaterialsAndAssembles = apiOperation('get', '/listMaterialsAndAssembles');
@@ -1092,8 +1203,11 @@ const selectedAsmId = ref(null);
 // 控制是否顯示 確定/取消
 const showBatchActions = ref(false)
 
+const bomsMap = ref({})
+const activeBomItemId = ref(null)
+
 //=== watch ===
-setupGetBomsWatcher();
+//setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
 watch(bar_code, (newVal) => {
@@ -1208,9 +1322,11 @@ const adjustTablePosition = computed(() => ({
   overflowX: 'hidden', // 禁止水平滾動條
 }));
 
+/*
 const filteredBoms = computed(() =>
   boms.value.filter(item => item.receive)
 );
+*/
 
 // index -> idx (0-based)
 const indexToIdx = computed(() => {
@@ -1383,6 +1499,13 @@ onMounted(async () => {
         console.log("本裝置 empID 不符，忽略此 triggerLogout");
       }
     });
+
+    socket.value?.on('assemble-started', handleAssembleStarted);
+
+    socket.value?.on('schedule_mode-ok', handleScheduleModeOk);
+
+    socket.value?.on('icon-disable', handleIconDisable);
+
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -1433,6 +1556,11 @@ onBeforeMount(() => {
 
 onBeforeUnmount(() => {
 
+  socket.value?.off('assemble-started', handleAssembleStarted);
+
+  socket.value?.off('schedule_mode-ok', handleScheduleModeOk);
+
+  socket.value?.off('icon-disable', handleIconDisable);
 });
 
 //=== method ===
@@ -1564,6 +1692,7 @@ function onTimeUpdate(row, ms) {
 }
 
 // 依 row.process_step_code → process_type
+/*
 function processTypeOf(row) {
   console.log("processTypeOf:", row.process_step_code)
 
@@ -1573,6 +1702,18 @@ function processTypeOf(row) {
   if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
   if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
 }
+*/
+function processTypeOf(row) {
+  const workNum = String(row?.work_num || '')
+  const step = Number(row?.process_step_code ?? 0)
+
+  if (workNum === 'B109' || step === 3) return 21 // 組裝
+  if (workNum === 'B110' || step === 2) return 22 // 檢驗
+  if (workNum === 'B106' || step === 1) return 23 // 雷射
+
+  return 0
+}
+
 
 // 以 material 為粒度，idKey 取 material_id（列表裡是 id=material.id）
 // 若後端已支援 assemble 粒度，改成 row.assemble_id 並把 key 換成 'assemble'
@@ -1683,6 +1824,13 @@ async function restoreActiveTimersOnly() {
   for (const row of rows) {
     const t = getT(row);
     if (!t?.restoreProcess) continue;
+
+    const pType = processTypeOf(row)
+
+    if (!pType) {
+      console.warn('[restore] processTypeOf(row) failed:', row)
+      continue
+    }
 
     try {
       await t.restoreProcess(
@@ -1805,6 +1953,31 @@ async function nudgeResume () {
   timer()?.resume?.()
 }
 
+/*
+function checkShowTimer(row) {
+  const t = getT(row) // 以 (row.id + step + userId) 當 key
+
+  if (t && t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+    return true
+  } else {
+    return false
+  }
+}
+*/
+function checkShowTimer(row) {
+  if (row?.show_timer === true || row?.show_timer === 1 || row?.show_timer === '1') {
+    return true
+  }
+
+  if (Number(row?.my_process_id || 0) > 0) {
+    return true
+  }
+
+  const t = getT(row)
+  return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
+}
+
+
 async function onClickBegin(row) {
   console.log("onClickBegin(), row", row);
 
@@ -1862,6 +2035,30 @@ async function onClickBegin(row) {
     if (!pid || (typeof pid === 'object' && pid.success === false)) {
       showSnackbar("開始失敗：使用者或流程資料異常!", "red-darken-2");
       return;
+    } else {
+
+      // 同訂單 工序 全部 disable
+      markSameOrderProcessLocked(row)
+
+      console.log("emit socket assemble-started")
+      socket.value?.emit('assemble-started', {
+        assemble_id: row.assemble_id,
+        material_id: row.id,
+        order_num: row.order_num,
+        //user_id: currentUser.value?.empID || currentUser.value?.emp_id || '',
+        user_id: me,
+        user_name: currentUser.value?.name || '',
+      })
+
+      console.log("emit socket icon-disable")
+      const materialId = row.material_id || row.id
+      socket.value?.emit('icon-disable', {
+        material_id: materialId,
+        assemble_id: row.assemble_id,
+        order_num: row.order_num,
+        //index: row.index,
+      })
+
     }
   }
 
@@ -1898,13 +2095,47 @@ const safeRefresh = async () => {
   if (refreshing.value) return;
   refreshing.value = true;
   try {
-    await listMaterialsAndAssembles();
+    //await listMaterialsAndAssembles();
+    await reloadAssembleData()
     //await nextTick();
     //await restoreAllMyTimers();
   } finally {
     refreshing.value = false;
   }
 };
+
+const handleScheduleModeOk = async ()  => {
+  console.log("handleScheduleModeOk 被觸發！")
+
+  //await safeRefresh();
+  await listMaterialsAndAssembles({
+    user_id: currentUser.value?.empID
+  })
+}
+
+const handleIconDisable = (data) => {
+  console.log("handleIconDisable 被觸發！", data)
+
+  const materialId = Number(data?.material_id)
+  const assembleId = Number(data?.assemble_id)
+  const orderNum = data?.order_num
+
+  materials_and_assembles.value = materials_and_assembles.value.map(row => {
+    const sameRow =
+      Number(row.id) === materialId ||
+      Number(row.material_id) === materialId ||
+      Number(row.assemble_id) === assembleId ||
+      row.order_num === orderNum
+
+    if (!sameRow) return row
+
+    return {
+      ...row,
+      //icon_disabled: true,
+      has_any_running_process: true
+    }
+  })
+}
 
 const handleMaterialUpdate = async ()  => {
   console.log("handleMaterialUpdate 被觸發！")
@@ -2072,10 +2303,28 @@ const initialize = async () => {
   }
 };
 
+/*
 const customFilter = (value, query, item) => {
   if (value == null || query == null) return false
 
   return String(value).toUpperCase().includes(String(query).toUpperCase())
+}
+*/
+const customFilter = (value, query, item) => {
+  if (!query) return true
+
+  const q = String(query).toUpperCase()
+
+  const raw = item?.raw || item || {}
+
+  return [
+    raw.order_num,
+    raw.material_num,
+    raw.material_comment,
+    raw.comment,
+    raw.assemble_work,
+    raw.work_num,
+  ].some(v => String(v || '').toUpperCase().includes(q))
 }
 
 const handleBarCode = async () => {
@@ -2172,7 +2421,7 @@ const showMatchedItem = async (barcode) => {
   await nextTick()
 
   setTimeout(() => {
-    const rowEl = document.getElementById(`row-${item.id}`)
+    const rowEl = document.getElementById(`receiveQtyID-${item.assemble_id}`)
     if (rowEl) {
       rowEl.scrollIntoView({
         behavior: 'smooth',
@@ -2371,6 +2620,7 @@ const isEditProcessDisabled = (item) => {
 }
 */
 
+/*
 const isEditProcessDisabled = (item) => {
   return (
     item?.show_timer === true ||
@@ -2378,6 +2628,56 @@ const isEditProcessDisabled = (item) => {
     Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
     item?.is_abnormal_process === true
   )
+}
+*/
+
+const isEditProcessDisabled = (item) => {
+  return (
+    item?.has_any_running_process === true ||
+
+    //item?.show_timer === true ||
+    Number(item?.abnormal_qty || 0) > 0 ||
+    Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
+    item?.is_abnormal_process === true
+  )
+}
+/*
+const handleEditProcessClick = (item) => {
+  if (isEditProcessDisabled(item)) {
+    socket.value?.emit('icon-disable', {
+      material_id: item.material_id,
+      assemble_id: item.assemble_id
+    })
+  }
+}
+*/
+
+/*
+const notifyIconDisable = (item) => {
+  if (!isEditProcessDisabled(item)) return
+
+  socket.value?.emit('icon-disable', {
+    material_id: item.material_id,
+    assemble_id: item.assemble_id
+  })
+}
+*/
+const markSameOrderProcessLocked = (item) => {
+  const orderNum = item?.order_num
+  const materialId = item?.id
+
+  materials_and_assembles.value = materials_and_assembles.value.map(row => {
+    const sameOrder =
+      row.order_num === orderNum ||
+      row.id === materialId
+
+    if (!sameOrder) return row
+
+    return {
+      ...row,
+      has_any_running_process: true
+    }
+  })
 }
 
 //const isAddProcessDisabled = (item) => isProcessStepEnabled(item);
@@ -2489,9 +2789,15 @@ const onDragEndStep = () => {
 //  if (!isAddProcessDisabled(item)) return;
 //};
 
-const fetchBomsV2 = async (payload) => {
+/*
+//const fetchBomsV2 = async (payload) => {
+const fetchBomsV2 = async (item) => {
   try {
-    await getBoms(payload)
+    //await getBoms(payload)
+    await getBoms({
+      id: item.id,
+      mode: 'picked',
+    })
     console.log("temp_boms:", currentBoms.value, boms.value)
     //myBoms.value = tempres?.data?.boms || []
   } catch (e) {
@@ -2499,6 +2805,71 @@ const fetchBomsV2 = async (payload) => {
     //myBoms.value = []
   }
 }
+*/
+
+/*
+const fetchBomsV2 = async (item) => {
+  try {
+    const isMergeEnabled =
+    item.merge_enabled === true ||
+    item.merge_enabled === 1 ||
+    item.merge_enabled === '1' ||
+    item.merge_enabled === 'true';
+
+    const payload = isMergeEnabled
+      ? {
+          order_num: item.order_num,
+          mode: 'picked',
+        }
+      : {
+          id: item.id,
+          mode: 'picked',
+        };
+
+    console.log("item.id:", item.id, "merge_enabled:", item.merge_enabled, "isMergeEnabled:", isMergeEnabled);
+    console.log("getBoms payload:", payload);
+
+    await getBoms(payload);
+
+    console.log("temp_boms:", currentBoms.value, boms.value)
+  } catch (e) {
+    console.error("fetchBomsV2 failed:", e);
+    boms.value = [];
+    currentBoms.value = [];
+  }
+};
+*/
+const fetchBomsV2 = async (item) => {
+  try {
+    const key = String(item.id)
+
+    activeBomItemId.value = key
+    isTableVisible.value = true
+
+    const payload = {
+      id: item.id,
+      mode: 'picked',
+    };
+
+    console.log("getBoms payload:", payload);
+
+    //const res = await getBoms(payload);
+    await getBoms(payload);
+
+    //bomsMap.value[item.id] = res?.data?.boms || [];
+    bomsMap.value[item.id] = currentBoms.value
+
+    //console.log("bomsMap:", item.id, bomsMap.value[item.id]);
+    console.log("activeBomItemId:", activeBomItemId.value)
+    console.log("bomsMap:", key, bomsMap.value[key])
+    console.log("getFilteredBoms:", getFilteredBoms(item))
+
+  } catch (e) {
+    console.error("fetchBomsV2 failed:", e);
+    //bomsMap.value[item.id] = [];
+    bomsMap.value[String(item.id)] = []
+  }
+};
 
 const closeSchedulingDialog = () => {
   scheduling_dialog.value = false;
@@ -2586,6 +2957,9 @@ const confirmSchedulingDialog = async () => {
 
   // 3. 兩種都有選，直接走原本程序
   await doConfirmSchedulingDialog()
+
+  console.log("schedule_mode-ok sock")
+  socket.value?.emit('schedule_mode-ok');
 }
 
 const doConfirmSchedulingDialog = async () => {
@@ -2666,6 +3040,10 @@ const hasUncheckedStep = (steps = []) => {
 }
 
 const isAddProcessButtonDisabled = (item) => {
+//
+  if (String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)
+    return true
+//
   const ps = item?.process_steps || {}
 
   const assemble = Array.isArray(ps.assemble) ? ps.assemble : []
@@ -2740,13 +3118,16 @@ const onClickDeleteSchedule = async (item) => {
       showSnackbar(tt.msg || '刪除工序失敗', 'red accent-2');
 
       // 返回後重新載入，保留原本最後製程資料
-      await listMaterialsAndAssembles();
+      //await listMaterialsAndAssembles();
+      await reloadAssembleData()
 
       return;
     }
 
     showSnackbar("刪除工序完成!", "green darken-1");
-    await listMaterialsAndAssembles();
+    //await listMaterialsAndAssembles();
+    await reloadAssembleData()
+
   } catch (err) {
     console.error('deleteAssembleScheduleRow error:', err)
     showSnackbar('刪除工序發生錯誤', 'red accent-2');
@@ -3145,7 +3526,7 @@ const fetchBoms = async (item) => {
   }
 
   let res;
-
+  /*
   try {
     if (item.merge_enabled) {
       res = await getOrderPickedBoms({
@@ -3161,6 +3542,29 @@ const fetchBoms = async (item) => {
     console.error("fetchBoms failed:", e);
     boms.value = [];
     //return;
+  }
+  */
+  try {
+    const mergeEnabled = Boolean(item.merge_enabled);
+
+    const payload = mergeEnabled
+      ? {
+          order_num: item.order_num,
+          mode: 'picked',
+        }
+      : {
+          id: item.id,
+          mode: 'picked',
+        };
+
+    console.log("getOrderPickedBoms payload:", payload);
+
+    res = await getOrderPickedBoms(payload);
+
+    boms.value = res?.data?.boms || [];
+  } catch (e) {
+    console.error("fetchBoms failed:", e);
+    boms.value = [];
   }
 
   //boms.value = res.data?.boms || [];
@@ -3216,6 +3620,66 @@ const continueConfirmSchedulingDialog = async () => {
   scheduleAlertDialog.value = false
   scheduleAlertType.value = ''
   await doConfirmSchedulingDialog()
+}
+
+/*
+const getFilteredBoms = (item) => {
+  return (bomsMap.value[item.id] || []).filter(bom => bom.receive)
+}
+*/
+const getFilteredBoms = (item) => {
+  return (bomsMap.value[String(item.id)] || []).filter(bom => bom.receive)
+}
+
+const hasOtherUserStarted = (item) => {
+  console.log("hasOtherUserStarted()...")
+  const row = item?.raw || item || {}
+  const currentEmpId = currentUser.value?.emp_id || ''
+
+  const users = row.active_user_ids || row.active_users || []
+
+  if (!Array.isArray(users)) {
+    console.log("return:", false)
+    return false
+  }
+
+  return users.some(u => {
+    const uid = String(u || '').split(' ')[0]
+    console.log("return:", uid && uid !== currentEmpId)
+    return uid && uid !== currentEmpId
+  })
+}
+
+const getStartedCount = (item) => {
+  return Array.isArray(item.active_user_ids)
+    ? item.active_user_ids.length
+    : 0
+}
+
+const handleAssembleStarted = (payload) => {
+  const assembleId = Number(payload?.assemble_id)
+  const userId = String(payload?.user_id || '')
+
+  if (!assembleId || !userId) return
+
+  const row = materials_and_assembles.value.find(x => Number(x.assemble_id) === assembleId)
+  if (!row) return
+
+  const list = Array.isArray(row.active_user_ids)
+    ? [...row.active_user_ids]
+    : []
+
+  if (!list.includes(userId)) {
+    list.push(userId)
+  }
+
+  row.active_user_ids = list
+}
+
+const reloadAssembleData = async () => {
+  await listMaterialsAndAssembles({
+    user_id: currentUser.value?.empID
+  })
 }
 </script>
 
@@ -3982,5 +4446,49 @@ const continueConfirmSchedulingDialog = async () => {
   color: red;
   font-weight: 700;
   margin-left: 6px;
+}
+
+.start-btn-wrap {
+  position: relative;
+  display: inline-block;
+}
+/*
+.other-user-dot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  background: #00c853;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 4px rgba(0, 200, 83, 0.8);
+  z-index: 2;
+}
+*/
+.other-user-dot {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+
+  width: 15px;
+  height: 15px;
+
+  background: #00c853;
+  color: white;
+
+  border-radius: 50%;
+  border: 2px solid white;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  z-index: 10;
+
+  box-shadow: 0 0 4px rgba(0,0,0,.25);
 }
 </style>

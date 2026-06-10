@@ -9,7 +9,11 @@
       </v-btn>
     </template>
   </v-snackbar>
-
+<!--
+  <DraggablePanel :initX="panelX" :initY="panelY" :isDraggable="true">
+    <LedLights :activeColor="activeColor" />
+  </DraggablePanel>
+-->
   <ConfirmDialog ref="confirmRef" />
 
   <!-- 待入庫 data table -->
@@ -59,10 +63,10 @@
                 成品區入庫資訊
               </span>
             </v-col>
+
             <!-- 入庫即時紀錄查詢/入庫歷史紀錄查詢/入庫全部資料查詢 -->
             <v-col cols="12" md="4" class="d-flex justify-start" style="gap:5px;">
               <v-btn
-                :disabled="1===1"
                 variant="outlined"
                 class="warehouse-top-btn"
                 style="padding-left:5px; padding-right:5px;"
@@ -72,7 +76,6 @@
                 入庫即時紀錄查詢
               </v-btn>
               <v-btn
-                :disabled="1===1"
                 color="blue-grey"
                 variant="outlined"
                 class="warehouse-top-btn"
@@ -94,8 +97,9 @@
               </v-btn>
             </v-col>
             <v-col cols="12" md="2"></v-col>
-            <!-- 搜尋/barcode -->
+            <!-- 搜尋 -->
             <v-col cols="12" md="4" class="d-flex justify-end align-center" style="gap:5px;">
+              <!-- 搜尋 -->
               <v-text-field
                 v-model="search"
                 label="搜尋"
@@ -106,6 +110,7 @@
                 density="compact"
                 class="warehouse-top-input"
               />
+              <!-- barcode -->
               <v-text-field
                 v-model="bar_code"
                 label="條碼"
@@ -119,60 +124,128 @@
                 class="warehouse-top-input warehouse-barcode-field"
               />
             </v-col>
+            <!-- barcode -->
+            <!--
+            <v-col cols="12" md="2" class="d-flex justify-end align-center">
+              <v-text-field
+                v-model="bar_code"
+                label="條碼"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details
+                single-line
+                prepend-inner-icon="mdi-barcode"
+                variant="outlined"
+                density="compact"
+                class="warehouse-top-input warehouse-barcode-field"
+              />
+            </v-col>
+            -->
           </v-row>
+
+          <!-- 第二行 -->
+        <!--
+          <v-row align="center">
+            <v-col cols="12" md="2" class="d-flex justify-start"></v-col>
+
+
+            <v-col cols="12" md="4" class="d-flex justify-start">
+              <v-btn
+                :disabled="1===1"
+                color="warning"
+                variant="outlined"
+                class="warehouse-top-btn"
+                style="padding-left:5px; padding-right:5px;"
+                @click="archiveSelectedWarehouseRows"
+              >
+                入庫資料封存
+              </v-btn>
+
+              <v-btn
+                :disabled="1===1"
+                color="success"
+                variant="outlined"
+                class="warehouse-top-btn"
+                style="padding-left:5px; padding-right:5px;"
+                @click="openRestoreDialog"
+              >
+                入庫資料還原
+              </v-btn>
+
+              <v-btn
+                :disabled="1===1"
+                color="info"
+                variant="outlined"
+                class="warehouse-top-btn"
+                style="padding-left:5px; padding-right:5px;"
+                @click="openArchiveBatchDialog"
+              >
+                查看封存批次
+              </v-btn>
+            </v-col>
+          </v-row>
+        -->
 
           <!-- 第三行 -->
           <v-row align="center">
             <v-col cols="12" md="2" class="d-flex justify-start"></v-col>
             <!-- 入庫登記 -->
             <v-col cols="12" md="4" class="d-flex justify-start">
-            <!--
               <v-btn
                 :disabled="c_isBlinking"
-                ref="warehouseBtn"
                 color="primary"
                 variant="outlined"
                 class="warehouse-top-btn"
                 style="padding-left:5px; padding-right:5px;"
                 @click="onClickWarehouseIn"
               >
+              <!--
+                <v-icon start color="blue">
+                  mdi-view-grid-plus-outline
+                </v-icon>
+              -->
                 <v-icon start color="blue">
                   mdi-cart-plus
                 </v-icon>
+
                 <span>入庫登記</span>
               </v-btn>
-            -->
-              <AddToCartButton
-                text="入庫登記"
-                :disabled="c_isBlinking"
-                style="padding-left:5px; padding-right:5px; position:relative; top:-2px;"
-                @click="onClickWarehouseIn"
+            </v-col>
+            <v-col cols="12" md="6">
+
+            </v-col>
+          <!--
+            <v-col cols="12" md="2"></v-col>
+          -->
+            <!-- 搜尋 -->
+          <!--
+            <v-col cols="12" md="2" class="d-flex justify-end align-center">
+              <v-text-field
+                v-model="search"
+                label="搜尋"
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                hide-details
+                single-line
+                density="compact"
+                class="warehouse-top-input"
               />
             </v-col>
-
-            <!-- 動畫-->
-          <!--
-            <v-col cols="12" md="6" class="warehouse-animation-col">
-              <Transition name="warehouse-fade">
-                <div
-                  v-if="warehouseAnimationVisible"
-                  class="warehouse-svg-wrapper"
-                >
-                  <WarehouseInAnimation
-                    :start-x="-330"
-                    :time-x="3"
-                    :length-x="565"
-                    :floor-x="-330"
-                    :floor-width="590"
-                  />
-                </div>
-              </Transition>
-            </v-col>
           -->
-
-          <!--測試用
-            <v-col cols="12" md="6" class="d-flex justify-start">
-              <AddToCartButton text="入庫登記0" @added="addCart" style="position:relative; top:-2px;" />
+            <!-- barcode -->
+          <!--
+            <v-col cols="12" md="2">
+              <v-text-field
+                v-model="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+                hide-details
+                single-line
+                prepend-inner-icon="mdi-barcode"
+                variant="outlined"
+                density="compact"
+                class="warehouse-top-input warehouse-barcode-field"
+              />
             </v-col>
           -->
           </v-row>
@@ -284,18 +357,7 @@
     <!-- 自訂 '說明' 欄位 -->
     <template v-slot:item.comment="{ item }">
       <div>
-        <div style="
-          text-align:left;
-          color: #669999;
-          font-size:12px;
-          font-family:
-          'Microsoft JhengHei',
-          '微軟正黑體',
-          'Noto Sans TC',
-          sans-serif;
-        ">
-          {{ item.comment }}
-        </div>
+        <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
         <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
       </div>
     </template>
@@ -406,10 +468,10 @@
             items-per-page="10"
             items-per-page-text="每頁的資料筆數"
           >
-            <!-- dialog內, top 區域 -->
+            <!--dialog內, top 區域-->
             <template v-slot:top>
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-                <!-- 搜尋框 -->
+                <!--dialog內, 搜尋框-->
                 <v-text-field
                   v-model="historySearch"
                   label="搜尋"
@@ -768,10 +830,6 @@ import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted
 
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
-import WarehouseInAnimation from './WarehouseInAnimation.vue';
-import AddToCartButton from './AddToCartButton.vue'
-
-import warehouseSvg from '../assets/warehouseIn.svg'
 
 import ConfirmDialog from "./confirmDialog";
 
@@ -836,15 +894,6 @@ const endTitle = ref('準備入庫');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
-const warehouseAnimationVisible = ref(false);
-//const warehouseAnimationVisible = ref(true);
-const start_x = ref(-120);   // 起始位置(px)
-const time_x = ref(10);       // 移動時間(秒)
-const length_x = ref(820);   // 移動距離(px)
-
-const warehouseBtn = ref(null)
-const animationLeft = ref(0)
-
 const snackbar = ref(false);
 const snackbar_info = ref('');
 const snackbar_color = ref('red accent-2');   // default: 'red accent-2'
@@ -878,14 +927,14 @@ const footerOptions = [
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 0, class: 'hidden-column' },
   { title: '  ', sortable: false, key: 'line', width:80 },
-  { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:110 },
   { title: '物料編號', sortable: true, key: 'material_num', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:80 },
   { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
   { title: '交期', align: 'center', sortable: false, key: 'date', width:120 },
   { title: '到庫數量', sortable: false, key: 'delivery_qty', width:80 },
-  { title: '應入庫總數量', align: 'center', sortable: false, key: 'must_allOk_qty', width:90 },
-  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width:90 },
+  { title: '應入庫總數量', align: 'center', sortable: false, key: 'must_allOk_qty', width:100 },
+  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width:100 },
 
   { title: '入庫數量', sortable: false, key: 'allOk_qty', width:80 },
 ];
@@ -1113,13 +1162,6 @@ onMounted(async () => {
     history.value = JSON.parse(savedItems);
   }
 
-  updateAnimationPosition()
-
-  window.addEventListener(
-    'resize',
-    updateAnimationPosition
-  )
-
   // 自動 focus
   if (barcodeInput.value) {
     barcodeInput.value.focus();
@@ -1184,8 +1226,6 @@ onMounted(async () => {
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時
   window.removeEventListener('popstate', handlePopState)
-
-  window.removeEventListener('resize', updateAnimationPosition)
 
   //# clearInterval(intervalId);
 });
@@ -1679,19 +1719,7 @@ const onClickWarehouseIn = async () => {
 };
 */
 
-const updateAnimationPosition = () => {
-  if (!warehouseBtn.value?.$el)
-    return
-
-  const rect = warehouseBtn.value.$el.getBoundingClientRect();
-
-  animationLeft.value = rect.right + 10;
-}
-
 const onClickWarehouseIn = async () => {
-
-  updateAnimationPosition();
-
   console.log("onClickWarehouseIn...");
 
   const selectedIds = Array.isArray(selectedItems.value)
@@ -1702,8 +1730,6 @@ const onClickWarehouseIn = async () => {
     showSnackbar('請選擇入庫的工單!', 'red accent-2');
     return;
   }
-
-  warehouseAnimationVisible.value = true;
 
   try {
     let successCount = 0;
@@ -1864,10 +1890,6 @@ const onClickWarehouseIn = async () => {
   } catch (err) {
     console.error('入庫流程發生例外：', err);
     showSnackbar('入庫流程執行失敗，請稍後再試', 'red accent-2');
-  } finally {
-    setTimeout(() => {
-      warehouseAnimationVisible.value = false;
-    }, 800);
   }
 };
 
@@ -2238,24 +2260,12 @@ const openRestoreDialog = () => {
 
   restoreDialog.value = true;
 };
-
-const addCart = () => {
-  console.log('入庫完成')
-}
 </script>
 
 <style lang="scss" scoped>
-//@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
+@import url('https://fonts.googleapis.com/earlyaccess/cwtexyen.css');
 
 @import "../styles/variables.scss";
-
-* {
-  font-family:
-    "Microsoft JhengHei",
-    "微軟正黑體",
-    "Noto Sans TC",
-    sans-serif;
-}
 
 .page_contain {
   position: fixed;
@@ -2342,12 +2352,7 @@ const addCart = () => {
   position: relative;
   font-size: 24px;
   font-weight: 600;
-  font-family:
-  "Microsoft JhengHei",
-  "微軟正黑體",
-  "Noto Sans TC",
-  sans-serif;
-  //font-family: 'cwTeXYen', sans-serif;
+  font-family: 'cwTeXYen', sans-serif;
 }
 
 .card-container {
@@ -2922,157 +2927,4 @@ p {
 :deep(.warehouse-history-table .v-table__wrapper > table > thead > tr > th.v-data-table__th) {
   background-color: #85aef2;
 }
-
-//&&
-
-.warehouse-svg {
-  width: 300px;
-  height: 80px;
-  display: block;
-  overflow: visible;
-  background: transparent;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: all .3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateX(10px);
-}
-
-.warehouse-svg-wrapper {
-  width: 300px;
-  height: 80px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: visible;
-}
-
-.warehouse-svg {
-  width: 300px;
-  height: 80px;
-  display: block;
-  overflow: visible;
-}
-
-/* 淡入淡出 */
-.warehouse-fade-enter-active {
-  transition: opacity 0.8s ease, transform 0.8s ease;
-}
-
-.warehouse-fade-leave-active {
-  transition: opacity 1.2s ease, transform 1.2s ease;
-}
-
-.warehouse-fade-enter-from {
-  opacity: 0;
-  transform: translateX(40px) scale(0.85);
-}
-
-.warehouse-fade-enter-to {
-  opacity: 1;
-  transform: translateX(0) scale(1);
-}
-
-.warehouse-fade-leave-from {
-  opacity: 1;
-  transform: translateX(0) scale(1);
-}
-
-.warehouse-fade-leave-to {
-  opacity: 0;
-  transform: translateX(40px) scale(0.85);
-}
-
-.warehouse-animation-col {
-  position: relative;
-  height: 80px;
-  overflow: visible;
-}
-
-.warehouse-svg-wrapper {
-  position: absolute;
-
-  margin-left: -280px;
-
-  top: 50%;
-
-  transform: translateY(-50%);
-
-  width: 300px;
-
-  height: 80px;
-
-  pointer-events: none;
-
-  z-index: 10;
-
-  overflow: visible;
-}
-
-.warehouse-svg {
-  width: 300px;
-
-  height: 80px;
-
-  display: block;
-}
-
-/* 淡入淡出 */
-
-.warehouse-fade-enter-active {
-  transition:
-    opacity 0.6s ease,
-    transform 0.6s ease;
-}
-
-.warehouse-fade-leave-active {
-  transition:
-    opacity 1s ease,
-    transform 1s ease;
-}
-
-.warehouse-fade-enter-from {
-  opacity: 0;
-
-  transform:
-    translateY(-50%)
-    translateX(80px)
-    scale(0.85);
-}
-
-.warehouse-fade-enter-to {
-  opacity: 1;
-
-  transform:
-    translateY(-50%)
-    translateX(0)
-    scale(1);
-}
-
-.warehouse-fade-leave-from {
-  opacity: 1;
-
-  transform:
-    translateY(-50%)
-    translateX(0)
-    scale(1);
-}
-
-.warehouse-fade-leave-to {
-  opacity: 0;
-
-  transform:
-    translateY(-50%)
-    translateX(80px)
-    scale(0.85);
-}
-
-
-
 </style>

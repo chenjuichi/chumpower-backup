@@ -379,6 +379,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('assemble-started', (payload) => {
+    console.log('assemble-started with payload', payload);
+
+    socket.broadcast.emit('assemble-started', payload);
+  })
+
+  socket.on('schedule_mode-ok', () => {
+    console.log('schedule_mode-ok');
+
+    socket.broadcast.emit('schedule_mode-ok');
+  })
+
+  socket.on('icon-disable', (payload) => {
+    console.log('icon-disable with payload', payload);
+
+    socket.broadcast.emit('icon-disable', payload);
+  })
+
+  socket.on('assemble-batch-released', (payload) => {
+    console.log('assemble-batch-released with payload', payload);
+
+    socket.broadcast.emit('assemble-batch-released', payload);
+  })
+
+
   // 斷線時也清掉 interval
   //socket.on('disconnect', () => {
   //  if (readyIntervals.has(socket.id)) {
@@ -526,6 +551,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2025-09-02\x1b[0m`);
+  console.log(`\x1b[34mBuild 2026-06-08\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

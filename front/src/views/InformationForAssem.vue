@@ -74,6 +74,7 @@
             <v-radio
               label="工作日期"
               value="2"
+              class="radio_btn2"
             ></v-radio>
           </v-radio-group>
 
@@ -365,195 +366,161 @@
       <v-card style="min-height:100px; overflow:visible; position:relative; top: -20px;">
         <v-card-title class="d-flex align-center pe-2 sticky-card-title" :max-width="dialogWidth" style="width: 100%; ">
           <v-row style="margin-left:3vw;">
-            <v-col cols="9">
+            <v-col cols="12">
               <div style="display: flex; justify-content: center; gap: 45px; font-size: 20px; color: blue">
-              <!--
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span style="font-size: 16px;">~ 至 {{ twoWeeksAgoDate }}</span>
+                <div style="min-width:290px; display:flex; flex-direction:column; gap:10px; position:relative; left:20px;">
+                  <v-radio-group
+                    v-model="select_date"
+                    inline
+                    style="position:relative; top:10px; font-size:14px;"
+                  >
+                    <v-radio label="交期" value="1" />
+                    <v-radio label="工作日期" value="2" />
+                  </v-radio-group>
+
+                  <v-menu
+                    v-model="menuOpen"
+                    :close-on-content-click="false"
+                    location="bottom start"
+                    origin="top start"
+                    :offset="[0, 8]"
+                    :width="480"
+                    :min-width="480"
+                    transition="fade-transition"
+                    :open-on-focus="false"
+                    :open-on-hover="false"
+                  >
+                    <template #activator="{ props }">
+                      <v-text-field
+                        v-bind="props"
+                        :label="select_date === '1' ? '交期範圍' : '工作日期範圍'"
+                        v-model="formattedDateRange"
+                        readonly
+                        variant="underlined"
+                        density="compact"
+                        placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
+                        prepend-icon="mdi-calendar-check"
+                        class="dateicon"
+                        clearable
+                        @click="menuOpen = true"
+                        @click:clear="clearDates"
+                      />
+                    </template>
+
+                    <div class="dp-stretch">
+                      <VueDatePicker
+                        :key="menuKey"
+                        :start-date="today"
+                        v-model="dpRange2"
+                        :enable-time-picker="false"
+                        range
+                        :inline="true"
+                        :auto-apply="true"
+                        locale="zh-TW"
+                        week-num-name=""
+                        :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
+                      />
+                    </div>
+                  </v-menu>
                 </div>
-              -->
-<div style="
-  min-width:290px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  position:relative;
-  left:20px;
-">
-  <v-radio-group
-    v-model="select_date"
-    inline
-    style="position:relative; top:10px; font-size:14px;"
-  >
-    <v-radio label="交期" value="1" />
-    <v-radio label="工作日期" value="2" />
-  </v-radio-group>
 
-  <v-menu
-    v-model="menuOpen"
-    :close-on-content-click="false"
-    location="bottom start"
-    origin="top start"
-    :offset="[0, 8]"
-    :width="480"
-    :min-width="480"
-    transition="fade-transition"
-    :open-on-focus="false"
-    :open-on-hover="false"
-  >
-    <template #activator="{ props }">
-      <v-text-field
-        v-bind="props"
-        :label="select_date === '1' ? '交期範圍' : '工作日期範圍'"
-        v-model="formattedDateRange"
-        readonly
-        variant="underlined"
-        density="compact"
-        placeholder="yyyy-mm-dd ~ yyyy-mm-dd"
-        prepend-icon="mdi-calendar-check"
-        class="dateicon"
-        clearable
-        @click="menuOpen = true"
-        @click:clear="clearDates"
-      />
-    </template>
-
-    <div class="dp-stretch">
-      <VueDatePicker
-        :key="menuKey"
-        :start-date="today"
-        v-model="dpRange2"
-        :enable-time-picker="false"
-        range
-        :inline="true"
-        :auto-apply="true"
-        locale="zh-TW"
-        week-num-name=""
-        :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
-      />
-    </div>
-  </v-menu>
-</div>
                 <div style="display: flex; flex-direction: column; align-items: center;">
                   <span>工單數</span>
                   <span style="position:relative; top:10px; font-size:30px;">{{ displayInformations.length }}</span>
                 </div>
-              <!--
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>備料準備中</span>
-                  <v-progress-circular
-                    :model-value="progress_value2"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
+
+                <div style="display:flex; gap:20px; position:relative; top:20px;">
+                  <!--未備料-->
+                  <v-btn
+                    v-show="showStatusButton('not_prepare')"
+                    variant="outlined"
+                    color="grey-darken-1"
+                    height="70"
+                    width="120"
+                    @click="filterByStatus('not_prepare')"
+                  >
+                    <div class="d-flex flex-column align-center">
+                      <span>未備料</span>
+                      <span style="font-size:24px; font-weight:bold;">
+                        {{ currentNotPrepareCount }}
+                      </span>
+                    </div>
+                  </v-btn>
+
+                  <!--備料準備中-->
+                  <v-btn
+                    v-show="showStatusButton('prepare')"
+                    variant="outlined"
                     color="primary"
+                    height="70"
+                    width="120"
+                    @click="filterByStatus('prepare')"
                   >
-                    {{ prepare_count }}
-                  </v-progress-circular>
-                </div>
+                    <div class="d-flex flex-column align-center">
+                      <span>備料準備中</span>
+                      <span style="font-size:24px;font-weight:bold;">
+                        <!--{{ prepare_count }}-->
+                        {{ currentPrepareCount }}
+                      </span>
+                    </div>
+                  </v-btn>
 
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>組裝進行中</span>
-                  <v-progress-circular
-                    :model-value="progress_value3"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
+                  <!--組裝進行中-->
+                  <v-btn
+                    v-show="showStatusButton('assemble')"
+                    variant="outlined"
                     color="red"
+                    height="70"
+                    width="120"
+                    @click="filterByStatus('assemble')"
                   >
-                    {{ assemble_count }}
-                  </v-progress-circular>
-                </div>
+                    <div class="d-flex flex-column align-center">
+                      <span>組裝進行中</span>
+                      <span style="font-size:24px;font-weight:bold;">
+                        <!--{{ assemble_count }}-->
+                        {{ currentAssembleCount }}
+                      </span>
+                    </div>
+                  </v-btn>
 
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  <span>等待入庫中</span>
-                  <v-progress-circular
-                    :model-value="progress_value4"
-                    :rotate="360"
-                    :size="70"
-                    :width="8"
+                  <!--等待入庫中-->
+                  <v-btn
+                    v-show="showStatusButton('warehouse')"
+                    variant="outlined"
                     color="pink"
+                    height="70"
+                    width="120"
+                    @click="filterByStatus('warehouse')"
                   >
-                    {{ warehouse_count }}
-                  </v-progress-circular>
+                    <div class="d-flex flex-column align-center">
+                      <span>等待入庫中</span>
+                      <span style="font-size:24px;font-weight:bold;">
+                        <!--{{ warehouse_count }}-->
+                        {{ currentWarehouseCount }}
+                      </span>
+                    </div>
+                  </v-btn>
+
+                  <!--已入庫-->
+                  <v-btn
+                    v-show="showStatusButton('stockin')"
+                    variant="outlined"
+                    color="success"
+                    height="70"
+                    width="120"
+                    @click="filterByStatus('stockin')"
+                  >
+                    <div class="d-flex flex-column align-center">
+                      <span>已入庫</span>
+                      <span style="font-size:24px; font-weight:bold;">
+                        {{ currentStockinCount }}
+                      </span>
+                    </div>
+                  </v-btn>
                 </div>
-              -->
-
-<div
-  style="
-    display:flex;
-    gap:20px;
-    position:relative;
-    top:20px;
-  "
->
-  <v-btn
-    variant="outlined"
-    color="grey-darken-1"
-    height="70"
-    width="120"
-    @click="filterByStatus('not_prepare')"
-  >
-    <div class="d-flex flex-column align-center">
-      <span>未備料</span>
-      <span style="font-size:24px; font-weight:bold;">
-        {{ currentNotPrepareCount }}
-      </span>
-    </div>
-  </v-btn>
-
-  <v-btn
-    variant="outlined"
-    color="primary"
-    height="70"
-    width="120"
-    @click="filterByStatus('prepare')"
-  >
-    <div class="d-flex flex-column align-center">
-      <span>備料準備中</span>
-      <span style="font-size:24px;font-weight:bold;">
-        <!--{{ prepare_count }}-->
-        {{ currentPrepareCount }}
-      </span>
-    </div>
-  </v-btn>
-
-  <v-btn
-    variant="outlined"
-    color="red"
-    height="70"
-    width="120"
-    @click="filterByStatus('assemble')"
-  >
-    <div class="d-flex flex-column align-center">
-      <span>組裝進行中</span>
-      <span style="font-size:24px;font-weight:bold;">
-        <!--{{ assemble_count }}-->
-        {{ currentAssembleCount }}
-      </span>
-    </div>
-  </v-btn>
-
-  <v-btn
-    variant="outlined"
-    color="pink"
-    height="70"
-    width="120"
-    @click="filterByStatus('warehouse')"
-  >
-    <div class="d-flex flex-column align-center">
-      <span>等待入庫中</span>
-      <span style="font-size:24px;font-weight:bold;">
-        <!--{{ warehouse_count }}-->
-        {{ currentWarehouseCount }}
-      </span>
-    </div>
-  </v-btn>
-</div>
-
               </div>
             </v-col>
-            <v-col cols="3" />
+            <!--<v-col cols="2" />-->
           </v-row>
           <div class="pa-4 text-center">
             <!-- 裝配報工紀錄 dialog -->
@@ -874,7 +841,8 @@ const statusIds = reactive({
   not_prepare: [],
   prepare: [],
   assemble: [],
-  warehouse: []
+  warehouse: [],
+  stockin: [],
 })
 
 const statusFilter = ref('')
@@ -1249,6 +1217,10 @@ const currentAssembleCount = computed(() =>
 
 const currentWarehouseCount = computed(() =>
   getCurrentStatusCounts.value.warehouse
+)
+
+const currentStockinCount = computed(() =>
+  getCurrentStatusCounts.value.stockin
 )
 
 /*
@@ -2074,6 +2046,7 @@ const filterByStatus = (type) => {
     prepare: currentPrepareCount.value,
     assemble: currentAssembleCount.value,
     warehouse: currentWarehouseCount.value,
+    stockin: currentStockinCount.value,
   }
 
   // 數量為 0 不處理
@@ -2307,6 +2280,7 @@ statusIds.not_prepare = response?.status_ids?.not_prepare || [];
 statusIds.prepare = response?.status_ids?.prepare || [];
 statusIds.assemble = response?.status_ids?.assemble || [];
 statusIds.warehouse = response?.status_ids?.warehouse || [];
+statusIds.stockin = response?.status_ids?.stockin || []
 
   //prepare_count.value = data.status_counts?.prepare || 0
   //assemble_count.value = data.status_counts?.assemble || 0
@@ -2326,6 +2300,7 @@ const getCurrentStatusCounts = computed(() => {
     prepare: 0,
     assemble: 0,
     warehouse: 0,
+    stockin: 0,
   }
 
   const orderMap = new Map()
@@ -2340,7 +2315,7 @@ const getCurrentStatusCounts = computed(() => {
     if (!checkOrderInRange(item.order_num)) return
 
     let type = ''
-
+/*
     if (statusIds.warehouse.includes(Number(item.id))) {
       type = 'warehouse'
     } else if (statusIds.assemble.includes(Number(item.id))) {
@@ -2350,6 +2325,24 @@ const getCurrentStatusCounts = computed(() => {
     } else if (statusIds.not_prepare.includes(Number(item.id))) {
       type = 'not_prepare'
     }
+*/
+
+// 優先順序最高
+if (statusIds.stockin.includes(Number(item.id))) {
+  type = 'stockin'
+}
+else if (statusIds.warehouse.includes(Number(item.id))) {
+  type = 'warehouse'
+}
+else if (statusIds.assemble.includes(Number(item.id))) {
+  type = 'assemble'
+}
+else if (statusIds.prepare.includes(Number(item.id))) {
+  type = 'prepare'
+}
+else if (statusIds.not_prepare.includes(Number(item.id))) {
+  type = 'not_prepare'
+}
 
     if (!type) return
 
@@ -2369,6 +2362,10 @@ const getCurrentStatusCounts = computed(() => {
 
   return result
 })
+
+const showStatusButton = (type) => {
+  return !statusFilter.value || statusFilter.value === type
+}
 
 </script>
 
@@ -2825,4 +2822,16 @@ const getCurrentStatusCounts = computed(() => {
 .drag-handle {
   cursor: move;
 }
+
+// for v-radio button disable
+:deep(.v-selection-control) {
+  pointer-events: none;}
+
+:deep(.v-selection-control-group > div:nth-of-type(2) i ) {
+  color: #EBEBE4;
+}
+:deep(.v-selection-control-group > div:nth-of-type(2) label) {
+  color: #EBEBE4;
+}
+//
 </style>

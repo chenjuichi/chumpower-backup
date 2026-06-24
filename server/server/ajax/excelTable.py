@@ -1421,6 +1421,9 @@ def read_all_excel_files():
               sd_time_B109="{:.2f}".format(float(temp_sd_time_B109)),
               sd_time_B106="{:.2f}".format(float(temp_sd_time_B106)),
               sd_time_B110="{:.2f}".format(float(temp_sd_time_B110)),
+              #
+              process_step_enable=False,    # ✅ 匯入後尚未按 +工序
+              #
             )
             s.add(material)
             s.flush()  # 確保 material.id 可用
@@ -1487,7 +1490,9 @@ def read_all_excel_files():
                 work_num=workNum,
                 process_step_code=step_code,
                 input_abnormal_disable=abnormal_field,
-                user_id=''
+                user_id='',
+                #
+                schedule_id=0,   # ✅ 尚未按 +工序前，不可開始
               )
               s.add(assemble)
             s.commit()

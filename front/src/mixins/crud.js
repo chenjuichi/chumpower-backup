@@ -481,7 +481,6 @@ export const apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
-
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/pauseAllMyActiveProcesses' ||
               path == '/getMyActiveProcesses' || path == '/getTodayUnfinishedProcesses' ||
@@ -724,6 +723,10 @@ export const apiOperation = (operation, path, payload) => {
           if (path == '/getMaterialsAndAssembles') {
             materials_and_assembles.value = [...res.data.materials_and_assembles];
             assembles_active_user_count.value = res.data.assemble_active_users;
+          }
+
+          if (path == '/archiveAllStockinAssembleMaterials') {
+            return res.data;
           }
 
           if (path == '/archiveWarehouseOrders') {

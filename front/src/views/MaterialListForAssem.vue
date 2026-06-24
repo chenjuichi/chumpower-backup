@@ -433,7 +433,7 @@
               堆高機送料中
             </span>
 
-            <!--客製化搜尋-->
+
             <v-text-field
               v-model="search"
               label="資料搜尋"
@@ -446,7 +446,7 @@
               density="compact"
             />
 
-            <!-- 客製化barcode輸入 -->
+
             <v-text-field
               v-model="bar_code"
               label="條碼"
@@ -461,6 +461,45 @@
               density="compact"
 
             ></v-text-field>
+
+
+
+
+  <!--客製化搜尋/barcode輸入框-->
+<!--
+  <div cols="12" md="12" class="d-flex justify-end align-center" style="gap:5px;">
+      <v-text-field
+        v-model="search"
+        label="資料搜尋"
+
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="compact"
+        hide-details
+        single-line
+        class="top-input"
+      />
+
+      <v-text-field
+        id="bar_code"
+        v-model="bar_code"
+        label="條碼"
+
+        prepend-inner-icon="mdi-barcode"
+        :value="bar_code"
+        ref="barcodeInput"
+        @keyup.enter="handleBarCode"
+        hide-details
+        single-line
+
+        variant="outlined"
+        class="barcode-input top-input"
+      />
+  </div>
+-->
+
+
+
           </div>
 
           <!-- Bom 顯示對話視窗-->
@@ -699,12 +738,10 @@
     <template v-slot:item.comment="{ item }">
       <div>
         <div style="text-align:left; color: #669999; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment }}</div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
       </div>
     </template>
 
     <!-- 自訂 '詳情' 按鍵 -->
-    <!--v-if="!item.finished && item.hasStarted"-->
     <template v-slot:item.action="{ item }">
       <v-badge
         v-if="item.hasStarted"
@@ -1043,6 +1080,10 @@ const agv1StartTime = ref(null);          // 等待agv計時開始
 const agv1EndTime = ref(null);
 const agv2StartTime = ref(null);          // 運行agv計時開始
 const agv2EndTime = ref(null);
+
+
+const old_formattedStartTime = ref('');
+const old_formattedEndTime = ref('');
 
 const group1 = ref('blue');
 const group1_radio_btn_disable=ref(true);
@@ -1462,7 +1503,24 @@ onMounted(async () => {
 
       // 記錄agv在站與站之間運行結束時間
       agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
-      console.log("AGV end time:", agv2EndTime.value);
+      //console.log("AGV end time:", agv2EndTime.value);
+
+      //
+      let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
+      let formattedStartTime = formatDateTime(agv2StartTime.value);
+      let formattedEndTime = formatDateTime(agv2EndTime.value);
+      console.log("AGV 運行 Start Time:", formattedStartTime);
+      console.log("AGV 運行 End Time:", formattedEndTime);
+      console.log("AGV 運行 Period time:", agv2PeriodTime);
+
+      if (formattedStartTime == old_formattedStartTime.value && formattedEndTime == old_formattedEndTime.value) {
+          console.warn('AGV1-2 開始/結束時間重複');
+          return;
+      }
+
+      old_formattedStartTime.value = formattedStartTime;
+      old_formattedEndTime.value = formattedEndTime;
+      //
 
       let payload = {};
       console.log("selectedItems.value:", selectedItems.value);
@@ -1505,12 +1563,14 @@ onMounted(async () => {
         });
       }
 
+      /*
       let agv2PeriodTime = calculatePeriodTime(agv2StartTime.value, agv2EndTime.value);  // 計算時間間隔
       let formattedStartTime = formatDateTime(agv2StartTime.value);
       let formattedEndTime = formatDateTime(agv2EndTime.value);
       console.log("AGV 運行 Start Time:", formattedStartTime);
       console.log("AGV 運行 End Time:", formattedEndTime);
       console.log("AGV 運行 Period time:", agv2PeriodTime);
+      */
 
       // 步驟2：逐筆建立 Process、寫回數量與狀態
       for (const id of selectedIds) {
@@ -1522,7 +1582,7 @@ onMounted(async () => {
           begin_time: formattedStartTime,
           end_time: formattedEndTime,
           periodTime: agv2PeriodTime,
-          user_id: 'AGV1-2',
+          user_id: 'AGV1-2',                  // 備料區(AGV1)至組裝區運行時間
           order_num: m.order_num,
           process_type: 2, // agv到組裝區
           id: m.id,
@@ -1803,6 +1863,11 @@ onMounted(async () => {
       console.log('AGV 等待 End   Time:', formattedEndTime);
       console.log('AGV 等待 Period    :', agv1PeriodTime);
 
+      if (formattedStartTime == formattedEndTime) {
+          console.warn('AGV1-1 開始與結束時間一樣');
+          return;
+      }
+
       // 取出乾淨的 id 陣列
       const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
       if (selectedIds.length === 0) {
@@ -1891,6 +1956,9 @@ onMounted(async () => {
       }
     });
 
+    socket.value?.on('material-delivered-callForklift', onMaterialDeliveredCallForklift);
+    socket.value?.on('material-delivered-callAGV', onMaterialDeliveredCallAGV);
+
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -1940,12 +2008,12 @@ onBeforeUnmount(() => {
   //document.removeEventListener('visibilitychange', handleVisibilityChange);
 
   // 5) 解除 socket 監聽（和 mounted 時註冊的事件一一對應）
-  if (socket?.value) {
-    try { socket.value.off?.('station2_trans_over', onStation2TransOver); } catch (_) {}
-    try { socket.value.off?.('station2_agv_end', onStation2AgvEnd); } catch (_) {}
-    try { socket.value.off?.('station1_call_result', onStation1CallResult); } catch (_) {}
+  //if (socket?.value) {
+    //try { socket.value.off?.('station2_trans_over', onStation2TransOver); } catch (_) {}
+    //try { socket.value.off?.('station2_agv_end', onStation2AgvEnd); } catch (_) {}
+    //try { socket.value.off?.('station1_call_result', onStation1CallResult); } catch (_) {}
     // 其他有 .on() 過的事件，也請逐一 off
-  }
+  //}
 
   // 7) 釋放每個 dialog 的計時/資源
   for (const d of (dialogs.value ?? [])) {
@@ -1958,6 +2026,10 @@ onBeforeUnmount(() => {
     isCallAGV.value = false;
     isCallForklift.value = false;
   } catch (_) {}
+
+  socket.value?.off('material-delivered-callForklift', onMaterialDeliveredCallForklift);
+  socket.value?.off('material-delivered-callAGV', onMaterialDeliveredCallAGV);
+
 });
 
 //=== method ===
@@ -3241,6 +3313,18 @@ const callForklift = async () => {
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   await fetchMaterials();
+
+  socket.value?.emit('material-delivered-callForklift', {
+    source: 'MaterialListForAssem',
+    reason: 'forklift_send_to_assemble',
+    material_ids: selectedIds,
+  });
+
+  socket.value?.emit('assemble-feed-released', {
+    source: 'MaterialListForAssem',
+    reason: 'forklift_send_to_assemble',
+    material_ids: selectedIds,
+  });
 };
 
 const callAGV = async () => {
@@ -3321,6 +3405,14 @@ const callAGV = async () => {
         status: 1,  // 忙碌/等待
         station: 1, // 備料區
       });
+
+      socket.value?.emit('material-delivered-callAGV', {
+        source: 'MaterialListForAssem',
+        reason: 'waiting_agv',
+        material_ids: selectedIds,
+        order_nums: Array.isArray(selectedOrderNums.value) ? [...selectedOrderNums.value] : [],
+      });
+
     } else {
       showSnackbar('沒有任何工單更新成功，未變更 AGV 狀態', 'red accent-2');
     }
@@ -3332,88 +3424,6 @@ const callAGV = async () => {
     isCallAGV.value = false;
   }
 
-
-  /*
-  let payload = {};
-
-  if (!isCallAGV.value) {       // 沒有重複按鍵
-    //console.log("step2...");
-    if (selectedItems.value.length == 0) {  //已點選選單
-      //console.log("step2-1...");
-      showSnackbar("請選擇送料的工單!", 'red accent-2');
-      return;
-    }
-
-    if (toggle_exclusive.value == 2) {   //AGV自動送料
-      //console.log("step3-1...");
-      payload = {agv_id: 1};
-      await getAGV(payload);
-      console.log("hello, 備料區叫車, AGV 狀態:", currentAGV.value);
-
-      //確定AGV目前是閒置
-      if (currentAGV.value.status != 0) {
-      //  const stationMap = {1: '備料區', 2: '組裝區',  3: '成品區'};
-      //  const buf = stationMap[currentAGV.value.station] || '未知區域';
-      //  showSnackbar(`${buf}已經叫車, AGV目前忙碌中...`, 'red accent-2');
-      //  return;
-      }
-
-      isCallAGV.value = true
-    }
-    //console.log("step4...");
-  } else {
-    //console.log("step5...");
-    showSnackbar("請不要重複按鍵!", 'red accent-2');
-    return;
-  }
-  //console.log("step6...");
-
-  // 更新AGV狀態資料, AGV忙碌中
-  payload = {
-    id: 1,
-    status: 1,
-    station:  1,
-  };
-  await updateAGV(payload);
-
-  payload = {
-    items: selectedItems.value,
-    orderNums: selectedOrderNums.value,
-  };
-
-  socket.value.emit('station1_call');  //2025-02-24 add payload
-  console.log("送出 station1_call訊息...")
-
-  order_num_on_agv_blink.value='叫車進站中...'
-
-  activeColor.value='red';    // 等待運輸
-
-  // 記錄等待agv到站開始時間
-  agv1StartTime.value = new Date();  // 使用 Date 來記錄當時時間
-  console.log("AGV Start time:", agv1StartTime.value);
-
-  selectedItems.value.forEach(async (item) => {
-    console.log('selectedItems, item:', item);
-
-    payload = {
-      id: item,
-      record_name: 'show3_ok',                  //看板要顯示的欄位名稱
-      record_data: 1                            //看板要顯示的欄位內容, 1:等待agv
-    };
-    await updateMaterial(payload);
-
-    payload = {
-      material_id: item,
-      seq: 1,
-      record_name1: 'process_work_time_qty',
-      record_data1: 10,
-    };
-    await updateProcessDataByMaterialID(payload);
-
-
-  });
-  //console.log("step7...");
-  */
 };
 
 const readAllExcelFun = async () => {
@@ -4469,4 +4479,57 @@ p {
 .radio-group {
   margin-left: auto;   /* 整組直接推到右邊 */
 }
+
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+
+  flex-wrap: nowrap;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  gap: 16px;
+}
+
+.toolbar-row .v-col {
+  min-width: 0 !important;
+}
+
+.top-input {
+  width: 180px;
+}
+
+.top-input :deep(.v-field) {
+  height: 32px;
+  min-height: 32px;
+}
+
+.top-input :deep(.v-field__field) {
+  height: 32px;
+}
+
+.top-input :deep(.v-field__input) {
+  min-height: 32px;
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: center;
+}
+
+.top-input :deep(input) {
+  height: 32px;
+  line-height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.barcode-input :deep(.v-field__input) {
+  padding-left: 12px;
+}
+
+.barcode-input :deep(.v-label) {
+  margin-left: 30px;
+}
+
 </style>

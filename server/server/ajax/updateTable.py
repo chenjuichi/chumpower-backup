@@ -10,10 +10,10 @@ from flask import Blueprint, jsonify, request, current_app
 import traceback
 
 import pymysql
-from sqlalchemy import exc
-from sqlalchemy import func
+#from sqlalchemy import exc
+#from sqlalchemy import func
 from sqlalchemy import distinct
-from sqlalchemy import inspect
+from sqlalchemy import inspect, or_
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,7 +33,11 @@ from .assemble_update_utils import (
     coerce_by_schema, serialize_assemble, now_str
 )
 
-from .helper import release_b109_batch_to_b110, normalize_create_at
+from .helper import (
+    release_b109_batch_to_b110,
+    normalize_create_at,
+    sync_assemble_schedule_rows,
+)
 
 updateTable = Blueprint('updateTable', __name__)
 
@@ -43,7 +47,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 # ------------------------------------------------------------------
 
-
+"""
 def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
@@ -183,10 +187,22 @@ def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
 
         if not base:
             return
-
+        '''
         session.query(Assemble).filter(
             Assemble.is_copied_from_id == base.id
         ).delete(synchronize_session='fetch')
+        '''
+        #
+        # ✅ 先清掉同 material + 同 work_num + 有 schedule_id 的舊排程列
+        # 只保留 base row，避免 b1/b2/b3 舊 copied rows 殘留
+        session.query(Assemble).filter(
+            Assemble.material_id == material_id,
+            Assemble.work_num == work_num,
+            Assemble.id != base.id,
+            Assemble.schedule_id.isnot(None),
+            Assemble.reason != '異常返工'
+        ).delete(synchronize_session='fetch')
+        #
 
         '''
         if not checked_ids:
@@ -360,6 +376,288 @@ def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
         process_step_code=2,
         target_steps=process_steps.get('check', [])
     )
+"""
+
+
+"""
+# helper.py
+def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        print("material not found:", material_id)
+        return
+
+    process_steps = process_steps or default_process_steps()
+
+    all_rows = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .all()
+    )
+
+    def get_base_by_work_num(work_num):
+        for row in all_rows:
+            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
+                return row
+        return None
+
+    def get_any_template_base():
+        for row in all_rows:
+            if row.is_copied_from_id is None:
+                return row
+        return all_rows[0] if all_rows else None
+
+    def build_base_row_from_template(template, work_num, process_step_code):
+        new_base = Assemble(
+            material_id=material.id,
+            material_num=material.material_num,
+            material_comment=material.material_comment,
+            seq_num=getattr(template, 'seq_num', 10) if template else 10,
+            work_num=work_num,
+            process_step_code=process_step_code,
+            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
+            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
+            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
+            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
+            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
+            writer_id=getattr(template, 'writer_id', None) if template else None,
+            write_date=getattr(template, 'write_date', None) if template else None,
+            good_qty=getattr(template, 'good_qty', 0) if template else 0,
+            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
+            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
+            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
+            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
+            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
+            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
+            reason='',
+            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
+            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
+            currentStartTime=None,
+            currentEndTime=None,
+            input_disable=True,
+            input_end_disable=True,
+            input_allOk_disable=True,
+            input_abnormal_disable=True,
+            isAssembleStationShow=False,
+            isWarehouseStationShow=False,
+            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
+            alarm_message=getattr(template, 'alarm_message', '') if template else '',
+            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
+            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
+            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
+            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
+            show1_ok=0,
+            show2_ok=0,
+            show3_ok=0,
+            schedule_id=None,
+            is_copied_from_id=None
+        )
+        session.add(new_base)
+        session.flush()
+        return new_base
+
+    def close_schedule_row(row):
+        row.schedule_id = None
+        row.process_step_code = 0
+        row.isAssembleStationShow = False
+        row.isWarehouseStationShow = False
+        row.input_disable = True
+        row.input_end_disable = True
+        row.input_allOk_disable = True
+        row.input_abnormal_disable = True
+        row.show1_ok = 0
+        row.show2_ok = 0
+        row.show3_ok = 0
+        row.must_receive_qty = 0
+        row.ask_qty = 0
+        row.total_ask_qty = 0
+        row.must_receive_end_qty = 0
+        row.total_ask_qty_end = 0
+        row.currentStartTime = None
+        row.currentEndTime = None
+
+    def apply_schedule_row(row, sid, process_step_code, base_qty, work_num, base):
+        row.schedule_id = sid
+        row.process_step_code = process_step_code
+        row.work_num = work_num
+        row.material_num = base.material_num
+        row.material_comment = base.material_comment
+        row.seq_num = base.seq_num
+
+        row.input_disable = False
+        row.input_end_disable = False
+        row.input_allOk_disable = False
+        row.input_abnormal_disable = False
+
+        row.isAssembleStationShow = True
+        row.isWarehouseStationShow = False
+
+        row.show1_ok = 1
+        if work_num == "B110":
+            row.show2_ok = 5
+            row.show3_ok = 5
+        else:
+            row.show2_ok = 3
+            row.show3_ok = 3
+
+        row.must_receive_qty = base_qty
+        row.ask_qty = base_qty
+        row.total_ask_qty = base_qty
+        row.must_receive_end_qty = base_qty
+
+        if qty is not None and qty != '':
+            row.abnormal_qty = int(base_qty or 0)
+            row.reason = '異常返工'
+        else:
+            if row.reason == '異常返工':
+                row.reason = ''
+
+    def ensure_base_row(work_num, process_step_code, target_steps):
+        if work_num == 'B109':
+            process_type = 21
+        elif work_num == 'B110':
+            process_type = 22
+        else:
+            process_type = None
+
+        completed_schedule_ids = set()
+
+        if process_type:
+            completed_schedule_ids = {
+                int(r[0])
+                for r in (
+                    session.query(Assemble.schedule_id)
+                    .join(Process, Process.assemble_id == Assemble.id)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num == work_num)
+                    .filter(Assemble.schedule_id.isnot(None))
+                    .filter(Process.process_type == process_type)
+                    .filter(Process.has_started.is_(True))
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .all()
+                )
+                if r[0] is not None
+            }
+
+        checked_ids = [
+            int(x.get('id'))
+            for x in (target_steps or [])
+            if (
+                x.get('checked')
+                and not x.get('deleted', False)
+                and x.get('id') is not None
+                and int(x.get('id')) not in completed_schedule_ids
+            )
+        ]
+
+        print("sync schedule:", material_id, work_num, checked_ids)
+
+        base = get_base_by_work_num(work_num)
+
+        if not base and checked_ids:
+            template = get_any_template_base()
+            base = build_base_row_from_template(template, work_num, process_step_code)
+            all_rows.append(base)
+
+        if not base:
+            return
+
+        base_qty = (
+            qty
+            or material.total_delivery_qty
+            or material.delivery_qty
+            or material.material_qty
+            or 0
+        )
+        base_qty = int(base_qty or 0)
+
+        schedule_rows = (
+            session.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .filter(Assemble.work_num == work_num)
+            .filter(or_(Assemble.reason.is_(None), Assemble.reason != '異常返工'))
+            .order_by(Assemble.id)
+            .all()
+        )
+
+        usable_rows = [base] + [r for r in schedule_rows if r.id != base.id]
+
+        for idx, sid in enumerate(checked_ids):
+            if idx < len(usable_rows):
+                row = usable_rows[idx]
+            else:
+                row = Assemble(
+                    material_id=base.material_id,
+                    material_num=base.material_num,
+                    material_comment=base.material_comment,
+                    seq_num=base.seq_num,
+                    work_num=base.work_num,
+                    process_step_code=base.process_step_code,
+                    Incoming1_Abnormal=base.Incoming1_Abnormal,
+                    must_receive_qty=base.must_receive_qty,
+                    ask_qty=base.ask_qty,
+                    total_ask_qty=base.total_ask_qty,
+                    total_ask_qty_end=base.total_ask_qty_end,
+                    must_receive_end_qty=base.must_receive_end_qty,
+                    abnormal_qty=base.abnormal_qty,
+                    user_id=base.user_id,
+                    writer_id=base.writer_id,
+                    write_date=base.write_date,
+                    good_qty=base.good_qty,
+                    total_good_qty=base.total_good_qty,
+                    non_good_qty=base.non_good_qty,
+                    meinh_qty=base.meinh_qty,
+                    completed_qty=base.completed_qty,
+                    total_completed_qty=base.total_completed_qty,
+                    allOk_qty=base.allOk_qty,
+                    reason='',
+                    confirm_comment=base.confirm_comment,
+                    is_assemble_ok=base.is_assemble_ok,
+                    currentStartTime=None,
+                    currentEndTime=None,
+                    input_disable=False,
+                    input_end_disable=False,
+                    input_allOk_disable=False,
+                    input_abnormal_disable=False,
+                    isAssembleStationShow=True,
+                    isWarehouseStationShow=False,
+                    alarm_enable=base.alarm_enable,
+                    alarm_message=base.alarm_message,
+                    isAssembleFirstAlarm=base.isAssembleFirstAlarm,
+                    isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
+                    isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
+                    whichStation=base.whichStation,
+                    show1_ok=1,
+                    show2_ok=5 if work_num == "B110" else 3,
+                    show3_ok=5 if work_num == "B110" else 3,
+                    schedule_id=sid,
+                    is_copied_from_id=base.id
+                )
+                session.add(row)
+                session.flush()
+                usable_rows.append(row)
+
+            apply_schedule_row(row, sid, process_step_code, base_qty, work_num, base)
+
+        for row in usable_rows[len(checked_ids):]:
+            close_schedule_row(row)
+
+    ensure_base_row(
+        work_num='B109',
+        process_step_code=3,
+        target_steps=process_steps.get('assemble', [])
+    )
+
+    ensure_base_row(
+        work_num='B110',
+        process_step_code=2,
+        target_steps=process_steps.get('check', [])
+    )
+"""
 
 
 def parse_datetime_or_none(val):
@@ -1650,7 +1948,7 @@ def update_assemble_process_step():
         s.close()
 """
 
-
+"""
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
     print("updateAssembleProcessStep.")
@@ -1718,11 +2016,36 @@ def update_assemble_process_step():
         # ------------------------------------------------------------
         if not active_rows:
             material_record.isAssembleStation3TakeOk = True
-
+            '''
             for r in assemble_records:
                 r.isAssembleStationShow = False
                 r.input_end_disable = True
                 r.input_abnormal_disable = True
+            '''
+            #
+            waiting_rows = []
+
+            for r in assemble_records:
+                r.input_end_disable = True
+                r.input_abnormal_disable = True
+
+                # 已完成且有完成數量的 B110，都要保留在 End.vue 等待送出
+                if (
+                    (r.work_num or '').strip() == 'B110'
+                    and int(r.process_step_code or 0) == 0
+                    and int(r.completed_qty or 0) > 0
+                ):
+                    r.isAssembleStationShow = True
+                    r.isWarehouseStationShow = False
+                    r.show1_ok = 1
+                    r.show2_ok = 9
+                    r.show3_ok = 9
+                    r.input_disable = True
+                    r.input_allOk_disable = False
+                    waiting_rows.append(r)
+                else:
+                    r.isAssembleStationShow = False
+            #
 
             final_row = (
                 s.query(Assemble)
@@ -1874,6 +2197,38 @@ def update_assemble_process_step():
             }), 200
         #
 
+        #
+        # ------------------------------------------------------------
+        # 3-1) B110 檢驗結束後，先讓「目前這筆」進入等待送出
+        #      即使還有異常返工列未完成，也要保留在 End.vue
+        # ------------------------------------------------------------
+        if finished_work_num == 'B110':
+            assemble_record.process_step_code = 0
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            material_record.isAssembleStation3TakeOk = False
+
+            s.commit()
+
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "waiting_send": True,
+                "current_assemble_id": assemble_record.id,
+                "message": "B110 finished, current row waiting send"
+            }), 200
+        #
+
         # ------------------------------------------------------------
         # 4) 目前群組還沒全部完成
         # ------------------------------------------------------------
@@ -1888,6 +2243,642 @@ def update_assemble_process_step():
             material_record.isAssembleStation3TakeOk = False
 
             s.commit()
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "released_next_group": False,
+                "current_group_step": current_group_step,
+                "message": "current group not finished yet"
+            }), 200
+
+        material_record.isAssembleStation3TakeOk = False
+        s.commit()
+
+        return jsonify({
+            "status": False,
+            "material_done": False,
+            "released_next_group": False,
+            "current_group_step": current_group_step,
+            "message": "no state changed"
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+        print("updateAssembleProcessStep error:", e)
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
+"""
+
+
+"""
+@updateTable.route('/updateAssembleProcessStep', methods=['POST'])
+def update_assemble_process_step():
+    print("updateAssembleProcessStep.")
+
+    data = request.get_json(silent=True) or {}
+
+    if 'id' not in data or 'assemble_id' not in data:
+        return jsonify({
+            "status": False,
+            "message": "Missing parameters 'id' or 'assemble_id'"
+        }), 400
+
+    material_id = data['id']
+    assemble_id = data['assemble_id']
+
+    s = Session()
+    try:
+        material_record = s.query(Material).filter_by(id=material_id).first()
+        if not material_record:
+            return jsonify({
+                "status": False,
+                "message": f"Material with id {material_id} not found"
+            }), 404
+
+        assemble_record = (
+            s.query(Assemble)
+            .filter_by(id=assemble_id, material_id=material_id)
+            .first()
+        )
+        if not assemble_record:
+            return jsonify({
+                "status": False,
+                "message": f"Assemble with id {assemble_id} and material_id {material_id} not found"
+            }), 404
+
+        assemble_records = (
+            s.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .all()
+        )
+
+        if not assemble_records:
+            return jsonify({
+                "status": False,
+                "message": "No assemble rows found"
+            }), 200
+
+        finished_work_num = (assemble_record.work_num or '').strip()
+
+        # ------------------------------------------------------------
+        # 1) 取目前還沒完成的 assemble rows
+        # ------------------------------------------------------------
+        active_rows = []
+        for r in assemble_records:
+            try:
+                step = int(r.process_step_code or 0)
+            except Exception:
+                step = 0
+
+            if step > 0:
+                active_rows.append(r)
+
+        # ------------------------------------------------------------
+        # 2) 若全部 assemble step 都完成，進入等待送出
+        #    重點：
+        #    - 正常 B110 完成 25 要保留
+        #    - 異常 B110 完成 10 也要保留
+        #    - 不要只保留最後一筆 final_row
+        # ------------------------------------------------------------
+        if not active_rows:
+            material_record.isAssembleStation3TakeOk = True
+
+            waiting_rows = []
+
+            for r in assemble_records:
+                work_num = (r.work_num or '').strip()
+                step = int(r.process_step_code or 0)
+                completed_qty = int(r.completed_qty or 0)
+
+                r.input_end_disable = True
+                r.input_abnormal_disable = True
+
+                # 已完成且有完成數量的 B110，都要保留在 End.vue 等待送出
+                if (
+                    work_num == 'B110'
+                    and step == 0
+                    and completed_qty > 0
+                ):
+                    r.isAssembleStationShow = True
+                    r.isWarehouseStationShow = False
+
+                    r.show1_ok = 1
+                    r.show2_ok = 9
+                    r.show3_ok = 9
+
+                    r.input_disable = True
+                    r.input_end_disable = True
+                    r.input_abnormal_disable = True
+                    r.input_allOk_disable = False
+
+                    waiting_rows.append(r)
+                else:
+                    r.isAssembleStationShow = False
+
+            # 若沒有 B110，才找 B109 當 final row
+            final_row = waiting_rows[-1] if waiting_rows else None
+
+            if not final_row:
+                final_row = (
+                    s.query(Assemble)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num == 'B109')
+                    .filter(Assemble.schedule_id.isnot(None))
+                    .filter(Assemble.schedule_id > 0)
+                    .order_by(Assemble.id.desc())
+                    .first()
+                )
+
+                if final_row:
+                    final_row.isAssembleStationShow = True
+                    final_row.isWarehouseStationShow = False
+
+                    final_row.show1_ok = 1
+                    final_row.show2_ok = 9
+                    final_row.show3_ok = 9
+
+                    final_row.input_disable = True
+                    final_row.input_end_disable = True
+                    final_row.input_abnormal_disable = True
+                    final_row.input_allOk_disable = False
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": True,
+                "final_assemble_id": final_row.id if final_row else None,
+                "waiting_count": len(waiting_rows),
+                "waiting_ids": [r.id for r in waiting_rows],
+                "message": "All process rows done, waiting send out"
+            }), 200
+
+        # ------------------------------------------------------------
+        # 3) 若 B109 完成，釋放 B110
+        # ------------------------------------------------------------
+        if finished_work_num == 'B109':
+            release_result = release_b109_batch_to_b110(
+                session=s,
+                material_id=material_id
+            )
+
+            print("release_b109_batch_to_b110:", release_result)
+
+            s.commit()
+
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "released_next_group": bool(release_result.get("released")),
+                "released_count": release_result.get("release_qty", 0),
+                "created_ids": release_result.get("created_ids", []),
+                "current_group_step": 3,
+                "message": release_result.get("message", "")
+            }), 200
+
+        '''
+        # ------------------------------------------------------------
+        # 3-1) B110 檢驗結束後，先讓「目前這筆」進入等待送出
+        #      即使還有異常返工列未完成，也要保留在 End.vue
+        # ------------------------------------------------------------
+        if finished_work_num == 'B110':
+            assemble_record.process_step_code = 0
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            material_record.isAssembleStation3TakeOk = False
+
+            s.commit()
+
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "waiting_send": True,
+                "current_assemble_id": assemble_record.id,
+                "message": "B110 finished, current row waiting send"
+            }), 200
+        '''
+        #
+        if finished_work_num == 'B110':
+            # 若同一張工單還有其他 B110 工序未完成，
+            # 目前這筆已結束的 b1 / b2 不可留在 End.vue
+            remaining_b110 = [
+                r for r in assemble_records
+                if int(r.id) != int(assemble_record.id)
+                and (r.work_num or '').strip() == 'B110'
+                and int(r.process_step_code or 0) > 0
+                and int(r.schedule_id or 0) > 0
+            ]
+
+            if remaining_b110:
+                assemble_record.process_step_code = 0
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+                assemble_record.input_allOk_disable = True
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
+
+                material_record.isAssembleStation3TakeOk = False
+
+                s.commit()
+
+                return jsonify({
+                    "status": False,
+                    "material_done": False,
+                    "waiting_send": False,
+                    "message": "B110 row finished, but other B110 rows still active"
+                }), 200
+
+            # 沒有其他 B110 未完成，代表檢驗全部完成，才顯示最後待送出列
+            for r in assemble_records:
+                r.isAssembleStationShow = False
+
+            assemble_record.process_step_code = 0
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            material_record.isAssembleStation3TakeOk = True
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": True,
+                "waiting_send": True,
+                "current_assemble_id": assemble_record.id,
+                "message": "All B110 rows done, waiting send"
+            }), 200
+        #
+
+        # ------------------------------------------------------------
+        # 4) 目前群組還沒全部完成
+        # ------------------------------------------------------------
+        current_group_step = max(int(r.process_step_code or 0) for r in active_rows)
+
+        current_group_rows = [
+            r for r in active_rows
+            if int(r.process_step_code or 0) == current_group_step
+        ]
+
+        if current_group_rows:
+            material_record.isAssembleStation3TakeOk = False
+
+            s.commit()
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "released_next_group": False,
+                "current_group_step": current_group_step,
+                "message": "current group not finished yet"
+            }), 200
+
+        material_record.isAssembleStation3TakeOk = False
+        s.commit()
+
+        return jsonify({
+            "status": False,
+            "material_done": False,
+            "released_next_group": False,
+            "current_group_step": current_group_step,
+            "message": "no state changed"
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+        print("updateAssembleProcessStep error:", e)
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
+"""
+
+@updateTable.route('/updateAssembleProcessStep', methods=['POST'])
+def update_assemble_process_step():
+    print("updateAssembleProcessStep.")
+
+    data = request.get_json(silent=True) or {}
+
+    if 'id' not in data or 'assemble_id' not in data:
+        return jsonify({
+            "status": False,
+            "message": "Missing parameters 'id' or 'assemble_id'"
+        }), 400
+
+    material_id = data['id']
+    assemble_id = data['assemble_id']
+
+    s = Session()
+
+    try:
+        material_record = s.query(Material).filter_by(id=material_id).first()
+        if not material_record:
+            return jsonify({
+                "status": False,
+                "message": f"Material with id {material_id} not found"
+            }), 404
+
+        assemble_record = (
+            s.query(Assemble)
+            .filter_by(id=assemble_id, material_id=material_id)
+            .first()
+        )
+        if not assemble_record:
+            return jsonify({
+                "status": False,
+                "message": f"Assemble with id {assemble_id} and material_id {material_id} not found"
+            }), 404
+
+        assemble_records = (
+            s.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .all()
+        )
+
+        if not assemble_records:
+            return jsonify({
+                "status": False,
+                "message": "No assemble rows found"
+            }), 200
+
+        finished_work_num = (assemble_record.work_num or '').strip()
+
+        # ------------------------------------------------------------
+        # 1) 取目前還沒完成的 assemble rows
+        # ------------------------------------------------------------
+        active_rows = []
+        for r in assemble_records:
+            try:
+                step = int(r.process_step_code or 0)
+            except Exception:
+                step = 0
+
+            if step > 0:
+                active_rows.append(r)
+
+        # ------------------------------------------------------------
+        # 2) 若全部 assemble step 都完成，進入等待送出
+        # ------------------------------------------------------------
+        if not active_rows:
+            material_record.isAssembleStation3TakeOk = True
+
+            waiting_rows = []
+
+            for r in assemble_records:
+                work_num = (r.work_num or '').strip()
+                step = int(r.process_step_code or 0)
+                completed_qty = int(r.completed_qty or 0)
+
+                r.input_end_disable = True
+                r.input_abnormal_disable = True
+
+                # 已完成且有完成數量的 B110，都保留在 End.vue 等待送出
+                if (
+                    work_num == 'B110'
+                    and step == 0
+                    and completed_qty > 0
+                ):
+                    r.isAssembleStationShow = True
+                    r.isWarehouseStationShow = False
+
+                    r.show1_ok = 1
+                    r.show2_ok = 9
+                    r.show3_ok = 9
+
+                    r.input_disable = True
+                    r.input_end_disable = True
+                    r.input_abnormal_disable = True
+                    r.input_allOk_disable = False
+
+                    waiting_rows.append(r)
+                else:
+                    r.isAssembleStationShow = False
+
+            final_row = waiting_rows[-1] if waiting_rows else None
+
+            # 若沒有 B110，代表只做 B109，才找 B109 當等待送出列
+            if not final_row:
+                final_row = (
+                    s.query(Assemble)
+                    .filter(Assemble.material_id == material_id)
+                    .filter(Assemble.work_num == 'B109')
+                    .filter(Assemble.schedule_id.isnot(None))
+                    .filter(Assemble.schedule_id > 0)
+                    .order_by(Assemble.id.desc())
+                    .first()
+                )
+
+                if final_row:
+                    final_row.isAssembleStationShow = True
+                    final_row.isWarehouseStationShow = False
+
+                    final_row.show1_ok = 1
+                    final_row.show2_ok = 9
+                    final_row.show3_ok = 9
+
+                    final_row.input_disable = True
+                    final_row.input_end_disable = True
+                    final_row.input_abnormal_disable = True
+                    final_row.input_allOk_disable = False
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": True,
+                "final_assemble_id": final_row.id if final_row else None,
+                "waiting_count": len(waiting_rows),
+                "waiting_ids": [r.id for r in waiting_rows],
+                "message": "All process rows done, waiting send out"
+            }), 200
+
+        # ------------------------------------------------------------
+        # 3) 若 B109 完成
+        #    重點：
+        #    - 若還有其他 B109 未完成，例如 a1[組裝]-異常，
+        #      不可釋放 B110
+        #    - 等所有 B109 都完成後，才釋放 B110
+        # ------------------------------------------------------------
+        if finished_work_num == 'B109':
+            remaining_b109 = [
+                r for r in assemble_records
+                if int(r.id) != int(assemble_record.id)
+                and (r.work_num or '').strip() == 'B109'
+                and int(r.process_step_code or 0) > 0
+                and int(r.schedule_id or 0) > 0
+            ]
+
+            if remaining_b109:
+                # 原 a1 已完成，關掉它，不再顯示
+                assemble_record.process_step_code = 0
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
+
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+                assemble_record.input_allOk_disable = True
+
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
+
+                # 保留 a1[組裝]-異常 顯示在 Begin / End
+                for r in remaining_b109:
+                    r.isAssembleStationShow = True
+                    r.isWarehouseStationShow = False
+
+                    r.input_disable = False
+                    r.input_end_disable = False
+                    r.input_abnormal_disable = False
+                    r.input_allOk_disable = False
+
+                    r.show1_ok = 1
+                    r.show2_ok = 3
+                    r.show3_ok = 3
+
+                material_record.isAssembleStation3TakeOk = False
+
+                s.commit()
+
+                return jsonify({
+                    "status": False,
+                    "material_done": False,
+                    "released_next_group": False,
+                    "remaining_b109_count": len(remaining_b109),
+                    "message": "B109 row finished, but rework B109 still active"
+                }), 200
+
+            # 沒有其他 B109 未完成，才釋放 B110
+            release_result = release_b109_batch_to_b110(
+                session=s,
+                material_id=material_id
+            )
+
+            print("release_b109_batch_to_b110:", release_result)
+
+            s.commit()
+
+            return jsonify({
+                "status": False,
+                "material_done": False,
+                "released_next_group": bool(release_result.get("released")),
+                "released_count": release_result.get("release_qty", 0),
+                "created_ids": release_result.get("created_ids", []),
+                "current_group_step": 3,
+                "message": release_result.get("message", "")
+            }), 200
+
+        # ------------------------------------------------------------
+        # 4) 若 B110 完成
+        # ------------------------------------------------------------
+        if finished_work_num == 'B110':
+            remaining_b110 = [
+                r for r in assemble_records
+                if int(r.id) != int(assemble_record.id)
+                and (r.work_num or '').strip() == 'B110'
+                and int(r.process_step_code or 0) > 0
+                and int(r.schedule_id or 0) > 0
+            ]
+
+            if remaining_b110:
+                assemble_record.process_step_code = 0
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
+
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+                assemble_record.input_allOk_disable = True
+
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
+
+                material_record.isAssembleStation3TakeOk = False
+
+                s.commit()
+
+                return jsonify({
+                    "status": False,
+                    "material_done": False,
+                    "waiting_send": False,
+                    "message": "B110 row finished, but other B110 rows still active"
+                }), 200
+
+            # 沒有其他 B110 未完成，代表檢驗全部完成
+            for r in assemble_records:
+                r.isAssembleStationShow = False
+
+            assemble_record.process_step_code = 0
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            material_record.isAssembleStation3TakeOk = True
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": True,
+                "waiting_send": True,
+                "current_assemble_id": assemble_record.id,
+                "message": "All B110 rows done, waiting send"
+            }), 200
+
+        # ------------------------------------------------------------
+        # 5) 目前群組還沒全部完成
+        # ------------------------------------------------------------
+        current_group_step = max(int(r.process_step_code or 0) for r in active_rows)
+
+        current_group_rows = [
+            r for r in active_rows
+            if int(r.process_step_code or 0) == current_group_step
+        ]
+
+        if current_group_rows:
+            material_record.isAssembleStation3TakeOk = False
+
+            s.commit()
+
             return jsonify({
                 "status": False,
                 "material_done": False,
@@ -1984,6 +2975,57 @@ def send_assemble_to_warehouse():
         material.move_by_automatic_or_manual_2 = True if mode == 'agv' else False
         material.whichStation = 3
         material.show3_ok = 11  # 等待入庫作業
+
+        '''
+        #
+        # ------------------------------------------------------------
+        # AGV 防重：
+        # 同一張工單 material_id 只允許一組 29/3 紀錄
+        # ------------------------------------------------------------
+        if mode == 'agv':
+            exists_agv = (
+                s.query(Process.id)
+                 .filter(Process.material_id == material_id)
+                 .filter(Process.process_type.in_([29, 3]))
+                 .first()
+            )
+
+            if not exists_agv:
+                now_str_value = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                wait_agv_proc = Process(
+                    material_id=material_id,
+                    assemble_id=target.id,
+                    has_started=True,
+                    user_id='AGV',
+                    begin_time=now_str_value,
+                    end_time=now_str_value,
+                    period_time='00:00:00',
+                    elapsedActive_time=0,
+                    str_elapsedActive_time='00:00:00',
+                    is_pause=True,
+                    process_type=29,
+                    process_work_time_qty=0,
+                )
+                s.add(wait_agv_proc)
+
+                agv_run_proc = Process(
+                    material_id=material_id,
+                    assemble_id=target.id,
+                    has_started=True,
+                    user_id='AGV',
+                    begin_time=now_str_value,
+                    end_time=now_str_value,
+                    period_time='00:00:00',
+                    elapsedActive_time=0,
+                    str_elapsedActive_time='00:00:00',
+                    is_pause=True,
+                    process_type=3,
+                    process_work_time_qty=0,
+                )
+                s.add(agv_run_proc)
+        #
+        '''
 
         s.commit()
 
@@ -3594,8 +4636,8 @@ def add_assemble_schedule_rows():
             ]
         }
 
-        print("normalized_process_steps:", normalized_process_steps)
-        print("abnormal_qty:", abnormal_qty)
+        #print("normalized_process_steps:", normalized_process_steps)
+        #print("abnormal_qty:", abnormal_qty)
 
         created_rows = add_assemble_schedule_rows_by_abnormal(
             session=s,
@@ -4127,6 +5169,7 @@ def update_agv():
   })
 
 
+"""
 @updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
 def update_assemble_alarm_message():
     print("updateAssembleAlarmMessage....")
@@ -4215,6 +5258,112 @@ def update_assemble_alarm_message():
     except Exception as e:
         s.rollback()
         return jsonify({"status": False, "message": str(e)}), 500
+
+    finally:
+        s.close()
+"""
+
+
+@updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
+def update_assemble_alarm_message():
+    print("updateAssembleAlarmMessage....")
+
+    data = request.get_json(silent=True) or {}
+
+    assemble_id = data.get("assemble_id")
+    #alarm_message = (data.get("alarm_message") or "").strip()
+    raw_message = data.get("alarm_message", None)
+
+    if raw_message is None:
+        raw_message = data.get("cause_message", "")
+
+    if isinstance(raw_message, list):
+        alarm_message = "、".join(str(x).strip() for x in raw_message if str(x).strip())
+    else:
+        alarm_message = str(raw_message or "").strip()
+
+    if not assemble_id:
+        return jsonify({
+            "status": False,
+            "message": "assemble_id 不可為空"
+        }), 400
+
+    s = Session()
+
+    try:
+        assemble = (
+            s.query(Assemble)
+            .filter(Assemble.id == assemble_id)
+            .first()
+        )
+
+        if not assemble:
+            return jsonify({
+                "status": False,
+                "message": "找不到 Assemble"
+            }), 404
+
+        # --------------------------------------------------
+        # 1. 更新來源列
+        # --------------------------------------------------
+        assemble.alarm_enable = False
+        assemble.alarm_message = alarm_message
+        assemble.confirm_comment = alarm_message
+        assemble.Incoming1_Abnormal = alarm_message
+
+        # --------------------------------------------------
+        # 2. 找第一層返工列(B109)
+        # --------------------------------------------------
+        level1_ids = [
+            r.id
+            for r in (
+                s.query(Assemble)
+                .filter(Assemble.is_copied_from_id == assemble.id)
+                .all()
+            )
+        ]
+
+        # --------------------------------------------------
+        # 3. 更新所有返工列(B109、B110...)
+        # --------------------------------------------------
+        rework_rows = (
+            s.query(Assemble)
+            .filter(
+                Assemble.material_id == assemble.material_id
+            )
+            .filter(
+                Assemble.reason == "異常返工"
+            )
+            .filter(
+                or_(
+                    Assemble.is_copied_from_id == assemble.id,
+                    Assemble.is_copied_from_id.in_(level1_ids) if level1_ids else False
+                )
+            )
+            .all()
+        )
+
+        for row in rework_rows:
+            row.alarm_message = alarm_message
+            row.confirm_comment = alarm_message
+            row.Incoming1_Abnormal = alarm_message
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": "異常原因已更新",
+            "update_count": len(rework_rows) + 1
+        })
+
+    except Exception as e:
+        s.rollback()
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
 
     finally:
         s.close()
@@ -4499,3 +5648,4 @@ def update_assemble_table_data():
         return jsonify({"status": False, "message": f"伺服器錯誤: {str(e)}"}), 500
     finally:
         s.close()
+

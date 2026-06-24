@@ -1,8 +1,12 @@
 import math
+
+import json
+
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
+from database.tables import default_process_steps
 from database.tables import User, UserDelegate, Process, Agv, Material, Assemble, Bom, Permission, Product, Process, Setting, Session
 from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
 
@@ -483,6 +487,9 @@ def copy_assemble():
 
       update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=record.id,
+      #
+      schedule_id=record.schedule_id,
+      #
     )
     s.add(new_record)
     s.flush()  # 先 flush 以取得新 ID
@@ -631,6 +638,7 @@ def copy_assemble_for_difference():
 """
 
 
+"""
 @createTable.route("/copyAssembleForDifference", methods=['POST'])
 def copy_assemble_for_difference():
   print("copyAssembleForDifference....")
@@ -640,9 +648,6 @@ def copy_assemble_for_difference():
   copy_id = data.get('copy_id')
   abnormal_qty = data.get('must_receive_qty')
   pre_must_qty = data.get('pre_must_receive_qty')
-
-  #copy_mode = data.get('copy_mode') or 'abnormal_click'
-  #new_alarm_enable = True if copy_mode == 'end_difference' else False
 
   s = Session()
 
@@ -674,17 +679,20 @@ def copy_assemble_for_difference():
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # ✅ 原異常列：保留在 End 顯示，但異常欄 disabled
+    #
+    # ✅ 原異常列：這筆才是 Error.vue 要顯示的異常來源
     source.abnormal_qty = abnormal_qty
     source.input_abnormal_disable = True
+    source.alarm_enable = False
+    source.alarm_message = data.get('alarm_message') or source.alarm_message or ''
     source.update_time = now_str
+    #
 
     if pre_must_qty > 0:
       source.must_receive_end_qty = pre_must_qty
 
     material_id = source.material_id
-    #schedule_id = 1
-    #
+
     schedule_id = source.schedule_id
 
     # ✅ 防重複：若已經有 3377 產生的返工列，不再新增 3380/3381
@@ -706,212 +714,7 @@ def copy_assemble_for_difference():
         'assemble_data': [r.id for r in existed]
       })
 
-    '''
-    def make_rework_row(work_num, step_code, show_code, show_in_begin):
-      new_row = Assemble(
-        material_id=source.material_id,
-
-        # ✅ 全部以來源 assemble 3377 為準，避免 material 1927 comment 錯
-        material_num=source.material_num,
-        material_comment=source.material_comment,
-        seq_num=source.seq_num,
-
-        work_num=work_num,
-        process_step_code=step_code,
-        schedule_id=schedule_id,
-
-        must_receive_qty=abnormal_qty,
-        must_receive_end_qty=abnormal_qty,
-        ask_qty=abnormal_qty,
-        total_ask_qty=abnormal_qty,
-        total_ask_qty_end=0,
-
-        abnormal_qty=0,
-        completed_qty=0,
-        total_completed_qty=0,
-        allOk_qty=0,
-
-        user_id='',
-        writer_id=None,
-        write_date=None,
-
-        good_qty=0,
-        total_good_qty=0,
-        non_good_qty=0,
-        meinh_qty=0,
-
-        reason='',
-        confirm_comment='',
-        is_assemble_ok=False,
-
-        currentStartTime=None,
-        currentEndTime=None,
-
-        input_disable=False,
-        input_end_disable=False,
-        input_allOk_disable=False,
-        input_abnormal_disable=False,
-
-        # B109 先出現在 Begin；B110 等 B109 結束後再顯示
-        isAssembleStationShow=show_in_begin,
-        isWarehouseStationShow=False,
-
-        alarm_enable=True,
-        alarm_message='',
-        isAssembleFirstAlarm=False,
-        isAssembleFirstAlarm_message='',
-        isAssembleFirstAlarm_qty=0,
-
-        whichStation=1,
-        show1_ok=1,
-        show2_ok=show_code,
-        show3_ok=show_code,
-
-        update_time=now_str,
-        create_at=now_str,
-
-        # ✅ 3378、3379 都要指向異常來源 3377
-        is_copied_from_id=source.id,
-      )
-
-      s.add(new_row)
-      s.flush()
-      return new_row
-    '''
-
-
-    def make_rework_row(work_num, step_code, show_code, show_in_begin, alarm_enable_value):
-        new_row = Assemble(
-            material_id=source.material_id,
-            material_num=source.material_num,
-            material_comment=source.material_comment,
-            seq_num=source.seq_num,
-
-            work_num=work_num,
-            process_step_code=step_code,
-            schedule_id=schedule_id,
-
-            must_receive_qty=abnormal_qty,
-            must_receive_end_qty=abnormal_qty,
-            ask_qty=abnormal_qty,
-            total_ask_qty=abnormal_qty,
-            total_ask_qty_end=0,
-
-            abnormal_qty=0,
-            completed_qty=0,
-            total_completed_qty=0,
-            allOk_qty=0,
-
-            user_id='',
-            writer_id=None,
-            write_date=None,
-
-            good_qty=0,
-            total_good_qty=0,
-            non_good_qty=0,
-            meinh_qty=0,
-
-            reason='',
-            confirm_comment='',
-            is_assemble_ok=False,
-
-            currentStartTime=None,
-            currentEndTime=None,
-
-            input_disable=False,
-            input_end_disable=False,
-            input_allOk_disable=False,
-            input_abnormal_disable=False,
-
-            isAssembleStationShow=show_in_begin,
-            isWarehouseStationShow=False,
-
-            alarm_enable=alarm_enable_value,
-            alarm_message='',
-            isAssembleFirstAlarm=False,
-            isAssembleFirstAlarm_message='',
-            isAssembleFirstAlarm_qty=0,
-
-            whichStation=1,
-            show1_ok=1,
-            show2_ok=show_code,
-            show3_ok=show_code,
-
-            update_time=now_str,
-            create_at=now_str,
-            is_copied_from_id=source.id,
-        )
-
-        s.add(new_row)
-        s.flush()
-        return new_row
-
-    '''
-    new_rows = []
-
-    copy_mode = data.get('copy_mode') or 'abnormal_click'
-    new_alarm_enable = True if copy_mode == 'end_difference' else False
-
-    def make_rework_row_from_source():
-        new_row = Assemble(
-            material_id=source.material_id,
-            material_num=source.material_num,
-            material_comment=source.material_comment,
-            seq_num=source.seq_num,
-
-            # 重點：只複製目前這一筆 a1
-            work_num=source.work_num,
-            process_step_code=source.process_step_code,
-            schedule_id=source.schedule_id,
-
-            must_receive_qty=abnormal_qty,
-            must_receive_end_qty=abnormal_qty,
-            ask_qty=abnormal_qty,
-            total_ask_qty=abnormal_qty,
-            total_ask_qty_end=0,
-
-            abnormal_qty=0,
-            completed_qty=0,
-            total_completed_qty=0,
-            allOk_qty=0,
-
-            user_id='',
-            input_disable=False,
-            input_end_disable=False,
-            input_allOk_disable=False,
-            input_abnormal_disable=False,
-
-            # new-a1 要顯示在 Begin
-            isAssembleStationShow=True,
-            isWarehouseStationShow=False,
-
-            # 異常鍵 False；結束補差 True
-            alarm_enable=new_alarm_enable,
-            alarm_message='',
-            isAssembleFirstAlarm=False,
-            isAssembleFirstAlarm_message='',
-            isAssembleFirstAlarm_qty=0,
-
-            whichStation=1,
-            show1_ok=1,
-            show2_ok=3 if source.work_num == 'B109' else 5,
-            show3_ok=3 if source.work_num == 'B109' else 5,
-
-            update_time=now_str,
-            create_at=now_str,
-            is_copied_from_id=source.id,
-        )
-
-        s.add(new_row)
-        s.flush()
-        return new_row
-    '''
-
-    new_rows = []
-
-    copy_mode = data.get('copy_mode') or 'abnormal_click'
-    new_alarm_enable = True if copy_mode == 'end_difference' else False
-
+    #
     def make_rework_row(work_num, step_code, show_code, show_in_begin):
         new_row = Assemble(
             material_id=source.material_id,
@@ -946,7 +749,8 @@ def copy_assemble_for_difference():
             isAssembleStationShow=show_in_begin,
             isWarehouseStationShow=False,
 
-            alarm_enable=new_alarm_enable,
+            # 返工列不是 Error.vue 異常來源
+            alarm_enable=True,
             alarm_message='',
             isAssembleFirstAlarm=False,
             isAssembleFirstAlarm_message='',
@@ -965,7 +769,12 @@ def copy_assemble_for_difference():
         s.add(new_row)
         s.flush()
         return new_row
+    #
 
+    new_rows = []
+
+    copy_mode = data.get('copy_mode') or 'abnormal_click'
+    new_alarm_enable = True if copy_mode == 'end_difference' else False
 
     if source.work_num == 'B109':
         # 組裝異常：只產生 a2-a1
@@ -999,71 +808,9 @@ def copy_assemble_for_difference():
             'assemble_data': []
         }), 400
 
-    #new_row = make_rework_row_from_source()
-    #new_rows.append(new_row)
-
-
-    '''
-    new_b109 = make_rework_row(
-      work_num='B109',
-      step_code=3,
-      show_code=3,
-      show_in_begin=True
-    )
-
-    new_b110 = make_rework_row(
-      work_num='B110',
-      step_code=2,
-      show_code=5,
-      show_in_begin=False
-    )
-    '''
-
-    #new_rows = []
-
     # 異常鍵：新工序 alarm_enable=False
     # 結束鍵補差：新工序 alarm_enable=True
     new_alarm_enable = True if copy_mode == 'end_difference' else False
-
-    '''
-    if source.work_num == 'B110':
-        # B110 檢驗異常/補差：建立 B109 + B110
-        new_b109 = make_rework_row(
-            work_num='B109',
-            step_code=3,
-            show_code=3,
-            show_in_begin=True,
-            alarm_enable_value=new_alarm_enable
-        )
-        new_rows.append(new_b109)
-
-        new_b110 = make_rework_row(
-            work_num='B110',
-            step_code=2,
-            show_code=5,
-            show_in_begin=False,
-            alarm_enable_value=new_alarm_enable
-        )
-        new_rows.append(new_b110)
-
-    elif source.work_num == 'B109':
-        # B109 組裝異常/補差：只建立 B109
-        new_b109 = make_rework_row(
-            work_num='B109',
-            step_code=3,
-            show_code=3,
-            show_in_begin=True,
-            alarm_enable_value=new_alarm_enable
-        )
-        new_rows.append(new_b109)
-
-    else:
-        return jsonify({
-            'status': False,
-            'message': f'目前只支援 B109/B110 補差或異常，來源 work_num={source.work_num}',
-            'assemble_data': []
-        }), 400
-    '''
 
     material = s.query(Material).filter(Material.id == material_id).first()
     if material:
@@ -1078,10 +825,323 @@ def copy_assemble_for_difference():
     return jsonify({
       'status': True,
       'message': '異常返工流程已建立：B109 -> B110',
-      #'assemble_data': [new_b109.id, new_b110.id]
-      #
-      #'assemble_data': [r.id for r in new_rows]
-      'assemble_data': [r.id for r in new_rows]
+
+      'assemble_data': [r.id for r in new_rows],
+    })
+
+  except Exception as e:
+    s.rollback()
+    print("copyAssembleForDifference ERROR:", repr(e))
+    return jsonify({
+      'status': False,
+      'message': str(e),
+      'assemble_data': []
+    }), 500
+
+  finally:
+    s.close()
+"""
+
+
+@createTable.route("/copyAssembleForDifference", methods=['POST'])
+def copy_assemble_for_difference():
+  print("copyAssembleForDifference....")
+
+  data = request.get_json() or {}
+
+  copy_id = data.get('copy_id')
+  abnormal_qty = data.get('must_receive_qty')
+  pre_must_qty = data.get('pre_must_receive_qty')
+
+  s = Session()
+
+  try:
+    copy_id = int(copy_id)
+    abnormal_qty = int(abnormal_qty or 0)
+    pre_must_qty = int(pre_must_qty or 0)
+
+    if abnormal_qty <= 0:
+      return jsonify({
+        'status': False,
+        'message': '異常數量必須大於 0',
+        'assemble_data': []
+      }), 400
+
+    source = (
+      s.query(Assemble)
+       .filter(Assemble.id == copy_id)
+       .with_for_update()
+       .first()
+    )
+
+    if not source:
+      return jsonify({
+        'status': False,
+        'message': f'找不到來源 assemble_id={copy_id}',
+        'assemble_data': []
+      }), 404
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    #
+    source.abnormal_qty = abnormal_qty
+    source.input_abnormal_disable = True
+    source.alarm_enable = False
+    source.alarm_message = data.get('alarm_message') or source.alarm_message or ''
+    source.update_time = now_str
+
+    rework_alarm_message = (
+        data.get('alarm_message')
+        or source.alarm_message
+        or source.Incoming1_Abnormal
+        or source.confirm_comment
+        or ''
+    )
+
+    # B109 異常時，Error.vue 目前看這個欄位
+    if source.work_num == 'B109':
+      source.isAssembleFirstAlarm = False
+      source.isAssembleFirstAlarm_qty = abnormal_qty
+
+    '''
+    if pre_must_qty > 0:
+      source.must_receive_end_qty = pre_must_qty
+    '''
+    #
+    # ✅ 原工序扣掉異常數量
+    if pre_must_qty > 0:
+      remain_qty = pre_must_qty
+    else:
+      remain_qty = max(0, int(source.must_receive_qty or 0) - abnormal_qty)
+
+    source.must_receive_qty = remain_qty
+    source.ask_qty = remain_qty
+    source.total_ask_qty = remain_qty
+    source.must_receive_end_qty = remain_qty
+    #
+
+    material_id = source.material_id
+    schedule_id = int(source.schedule_id or 0)
+
+
+    material = s.query(Material).filter(Material.id == material_id).first()
+
+    # ✅ 若來源沒有 schedule_id，從同 material 找一個可用 schedule_id
+    if schedule_id <= 0:
+      schedule_id = (
+        s.query(Assemble.schedule_id)
+         .filter(Assemble.material_id == material_id)
+         .filter(Assemble.schedule_id.isnot(None))
+         .filter(Assemble.schedule_id > 0)
+         .order_by(Assemble.id.desc())
+         .scalar()
+      ) or 0
+
+    existed = (
+      s.query(Assemble)
+       .filter(Assemble.material_id == material_id)
+       .filter(Assemble.is_copied_from_id == source.id)
+       .filter(Assemble.must_receive_qty == abnormal_qty)
+       .filter(Assemble.work_num.in_(['B109', 'B110']))
+       .order_by(Assemble.id.asc())
+       .all()
+    )
+
+    if existed:
+      s.commit()
+      return jsonify({
+        'status': True,
+        'message': '返工列已存在，不重複建立',
+        'assemble_data': [r.id for r in existed]
+      })
+
+    #def make_rework_row(work_num, step_code, show_code, show_in_begin):
+    #def make_rework_row(work_num, step_code, show_code, show_in_begin=True, target_schedule_id=None):
+    def make_rework_row(work_num, step_code, show_code, show_in_begin=True, target_schedule_id=None, parent_id=None):
+        new_row = Assemble(
+            material_id=source.material_id,
+            material_num=source.material_num,
+            material_comment=source.material_comment,
+            seq_num=source.seq_num,
+
+            work_num=work_num,
+            process_step_code=step_code,
+            Incoming1_Abnormal=rework_alarm_message,
+            #schedule_id=schedule_id,
+            schedule_id=target_schedule_id if target_schedule_id is not None else schedule_id,
+
+            must_receive_qty=abnormal_qty,
+            must_receive_end_qty=abnormal_qty,
+            ask_qty=abnormal_qty,
+            total_ask_qty=abnormal_qty,
+            total_ask_qty_end=0,
+
+            abnormal_qty=0,
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+            user_id='',
+            writer_id=None,
+            write_date=None,
+
+            good_qty=0,
+            total_good_qty=0,
+            non_good_qty=0,
+            meinh_qty=0,
+
+            #reason='',
+            reason='異常返工',
+            #confirm_comment='',
+            confirm_comment=rework_alarm_message,
+            is_assemble_ok=False,
+
+            currentStartTime=None,
+            currentEndTime=None,
+
+            input_disable=False,
+            input_end_disable=False,
+            input_allOk_disable=False,
+            input_abnormal_disable=False,
+
+            isAssembleStationShow=show_in_begin,
+            isWarehouseStationShow=False,
+
+            # ✅ 返工列不是 Error.vue 異常來源
+            alarm_enable=True,
+            #alarm_message='',
+            alarm_message=rework_alarm_message,
+            isAssembleFirstAlarm=False,
+            isAssembleFirstAlarm_message='',
+            isAssembleFirstAlarm_qty=0,
+
+            whichStation=1,
+            show1_ok=1,
+            show2_ok=show_code,
+            show3_ok=show_code,
+
+            update_time=now_str,
+            create_at=now_str,
+            #is_copied_from_id=source.id,
+            is_copied_from_id=parent_id if parent_id is not None else source.id,
+        )
+
+        s.add(new_row)
+        s.flush()
+        return new_row
+
+    new_rows = []
+
+    raw_steps = material.process_steps if material else None
+    try:
+        if isinstance(raw_steps, str):
+            process_steps = json.loads(raw_steps or "{}")
+        elif isinstance(raw_steps, dict):
+            process_steps = raw_steps
+        else:
+            process_steps = default_process_steps()
+    except Exception:
+        process_steps = default_process_steps()
+
+    assemble_checked_ids = [
+        int(x.get("id"))
+        for x in (process_steps.get("assemble") or [])
+        if x.get("checked") and x.get("id") is not None
+    ]
+
+    check_checked_ids = [
+        int(x.get("id"))
+        for x in (process_steps.get("check") or [])
+        if x.get("checked") and x.get("id") is not None
+    ]
+
+    has_assemble_selected = len(assemble_checked_ids) > 0
+
+    if source.work_num == 'B109':
+        # 組裝異常：只產生新的 B109 返工列
+        new_rows.append(make_rework_row(
+          work_num='B109',
+          step_code=3,
+          show_code=3,
+          show_in_begin=True
+        ))
+
+    elif source.work_num == 'B110':
+        if has_assemble_selected:
+            # 有組裝 + 檢驗：
+            # 檢驗異常 → 回組裝製程第 1 個組裝工序
+            first_assemble_schedule_id = min(assemble_checked_ids)
+
+            '''
+            new_rows.append(make_rework_row(
+                work_num='B109',
+                step_code=3,
+                show_code=3,
+                show_in_begin=True,
+                target_schedule_id=first_assemble_schedule_id
+            ))
+
+            # 後續檢驗先隱藏，等組裝返工完成後再釋放
+            new_rows.append(make_rework_row(
+                work_num='B110',
+                step_code=2,
+                show_code=5,
+                show_in_begin=False
+            ))
+            '''
+            #
+            new_b109 = make_rework_row(
+                work_num='B109',
+                step_code=3,
+                show_code=3,
+                show_in_begin=True,
+                target_schedule_id=first_assemble_schedule_id,
+                parent_id=source.id
+            )
+            new_rows.append(new_b109)
+
+            new_b110 = make_rework_row(
+                work_num='B110',
+                step_code=2,
+                show_code=5,
+                show_in_begin=False,
+                target_schedule_id=schedule_id,
+                parent_id=new_b109.id
+            )
+            new_rows.append(new_b110)
+            #
+
+        else:
+            # 只有檢驗：
+            # 檢驗異常 → 回原檢驗工序
+            new_rows.append(make_rework_row(
+                work_num='B110',
+                step_code=2,
+                show_code=5,
+                show_in_begin=True,
+                target_schedule_id=schedule_id
+            ))
+
+    else:
+        return jsonify({
+          'status': False,
+          'message': f'目前只支援 B109/B110 異常返工，來源 work_num={source.work_num}',
+          'assemble_data': []
+        }), 400
+
+    if material:
+        material.process_step_enable = True
+        material.hasStarted = False
+        material.startStatus = False
+        material.isOpen = False
+        material.isOpenEmpId = ''
+
+    s.commit()
+
+    return jsonify({
+      'status': True,
+      'message': '異常返工流程已建立',
+      'assemble_data': [r.id for r in new_rows],
     })
 
   except Exception as e:
@@ -1336,6 +1396,7 @@ def copy_assemble_for_difference():
   finally:
     s.close()
 """
+
 
 @createTable.route("/copyAssembleForDifferenceP", methods=['POST'])
 def copy_assemble_for_difference_p():
@@ -2471,6 +2532,7 @@ def create_product():
             #    a.isWarehouseStationShow = True
             #    a.update_time = now_str
             #
+            '''
             # 回寫 Assemble：同一張 material 底下所有待入庫列，入庫後都不要再顯示
             stockin_rows = (
                 s.query(Assemble)
@@ -2484,6 +2546,23 @@ def create_product():
                 row.isWarehouseStationShow = False
                 row.input_allOk_disable = True
                 row.update_time = now_str
+            '''
+            #
+            # 回寫 Assemble：只關閉這次入庫的單筆 assemble
+            if assemble_id > 0:
+                a = (
+                    s.query(Assemble)
+                    .filter(Assemble.id == assemble_id)
+                    .filter(Assemble.material_id == mid)
+                    .one_or_none()
+                )
+
+                if a:
+                    a.allOk_qty = add_qty
+                    a.isWarehouseStationShow = False
+                    a.input_allOk_disable = True
+                    a.update_time = now_str
+            #
 
         s.commit()
 

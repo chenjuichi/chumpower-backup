@@ -16,7 +16,7 @@ let _uiStarted = false;   // 🔹避免重複 start() 造成多組 interval
 
 // 允許的時間誤差（毫秒）：超過這個才把前端時間校正成後端
 //const DRIFT_THRESHOLD_MS = 3000;   // 3 秒，可調整成 2000〜5000
-const DRIFT_THRESHOLD_MS = 100;		//20260616
+const DRIFT_THRESHOLD_MS = 300;		//20260616
 
 export function useProcessTimer(getTimerRef) {
 	// 後端資料
@@ -175,7 +175,6 @@ export function useProcessTimer(getTimerRef) {
 		//
 let seconds = Number(data?.elapsed_time ?? 0);
 const paused = !!data?.is_paused;
-//const pauseTotal  = Number(data?.pause_time ?? 0);   // 總暫停秒數
 
 // ★ 若有 begin_time，就用 begin_time 重算目前秒數
 if (!paused && data?.begin_time) {
@@ -201,9 +200,7 @@ if (!paused && data?.begin_time) {
 		pauseCount.value = Math.max(0, Number(data?.pause_count ?? 0));
 
 		//elapsed_time.value = data?.elapsed_time ?? 0
-		//20260616
-		//elapsedMs.value = Math.max(0, (data?.elapsed_time ?? 0) * 1000);
-		elapsedMs.value = Math.max(0, seconds * 1000);
+		elapsedMs.value = Math.max(0, (data?.elapsed_time ?? 0) * 1000);
 		isPaused.value  = data?.is_paused ?? true;
 		userId.value    = data?.started_user_id ?? uId;
 		hasStarted.value = data?.has_started ?? false;

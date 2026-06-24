@@ -15,7 +15,6 @@ from database.tables import Session
 
 from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
 
-
 from .helper import normalize_create_at
 
 updateTableP = Blueprint('updateTableP', __name__)

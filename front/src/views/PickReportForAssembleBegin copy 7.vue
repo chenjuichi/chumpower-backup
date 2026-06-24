@@ -12,7 +12,7 @@
 
   <ConfirmDialog ref="confirmRef" />
 
-  <v-dialog v-model="scheduling_dialog" persistent max-width="420">
+  <v-dialog v-model="scheduling_dialog" max-width="420">
     <v-card>
       <v-card-title style="font-weight: 600">
         <span style="font-size:12px; color:red;">訂單編號{{scheduling_dialog_orde_num}}&nbsp;</span>
@@ -260,7 +260,7 @@
             class="ma-0 toolbar-row"
             align="center"
             no-gutters
-            style="top:22px; height:48px; flex:0 1 auto; max-width: calc(100% - 320px);"
+            style="top:22px; height:48px; flex:0 1 auto; max-width: calc(100% - 320px); overflow-x:hidden;"
           >
             <!--日期範圍-->
             <v-col cols="auto">
@@ -665,13 +665,11 @@
         v-if="!isProcessStepEnabled(item)"
         size="small"
         class="btn-add-process"
-
         :class="{
-          'btn-add-process--disabled': isAddProcessButtonDisabled(item),
-          'btn-add-process--locked': isSchedulingDialogLocked(item)
+          'btn-add-process--disabled': isAddProcessButtonDisabled(item)
         }"
-
-        @click="onClickOpenSchedulingDialog(item)"
+        :disabled="isAddProcessButtonDisabled(item)"
+        @click="openSchedulingDialog(item)"
       >
         <v-icon start size="18">mdi-plus</v-icon>
         工序
@@ -684,8 +682,7 @@
           size="small"
           icon
           class="btn-add-process-icon btn-add-process-icon--delete"
-
-          :disabled="isEditProcessDisabled(item) || isSchedulingDialogLocked(item)"
+          :disabled="isScheduleActionDisabled(item)"
           @click.stop="onClickDeleteSchedule(item)"
         >
           <v-icon size="20" color="red">mdi-delete</v-icon>
@@ -695,8 +692,7 @@
           size="small"
           icon
           class="btn-add-process-icon btn-add-process-icon--edit"
-
-          :disabled="isEditProcessDisabled(item) || isSchedulingDialogLocked(item)"
+          :disabled="isScheduleActionDisabled(item)"
           @click="openSchedulingDialog(item)"
         >
           <v-icon size="20" color="blue">mdi-pencil</v-icon>
@@ -795,7 +791,9 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 
 // +++
+const isFlipped = ref(false);
 
+//const showFields = ref(false);            // 用來控制是否顯示額外的excel btn欄位
 const menuOpen = ref(false)
 const today = new Date()
 const menuKey = ref(0)
@@ -851,6 +849,8 @@ const confirmRef = ref(null);
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
 const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
 const inputIDs = ref([]);
+
+const myBoms = ref([]);
 
 const showBackWarning = ref(true);
 
@@ -967,9 +967,6 @@ const scheduling_dialog_orde_num = ref('');
 const schedulingSteps = ref([])   // dialog 內顯示的工序清單
 const dragFromIndex = ref(null)   // 記錄拖曳來源 index
 
-const schedulingDialogLockedIds = ref(new Set());
-const schedulingClientId = `${app_user_id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-
 // ===== 預設工序 =====
 const assemble_steps = ref([
   /*
@@ -1008,11 +1005,11 @@ const timerMap = new Map();
 
 let __disposedAll = false;
 
-//const PROCESS_TYPES = ['21', '22', '23']
-//const countsByType = ref({ '21': {}, '22': {}, '23': {} })
-//const activeMap = reactive({
-//  '21': {}, '22': {}, '23': {}
-//})
+const PROCESS_TYPES = ['21', '22', '23']
+const countsByType = ref({ '21': {}, '22': {}, '23': {} })
+const activeMap = reactive({
+  '21': {}, '22': {}, '23': {}
+})
 
 const selectedAsmId = ref(null);
 
@@ -1023,6 +1020,7 @@ const bomsMap = ref({})
 const activeBomItemId = ref(null)
 
 //=== watch ===
+//setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
 watch(bar_code, (newVal) => {
@@ -1052,6 +1050,7 @@ watch(() => pagination.itemsPerPage, (val) => {
   localStorage.setItem('loginedUser', JSON.stringify(currentUser.value))
   sessionStorage.setItem('auth_user', JSON.stringify(currentUser.value))
 },
+
 { immediate: true }
 )
 
@@ -1089,6 +1088,7 @@ const hasDpRange2 = computed(() => {
 
 watch(hasDpRange2, (val) => {
   if (!val) {
+    //showFields.value = false
   }
 })
 
@@ -1127,6 +1127,12 @@ const adjustTablePosition = computed(() => ({
   overflowY: 'hidden', // 禁止垂直滾動條
   overflowX: 'hidden', // 禁止水平滾動條
 }));
+
+/*
+const filteredBoms = computed(() =>
+  boms.value.filter(item => item.receive)
+);
+*/
 
 // index -> idx (0-based)
 const indexToIdx = computed(() => {
@@ -1313,9 +1319,6 @@ onMounted(async () => {
 
     socket.value?.on('assemble-schedule-updated', handleAssembleScheduleUpdated);
 
-    socket.value?.on('assemble-scheduling-dialog-lock', handleSchedulingDialogLock)
-    socket.value?.on('assemble-scheduling-dialog-unlock', handleSchedulingDialogUnlock)
-
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
@@ -1374,15 +1377,14 @@ onBeforeUnmount(() => {
   socket.value?.off('assemble-abnormal-created', handleAssembleBatchReleased);
   socket.value?.off('assemble-feed-released', handleAssembleFeedReleased);
 
-  socket.value?.off('assemble-schedule-updated', handleAssembleScheduleUpdated);
-
-  socket.value?.off('assemble-scheduling-dialog-lock', handleSchedulingDialogLock);
-  socket.value?.off('assemble-scheduling-dialog-unlock', handleSchedulingDialogUnlock);
+  socket.value?.off('assemble-schedule-updated', handleAssembleScheduleUpdated)
 
 });
 
 //=== method ===
 const deepClone = (arr) => JSON.parse(JSON.stringify(arr || []))
+
+
 
 const fmt = (d) => {
   if (!d) return ''
@@ -1392,13 +1394,25 @@ const fmt = (d) => {
   return `${y}-${m}-${day}`
 }
 
+const batchRemoveRecords = async () => {
+  console.log('batchRemoveRecords()...');
+
+  //showFields.value = false;
+};
+
 const openDateMenu = () => {
   menuOpen.value = true
+  //showFields.value = true
 }
 
 const runQuery = async () => {
   const payload = buildListInformationsPayload();
   await listInformations(payload);
+};
+
+const runQueryDebounced = () => {
+  if (_qTimer) clearTimeout(_qTimer);
+  _qTimer = setTimeout(runQuery, 200);
 };
 
 // 加天數
@@ -1436,6 +1450,7 @@ const KEY = 'material' // 'material' 或 'assemble'
 
 const keyOf = (row, uId) => `${row.id}:${row.assemble_id}:${processTypeOf(row)}:${uId}`
 
+//const getT = (row) => useRowTimer(row, currentUser.value.empID)
 const getT = (row) => {
   const uid = safeUserId.value;
   if (!uid) return makeStub();
@@ -1490,6 +1505,22 @@ const onTickOf = (row, ms) => {
   t?.onTick?.(ms)
 }
 
+function onTimeUpdate(row, ms) {
+  onTickOf(row, ms)
+}
+
+// 依 row.process_step_code → process_type
+/*
+function processTypeOf(row) {
+  console.log("processTypeOf:", row.process_step_code)
+
+  const step = Number(row.process_step_code ?? 0)
+  const work = row.assemble_work
+  if (step === 3 || (step === 0 && work.includes('B109'))) return 21  // 組裝
+  if (step === 2 || (step === 0 && work.includes('B110'))) return 22  // 檢驗
+  if (step === 1 || (step === 0 && work.includes('B106'))) return 23  // 雷射
+}
+*/
 function processTypeOf(row) {
   const workNum = String(row?.work_num || '')
   const step = Number(row?.process_step_code ?? 0)
@@ -1719,8 +1750,13 @@ function badgeProps(row) {
   const targetIndex = materials_and_assembles.value.findIndex(
     (kk) => kk.index === row.index
   );
+  //console.log("targetIndex:", targetIndex)
+
+  //console.log("count:", count)
 
   materials_and_assembles.value[targetIndex].count=count
+
+  //console.log("materials_and_assembles:", materials_and_assembles.value[targetIndex])
 
   return {
     modelValue: started, // 對應 :model-value
@@ -1735,6 +1771,17 @@ async function nudgeResume () {
   timer()?.resume?.()
 }
 
+/*
+function checkShowTimer(row) {
+  const t = getT(row) // 以 (row.id + step + userId) 當 key
+
+  if (t && t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+    return true
+  } else {
+    return false
+  }
+}
+*/
 function checkShowTimer(row) {
   if (row?.show_timer === true || row?.show_timer === 1 || row?.show_timer === '1') {
     return true
@@ -1778,11 +1825,13 @@ async function onClickBegin(row) {
 
   selectedAsmId.value = row.index;
 
+  //
   // ✅ 先讓畫面立即顯示 timer，不等 refresh / 後端
   row._showMyTimer = true;
   row.show_timer = true;
   row.show_name = me;
 
+  //
   // ✅ 按開始後，立即讓 delete / pencil disable
   row.hasStarted = true;
   row.startStatus = true;
@@ -1885,16 +1934,22 @@ const handleScheduleModeOk = async ()  => {
 const handleIconDisable = (data) => {
   console.log("handleIconDisable 被觸發！", data)
 
+  const materialId = Number(data?.material_id)
+  const assembleId = Number(data?.assemble_id)
   const orderNum = data?.order_num
-  if (!orderNum) return
-
-  lockedOrderNums.value.add(orderNum)
 
   materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (row.order_num !== orderNum) return row
+    const sameRow =
+      Number(row.id) === materialId ||
+      Number(row.material_id) === materialId ||
+      Number(row.assemble_id) === assembleId ||
+      row.order_num === orderNum
+
+    if (!sameRow) return row
 
     return {
       ...row,
+      //icon_disabled: true,
       has_any_running_process: true
     }
   })
@@ -2037,6 +2092,47 @@ const onConfirmBatchDelete = async () => {
   }
 }
 
+const initialize = async () => {
+  try {
+    console.log("initialize()...");
+
+    // 1. 先撈表格資料
+    //await listMaterialsAndAssembles();
+    await safeRefresh();
+
+    //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
+
+    // 2. 補上欄位（這會影響渲染）
+    // 為materials_and_assembles每個物件增加 pickBegin 屬性，初始為空陣列 []
+    materials_and_assembles.value.forEach(item => {
+      item.pickBegin = [];
+      item.count = 0;
+    });
+
+    materials_and_assembles.value.map(it => ({
+      ...it,
+      pickBegin: Array.isArray(it.pickBegin) ? [...it.pickBegin] : [],
+      count: typeof it.count === 'number' ? it.count : 0,
+    }));
+
+    // 3) 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
+    await nextTick();
+
+    // 4) 還原「自己」未結束的計時器（把已在跑的 ms / 狀態灌回每列的 timer）
+    await restoreAllMyTimers(); // ← 如果你的函式名是 restoreMyTimers，就用那個
+
+  } catch (error) {
+    console.error("Error during initialize():", error);
+  }
+};
+
+/*
+const customFilter = (value, query, item) => {
+  if (value == null || query == null) return false
+
+  return String(value).toUpperCase().includes(String(query).toUpperCase())
+}
+*/
 const customFilter = (value, query, item) => {
   if (!query) return true
 
@@ -2064,6 +2160,51 @@ const handleBarCode = async () => {
 
   await showMatchedItem(bar_code.value)
 }
+
+/*
+const focusItemField = async (item) => {
+  console.log("focusItemField()...");
+
+  await nextTick() // 確保 DOM 已更新
+  // 找到外層 v-text-field DOM
+  //const wrapper = document.getElementById(`receiveQtyID-${item.index}`);
+  setTimeout(() => {
+    const wrapper = document.getElementById(`receiveQtyID-${item.id}`)
+    wrapper?.focus()
+  }, 50)
+
+  if (wrapper) {
+    // 聚焦到 v-text-field 本身
+    console.log("wrapper ok...")
+    wrapper.focus();
+
+    // 往內找真正的 <input> 元素
+    const input = wrapper.querySelector('input');
+    if (input) {
+      input.focus();
+
+      // 模擬按下 Enter 鍵事件
+      const enterEvent = new KeyboardEvent('keyup', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(enterEvent);
+    }
+  } else {
+    console.warn(`找不到欄位: receiveQtyID-${item.index}`)
+  }
+}
+
+const getRowProps = ({ item }) => {
+  return {
+    id: `row-${item.id}`,
+    class: highlightedRowId.value === item.id ? 'highlight-row' : '',
+  }
+}
+*/
 
 const showMatchedItem = async (barcode) => {
   console.log('處理條碼：', barcode)
@@ -2121,6 +2262,17 @@ const resetBatchDeleteState = () => {
   // 關閉 menu
   menuOpen.value = false
 
+  //start_date.value = ''
+  //end_date.value = ''
+}
+
+const closeBatchDeleteActions = () => {
+  //showFields.value = false
+}
+
+
+const onDeleteHoverLeave = () => {
+  isFlipped.value = false
 }
 
 const forkliftNoticeFun = () => {
@@ -2141,6 +2293,32 @@ const handlePopState = () => {
   }
 }
 
+/*
+const isProcessStepEnabled = (item) => {
+  const raw = item?.process_step_enable;
+  if (raw === true || raw === 1 || raw === '1') return true;
+  if (raw === false || raw === 0 || raw === '0' || raw == null || raw === '') return false;
+  return Boolean(raw);
+};
+*/
+
+/*
+const isProcessStepEnabled = (item) => {
+  if (!item) return false
+
+  if (scheduledMaterialIds.value.has(Number(item.id))) {
+    return true
+  }
+
+  const raw = item?.process_step_enable
+
+  if (raw === true || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 0 || raw === '0' || raw == null || raw === '') return false
+
+  return Boolean(raw)
+}
+*/
+
 const isProcessStepEnabled = (item) => {
   return (
     Number(item?.process_step_enable || 0) === 1 ||
@@ -2152,44 +2330,116 @@ const isProcessStepEnabled = (item) => {
 /*
 const isEditProcessDisabled = (item) => {
   return (
-    item?.has_any_running_process === true ||
+    isAddProcessButtonDisabled(item) ||
+    item?.hasStarted === true ||
+    item?.hasStarted === 1
+  )
+}
+*/
 
+/*
+const isEditProcessDisabled = (item) => {
+  return (
+    isAddProcessButtonDisabled(item) ||
+    item?.hasStarted === true ||
+    item?.hasStarted === 1 ||
+    item?.hasStarted === '1' ||
+    item?.startStatus === true ||
+    item?.startStatus === 1 ||
+    item?.startStatus === '1' ||
+    item?.show_timer === true ||
+    item?.show_timer === 1 ||
+    item?.show_timer === '1'
+  )
+}
+*/
+
+/*
+const isEditProcessDisabled = (item) => {
+  return (
+    isAddProcessButtonDisabled(item) ||
+
+    // 只看這一筆 row 自己的狀態
+    item?._showMyTimer === true ||
+    item?.show_timer === true ||
+    item?.show_timer === 1 ||
+    item?.show_timer === '1' ||
+
+    // 若後端有回傳 active 狀態，再一起判斷
+    item?.active_count > 0 ||
+    item?.is_active_process === true
+  )
+}
+*/
+/*
+const isEditProcessDisabled = (item) => {
+  const tt = isAddProcessButtonDisabled(item)
+  console.log("order_num, isEditProcessDisabled, isAddProcessButtonDisabled():", item.order_num, tt)
+  return (
+    tt ||
+    (item?._showMyTimer === true && item?.show_timer === true)
+  )
+}
+*/
+
+/*
+const isEditProcessDisabled = (item) => {
+  return (
+    isAddProcessButtonDisabled(item) ||
+
+    // 只鎖「目前這一列剛按開始」的前端暫存狀態
+    item?._showMyTimer === true ||
+
+    // 後端若有 process_id，代表這筆 row 有正在報工流程
+    item?.process_id != null &&
+    item?.process_id !== '' &&
+    item?.process_id !== 0
+  )
+}
+*/
+
+/*
+const isEditProcessDisabled = (item) => {
+  return (
+    //isAddProcessButtonDisabled(item) &&
+    //item?._showMyTimer === true
+    item?.show_timer === true
+  )
+}
+*/
+
+/*
+const isEditProcessDisabled = (item) => {
+  return (
+    item?.show_timer === true ||
     Number(item?.abnormal_qty || 0) > 0 ||
     Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
     item?.is_abnormal_process === true
   )
 }
 */
+
 const isEditProcessDisabled = (item) => {
-  const row = item?.raw || item || {}
-
   return (
-    row?.has_any_running_process === true ||
-    row?.has_any_running_process === 1 ||
-    row?.has_any_running_process === '1' ||
-    row?.has_any_running_process === 'true' ||
+    item?.has_any_running_process === true ||
 
-    row?.hasStarted === true ||
-    row?.hasStarted === 1 ||
-    row?.hasStarted === '1' ||
-    row?.startStatus === true ||
-    row?.startStatus === 1 ||
-    row?.startStatus === '1' ||
-
-    Number(row?.abnormal_qty || 0) > 0 ||
-    Number(row?.isAssembleFirstAlarm_qty || 0) > 0 ||
-    row?.is_abnormal_process === true
+    //item?.show_timer === true ||
+    Number(item?.abnormal_qty || 0) > 0 ||
+    Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
+    item?.is_abnormal_process === true
   )
 }
 
 const markSameOrderProcessLocked = (item) => {
   const orderNum = item?.order_num
-  if (!orderNum) return
-
-  lockedOrderNums.value.add(orderNum)
+  const materialId = item?.id
 
   materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (row.order_num !== orderNum) return row
+    const sameOrder =
+      row.order_num === orderNum ||
+      row.id === materialId
+
+    if (!sameOrder) return row
 
     return {
       ...row,
@@ -2197,6 +2447,11 @@ const markSameOrderProcessLocked = (item) => {
     }
   })
 }
+
+//const isAddProcessDisabled = (item) => isProcessStepEnabled(item);
+
+// ===== 切換時複製（重要：不能直接指向）=====
+const cloneSteps = (arr) => (arr || []).map(x => ({ ...x }))
 
 const saveCurrentSchedulingSteps = (mode) => {
   console.log("test...saveCurrentSchedulingSteps...", mode)
@@ -2243,6 +2498,36 @@ const switchScheduleMode = (newMode) => {
 
   // 再載入新 mode 的資料
   loadSchedulingStepsByMode(newMode)
+}
+
+/*
+const openSchedulingDialog = (item) => {
+  if (isProcessStepEnabled(item)) return
+
+  scheduling_target_item.value = item
+
+  console.log("process_steps:", item.process_steps)
+
+  const ps = item.process_steps || {}
+
+  assemble_steps.value = deepClone(ps.assemble || [])
+  check_steps.value = deepClone(ps.check || [])
+
+  scheduleMode.value = 'assemble'
+  schedulingSteps.value = deepClone(assemble_steps.value)
+
+  scheduling_dialog_orde_num.value = item.order_num
+  scheduling_dialog.value = true
+
+  console.log("test...schedulingSteps:", schedulingSteps.value)
+  console.log("test...assemble_steps:", assemble_steps.value)
+  console.log("test...check_steps:", check_steps.value)
+  console.log("test...1.scheduleMode:", scheduleMode.value)
+}
+*/
+
+const toggleSchedulingStep = (index) => {
+  schedulingSteps.value[index].checked = !schedulingSteps.value[index].checked
 }
 
 const onDragStartStep = (index) => {
@@ -2300,30 +2585,10 @@ const fetchBomsV2 = async (item) => {
   }
 };
 
-/*
 const closeSchedulingDialog = () => {
   scheduling_dialog.value = false;
   scheduling_target_item.value = null;
 };
-*/
-
-const closeSchedulingDialog = () => {
-  const item = scheduling_target_item.value
-
-  if (item?.id) {
-    socket.value?.emit('assemble-scheduling-dialog-unlock', {
-      source: 'PickReportForAssembleBegin',
-      material_id: item.id,
-      order_num: item.order_num,
-      user_id: currentUser.value?.empID || '',
-      user_name: currentUser.value?.name || '',
-      client_id: schedulingClientId,
-    })
-  }
-
-  scheduling_dialog.value = false
-  scheduling_target_item.value = null
-}
 
 const confirmSchedulingDialog = async () => {
   if (!scheduling_target_item.value?.id) {
@@ -2381,6 +2646,13 @@ const doConfirmSchedulingDialog = async () => {
         check: check_steps.value
       }
     })
+
+    //console.log('updateAssembleScheduleRows res:', tt.status, tt.msg)
+    //
+    //scheduling_target_item.value.process_step_enable = true;
+    //
+    //await safeRefresh()
+    //
 
     console.log('準備開啟工序, updateAssembleScheduleRows res:', tt.status, tt.msg)
 
@@ -2444,20 +2716,11 @@ const doConfirmSchedulingDialog = async () => {
   }
 }
 
-/*
 const lockExistingSteps = (steps = []) => {
   return deepClone(steps).map(step => ({
     ...step,
     checked: !!step.checked,
     locked: !!step.checked,   // 已經選過的工序鎖住，不能取消
-  }))
-}
-*/
-const lockExistingSteps = (steps = []) => {
-  return deepClone(steps).map(step => ({
-    ...step,
-    checked: !!step.checked,
-    locked: !!step.checked,   // 只有 checked=true 才鎖住
   }))
 }
 
@@ -2488,7 +2751,6 @@ const isAddProcessButtonDisabled = (item) => {
   return false
 }
 
-/*
 const openSchedulingDialog = (item) => {
   scheduling_target_item.value = item
 
@@ -2507,66 +2769,6 @@ const openSchedulingDialog = (item) => {
   //
 
   // 預設打開還可以新增的模式
-  if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-*/
-
-/*
-const openSchedulingDialog = (item) => {
-  scheduling_target_item.value = item
-
-  const ps = item.process_steps || {}
-
-  assemble_steps.value = lockExistingSteps(ps.assemble || [])
-  check_steps.value = lockExistingSteps(ps.check || [])
-
-  if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-*/
-
-const openSchedulingDialog = (item) => {
-  if (isSchedulingDialogLocked(item)) {
-    showSnackbar(
-      `此工單正在由 ${item.scheduling_dialog_locked_by || '其他人'} 設定工序`,
-      'red-darken-2'
-    )
-    return
-  }
-
-  scheduling_target_item.value = item
-
-  socket.value?.emit('assemble-scheduling-dialog-lock', {
-    source: 'PickReportForAssembleBegin',
-    material_id: item.id,
-    order_num: item.order_num,
-    user_id: currentUser.value?.empID || '',
-    user_name: currentUser.value?.name || '',
-    client_id: schedulingClientId,
-  })
-
-  const ps = item.process_steps || {}
-
-  assemble_steps.value = lockExistingSteps(ps.assemble || [])
-  check_steps.value = lockExistingSteps(ps.check || [])
-
   if (hasUncheckedStep(assemble_steps.value)) {
     scheduleMode.value = 'assemble'
     schedulingSteps.value = deepClone(assemble_steps.value)
@@ -2605,20 +2807,35 @@ const onClickDeleteSchedule = async (item) => {
       showSnackbar(tt.msg || '刪除工序失敗', 'red accent-2');
 
       // 返回後重新載入，保留原本最後製程資料
-
+      //await listMaterialsAndAssembles();
       await reloadAssembleData()
 
       return;
     }
 
     showSnackbar("刪除工序完成!", "green darken-1");
-
+    //await listMaterialsAndAssembles();
     await reloadAssembleData()
 
   } catch (err) {
     console.error('deleteAssembleScheduleRow error:', err)
     showSnackbar('刪除工序發生錯誤', 'red accent-2');
   }
+}
+
+function hasAnyStartedInSameOrder(row) {
+  if (!row?.order_num) return false
+
+  return (materials_and_assembles.value || []).some(item => {
+    if (item.order_num !== row.order_num) return false
+
+    const t = getT(item)
+    return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
+  })
+}
+
+function isAddProcessDisabledV2(row) {
+  return hasAnyStartedInSameOrder(row)
 }
 
 function getScheduleName(item) {
@@ -2646,33 +2863,15 @@ function getScheduleName(item) {
   return found?.name || ''
 }
 
-/*
 function canBeginBySchedule(item) {
+  // 已經開始中的，這裡可依你原本 timer/process 邏輯再擋
+  //const t = getT(item)
+  //if (t && t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+  //  return false
+  //}
 
   // 只要這筆有 schedule_id，就允許開始
   return item.schedule_id > 0;
-}
-*/
-function canBeginBySchedule(item) {
-
-  const row = item?.raw || item || {}
-
-  if (!(Number(row.schedule_id) > 0))
-    return false
-
-  if (row.show_timer)
-    return false
-
-  if (row.has_any_running_process)
-    return false
-
-  if (Number(row.users_for_press_start || 0) > 0)
-    return false
-
-  if ((row.active_user_ids || []).length > 0)
-    return false
-
-  return true
 }
 
 const isGifDisabled = (item) => {
@@ -3069,85 +3268,86 @@ const getFilteredBoms = (item) => {
   return (bomsMap.value[String(item.id)] || []).filter(bom => bom.receive)
 }
 
+/*
+const hasOtherUserStarted = (item) => {
+  //console.log("hasOtherUserStarted()...", item)
+  const row = item || {}
+  const currentEmpId = currentUser.value?.empID || ''
+
+  const users = row.active_user_ids || row.active_users || []
+  //const users = row.active_user_ids || []
+
+  //if (row.order_num=='121100019955') {
+    console.log("hasOtherUserStarted()...", row.order_num, row.active_users)
+    console.log("hasOtherUserStarted(), row.order_num, users, row.active_user_ids", row.order_num, users, row.active_user_ids)
+    //console.log(row.order_num, users, row.active_user_ids, row.active_users)
+  //}
+
+  if (!Array.isArray(users)) {
+    console.log("return:", false)
+    return false
+  }
+  console.log("continue....", row.order_num)
+  return users.some(u => {
+    const uid = String(u || '').split(' ')[0]
+    console.log("return:", row.order_num, uid, currentEmpId, "curr: ",currentUser.value?.empID, uid && uid !== currentEmpId)
+    return uid && uid !== currentEmpId
+  })
+}
+*/
 const hasOtherUserStarted = (row) => {
   const r = row?.raw || row || {}
 
-  const me = String(
+  const me =
     currentUser.value?.empID ||
     currentUser.value?.emp_id ||
     currentUser.value?.user_id ||
     ''
-  ).trim()
 
-  const assembleKey = String(r.assemble_id)
+  const activeUsers = Array.isArray(r.active_user_ids)
+    ? r.active_user_ids.map(x => String(x).trim())
+    : []
 
-  const users = Array.isArray(startedUsersByAssembleId.value[assembleKey])
-    ? startedUsersByAssembleId.value[assembleKey]
-    : Array.isArray(r.active_user_ids)
-      ? r.active_user_ids
-      : []
+  // 後端已依 assemble_id 算好正在此工序的人數
+  const count = Number(r.users_for_press_start || 0)
 
-  if (users.length > 0) {
-    return users.some(uid => String(uid).trim() && String(uid).trim() !== me)
+  // 有別人在做
+  if (activeUsers.length > 0) {
+    return activeUsers.some(uid => uid && uid !== String(me).trim())
   }
 
-  const count = Number(r.users_for_press_start || 0)
-  return count > 0 && String(r.user_id || '').trim() !== me
+  // 沒 active_user_ids 時，用 count 保底
+  return count > 0 && String(r.user_id || '').trim() !== String(me).trim()
 }
 
 const handleAssembleStarted = async (payload) => {
   const assembleId = Number(payload?.assemble_id)
-  const userId = String(payload?.user_id || '').trim()
-  const orderNum = payload?.order_num
+  const userId = String(payload?.user_id || '')
 
   if (!assembleId || !userId) return
 
-  // delete / pencil：同訂單全部鎖住
-  if (orderNum) {
-    lockedOrderNums.value.add(orderNum)
-  }
+  const row = materials_and_assembles.value.find(x => Number(x.assemble_id) === assembleId)
+  if (!row) return
 
-  // 開始按鍵綠點：只記錄該 assemble_id
-  const key = String(assembleId)
-  const oldList = Array.isArray(startedUsersByAssembleId.value[key])
-    ? [...startedUsersByAssembleId.value[key]]
+  const list = Array.isArray(row.active_user_ids)
+    ? [...row.active_user_ids]
     : []
 
-  if (!oldList.includes(userId)) {
-    oldList.push(userId)
+  if (!list.includes(userId)) {
+    list.push(userId)
   }
 
-  startedUsersByAssembleId.value[key] = oldList
+  row.active_user_ids = list
 
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    const sameOrder = row.order_num === orderNum
-    const sameAssemble = Number(row.assemble_id) === assembleId
+  await delay(300);
 
-    return {
-      ...row,
-
-      // 同訂單 b1/b2/b3 刪除/編輯都 disable
-      has_any_running_process: sameOrder
-        ? true
-        : row.has_any_running_process,
-
-      // 只有被開始的那一筆顯示「已有人開工」
-      active_user_ids: sameAssemble
-        ? oldList
-        : row.active_user_ids
-    }
-  })
-
-  await delay(300)
-  await safeRefresh()
+  await safeRefresh();
 }
 
 const reloadAssembleData = async () => {
   await listMaterialsAndAssembles({
     user_id: currentUser.value?.empID
   })
-
-  applyOrderRunningLocks()
 }
 
 const handleAssembleFeedReleased = async (payload) => {
@@ -3163,15 +3363,13 @@ const handleAssembleScheduleUpdated = async (payload) => {
   await safeRefresh()
 }
 
-// 延遲函數
+// 定義一個延遲函數
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 /*
 const isScheduleActionDisabled = (item) => {
   const row = item?.raw || item || {}
 
   return (
-    isEditProcessDisabled(row) ||
     row.has_any_running_process === true ||
     row.has_any_running_process === 1 ||
     row.has_any_running_process === '1' ||
@@ -3183,135 +3381,16 @@ const isScheduleActionDisabled = (item) => {
 */
 const isScheduleActionDisabled = (item) => {
   const row = item?.raw || item || {}
-  const orderNum = String(row.order_num || '').trim()
 
   return (
-    lockedOrderNums.value.has(orderNum) ||
-
-    row.order_has_started_process === true ||
-    row.order_has_started_process === 1 ||
-    row.order_has_started_process === '1' ||
-
     isEditProcessDisabled(row) ||
-
     row.has_any_running_process === true ||
     row.has_any_running_process === 1 ||
     row.has_any_running_process === '1' ||
     row.has_any_running_process === 'true' ||
-
     hasOtherUserStarted(row) ||
     row.show_timer === true
   )
-}
-
-const lockedOrderNums = ref(new Set());
-
-const startedUsersByAssembleId = ref({});
-
-const isTruthy = (v) =>
-  v === true || v === 1 || v === '1' || v === 'true'
-
-const rowHasRunningProcess = (row) => {
-  return (
-    isTruthy(row?.has_any_running_process) ||
-    isTruthy(row?.show_timer) ||
-    Number(row?.users_for_press_start || 0) > 0 ||
-    Number(row?.active_count || 0) > 0 ||
-    (Array.isArray(row?.active_user_ids) && row.active_user_ids.length > 0)
-  )
-}
-
-const applyOrderRunningLocks = () => {
-  const runningOrders = new Set([...lockedOrderNums.value])
-
-  materials_and_assembles.value.forEach(row => {
-    if (rowHasRunningProcess(row) && row?.order_num) {
-      runningOrders.add(row.order_num)
-    }
-  })
-
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    const assembleKey = String(row.assemble_id)
-    const localActiveUsers = startedUsersByAssembleId.value[assembleKey]
-
-    return {
-      ...row,
-
-      // refresh 後仍維持同訂單刪除/編輯 disable
-      has_any_running_process:
-        rowHasRunningProcess(row) || runningOrders.has(row.order_num),
-
-      // refresh 後補回該工序的 active_user_ids
-      active_user_ids: Array.isArray(localActiveUsers)
-        ? localActiveUsers
-        : row.active_user_ids
-    }
-  })
-
-  lockedOrderNums.value = runningOrders
-}
-
-const handleSchedulingDialogLock = (payload) => {
-
-  if (payload?.client_id === schedulingClientId) return
-
-  const materialId = Number(payload?.material_id)
-  if (!materialId) return
-
-  schedulingDialogLockedIds.value.add(materialId)
-
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (Number(row.id) !== materialId) return row
-
-    return {
-      ...row,
-      scheduling_dialog_locked: true,
-      scheduling_dialog_locked_by: payload?.user_name || payload?.user_id || '其他人'
-    }
-  })
-
-}
-
-const handleSchedulingDialogUnlock = (payload) => {
-
-  if (payload?.client_id === schedulingClientId) return
-
-  const materialId = Number(payload?.material_id)
-  if (!materialId) return
-
-  schedulingDialogLockedIds.value.delete(materialId)
-
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (Number(row.id) !== materialId) return row
-
-    return {
-      ...row,
-      scheduling_dialog_locked: false,
-      scheduling_dialog_locked_by: ''
-    }
-  })
-
-}
-
-const isSchedulingDialogLocked = (item) => {
-  return schedulingDialogLockedIds.value.has(Number(item?.id))
-}
-
-const onClickOpenSchedulingDialog = (item) => {
-  if (isSchedulingDialogLocked(item)) {
-    showSnackbar(
-      `此工單正在由 ${item.scheduling_dialog_locked_by || '其他人'} 設定工序，請稍後再試`,
-      'red-darken-2'
-    )
-    return
-  }
-
-  if (isAddProcessButtonDisabled(item)) {
-    showSnackbar('此工單目前不可設定工序', 'red-darken-2')
-    return
-  }
-
-  openSchedulingDialog(item)
 }
 
 </script>
@@ -3516,6 +3595,15 @@ const onClickOpenSchedulingDialog = (item) => {
   width: 140%;
 }
 
+.toolbar-row {
+  display: flex;
+  align-items: center;
+
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 16px;
+}
 
 // 4. 日期範圍往左調整
 .date-slot {
@@ -3972,40 +4060,12 @@ const onClickOpenSchedulingDialog = (item) => {
 }
 
 .toolbar-row {
-  display: flex;
-  align-items: center;
-
-  flex-wrap: nowrap;
-  //overflow-x: auto;
   min-width: 0 !important;
   overflow-x: hidden !important;
-  overflow-y: hidden;
-  gap: 16px;
 }
-
-//.toolbar-row {
-//  min-width: 0 !important;
-//  overflow-x: hidden !important;
-//}
 
 .toolbar-row .v-col {
   min-width: 0 !important;
-}
-
-.btn-add-process--disabled {
-  opacity: 0.45;
-  pointer-events: auto;
-  cursor: not-allowed;
-}
-
-.btn-add-process--locked {
-  background-color: #ffcdd2 !important;
-  color: #b71c1c !important;
-  border: 1px solid #e57373 !important;
-}
-
-.btn-add-process--locked:hover {
-  background-color: #ef9a9a !important;
 }
 
 </style>

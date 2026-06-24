@@ -4342,6 +4342,7 @@ def list_materials_and_assembles():
             )
             '''
             #
+            '''
             active_rows = (
                 s.query(Process)
                 .join(
@@ -4362,16 +4363,104 @@ def list_materials_and_assembles():
                         Assemble.currentEndTime == ''
                     )
                 )
-                .filter(Assemble.show2_ok.notin_([5, 9, 10]))
+                #.filter(Assemble.show2_ok.notin_([5, 9, 10]))
+
+                .order_by(Process.id.desc())
+                .all()
+            )
+            '''
+            #
+            active_rows = (
+                s.query(Process)
+                .join(
+                    Assemble,
+                    Process.assemble_id == Assemble.id
+                )
+                .filter(Process.material_id.in_(material_ids_all))
+                .filter(Process.process_type.in_([21, 22, 23]))
+                .filter(Process.has_started.is_(True))
+                .filter(Process.begin_time.isnot(None))
+                .filter(Process.begin_time != '')
+                .filter(Process.end_time.is_(None))
+                .filter(or_(Process.is_pause.is_(False), Process.is_pause.is_(None)))
+
+                # 只抓當天未結束的 process，避免舊殘留資料一直影響 Begin
+                .filter(func.date(Process.begin_time) == func.curdate())
+
+                # assemble 本身不能已經完工
+                .filter(
+                    or_(
+                        Assemble.currentEndTime.is_(None),
+                        Assemble.currentEndTime == ''
+                    )
+                )
+
+                # process_type 必須和 work_num 對應
+                .filter(
+                    or_(
+                        and_(Assemble.work_num == 'B109', Process.process_type == 21),
+                        and_(Assemble.work_num == 'B110', Process.process_type == 22),
+                        and_(Assemble.work_num == 'B106', Process.process_type == 23),
+                    )
+                )
 
                 .order_by(Process.id.desc())
                 .all()
             )
             #
-
+            '''
             for p in active_rows:
+
+                #
+                print("========== ACTIVE PROCESS ==========")
+
+                for p in active_rows:
+                    print(
+                        "process_id=", p.id,
+                        "assemble_id=", p.assemble_id,
+                        "material_id=", p.material_id,
+                        "user=", p.user_id,
+                        "type=", p.process_type,
+                        "begin=", p.begin_time,
+                        "end=", p.end_time,
+                        "pause=", p.is_pause,
+                    )
+
+                    if not is_process_running(p):
+                        continue
+                #
+
                 if not is_process_running(p):
                     continue
+            '''
+            #
+            print("========== ACTIVE PROCESS ==========")
+
+            for p in active_rows:
+                print(
+                    "process_id=", p.id,
+                    "assemble_id=", p.assemble_id,
+                    "material_id=", p.material_id,
+                    "user=", p.user_id,
+                    "type=", p.process_type,
+                    "begin=", p.begin_time,
+                    "end=", p.end_time,
+                    "pause=", p.is_pause,
+                )
+
+                if not is_process_running(p):
+                    continue
+
+                mid = int(p.material_id or 0)
+                aid = int(p.assemble_id or 0)
+
+                running_mid_set.add(mid)
+                active_process_by_assemble.setdefault(aid, []).append(p)
+
+                if _user_id and safe_str(p.user_id) == _user_id:
+                    if aid not in my_active_process_by_assemble:
+                        my_active_process_by_assemble[aid] = p
+                #
 
                 mid = int(p.material_id or 0)
                 aid = int(p.assemble_id or 0)
@@ -4419,10 +4508,13 @@ def list_materials_and_assembles():
                 for a in assemble_records
             )
 
-            has_any_running_process = (
-                material_id in running_mid_set
-                or has_released_check_batch
-            )
+            #has_any_running_process = (
+            #    material_id in running_mid_set
+            #    or has_released_check_batch
+            #)
+            #
+            has_any_running_process = False
+            #
 
             has_scheduled_rows = any(
                 int(getattr(a, "schedule_id", 0) or 0) > 0
@@ -4462,6 +4554,8 @@ def list_materials_and_assembles():
 
                 my_active_process = my_active_process_by_assemble.get(assemble_id)
                 active_processes = active_process_by_assemble.get(assemble_id, [])
+
+                has_any_running_process = len(active_processes) > 0
 
                 active_user_ids = []
                 for p in active_processes:
@@ -4505,6 +4599,7 @@ def list_materials_and_assembles():
                 if (not need_more) and process_total != 0 and my_active_process is None:
                     continue
 
+                '''
                 show_timer = my_active_process is not None
                 show_name = safe_str(getattr(my_active_process, "user_id", "")) if my_active_process else ""
 
@@ -4517,6 +4612,23 @@ def list_materials_and_assembles():
                         "elapsedActive_time": int(getattr(my_active_process, "elapsedActive_time", 0) or 0),
                         "str_elapsedActive_time": safe_str(getattr(my_active_process, "str_elapsedActive_time", "")),
                     })
+                '''
+                #
+                display_active_process = my_active_process or (active_processes[0] if active_processes else None)
+
+                show_timer = display_active_process is not None
+                show_name = safe_str(getattr(display_active_process, "user_id", "")) if display_active_process else ""
+
+                begin_records = []
+                for p in active_processes:
+                    begin_records.append({
+                        "process_id": int(getattr(p, "id", 0) or 0),
+                        "user_id": safe_str(getattr(p, "user_id", "")),
+                        "begin_time": safe_str(getattr(p, "begin_time", "")),
+                        "elapsedActive_time": int(getattr(p, "elapsedActive_time", 0) or 0),
+                        "str_elapsedActive_time": safe_str(getattr(p, "str_elapsedActive_time", "")),
+                    })
+                #
 
                 index += 1
 
@@ -4570,9 +4682,15 @@ def list_materials_and_assembles():
                     "show_name": show_name,
                     "begin_records": begin_records,
 
-                    "my_process_id": int(getattr(my_active_process, "id", 0) or 0) if my_active_process else 0,
-                    "my_begin_time": safe_str(getattr(my_active_process, "begin_time", "")) if my_active_process else "",
-                    "my_elapsedActive_time": int(getattr(my_active_process, "elapsedActive_time", 0) or 0) if my_active_process else 0,
+
+                    #"my_process_id": int(getattr(my_active_process, "id", 0) or 0) if my_active_process else 0,
+                    #"my_begin_time": safe_str(getattr(my_active_process, "begin_time", "")) if my_active_process else "",
+                    #"my_elapsedActive_time": int(getattr(my_active_process, "elapsedActive_time", 0) or 0) if my_active_process else 0,
+                    #
+                    "my_process_id": int(getattr(display_active_process, "id", 0) or 0) if display_active_process else 0,
+                    "my_begin_time": safe_str(getattr(display_active_process, "begin_time", "")) if display_active_process else "",
+                    "my_elapsedActive_time": int(getattr(display_active_process, "elapsedActive_time", 0) or 0) if display_active_process else 0,
+                    #
 
                     "active_user_ids": active_user_ids,
                     "users_for_press_start": len(active_user_ids),
@@ -4602,7 +4720,7 @@ def list_materials_and_assembles():
                     "assemble_work": work_name_by_work_num(work_num),
                     "assemble_process_num": int(getattr(assemble_record, "show2_ok", 0) or 0),
 
-                    "is_abnormal_process": getattr(assemble_record, "alarm_enable", True) == False,
+                    "is_abnormal_process": (getattr(assemble_record, "reason", "") == "異常返工"),
                     "abnormal_qty": int(getattr(assemble_record, "abnormal_qty", 0) or 0),
                     "isAssembleFirstAlarm_qty": int(getattr(assemble_record, "isAssembleFirstAlarm_qty", 0) or 0),
 
@@ -4618,15 +4736,61 @@ def list_materials_and_assembles():
                 _results.append(_object)
 
         #
+        # ============================================================
+        # 補：同一訂單只要任一組裝/檢驗/雷射工序曾經開始過
+        #     Begin 的刪除/編輯按鍵就要 disable
+        # ============================================================
+        order_nums = list({
+            r.get("order_num")
+            for r in _results
+            if r.get("order_num")
+        })
+
+        started_order_nums = set()
+
+        if order_nums:
+            started_rows = (
+                s.query(Material.order_num)
+                .join(Process, Process.material_id == Material.id)
+                .filter(
+                    Material.order_num.in_(order_nums),
+                    Material.move_by_process_type == 2,
+                    Process.process_type.in_([21, 22, 23]),
+                    Process.begin_time.isnot(None),
+                    Process.begin_time != ''
+                )
+                .distinct()
+                .all()
+            )
+
+            started_order_nums = {
+                r[0] for r in started_rows if r[0]
+            }
+
+
         merged = {}
 
         for row in _results:
+            order_num = row.get("order_num")
+
+            # ========================================================
+            # 重點：若同一訂單曾經有任一工序開始過，
+            #       就把現有欄位 has_any_running_process 補成 True
+            #       前端不用新增欄位也能 disable
+            # ========================================================
+            if order_num in started_order_nums:
+                row["has_any_running_process"] = True
+
             merge_enabled = row.get("merge_enabled") in (1, True, "1", "true", "True")
 
             if merge_enabled:
-                key = row.get("order_num")
+                # 有 +工序時，不能只用 order_num，否則多工序會被合併成 1 筆
+                if int(row.get("schedule_id") or 0) > 0:
+                    key = f'{row.get("order_num")}_{row.get("schedule_id")}_{row.get("assemble_id")}'
+                else:
+                    key = row.get("order_num")
             else:
-                key = f'{row.get("order_num")}_{row.get("id")}'
+                key = f'{row.get("order_num")}_{row.get("id")}_{row.get("schedule_id")}_{row.get("assemble_id")}'
 
             if key not in merged:
                 merged[key] = row
@@ -5532,7 +5696,8 @@ def list_informations():
             "not_prepare": [],
             "prepare": [],
             "assemble": [],
-            "warehouse": []
+            "warehouse": [],
+            "stockin": [],
         }
 
         # order_num 給 count 用，避免同工單多筆 material 重複計算
@@ -5540,7 +5705,8 @@ def list_informations():
             "not_prepare": set(),
             "prepare": set(),
             "assemble": set(),
-            "warehouse": set()
+            "warehouse": set(),
+             "stockin": set(),
         }
 
         # 同一工單只歸一類，優先順序：
@@ -5551,7 +5717,8 @@ def list_informations():
             "not_prepare": 1,
             "prepare": 2,
             "assemble": 3,
-            "warehouse": 4
+            "warehouse": 4,
+            "stockin": 5,
         }
 
         order_category = {}
@@ -5579,9 +5746,18 @@ def list_informations():
             if show2_code in (3, 4, 5, 6, 7, 8, 9):
                 return "assemble"
 
+            # 已入庫
+            if show2_code == 12:
+                return "stockin"
+
+            ## 等待入庫 / 入庫中 / 入庫完成
+            #if show2_code in (10, 11, 12):
+            #    return "warehouse"
+            #
             # 等待入庫 / 入庫中 / 入庫完成
             if show2_code in (10, 11, 12):
                 return "warehouse"
+            #
 
             # 保險判斷
             if show1_code == 3:
@@ -5683,6 +5859,7 @@ def list_informations():
                 "prepare": len(status_orders["prepare"]),
                 "assemble": len(status_orders["assemble"]),
                 "warehouse": len(status_orders["warehouse"]),
+                "stockin": len(status_orders["stockin"]),
             }
         })
 

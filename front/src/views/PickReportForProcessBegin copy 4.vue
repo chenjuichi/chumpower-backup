@@ -99,143 +99,38 @@
             </v-dialog>
           </div>
 
-          <v-row
-            class="ma-0 toolbar-row"
-            align="center"
-            no-gutters
-            style="top:22px; height:48px; flex:0 1 auto; max-width: calc(100% - 320px); overflow-x:hidden;"
-          >
-            <!--日期範圍-->
-            <v-col cols="auto">
-              <div class="date-slot">
-                <Transition name="slide">
-                  <div class="date-box">
-                    <v-menu
-                      v-model="menuOpen"
-                      :close-on-content-click="false"
-                      location="bottom start"
-                      origin="top start"
-                      :offset="[0, 8]"
-                      :width="480"
-                      :min-width="480"
-                      transition="fade-transition"
-                      :open-on-focus="false"
-                      :open-on-hover="false"
-                    >
-                      <template #activator="{ props }">
-                        <v-text-field
-                          v-bind="props"
-                          label="交期範圍"
-                          v-model="formattedDateRange"
-                          readonly
-                          variant="underlined"
-                          density="compact"
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <!--客製化搜尋-->
+            <v-text-field
+              id="search_input"
 
-                          :placeholder="dateFieldActive ? 'yyyy-mm-dd ~ yyyy-mm-dd' : ''"
-                          prepend-icon="mdi-calendar-check"
+              v-model="search"
+              label="資料搜尋"
 
-                          class="dateicon"
-                          clearable
-                          hide-details
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              hide-details
+              single-line
+              style="position: relative; top: 45px; right: 250px; min-width: 150px;"
+              density="compact"
+            />
 
-                          @click="openDateMenu"
-                          @focus="dateFieldActive = true"
-                          @blur="dateFieldActive = false"
-                          @click:clear="clearDates"
-                        />
-                      </template>
-                      <div class="dp-stretch">
-                        <VueDatePicker
-                          :key="menuKey"
-                          :start-date="today"
-                          v-model="dpRange2"
-                          :enable-time-picker="false"
-                          range
-                          :inline="true"
-                          :auto-apply="true"
-                          locale="zh-TW"
-                          week-num-name=""
-                          :day-names="['星期一','星期二','星期三','星期四','星期五','星期六','星期日']"
-                        />
-                      </div>
-                    </v-menu>
-                  </div>
-                </Transition>
-              </div>
-            </v-col>
+            <!-- 客製化barcode輸入 -->
+            <v-text-field
+              id="bar_code"
+              v-model="bar_code"
+              label="條碼"
 
-            <v-col cols="auto" class="d-flex justify-end align-center">
-              <div class="batch-slot" v-if="hasDpRange2">
-                <v-btn
-                  v-if="!showBatchActions"
-                  style="background:#E3F2FD !important;"
-                  class="thin"
-                  :disabled="isInformationEmpty"
-                  @click="onClickBatchDelete"
-                >
-                  <v-icon left color="green" style="font-weight:700;">
-                    mdi-sticker-remove-outline
-                  </v-icon>
-                  <span style="color:black; font-weight:600;">整批刪除</span>
-                </v-btn>
-
-                <!-- ===== 狀態2：取消 / 確定 ===== -->
-                <div v-else class="batch-actions">
-                  <!-- 取消 -->
-                  <v-btn
-                    class="action-btn"
-                    :disabled="isInformationEmpty"
-                    @click="onCancelBatchDelete"
-                  >
-                    <v-icon left color="#ff0000">mdi-window-close</v-icon>
-                    <span style="color:black; font-weight:600;">取消</span>
-                  </v-btn>
-
-                  <!-- 確定 -->
-                  <v-btn
-                    class="action-btn"
-                    :disabled="isInformationEmpty"
-                    @click="onConfirmBatchDelete"
-                  >
-                    <v-icon left color="green">mdi-check</v-icon>
-                    <span style="color:black; font-weight:600;">確定</span>
-                  </v-btn>
-                </div>
-              </div>
-            </v-col>
-
-            <!--客製化搜尋/barcode輸入框-->
-            <v-col cols="auto" class="d-flex justify-end align-center" style="gap:5px;">
-              <v-text-field
-
-                v-model="search"
-                label="資料搜尋"
-
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                density="compact"
-                hide-details
-                single-line
-                class="top-input"
-              />
-
-              <v-text-field
-                id="bar_code"
-                v-model="bar_code"
-                label="條碼"
-
-                prepend-inner-icon="mdi-barcode"
-                :value="bar_code"
-                ref="barcodeInput"
-                @keyup.enter="handleBarCode"
-                hide-details
-                single-line
-
-                variant="outlined"
-                class="barcode-input top-input"
-              />
-            </v-col>
-          </v-row>
+              :value="bar_code"
+              ref="barcodeInput"
+              @keyup.enter="handleBarCode"
+              hide-details
+              prepend-icon="mdi-barcode"
+              style="min-width:200px; position: relative; top: 15px; right: 50px;"
+              class="align-center"
+              density="compact"
+            />
+          </div>
         </v-card-title>
       </v-card>
     </template>
@@ -509,14 +404,6 @@
 
 <script setup>
 import { ref, reactive, nextTick, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, onDeactivated } from 'vue';
-
-import dayjs from 'dayjs';
-import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-dayjs.extend(isSameOrBefore);             //啟用 plugin
-
-import VueDatePicker from '@vuepic/vue-datepicker'
-import '@vuepic/vue-datepicker/dist/main.css'
-
 import { onBeforeRouteLeave } from 'vue-router';
 
 import TimerDisplay from "./TimerDisplayProcess.vue";
@@ -568,7 +455,6 @@ const listMaterialsAndAssembles = p_apiOperation('get', '/listMaterialsAndAssemb
 const getBoms = p_apiOperation('post', '/getBomsP');
 
 const removeMaterialsAndRelationTable = p_apiOperation('post', '/removeMaterialsAndRelationTableP');
-const removeMaterialsAndRelationTableByDeliveryDateRange = p_apiOperation('post', '/removeMaterialsAndRelationTablePByDeliveryDateRange');
 
 const updateMaterial = p_apiOperation('post', '/updateMaterialP');
 const updateAssembleMustReceiveQtyByMaterialIDAndDate = p_apiOperation('post', '/updateAssembleMustReceiveQtyByMaterialIDAndDateP');
@@ -584,17 +470,6 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-
-const menuOpen = ref(false);
-const dpRange2 = ref([]);
-const formattedDateRange = ref('');
-const settingDefaultRange = ref(false);
-const dateFieldActive = ref(false);
-const menuKey = ref(0);
-const today = new Date();
-const showBatchActions = ref(false);    // 控制是否顯示 確定/取消
-
-
 // 刪除對話框相關
 const deleteTitle = ref('刪除工單');
 const deleteMessage = ref('此操作將刪除相關資料(BOM/Assemble/Process)，確定？');
@@ -703,42 +578,7 @@ let __disposedAll = false;
 const selectedAsmId = ref(null);
 
 //=== watch ===
-
-watch(menuOpen, (open) => {
-  if (open) {
-    // 每次開都回今天那個月
-    menuKey.value++
-
-    //如果希望「使用者已經選過日期就不要覆蓋」
-    if (!dpRange2.value?.[0] || !dpRange2.value?.[1]) {
-      // 每次開都預設今天~+7天
-      setDefaultRange()
-    }
-  }
-})
-
-// 畫面控制
-watch(dpRange2, ([start, end]) => {
-  if (settingDefaultRange.value) return   // ✅ 預設值時不關 menu
-
-  if (start && end) {
-    formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
-    menuOpen.value = false                 // ✅ 使用者選完才關
-  }
-})
-
-const hasDpRange2 = computed(() => {
-  return Array.isArray(dpRange2.value)
-    && dpRange2.value.length === 2
-    && !!dpRange2.value[0]
-    && !!dpRange2.value[1]
-})
-
-watch(hasDpRange2, (val) => {
-  if (!val) {
-    //showFields.value = false
-  }
-})
+//setupGetBomsWatcher();
 
 // 當輸入滿 12 碼，就自動處理條碼
 watch(bar_code, (newVal) => {
@@ -760,11 +600,6 @@ watch(hoveredItem, async (item) => {
 { immediate: true })
 */
 //=== computed ===
-
-const isInformationEmpty = computed(() => {
-  return materials_and_assembles.value.length === 0;
-});
-
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0',
 }));
@@ -1917,133 +1752,6 @@ const removelocalStorage = () => {
     localStorage.removeItem('Authenticated');
   }
 };
-
-const openDateMenu = () => {
-  menuOpen.value = true
-  //showFields.value = true
-}
-
-const resetBatchDeleteState = () => {
-  showBatchActions.value = false
-
-  // 清空日期範圍
-  dpRange2.value = []
-
-  // 清掉顯示字串
-  formattedDateRange.value = ''
-
-  // 強制 VueDatePicker 重建
-  menuKey.value++
-
-  // 關閉 menu
-  menuOpen.value = false
-
-  //start_date.value = ''
-  //end_date.value = ''
-}
-
-// 設定預設區間（今天~7天）
-const setDefaultRange = ()=>{
-  const start = new Date()
-  const end   = addDays(start, 7)
-
-  settingDefaultRange.value = true
-  dpRange2.value = [start, end]
-
-  formattedDateRange.value = `${fmt(start)} ~ ${fmt(end)}`
-
-  // 下一個 tick 再解除旗標，避免 watcher 立刻關 menu
-  queueMicrotask(() => {
-    settingDefaultRange.value = false
-  })
-}
-
-const clearDates = () => {
-  dpRange2.value = [null, null]
-  formattedDateRange.value = ''
-  menuKey.value++            // ✅ 重新掛載，避免卡在奇怪月份
-}
-
-// 點擊「整批刪除」
-const onClickBatchDelete = () => {
-  if (!hasDpRange2.value || isInformationEmpty.value) return
-  showBatchActions.value = true
-}
-
-const onClickRemoveByDeliveryDateRange = async () => {
-  let ok = false
-  let result = null
-
-  try {
-    const payload = {
-      dpRange2: dpRange2.value,
-      delete_copies: true,
-    }
-
-    result = await removeMaterialsAndRelationTableByDeliveryDateRange(payload)
-
-    ok = result.status === true
-
-    console.log("remove result:", result)
-
-  } catch (err) {
-    console.error(
-      "DELETE API failed:",
-      err?.response?.status,
-      err?.response?.data,
-      err?.message
-    )
-
-    showSnackbar("刪除 API 失敗", 'red accent-2')
-    return
-  }
-
-  if (!ok) {
-    showSnackbar("找不到目標或已被刪除。", 'red accent-2')
-    return
-  }
-
-  // 刪除前端資料
-  if (Array.isArray(result.deleted_ids) && result.deleted_ids.length > 0) {
-    const deleteSet = new Set(result.deleted_ids)
-
-    materials_and_assembles.value = materials_and_assembles.value.filter(row => !deleteSet.has(row.id))
-  }
-
-  showSnackbar(`整批刪除成功，共刪除 ${result.deleted_count ?? 0} 筆!`, "green darken-1")
-}
-
-// 按取消鍵
-const onCancelBatchDelete = () => {
-  resetBatchDeleteState();
-}
-
-// 按確定鍵
-const onConfirmBatchDelete = async () => {
-  if (isInformationEmpty.value) return
-
-  try {
-    await onClickRemoveByDeliveryDateRange()
-  } finally {
-    resetBatchDeleteState()
-  }
-}
-
-// 加天數
-const addDays = (date, days)=>{
-  const d = new Date(date)
-  d.setDate(d.getDate()+days)
-  return d
-}
-
-const fmt = (d) => {
-  if (!d) return ''
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 </script>
 
 <style lang="scss" scoped>
@@ -2090,7 +1798,7 @@ const fmt = (d) => {
   width:60px;
 }
 
-#bar_code :deep(input) {
+:deep(input#bar_code[type="text"]) {
   color: black !important;
 }
 
@@ -2202,110 +1910,4 @@ const fmt = (d) => {
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
-
-.toolbar-row {
-  display: flex;
-  align-items: center;
-
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 16px;
-}
-
-// 日期範圍往左調整
-.date-slot {
-  width: 290px;
-  min-width: 290px;
-}
-
-.date-box {
-  width: 290px;
-}
-
-:deep(.date-box .v-text-field input) {
-  top: 7px;
-}
-
-:deep(.dateicon > .v-input__prepend .v-icon) {
-  color: #F48FB1 !important;
-}
-
-// 讓 DatePicker 撐滿 v-menu 設定的寬度
-:deep(.dp-stretch .dp__main) {
-  width: 100%;
-}
-
-:deep(.dp__outer_menu_wrap) {
-  width: 140%;
-}
-
-// 1 + 2. 整批刪除固定寬度，不跟搜尋框重疊，也不擠壓別人
-.batch-slot {
-  width: 180px;
-  min-width: 180px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  position:relative;
-  top: -2px;
-}
-
-.batch-slot.is-disabled {
-  cursor: not-allowed !important;
-  opacity: 0.65;
-}
-
-.batch-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.action-btn {
-  width: 76px;
-  min-width: 76px;
-  border-radius: 6px;
-  border-width: 1.5px;
-  border-color: #64B5F6;
-  position: relative;
-  top: 5px;
-}
-
-.top-input {
-  width: 180px;
-}
-
-.top-input :deep(.v-field) {
-  height: 32px;
-  min-height: 32px;
-}
-
-.top-input :deep(.v-field__field) {
-  height: 32px;
-}
-
-.top-input :deep(.v-field__input) {
-  min-height: 32px;
-  height: 32px;
-  padding-top: 0;
-  padding-bottom: 0;
-  align-items: center;
-}
-
-.top-input :deep(input) {
-  height: 32px;
-  line-height: 32px;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.barcode-input :deep(.v-field__input) {
-  padding-left: 12px;
-}
-
-.barcode-input :deep(.v-label) {
-  margin-left: 30px;
-}
-
 </style>

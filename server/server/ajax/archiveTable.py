@@ -466,6 +466,7 @@ def archive_materials(material_ids, archived_by, archive_batch_no=None):
             archived_by=archived_by,
         )
 
+        '''
         # 刪除順序：子表 → 主表
         s.execute(delete(product_table).where(product_table.c.material_id.in_(material_ids)))
         s.execute(delete(process_table).where(process_table.c.material_id.in_(material_ids)))
@@ -480,6 +481,54 @@ def archive_materials(material_ids, archived_by, archive_batch_no=None):
         )
 
         s.execute(delete(material_table).where(material_table.c.id.in_(material_ids)))
+        '''
+        #
+        # ==========================================================
+        # 先取得本次要刪除的 assemble id
+        # ==========================================================
+        assemble_ids = [
+            r[0]
+            for r in s.execute(
+                select(assemble_table.c.id).where(
+                    assemble_table.c.material_id.in_(material_ids)
+                )
+            ).fetchall()
+        ]
+
+        # ==========================================================
+        # 清掉 assemble 自我外鍵
+        # 避免 assemble.is_copied_from_id -> assemble.id 擋刪除
+        # ==========================================================
+        if assemble_ids:
+            s.execute(
+                update(assemble_table)
+                .where(
+                    assemble_table.c.is_copied_from_id.in_(assemble_ids)
+                )
+                .values(is_copied_from_id=None)
+            )
+
+        # ==========================================================
+        # 清掉 material 自我外鍵
+        # 避免 material.is_copied_from_id -> material.id 擋刪除
+        # ==========================================================
+        s.execute(
+            update(material_table)
+            .where(
+                material_table.c.is_copied_from_id.in_(material_ids)
+            )
+            .values(is_copied_from_id=None)
+        )
+
+        # ==========================================================
+        # 刪除順序：子表 → 主表
+        # ==========================================================
+        s.execute(delete(product_table).where(product_table.c.material_id.in_(material_ids)))
+        s.execute(delete(process_table).where(process_table.c.material_id.in_(material_ids)))
+        s.execute(delete(assemble_table).where(assemble_table.c.material_id.in_(material_ids)))
+        s.execute(delete(bom_table).where(bom_table.c.material_id.in_(material_ids)))
+        s.execute(delete(material_table).where(material_table.c.id.in_(material_ids)))
+        #
 
         s.commit()
 
@@ -744,7 +793,7 @@ def archive_p_materials(material_ids, archived_by, archive_batch_no=None):
             archive_batch_no=archive_batch_no,
             archived_by=archived_by,
         )
-
+        '''
         # 刪除順序：子表 → 主表
         s.execute(delete(p_product_table).where(p_product_table.c.material_id.in_(material_ids)))
         s.execute(delete(p_process_table).where(p_process_table.c.material_id.in_(material_ids)))
@@ -759,6 +808,54 @@ def archive_p_materials(material_ids, archived_by, archive_batch_no=None):
         )
 
         s.execute(delete(p_material_table).where(p_material_table.c.id.in_(material_ids)))
+        '''
+        #
+        # ==========================================================
+        # 先取得本次要刪除的 p_assemble id
+        # ==========================================================
+        p_assemble_ids = [
+            r[0]
+            for r in s.execute(
+                select(p_assemble_table.c.id).where(
+                    p_assemble_table.c.material_id.in_(material_ids)
+                )
+            ).fetchall()
+        ]
+
+        # ==========================================================
+        # 清掉 p_assemble 自我外鍵
+        # 避免 p_assemble.is_copied_from_id -> p_assemble.id 擋刪除
+        # ==========================================================
+        if p_assemble_ids:
+            s.execute(
+                update(p_assemble_table)
+                .where(
+                    p_assemble_table.c.is_copied_from_id.in_(p_assemble_ids)
+                )
+                .values(is_copied_from_id=None)
+            )
+
+        # ==========================================================
+        # 清掉其他 p_material 指向本批 p_material 的 FK
+        # 避免 p_material.is_copied_from_id -> p_material.id 擋刪除
+        # ==========================================================
+        s.execute(
+            update(p_material_table)
+            .where(
+                p_material_table.c.is_copied_from_id.in_(material_ids)
+            )
+            .values(is_copied_from_id=None)
+        )
+
+        # ==========================================================
+        # 刪除順序：子表 → 主表
+        # ==========================================================
+        s.execute(delete(p_product_table).where(p_product_table.c.material_id.in_(material_ids)))
+        s.execute(delete(p_process_table).where(p_process_table.c.material_id.in_(material_ids)))
+        s.execute(delete(p_assemble_table).where(p_assemble_table.c.material_id.in_(material_ids)))
+        s.execute(delete(p_bom_table).where(p_bom_table.c.material_id.in_(material_ids)))
+        s.execute(delete(p_material_table).where(p_material_table.c.id.in_(material_ids)))
+        #
 
         s.commit()
 
@@ -1650,6 +1747,63 @@ def restore_warehouse_archive_rows():
         s.rollback()
         print("restoreWarehouseArchiveRows ERROR:", repr(e))
 
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        })
+
+    finally:
+        s.close()
+
+
+@archiveTable.route("/archiveAllStockinAssembleMaterials", methods=["POST"])
+def archive_all_stockin_assemble_materials():
+    print("archiveAllStockinAssembleMaterials...")
+
+    data = request.get_json() or {}
+    archived_by = data.get("archived_by", "system")
+
+    s = Session()
+
+    try:
+        material_ids = [
+            r[0]
+            for r in (
+                s.query(Material.id)
+                .filter(Material.move_by_process_type == 2)
+                .filter(Material.show2_ok == "12")
+                .all()
+            )
+        ]
+
+        if not material_ids:
+            return jsonify({
+                "success": False,
+                "error": "沒有可封存的組裝線已入庫資料",
+                "count": 0,
+            })
+
+        archive_batch_no = make_archive_batch_no()
+
+        result = archive_materials(
+            material_ids=material_ids,
+            archived_by=archived_by,
+            archive_batch_no=archive_batch_no,
+        )
+
+        if not result.get("success"):
+            return jsonify(result)
+
+        return jsonify({
+            "success": True,
+            "archive_batch_no": archive_batch_no,
+            "count": len(material_ids),
+            "result": result,
+        })
+
+    except Exception as e:
+        s.rollback()
+        print("archiveAllStockinAssembleMaterials ERROR:", repr(e))
         return jsonify({
             "success": False,
             "error": str(e),

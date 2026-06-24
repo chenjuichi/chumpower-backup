@@ -94,34 +94,69 @@
               </v-btn>
             </v-col>
             <v-col cols="12" md="2"></v-col>
-            <!-- 搜尋/barcode -->
+<!--
+
+
             <v-col cols="12" md="4" class="d-flex justify-end align-center" style="gap:5px;">
               <v-text-field
                 v-model="search"
-                label="搜尋"
+                label="資料搜尋"
                 prepend-inner-icon="mdi-magnify"
                 variant="outlined"
                 hide-details
                 single-line
-                density="compact"
+
                 class="warehouse-top-input"
               />
               <v-text-field
                 v-model="bar_code"
                 label="條碼"
-                ref="barcodeInput"
-                @keyup.enter="handleBarCode"
-                hide-details
-                single-line
                 prepend-inner-icon="mdi-barcode"
                 variant="outlined"
-                density="compact"
+                hide-details
+                single-line
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
+
                 class="warehouse-top-input warehouse-barcode-field"
               />
             </v-col>
+-->
+
+  <!--客製化搜尋/barcode輸入框-->
+  <v-col cols="auto" class="d-flex justify-end align-center" style="gap:5px;">
+      <v-text-field
+        v-model="search"
+        label="資料搜尋"
+
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="compact"
+        hide-details
+        single-line
+        class="top-input"
+      />
+
+      <v-text-field
+        id="bar_code"
+        v-model="bar_code"
+        label="條碼"
+
+        prepend-inner-icon="mdi-barcode"
+        :value="bar_code"
+        ref="barcodeInput"
+        @keyup.enter="handleBarCode"
+        hide-details
+        single-line
+
+        variant="outlined"
+        class="barcode-input top-input"
+      />
+  </v-col>
+
           </v-row>
 
-          <!-- 第三行 -->
+          <!-- 第二行 -->
           <v-row align="center">
             <v-col cols="12" md="2" class="d-flex justify-start"></v-col>
             <!-- 入庫登記 -->
@@ -150,6 +185,23 @@
               />
             </v-col>
 
+            <!-- 加工線已入庫封存-->
+            <v-col cols="12" md="3" class="d-flex justify-start">
+
+            </v-col>
+
+            <!-- 組裝線已入庫封存-->
+            <v-col cols="12" md="3" class="d-flex justify-start">
+              <v-btn
+                color="deep-purple"
+                variant="outlined"
+                :disabled="archiveLoading || stockinCount === 0"
+                @click="archiveAllStockinAssemble"
+              >
+                <v-icon start>mdi-archive-arrow-down</v-icon>
+                全部封存組裝線已入庫
+              </v-btn>
+            </v-col>
             <!-- 動畫-->
           <!--
             <v-col cols="12" md="6" class="warehouse-animation-col">
@@ -296,7 +348,6 @@
         ">
           {{ item.comment }}
         </div>
-        <!--<div style="color: #a6a6a6; font-size:12px; font-family: 'cwTeXYen', sans-serif;">{{ item.comment2 }}</div>-->
       </div>
     </template>
 
@@ -377,7 +428,7 @@
   <!-- 已入庫即時紀錄 dialog -->
   <v-dialog
     v-model="historyDialog"
-    max-width="98vw"
+    max-width="100vw"
     scrollable
     content-class="warehouse-history-dialog"
   >
@@ -394,21 +445,25 @@
         <div class="warehouse-history-table-wrap">
           <!-- 已入庫即時紀錄 data table -->
           <v-data-table
+            v-model="archiveSelected"
             :headers="historyHeaders"
             :items="warehouse_history"
+            item-value="archive_key"
+            show-select
+            return-object
             :search="historySearch"
             fixed-header
-
             height="calc(96vh - 120px)"
+            class="elevation-3 warehouse-history-table history-table"
 
-            class="elevation-3 warehouse-history-table"
             :items-per-page-options="footerOptions"
             items-per-page="10"
-            items-per-page-text="每頁的資料筆數"
+
           >
+
             <!-- dialog內, top 區域 -->
             <template v-slot:top>
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+              <div class="history-table-top">
                 <!-- 搜尋框 -->
                 <v-text-field
                   v-model="historySearch"
@@ -463,7 +518,16 @@
               </div>
             </template>
 
-            <!-- 自訂 封存 checkbox 欄位的資料欄位 -->
+            <!-- 自訂 封存 checkbox 表頭：全選 -->
+            <template v-slot:header.data-table-select="{ allSelected, selectAll, someSelected }">
+              <v-checkbox-btn
+                :indeterminate="someSelected && !allSelected"
+                :model-value="allSelected"
+                color="deep-purple"
+                @update:model-value="selectAll(!allSelected)"
+              />
+            </template>
+          <!--
             <template v-slot:item.archive_select="{ item }">
               <v-checkbox-btn
                 :model-value="isArchiveSelected(item)"
@@ -471,6 +535,7 @@
                 @update:model-value="toggleArchiveSelected(item)"
               />
             </template>
+          -->
 
             <!-- 自訂 line 欄位的資料欄位 -->
             <template v-slot:item.line="{ item }">
@@ -484,8 +549,15 @@
 
             <!-- 自訂 訂單編號 欄位的資料欄位 -->
             <template #item.order_num="{ item }">
-              <span style="color:#1565c0; font-weight:700; white-space:nowrap;">
+              <span style="color:#1565c0; font-weight:700; white-space:normal; word-break:break-word;">
                 {{ item?.order_num }}
+              </span>
+            </template>
+
+            <!-- 自訂 入庫日期 欄位 -->
+            <template #item.write_date="{ item }">
+              <span>
+                {{ String(item?.write_date || '').slice(0, 10) }}
               </span>
             </template>
 
@@ -764,7 +836,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, nextTick } from 'vue';
+import { ref, reactive, defineComponent, computed, watch, onMounted, onUnmounted, onBeforeMount, onBeforeUnmount, nextTick } from 'vue';
 
 import LedLights from './LedLights.vue';
 import DraggablePanel from './DraggablePanel.vue';
@@ -813,6 +885,8 @@ const listArchiveBatches = apiOperation('post', '/listArchiveBatches');
 const listWarehouseArchiveHistory = apiOperation('post', '/listWarehouseArchiveHistory');
 const restoreWarehouseArchiveRows = apiOperation('post', '/restoreWarehouseArchiveRows');
 
+const archiveAllStockinAssembleMaterials = apiOperation('post', '/archiveAllStockinAssembleMaterials');
+
 //=== p_tables維護用 api ==
 import { p_apiOperation }  from '../mixins/p_crud.js';
 
@@ -831,6 +905,9 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+
+const stockinCount = ref(0);
+
 // 入庫對話框相關
 const endTitle = ref('準備入庫');
 const endMessage = ref('確定？');
@@ -904,15 +981,15 @@ const archiveLoading = ref(false);
 const archiveSelected = ref([]);
 
 const historyHeaders = [
-  { title: '封存', sortable: false, key: 'archive_select', width: 60 },
+  //{ title: '封存', sortable: false, key: 'archive_select', width: 48 },
   { title: '產線', sortable: false, key: 'line', width:60 },
   { title: '訂單編號', sortable: false, key: 'order_num', width:110 },
   { title: '物料編號', sortable: false, key: 'material_num', width: 110 },
-  { title: '說明', sortable: false, key: 'comment', width: 220 },
+  { title: '說明', sortable: false, key: 'comment', width: 200 },
   { title: '交期', sortable: false, key: 'date', width: 80 },
-  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width: 60 },
+  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width: 50 },
   { title: '入庫人', sortable: false, key: 'user_id', width: 60 },
-  { title: '入庫日期', sortable: false, key: 'write_date', width: 240 },
+  { title: '入庫日期', sortable: false, key: 'write_date', width: 200 },
 ];
 
 const archiveBatchHeaders = [
@@ -1040,6 +1117,19 @@ const formattedDate = computed(() => {
 return fromDateVal.value ? fromDateVal.value.toISOString().split('T')[0] : ''; // 自動格式化
 });
 
+const isAllArchiveSelected = computed(() => {
+  return warehouse_history.value.length > 0 &&
+    archiveSelected.value.length === warehouse_history.value.length
+})
+
+const isSomeArchiveSelected = computed(() => {
+  return archiveSelected.value.length > 0 &&
+    archiveSelected.value.length < warehouse_history.value.length
+})
+
+const toggleArchiveSelectAll = (checked) => {
+  archiveSelected.value = checked ? [...warehouse_history.value] : []
+}
 //=== mounted ===
 onMounted(async () => {
   console.log("MaterialListForAssem.vue, mounted()...");
@@ -1115,10 +1205,7 @@ onMounted(async () => {
 
   updateAnimationPosition()
 
-  window.addEventListener(
-    'resize',
-    updateAnimationPosition
-  )
+  window.addEventListener('resize', updateAnimationPosition)
 
   // 自動 focus
   if (barcodeInput.value) {
@@ -1176,18 +1263,28 @@ onMounted(async () => {
       }
     });
 
+    socket.value?.on('warehouse-stock-in', onHandleWarehouseStockIn);
+    socket.value?.on('assemble-delivered-callForklift', onHandleWarehouseStockIn);
+    socket.value?.on('assemble-delivered-callAGV', onHandleWarehouseStockIn);
+
   } catch (error) {
     console.error('Socket連線失敗:', error);
   }
 });
 
+//=== mounted ===
+onBeforeUnmount(() => {
+
+  socket.value?.off('warehouse-stock-in', onHandleWarehouseStockIn);
+  socket.value?.off('assemble-delivered-callForklift', onHandleWarehouseStockIn);
+  socket.value?.off('assemble-delivered-callAGV', onHandleWarehouseStockIn);
+
+})
+
 //=== unmounted ===
 onUnmounted(() => {   // 清除計時器（當元件卸載時
   window.removeEventListener('popstate', handlePopState)
-
   window.removeEventListener('resize', updateAnimationPosition)
-
-  //# clearInterval(intervalId);
 });
 
 //=== created ===
@@ -1771,6 +1868,7 @@ const onClickWarehouseIn = async () => {
       const productPayload = {
         material_id: current_material_id,
         assemble_id: current_assemble_id,
+        process_id: current_process_id,
         user_id: currentUser.value?.empID ?? '',
         line_difference: (current_line === 'process') ? 1 : 0,
         allOk_qty: d2,
@@ -1857,8 +1955,12 @@ const onClickWarehouseIn = async () => {
     }
 
     // ✅ 關鍵：入庫後直接重抓，不靠前端手動 splice
-    //await refreshWarehouseList();
     await getWarehouseForAssembleByHistoryFun();
+
+    socket.value?.emit('warehouse-stock-in', {
+      reason: 'stockin',
+      source: 'WarehouseForAssemble',
+    })
 
     showSnackbar('入庫登記完成!', 'green accent-3');
   } catch (err) {
@@ -1870,7 +1972,6 @@ const onClickWarehouseIn = async () => {
     }, 800);
   }
 };
-
 
 // 改變拖曳功能
 //const toggleDrag = () => {
@@ -1898,6 +1999,8 @@ const openWarehouseHistoryDialog = async (source = 'active') => {
     await getWarehouseHistory({
       source, // active / archive / all
     });
+
+    normalizeWarehouseHistoryRows();
 
     historyDialog.value = true;
   } catch (err) {
@@ -2042,6 +2145,8 @@ const getWarehouseHistoryFun = async () => {
   try {
     await getWarehouseHistory({});
 
+    normalizeWarehouseHistoryRows();
+
     const items = Array.isArray(warehouse_history.value)
       ? warehouse_history.value
       : [];
@@ -2057,6 +2162,27 @@ const getWarehouseHistoryFun = async () => {
     showSnackbar('讀取入庫歷史失敗', 'red accent-2');
   }
 };
+
+const normalizeWarehouseHistoryRows = () => {
+  console.log('warehouse_history:', warehouse_history.value)
+
+  const items = Array.isArray(warehouse_history.value)
+    ? warehouse_history.value
+    : []
+
+  warehouse_history.value = items.map((row, idx) => {
+    const line = row.line || 'assemble'
+    const id = row.id || row.material_id || row.assemble_id || row.p_material_id
+
+    return {
+      ...row,
+      id,
+      index: idx + 1,
+      line,
+      archive_key: `${line}-${id || row.order_num}-${row.write_date || idx}`,
+    }
+  })
+}
 
 const openArchiveBatchDialog = async () => {
   archiveBatchDialog.value = true;
@@ -2242,6 +2368,64 @@ const openRestoreDialog = () => {
 const addCart = () => {
   console.log('入庫完成')
 }
+
+const archiveAllStockinAssemble = async () => {
+  try {
+    const res = await archiveAllStockinAssembleMaterials({
+      archived_by: currentUser.value?.empID || 'system',
+    })
+
+    if (res.success) {
+      showSnackbar(`組裝線已入庫資料已全部封存，共 ${res.count} 筆`, 'success')
+
+      await getStockinCount()
+      await getWarehouseHistory({ source: 'active' })
+      normalizeWarehouseHistoryRows()
+    } else {
+      showSnackbar(res.error || '全部封存失敗', 'error')
+    }
+  } catch (err) {
+    console.error('archiveAllStockinAssemble ERROR:', err)
+    showSnackbar('全部封存失敗', 'error')
+  }
+}
+
+const getStockinCount = async () => {
+  try {
+    const res = await getInformationStatusCounts()
+
+    if (res.data?.success) {
+      stockinCount.value = res.data.stockin_count || 0
+    } else {
+      stockinCount.value = 0
+    }
+  } catch (err) {
+    console.error('getStockinCount ERROR:', err)
+    stockinCount.value = 0
+  }
+}
+/*
+const onHandleWarehouseStockIn = async (payload) => {
+  console.log("[Warehouse refresh]", payload)
+
+  history.value = false
+
+  await delay(300)
+  await getWarehouseForAssembleByHistoryFun()
+}
+*/
+const onHandleWarehouseStockIn = async (payload) => {
+  console.log("[Warehouse refresh]", payload)
+
+  history.value = false
+
+  await delay(500)
+  await getWarehouseForAssembleByHistoryFun()
+
+  await delay(1000)
+  await getWarehouseForAssembleByHistoryFun()
+}
+
 </script>
 
 <style lang="scss" scoped>
@@ -2843,11 +3027,11 @@ p {
   flex-direction: column;
 }
 
-.warehouse-history-card-text {
-  flex: 1;
-  overflow: hidden;
-  padding-bottom: 0;
-}
+//.warehouse-history-card-text {
+//  flex: 1;
+//  overflow: hidden;
+//  padding-bottom: 0;
+//}
 
 .warehouse-top-title {
   font-weight: 700;
@@ -2882,37 +3066,20 @@ p {
   align-items: center;
 }
 
-.warehouse-barcode-field :deep(.v-field__prepend-inner) {
-  padding-inline-start: 8px !important;
-  padding-inline-end: 4px !important;
-  align-items: center !important;
-}
-
-.warehouse-barcode-field :deep(.mdi-barcode) {
-  font-size: 22px !important;
-  position: static !important;
-  left: auto !important;
-  color: #000 !important;
-}
-
-.warehouse-barcode-field :deep(.v-field__input) {
-  padding-inline-start: 4px !important;
-}
-
 //===
-.warehouse-history-table-wrap {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto !important;
-}
+//.warehouse-history-table-wrap {
+//  width: 100%;
+//  max-width: 100%;
+//  overflow-x: auto !important;
+//}
 
-.warehouse-history-table {
-  min-width: 1300px;
-}
+//.warehouse-history-table {
+//  min-width: 1300px;
+//}
 
-.warehouse-history-table :deep(.v-table__wrapper) {
-  overflow-x: auto !important;
-}
+//.warehouse-history-table :deep(.v-table__wrapper) {
+//  overflow-x: auto !important;
+//}
 
 .warehouse-history-table :deep(table) {
   min-width: 1300px !important;
@@ -3073,6 +3240,131 @@ p {
     scale(0.85);
 }
 
+.warehouse-barcode-field {
+  min-width: 160px;
+}
 
+.warehouse-barcode-field :deep(.v-field__input) {
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+//
+/*
+.warehouse-barcode-field :deep(.v-field__prepend-inner) {
+  padding-inline-start: 8px !important;
+  padding-inline-end: 4px !important;
+  align-items: center !important;
+}
+
+.warehouse-barcode-field :deep(.mdi-barcode) {
+  font-size: 22px !important;
+  position: static !important;
+  left: auto !important;
+  color: #000 !important;
+}
+
+.warehouse-barcode-field :deep(.v-field__input) {
+  padding-inline-start: 4px !important;
+}
+*/
+
+.history-table {
+  overflow-x: hidden;
+}
+
+.history-table-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+//.warehouse-history-table-wrap {
+//  width: 100%;
+//  max-width: 100%;
+//  overflow-x: hidden;
+//}
+
+//.warehouse-history-table :deep(.v-table__wrapper) {
+//  overflow-x: hidden !important;
+//}
+
+//==
+.warehouse-history-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.warehouse-history-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.warehouse-history-table :deep(.v-table__wrapper) {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.warehouse-history-card-text {
+  overflow-x: hidden;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+
+  flex-wrap: nowrap;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  gap: 16px;
+}
+
+.toolbar-row .v-col {
+  min-width: 0 !important;
+}
+
+.top-input {
+  width: 180px;
+}
+
+.top-input :deep(.v-field) {
+  height: 32px;
+  min-height: 32px;
+}
+
+.top-input :deep(.v-field__field) {
+  height: 32px;
+}
+
+.top-input :deep(.v-field__input) {
+  min-height: 32px;
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: center;
+}
+
+.top-input :deep(input) {
+  height: 32px;
+  line-height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.barcode-input :deep(.v-field__input) {
+  padding-left: 12px;
+}
+
+.barcode-input :deep(.v-label) {
+  margin-left: 30px;
+}
 
 </style>

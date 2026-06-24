@@ -381,28 +381,112 @@ io.on('connection', (socket) => {
 
   socket.on('assemble-started', (payload) => {
     console.log('assemble-started with payload', payload);
-
-    socket.broadcast.emit('assemble-started', payload);
+    //socket.broadcast.emit('assemble-started', payload);
+    io.emit('assemble-started', payload);
   })
 
-  socket.on('schedule_mode-ok', () => {
+  socket.on('schedule_mode-ok', (payload) => {
     console.log('schedule_mode-ok');
-
-    socket.broadcast.emit('schedule_mode-ok');
+    //socket.broadcast.emit('schedule_mode-ok');
+    io.emit('schedule_mode-ok', payload);
   })
 
   socket.on('icon-disable', (payload) => {
     console.log('icon-disable with payload', payload);
+    //socket.broadcast.emit('icon-disable', payload);
+    io.emit('icon-disable', payload);
+  })
 
-    socket.broadcast.emit('icon-disable', payload);
+  socket.on('material-delivered-callForklift', (payload) => {
+    console.log('material-delivered-callForklift with payload', payload);
+    //socket.broadcast.emit('material-delivered-callForklift', payload);
+    io.emit('material-delivered-callForklift', payload);
+  })
+
+  socket.on('material-delivered-callAGV', (payload) => {
+    console.log('material-delivered-callAGV with payload', payload);
+    //socket.broadcast.emit('material-delivered-callAGV', payload);
+    io.emit('material-delivered-callAGV', payload);
+  })
+
+  socket.on('assemble-delivered-callForklift', (payload) => {
+    console.log('assemble-delivered-callForklift with payload', payload);
+
+    io.emit('assemble-delivered-callForklift', payload);
+
+    // 同步通知 WarehouseForAssemble.vue refresh
+    io.emit('warehouse-stock-in', {
+      ...(payload || {}),
+      source: 'assemble-delivered-callForklift',
+      reason: 'send_to_warehouse',
+    });
+  })
+
+  socket.on('assemble-delivered-callAGV', (payload) => {
+    console.log('assemble-delivered-callAGV with payload', payload);
+
+    io.emit('assemble-delivered-callAGV', payload);
+
+    // 同步通知 WarehouseForAssemble.vue refresh
+    io.emit('warehouse-stock-in', {
+      ...(payload || {}),
+      source: 'assemble-delivered-callAGV',
+      reason: 'send_to_warehouse',
+    });
   })
 
   socket.on('assemble-batch-released', (payload) => {
     console.log('assemble-batch-released with payload', payload);
-
     socket.broadcast.emit('assemble-batch-released', payload);
   })
 
+  socket.on('assemble-batch-released2', (payload) => {
+    console.log('assemble-batch-released2 with payload', payload);
+    socket.broadcast.emit('assemble-batch-released2', payload);
+  })
+  /*
+  socket.on('assemble-delivered-callForklift', (payload) => {
+    console.log('assemble-delivered-callForklift with payload', payload);
+    socket.broadcast.emit('assemble-delivered-callForklift', payload);
+  })
+
+  socket.on('assemble-delivered-callAGV', (payload) => {
+    console.log('assemble-delivered-callAGV with payload', payload);
+    socket.broadcast.emit('assemble-delivered-callAGV', payload);
+  })
+  */
+  socket.on('assemble-feed-released', (payload) => {
+    console.log('assemble-feed-released with payload', payload);
+    //socket.broadcast.emit('assemble-feed-released', payload);
+    io.emit('assemble-feed-released', payload);
+  })
+
+  socket.on('warehouse-stock-in', (payload) => {
+    console.log('warehouse-stock-in with payload', payload);
+    //  socket.broadcast.emit('warehouse-stock-in', payload);
+    io.emit('warehouse-stock-in', payload);
+  })
+
+  socket.on('assemble-abnormal-created', (payload) => {
+    console.log('assemble-abnormal-create with payload', payload);
+    //socket.broadcast.emit('assemble-abnormal-created', payload);
+    io.emit('assemble-abnormal-created', payload);
+  })
+
+  socket.on('assemble-schedule-updated', (payload) => {
+    console.log('assemble-schedule-updated with payload', payload)
+    io.emit('assemble-schedule-updated', payload)
+  })
+
+  socket.on('assemble-scheduling-dialog-lock', (payload) => {
+    console.log('assemble-scheduling-dialog-lock', payload)
+    socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
+  })
+
+  socket.on('assemble-scheduling-dialog-unlock', (payload) => {
+    console.log('assemble-scheduling-dialog-unlock', payload)
+    socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
+  })
 
   // 斷線時也清掉 interval
   //socket.on('disconnect', () => {
@@ -551,6 +635,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2026-06-08\x1b[0m`);
+  console.log(`\x1b[34mBuild 2026-06-22\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

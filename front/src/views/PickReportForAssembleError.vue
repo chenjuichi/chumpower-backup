@@ -33,6 +33,7 @@
 
             <!-- 歷史紀錄按鍵 -->
             <v-col cols="12" md="2" class="pb-6">
+            <!--
               <v-btn
                 @click="toggleHistory"
                 :active="history"
@@ -42,6 +43,7 @@
                 <v-icon left color="blue">mdi-history</v-icon>
                 <span style="color:black; font-weight:600;">歷史紀錄</span>
               </v-btn>
+            -->
             </v-col>
 
             <!--搜尋欄位-->

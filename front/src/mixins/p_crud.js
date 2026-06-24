@@ -356,6 +356,10 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
+          if (path =='/removeMaterialsAndRelationTablePByDeliveryDateRange') {
+            return res.data;
+          }
+
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' ||
               path == '/exportToExcelForProcessInformation' ||

@@ -563,7 +563,7 @@
                     />
                   </v-fade-transition>
                 </v-card-title>
-
+<!--
                 <v-card-text>
                   <v-table class="inner" density="compact" fixed-header>
                     <thead style="color: black;">
@@ -601,7 +601,6 @@
                         <td>{{ process_item.seq_num }}</td>
                         <td style="width:300px; padding-left:0px; padding-right:8px; font-size:14px;">
                           {{ process_item.process_type }}
-                          <!--<span style="color:red">{{ process_item.normal_type }}</span>-->
 
                           <span v-if="process_item.normal_type" style="color:red; font-weight:700;">
                             {{ process_item.normal_type }}
@@ -620,7 +619,6 @@
                         </td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.begin_time }}</td>
                         <td style="width:110px; padding-left:0px; padding-right:0px;">{{ process_item.end_time }}</td>
-                        <!--<td>{{ process_item.total_delivery_qty }}</td>-->
                         <td>{{ process_item.process_work_time_qty }}</td>
                         <td>{{ process_item.period_time }}</td>
                         <td>{{ process_item.work_time }}</td>
@@ -630,6 +628,468 @@
                     </tbody>
                   </v-table>
                 </v-card-text>
+-->
+
+<!--
+<v-card-text>
+  <v-alert
+    v-if="!processGroups || processGroups.length === 0"
+    type="info"
+    variant="tonal"
+    density="compact"
+  >
+    查無裝配報工紀錄
+  </v-alert>
+
+  <div v-for="group in processGroups" :key="group.material_id" class="process-group-block">
+
+    <div class="process-group-header">
+      <span class="process-group-title">第 {{ group.batch_no }} 批</span>
+
+      <span class="process-group-material">material_id={{ group.material_id }}</span>
+
+      <span v-if="group.is_copied_from_id" class="process-group-copy">
+        來源 material_id={{ group.is_copied_from_id }}
+      </span>
+
+      <span v-if="group.material_num" class="process-group-info">
+        品號：{{ group.material_num }}
+      </span>
+
+      <span v-if="group.material_qty !== null && group.material_qty !== undefined" class="process-group-info">
+        數量：{{ group.material_qty }}
+      </span>
+    </div>
+
+    <v-table class="inner" density="compact" fixed-header>
+      <thead style="color: black;">
+        <tr>
+          <th class="text-left"></th>
+          <th class="text-left" style="width:320px; padding-left:0px; padding-right:8px;">
+            備料/組裝
+          </th>
+          <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">
+            開始時間
+          </th>
+          <th class="text-left" style="width:110px; padding-left:0px; padding-right:0px;">
+            結束時間
+          </th>
+          <th class="text-left" style="padding-left:0px; padding-right:0px;">
+            數量
+          </th>
+          <th class="text-left" style="padding-left:0px; padding-right:0px;">
+            實際耗時
+          </th>
+          <th class="text-left" style="padding-left:0px; padding-right:0px;">
+            <div style="line-height:1.2; text-align:left;">
+              實際工時<br />
+              (分/PCS)
+            </div>
+          </th>
+          <th class="text-left" style="padding-left:0px; padding-right:0px;">
+            <div style="line-height:1.2; text-align:left;">
+              單件標工<br />
+              (分/PCS)
+            </div>
+          </th>
+          <th class="text-left" style="padding-left:0px; padding-right:0px;">
+            人員註記
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr
+          v-for="(process_item, index) in group.processes"
+          :key="process_item.process_id || `${group.material_id}-${process_item.seq_num}`"
+          :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4', }"
+        >
+          <td>{{ process_item.seq_num }}</td>
+
+          <td
+            style="
+              width:300px;
+              padding-left:0px;
+              padding-right:8px;
+              font-size:14px;
+            "
+          >
+            {{ process_item.process_type }}
+
+            <span
+              v-if="process_item.normal_type"
+              style="
+                color:red;
+                font-weight:700;
+              "
+            >
+              {{ process_item.normal_type }}
+            </span>
+
+            <span
+              v-if="process_item.abnormal_message"
+              style="color:#d32f2f; font-weight:700; margin-left:4px;">
+              {{ process_item.abnormal_message }}
+            </span>
+
+            <span
+              v-if="
+                process_item.schedule_name
+                && !String(
+                  process_item.process_type
+                ).includes('成品入庫')
+              "
+              style="
+                font-weight:600;
+                font-size:12px;
+                color:black;
+              "
+            >
+              [{{ process_item.schedule_name }}]
+            </span>
+          </td>
+
+          <td
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+              white-space:nowrap;
+            "
+          >
+            {{ process_item.begin_time }}
+          </td>
+
+          <td
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+              white-space:nowrap;
+            "
+          >
+            {{ process_item.end_time }}
+          </td>
+
+          <td>{{ process_item.process_work_time_qty }}</td>
+
+          <td>{{ process_item.period_time }}</td>
+
+          <td>{{ process_item.work_time }}</td>
+
+          <td>{{ process_item.single_std_time }}</td>
+
+          <td
+            style="
+              font-size:12px;
+              font-weight:600;
+            "
+          >
+            {{ process_item.user_comment }}
+          </td>
+        </tr>
+
+        <tr v-if="!Array.isArray(group.processes) || group.processes.length === 0 ">
+          <td colspan="9" class="text-center" style="color:#777;">
+            此批次目前沒有工序紀錄
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+  </div>
+</v-card-text>
+-->
+
+
+<v-card-text>
+  <v-alert
+    v-if="!processGroups || processGroups.length === 0"
+    type="info"
+    variant="tonal"
+    density="compact"
+  >
+    查無裝配報工紀錄
+  </v-alert>
+
+  <div
+    v-for="group in processGroups"
+    :key="group.material_id"
+    :class="{
+      'process-group-block': processGroups.length > 1
+    }"
+  >
+    <!-- 只有多批時才顯示批次標題 -->
+    <div
+      v-if="processGroups.length > 1"
+      class="process-group-header"
+    >
+      <span class="process-group-title">
+        第 {{ group.batch_no }} 批
+      </span>
+    <!--
+      <span class="process-group-material">
+        material_id={{ group.material_id }}
+      </span>
+
+      <span
+        v-if="group.is_copied_from_id"
+        class="process-group-copy"
+      >
+        來源 material_id={{ group.is_copied_from_id }}
+      </span>
+
+      <span
+        v-if="group.material_num"
+        class="process-group-info"
+      >
+        品號：{{ group.material_num }}
+      </span>
+
+      <span
+        v-if="
+          group.material_qty !== null
+          && group.material_qty !== undefined
+        "
+        class="process-group-info"
+      >
+        數量：{{ group.material_qty }}
+      </span>
+      -->
+    </div>
+
+    <v-table
+      class="inner"
+      density="compact"
+      fixed-header
+    >
+      <thead style="color: black;">
+        <tr>
+          <th class="text-left"></th>
+
+          <th
+            class="text-left"
+            style="
+              width:320px;
+              padding-left:0px;
+              padding-right:8px;
+            "
+          >
+            備料/組裝
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            開始時間
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            結束時間
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            數量
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            實際耗時
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            <div style="line-height:1.2; text-align:left;">
+              實際工時<br />
+              (分/PCS)
+            </div>
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            <div style="line-height:1.2; text-align:left;">
+              單件標工<br />
+              (分/PCS)
+            </div>
+          </th>
+
+          <th
+            class="text-left"
+            style="
+              padding-left:0px;
+              padding-right:0px;
+            "
+          >
+            人員註記
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr
+          v-for="(process_item, index) in group.processes"
+          :key="
+            process_item.process_id
+            || `${group.material_id}-${process_item.seq_num}`
+          "
+          :style="{
+            backgroundColor:
+              index % 2 === 0
+                ? '#ffffff'
+                : '#edf2f4',
+          }"
+        >
+          <td>{{ process_item.seq_num }}</td>
+
+          <td
+            style="
+              width:300px;
+              padding-left:0px;
+              padding-right:8px;
+              font-size:14px;
+            "
+          >
+            {{ process_item.process_type }}
+
+            <span
+              v-if="process_item.normal_type"
+              style="
+                color:red;
+                font-weight:700;
+              "
+            >
+              {{ process_item.normal_type }}
+            </span>
+
+            <span
+              v-if="process_item.abnormal_message"
+              style="
+                color:#d32f2f;
+                font-weight:700;
+                margin-left:4px;
+              "
+            >
+              {{ process_item.abnormal_message }}
+            </span>
+
+            <span
+              v-if="
+                process_item.schedule_name
+                && !String(
+                  process_item.process_type
+                ).includes('成品入庫')
+              "
+              style="
+                font-weight:600;
+                font-size:12px;
+                color:black;
+              "
+            >
+              [{{ process_item.schedule_name }}]
+            </span>
+          </td>
+
+          <td
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+              white-space:nowrap;
+            "
+          >
+            {{ process_item.begin_time }}
+          </td>
+
+          <td
+            style="
+              width:110px;
+              padding-left:0px;
+              padding-right:0px;
+              white-space:nowrap;
+            "
+          >
+            {{ process_item.end_time }}
+          </td>
+
+          <td>
+            {{ process_item.process_work_time_qty }}
+          </td>
+
+          <td>
+            {{ process_item.period_time }}
+          </td>
+
+          <td>
+            {{ process_item.work_time }}
+          </td>
+
+          <td>
+            {{ process_item.single_std_time }}
+          </td>
+
+          <td
+            style="
+              font-size:12px;
+              font-weight:600;
+            "
+          >
+            {{ process_item.user_comment }}
+          </td>
+        </tr>
+
+        <tr
+          v-if="
+            !Array.isArray(group.processes)
+            || group.processes.length === 0
+          "
+        >
+          <td
+            colspan="9"
+            class="text-center"
+            style="color:#777;"
+          >
+            此批次目前沒有工序紀錄
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+  </div>
+</v-card-text>
+
+
+
               </v-card>
             </v-dialog>
 
@@ -798,7 +1258,8 @@ import { myMixin } from '../mixins/common.js';
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
 import { informations, boms, fileCount }  from '../mixins/crud.js';
-import { order_count, prepare_count, assemble_count, warehouse_count, processes }  from '../mixins/crud.js';
+import { order_count, prepare_count, assemble_count, warehouse_count, }  from '../mixins/crud.js';
+import { processes, processGroups, }  from '../mixins/crud.js';
 
 import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
@@ -1653,23 +2114,10 @@ const initialize = async () => {
       offset: offset.value,
     });
 
-    //#
-    // ===== 新增 =====
     applyListInformationsResponse(response)
-    //#
 
     await listWorkingOrderStatus();
 
-    /*
-    //allOnlineUsers.value = await getUsersDepsProcesses({select: selectedWorkHours.value});
-    const resp = await getUsersDepsProcesses({select: selectedWorkHours.value});
-    allOnlineUsers.value = resp || [];
-
-    const depts = Array.from(
-      new Set(src.map(u => u.dep_name).filter(Boolean))
-    );
-    deptOptionsForOnline.value = ['全部', ...depts];
-    */
   } catch (error) {
     console.error("Error during initialize():", error);
   }
@@ -1952,6 +2400,7 @@ const handleVisibilityChange = () => {
   }
 };
 
+/*
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),", item.order_num);
 
@@ -1964,6 +2413,39 @@ const toggleExpand = async (item) => {
 
   process_dialog.value = true;
 };
+*/
+//
+const toggleExpand = async (item) => {
+  console.log(
+    'toggleExpand():',
+    item.order_num
+  );
+
+  current_order_num.value = item.order_num;
+
+  // 避免先看到上一張訂單資料
+  processes.value = [];
+  processGroups.value = [];
+
+  const payload = {
+    order_num: item.order_num,
+  };
+
+  await getProcessesByOrderNum(payload);
+
+  console.log(
+    'processes:',
+    processes.value
+  );
+
+  console.log(
+    'processGroups:',
+    processGroups.value
+  );
+
+  process_dialog.value = true;
+};
+//
 
 const updateItem = async () => {              //編輯 bom, material及process後端table資料
   console.log("updateItem()...");
@@ -2834,4 +3316,51 @@ const showStatusButton = (type) => {
   color: #EBEBE4;
 }
 //
+
+.process-group-block {
+  margin-bottom: 22px;
+  border: 1px solid #cfd8dc;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.process-group-block:last-child {
+  margin-bottom: 0;
+}
+
+.process-group-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  padding: 8px 12px;
+
+  background-color: #e3f2fd;
+  border-bottom: 1px solid #bbdefb;
+}
+
+.process-group-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d47a1;
+}
+
+.process-group-material {
+  font-size: 12px;
+  font-weight: 600;
+  color: #455a64;
+}
+
+.process-group-copy {
+  font-size: 12px;
+  color: #6d4c41;
+}
+
+.process-group-info {
+  font-size: 12px;
+  font-weight: 600;
+  color: #37474f;
+}
+
 </style>

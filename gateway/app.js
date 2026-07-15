@@ -26,6 +26,8 @@ const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
 const net = require('net')
 const waitingClients = new Set();
 
+const schedulingDialogLocks = new Map();
+
 let client = new net.Socket();
 
 let csharpReady = false;    // 用來標記是否成功連線kuka伺服器
@@ -478,15 +480,44 @@ io.on('connection', (socket) => {
     io.emit('assemble-schedule-updated', payload)
   })
 
-  socket.on('assemble-scheduling-dialog-lock', (payload) => {
-    console.log('assemble-scheduling-dialog-lock', payload)
-    socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
-  })
+  //socket.on('assemble-scheduling-dialog-lock', (payload) => {
+  //  console.log('assemble-scheduling-dialog-lock', payload)
+  //  socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
+  //})
 
-  socket.on('assemble-scheduling-dialog-unlock', (payload) => {
-    console.log('assemble-scheduling-dialog-unlock', payload)
-    socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
-  })
+socket.on('assemble-scheduling-dialog-lock', (payload) => {
+  console.log('assemble-scheduling-dialog-lock', payload)
+
+  if (payload?.material_id) {
+    schedulingDialogLocks.set(String(payload.material_id), payload)
+  }
+
+  socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
+})
+
+  //socket.on('assemble-scheduling-dialog-unlock', (payload) => {
+  //  console.log('assemble-scheduling-dialog-unlock', payload)
+  //  socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
+  //})
+
+socket.on('assemble-scheduling-dialog-unlock', (payload) => {
+  console.log('assemble-scheduling-dialog-unlock', payload)
+
+  if (payload?.material_id) {
+    schedulingDialogLocks.delete(String(payload.material_id))
+  }
+
+  socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
+})
+
+socket.on('get-assemble-scheduling-dialog-locks', () => {
+  console.log('get-assemble-scheduling-dialog-locks')
+
+  socket.emit(
+    'assemble-scheduling-dialog-locks',
+    Array.from(schedulingDialogLocks.values())
+  )
+})
 
   // 斷線時也清掉 interval
   //socket.on('disconnect', () => {
@@ -635,6 +666,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2026-06-22\x1b[0m`);
+  console.log(`\x1b[34mBuild 2026-06-24-2\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

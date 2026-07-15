@@ -356,12 +356,13 @@
           <!-- 空白顯示 -->
         </template>
 
+
+
 <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
-<!--
 <template v-slot:item.order_num="{ item }">
   <div style="display: flex; align-items: center;">
 
-
+    <!-- 待送出(缺料) -->
     <div
       style="color:blue; margin-right:2px; right:50px; position:relative;"
       v-if="item.waiting_send && item.input_end_disable && item.isLackMaterial != 99"
@@ -383,7 +384,7 @@
       </div>
     </div>
 
-
+    <!-- 待送出 -->
     <div
       style="color:blue; margin-right:20px; right:50px; position:relative;"
       v-else-if="item.waiting_send && item.input_end_disable && item.isLackMaterial == 99"
@@ -402,7 +403,7 @@
       </div>
     </div>
 
-
+    <!-- 尚未完成 -->
     <div
       style="right:50px; position:relative; justify-content:flex-start"
       v-else
@@ -419,177 +420,6 @@
           [{{ item.schedule_name }}]
         </span>
 
-        <span
-          v-if="isAbnormalReworkRow(item)"
-          class="abnormal-process-text"
-        >
-          -異常
-        </span>
-      </div>
-    </div>
-
-  </div>
-</template>
--->
-
-<!-- 自訂 '訂單編號' 欄位的資料欄位 -->
-<template v-slot:item.order_num="{ item }">
-  <div style="display: flex; align-items: center;">
-
-    <!-- ====================================================== -->
-    <!-- 1. 待送出（缺料） -->
-    <!-- ====================================================== -->
-    <div
-      v-if="
-        item.waiting_send &&
-        item.input_end_disable &&
-        item.isLackMaterial != 99
-      "
-      style="
-        color: blue;
-        margin-right: 2px;
-        right: 50px;
-        position: relative;
-      "
-    >
-      <!-- 訂單編號 + 缺料 -->
-      <div>
-        {{ item.order_num }}&nbsp;&nbsp;
-
-        <span
-          style="
-            color: red;
-            font-weight: 700;
-            font-size: 16px;
-          "
-        >
-          缺料
-        </span>
-      </div>
-
-      <!-- 工序名稱 -->
-      <div
-        style="
-          color: #a6a6a6;
-          font-size: 12px;
-        "
-      >
-        {{ item.assemble_work }}
-
-        <!-- 工序 -->
-        <span
-          v-if="item.schedule_name"
-          style="
-            font-weight: 600;
-            font-size: 12px;
-            color: black;
-          "
-        >
-          [{{ item.schedule_name }}]
-        </span>
-
-        <!-- 異常返工 -->
-        <span
-          v-if="isAbnormalReworkRow(item)"
-          class="abnormal-process-text"
-        >
-          -異常
-        </span>
-      </div>
-    </div>
-
-
-    <!-- ====================================================== -->
-    <!-- 2. 待送出 -->
-    <!-- ====================================================== -->
-    <div
-      v-else-if="
-        item.waiting_send &&
-        item.input_end_disable &&
-        item.isLackMaterial == 99
-      "
-      style="
-        color: blue;
-        margin-right: 20px;
-        right: 50px;
-        position: relative;
-      "
-    >
-      <!-- 訂單編號 -->
-      <div>
-        {{ item.order_num }}
-      </div>
-
-      <!-- 工序名稱 -->
-      <div
-        style="
-          color: #a6a6a6;
-          font-size: 12px;
-        "
-      >
-        {{ item.assemble_work }}
-
-        <!-- 工序 -->
-        <span
-          v-if="item.schedule_name"
-          style="
-            font-weight: 600;
-            font-size: 12px;
-            color: black;
-          "
-        >
-          [{{ item.schedule_name }}]
-        </span>
-
-        <!-- 異常返工 -->
-        <span
-          v-if="isAbnormalReworkRow(item)"
-          class="abnormal-process-text"
-        >
-          -異常
-        </span>
-      </div>
-    </div>
-
-
-    <!-- ====================================================== -->
-    <!-- 3. 尚未完成 / 進行中 / 已完成 -->
-    <!-- ====================================================== -->
-    <div
-      v-else
-      style="
-        right: 50px;
-        position: relative;
-        justify-content: flex-start;
-      "
-    >
-      <!-- 訂單編號 -->
-      <div>
-        {{ item.order_num.trim() }}
-      </div>
-
-      <!-- 工序名稱 -->
-      <div
-        style="
-          color: #a6a6a6;
-          font-size: 12px;
-        "
-      >
-        {{ item.assemble_work }}
-
-        <!-- 工序 -->
-        <span
-          v-if="item.schedule_name"
-          style="
-            font-weight: 600;
-            font-size: 12px;
-            color: black;
-          "
-        >
-          [{{ item.schedule_name }}]
-        </span>
-
-        <!-- 異常返工 -->
         <span
           v-if="isAbnormalReworkRow(item)"
           class="abnormal-process-text"
@@ -978,7 +808,7 @@ const footerOptions = [
 
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
-  { title: '訂單編號', sortable: true, key: 'order_num', width:280 },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:240 },
   { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   //{ title: '備料數量', sortable: false, key: 'delivery_qty', width:100 }, // 2025-06-13 mark, 改順序
@@ -2375,8 +2205,6 @@ onBeforeUnmount(() => {
   }
   // ###
 
-  if (!socket.value) return;
-
   socket.value?.off('assemble-batch-released', onAssembleBatchReleased);
   socket.value?.off('assemble-batch-released2', onAssembleEnded);
   socket.value?.off('assemble-delivered-callForklift', onAssembleDeliveredCallForklift);
@@ -3103,7 +2931,7 @@ const onClickTrans = async () => {
     callAGV();            // KUKA AGV
   }
 };
-/*
+
 const callForklift = async () => {
   console.log("callForklift()...");
 
@@ -3264,330 +3092,15 @@ const callForklift = async () => {
     assemble_ids: sentRows.map(r => r.assemble_id),
     order_nums: sentRows.map(r => r.order_num),
   });
-
-  //socket.value?.emit('warehouse-stock-in', {
-  //  reason: 'send_to_warehouse',
-  //  source: 'PickReportForAssembleEnd',
-  //  material_ids: sentRows.map(r => r.id),
-  //  assemble_ids: sentRows.map(r => r.assemble_id),
-  //  order_nums: sentRows.map(r => r.order_num),
-  //});
-
-};
-*/
-const callForklift = async () => {
-  console.log('callForklift()...');
-
-  // ----------------------------------------------------------
-  // 1. 取得勾選 index，先排除重複 index
-  // ----------------------------------------------------------
-  const selectedIdx = Array.isArray(selectedItems.value)
-    ? [...new Set(selectedItems.value)]
-    : [];
-
-  if (selectedIdx.length === 0) {
-    showSnackbar(
-      '請選擇送料的工單!',
-      'red accent-2'
-    );
-    return;
-  }
-
-  if (isCallForklift.value) {
-    showSnackbar(
-      '請不要重複按鍵!',
-      'red accent-2'
-    );
-    return;
-  }
-
-  if (!selectedEmployee.value) {
-    showSnackbar(
-      '請先選擇堆高機人員!',
-      'red accent-2'
-    );
-    return;
-  }
-
-  // ----------------------------------------------------------
-  // 2. 將選取的 index 轉成完整資料列
-  // ----------------------------------------------------------
-  const selectedRows = selectedIdx
-    .map(idx =>
-      materials_and_assembles_by_user.value.find(
-        row => row.index === idx
-      )
-    )
-    .filter(Boolean);
-
-  if (selectedRows.length === 0) {
-    showSnackbar(
-      '找不到選取的工單資料!',
-      'red accent-2'
-    );
-    return;
-  }
-
-  // ----------------------------------------------------------
-  // 3. material 層級去重
-  //
-  // row.id 就是 material_id。
-  // 同一 material 可能有多個 assemble row，
-  // 但 type=6 與 material 欄位只處理一次。
-  // ----------------------------------------------------------
-  const sentRows = Array.from(
-    new Map(
-      selectedRows.map(row => [
-        Number(row.id),
-        row,
-      ])
-    ).values()
-  );
-
-  console.log(
-    '[callForklift] selectedRows:',
-    selectedRows.map(row => ({
-      index: row.index,
-      material_id: row.id,
-      assemble_id: row.assemble_id,
-      order_num: row.order_num,
-    }))
-  );
-
-  console.log(
-    '[callForklift] sentRows after material dedupe:',
-    sentRows.map(row => ({
-      material_id: row.id,
-      assemble_id: row.assemble_id,
-      order_num: row.order_num,
-    }))
-  );
-
-  isCallForklift.value = true;
-
-  try {
-    // ========================================================
-    // 步驟 1：
-    // assemble 層級送出
-    //
-    // 同一 material 可能有多筆 B110 / assemble_id，
-    // 所以 sendAssembleToWarehouse 使用 selectedRows。
-    // ========================================================
-    console.log(
-      'trans_end 處理步驟1：送出 assemble 待入庫狀態...'
-    );
-
-    for (const rec of selectedRows) {
-      const mid = Number(rec.id);
-      const currentAssembleId = Number(
-        rec.assemble_id || 0
-      );
-
-      if (!mid) {
-        console.warn(
-          '[callForklift] material_id 無效:',
-          rec
-        );
-        continue;
-      }
-
-      await sendAssembleToWarehouse({
-        id: mid,
-        assemble_id: currentAssembleId,
-        mode: 'manual',
-      });
-    }
-
-    // ========================================================
-    // 步驟 2：
-    // material 層級狀態更新
-    //
-    // 改用 sentRows，同一 material 只執行一次。
-    // ========================================================
-    console.log(
-      'trans_end 處理步驟2：更新 material 狀態...'
-    );
-
-    for (const rec of sentRows) {
-      const mid = Number(rec.id);
-
-      if (!mid) {
-        console.warn(
-          '[callForklift] material_id 無效:',
-          rec
-        );
-        continue;
-      }
-
-      // Material：成品站／等待入庫
-      await updateMaterialRecord({
-        id: mid,
-        show1_ok: 3,
-        show2_ok: 10,
-        show3_ok: 3,
-        whichStation: 3,
-      });
-
-      // Assemble：同步 material 下相關狀態
-      await updateAssmbleDataByMaterialID({
-        material_id: mid,
-        delivery_qty: 0,
-
-        record_name1: 'show1_ok',
-        record_data1: 3,
-
-        record_name2: 'show2_ok',
-        record_data2: 10,
-
-        record_name3: 'show3_ok',
-        record_data3: 3,
-      });
-
-      // 人工堆高機搬運標記
-      await updateMaterial({
-        id: mid,
-        record_name:
-          'move_by_automatic_or_manual_2',
-        record_data: false,
-      });
-
-      // must_allOk_qty 以完成／收料數為準
-      await updateMaterial({
-        id: mid,
-        record_name: 'must_allOk_qty',
-        record_data:
-          Number(rec.receive_qty) || 0,
-      });
-    }
-
-    // ========================================================
-    // 步驟 3：
-    // 同一 material 只建立一次 type=6
-    // ========================================================
-    console.log(
-      'trans_end 處理步驟3：建立 type=6 process...'
-    );
-
-    for (const rec of sentRows) {
-      const mid = Number(rec.id);
-
-      const processResult = await createProcess({
-        user_id: selectedEmployee.value,
-        id: mid,
-        process_type: 6,
-      });
-
-      console.log(
-        '[callForklift] createProcess type=6 result:',
-        {
-          material_id: mid,
-          result: processResult,
-        }
-      );
-
-      // 後端若回 duplicate=true，屬正常防重複，
-      // 不需要中斷後續流程。
-    }
-
-    // ========================================================
-    // 步驟 4：
-    // 完成數量與 material 顯示狀態
-    //
-    // 同樣使用 sentRows，避免同一 material 累加多次。
-    // ========================================================
-    console.log(
-      'trans_end 處理步驟4：更新完成數量...'
-    );
-
-    for (const rec of sentRows) {
-      const mid = Number(rec.id);
-      const deliveryQty =
-        Number(rec.delivery_qty) || 0;
-
-      await updateMaterial({
-        id: mid,
-        record_name: 'assemble_qty',
-        record_data: deliveryQty,
-      });
-
-      const totalAssembleQty =
-        (Number(rec.total_assemble_qty) || 0)
-        + deliveryQty;
-
-      await updateMaterial({
-        id: mid,
-        record_name: 'total_assemble_qty',
-        record_data: totalAssembleQty,
-      });
-
-      await updateMaterial({
-        id: mid,
-        record_name: 'isAssembleStationShow',
-        record_data: true,
-      });
-    }
-
-    // --------------------------------------------------------
-    // 等後端狀態同步
-    // --------------------------------------------------------
-    await delay(3000);
-
-    // 清理選取
-    selectedItems.value = [];
-    localStorage.removeItem('selectedItems');
-
-    // 刷新 End
-    await reloadEndLocked();
-
-    // --------------------------------------------------------
-    // Socket 通知
-    // --------------------------------------------------------
-    socket.value?.emit(
-      'assemble-delivered-callForklift',
-      {
-        reason: 'send_to_warehouse',
-
-        // material 已去重
-        material_ids: sentRows.map(
-          row => Number(row.id)
-        ),
-
-        // assemble_id 保留所有實際送出的列
-        assemble_ids: [
-          ...new Set(
-            selectedRows
-              .map(row => Number(row.assemble_id || 0))
-              .filter(id => id > 0)
-          ),
-        ],
-
-        // 訂單編號去重
-        order_nums: [
-          ...new Set(
-            sentRows
-              .map(row => row.order_num)
-              .filter(Boolean)
-          ),
-        ],
-      }
-    );
-
-  } catch (err) {
-    console.error(
-      'trans_end 發生例外：',
-      err
-    );
-
-    showSnackbar(
-      '堆高機流程執行失敗，請稍後再試',
-      'red accent-2'
-    );
-
-  } finally {
-    // 保證解鎖
-    await delay(3000);
-    isCallForklift.value = false;
-  }
+  /*
+  socket.value?.emit('warehouse-stock-in', {
+    reason: 'send_to_warehouse',
+    source: 'PickReportForAssembleEnd',
+    material_ids: sentRows.map(r => r.id),
+    assemble_ids: sentRows.map(r => r.assemble_id),
+    order_nums: sentRows.map(r => r.order_num),
+  });
+  */
 };
 
 const callAGV = async () => {
@@ -3808,7 +3321,6 @@ const onClickEnd = async (item) => {
 
   const q = Number(item.receive_qty || 0);
   const mustEndQty = Number(item.must_receive_end_qty || 0)
-  const isPartialEnd = q < mustEndQty
 
   if (q > mustEndQty) {
     receive_qty_alarm.value = `完成數量不可大於應完成總數量 ${mustEndQty}`
@@ -3869,13 +3381,103 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
+  /*
+  let current_total_completed_qty=toNum(item.total_completed_qty_num);   //組裝區完成數量的總數(已完成總數量)
+  let total = current_total_completed_qty + current_completed_qty;
+  item.total_completed_qty_num = total;
+
+  item.total_completed_qty ='(' + total.toString().trim() + ')';
+  */
+  //
+  // b1 / b2 是不同 assemble_id，不能用舊總數再累加，否則 35 + 35 會變 70
+  let total = current_completed_qty
+  //item.total_completed_qty_num = total
+  //item.total_completed_qty = '(' + total.toString().trim() + ')'
+
+  /*
+  // 結束後：完成數量輸入框要清空，但已完成總數量要保留
+  item.completed_qty = q
+  item.total_completed_qty_num = q
+  item.total_completed_qty = '(' + q.toString().trim() + ')'
+  //item.receive_qty = ''
+
+  item.abnormal_qty = ''
+  item.is_abnormal_process = false
+  item.waiting_send = false
+  */
+  //
+
   // 1-2.記錄當前已完成總數量
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'total_completed_qty',
-    record_data: q,
+    record_data: total,
   };
   await updateAssemble(payload);
+
+//===
+  let d0 = Number(item.must_receive_end_qty || 0)  // 應完成數量
+  let d1 = Number(item.receive_qty || 0)           // 本次完成數量
+
+  let difference = d0 - d1
+  /*
+  if (difference > 0) {
+    console.log("應完成數量 > 完成數量，建立補差紀錄:", {
+      difference,
+      d0,
+      d1,
+      assemble_id: current_assemble_id,
+    })
+
+    payload = {
+      copy_id: current_assemble_id,
+      pre_must_receive_qty: d1,
+      must_receive_qty: difference,
+      d1: d1,
+      copy_mode: 'end_difference',
+    }
+
+    await copyAssembleForDifference(payload)
+
+    await reloadEndLocked()
+    debugRows('after fetch')
+  }
+  */
+  if (difference < 0) {
+    receive_qty_alarm.value = `完成數量不可大於應完成總數量 ${d0}`
+    item.tooltipVisible = true
+    setTimeout(() => {
+      item.tooltipVisible = false
+    }, 2000)
+    return
+  }
+//===
+
+  /*
+  // 新增完成數量與完成數量不同時, 新紀錄的應領取數量
+  let d0 = Number(item.must_receive_end_qty)
+  let d1 = Number(item.receive_qty)
+  let d2 = 0
+  if (item.input_abnormal_disable)
+    d2 = Number(item.abnormal_qty)
+  let difference = d0 - d1 - d2
+  if (difference != 0) {
+    console.log("有difference...., difference,d0,d1,d2:", difference,d0,d1,d2)
+    payload = {
+      copy_id: current_assemble_id,
+      pre_must_receive_qty: d1,
+      must_receive_qty: difference,
+      d1: d1,
+    }
+    await copyAssembleForDifference(payload);
+
+    // 2026-02-12 修改, 要再測試
+    //await reloadEndRowsAndRestoreTimers();
+    await reloadEndLocked();
+
+    debugRows('after fetch')
+  }
+  */
 
   // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
   let temp_qty=1  //組裝
@@ -3927,16 +3529,14 @@ const onClickEnd = async (item) => {
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'input_end_disable',
-    //record_data: true,
-    record_data: !isPartialEnd,
+    record_data: true,
   };
   await updateAssemble(payload);
 
   payload = {
     assemble_id: current_assemble_id,
     record_name: 'input_abnormal_disable',
-    //record_data: true,
-    record_data: false,
+    record_data: true,
   };
   await updateAssemble(payload);
 
@@ -3944,12 +3544,8 @@ const onClickEnd = async (item) => {
     // 用 Vue 的方式確保觸發響應式更新
     materials_and_assembles_by_user.value[targetIndex] = {
       ...materials_and_assembles_by_user.value[targetIndex],
-      //input_end_disable: true,
-      //input_abnormal_disable: true,
-
-      input_end_disable: !isPartialEnd,
-      input_abnormal_disable: false,
-
+      input_end_disable: true,
+      input_abnormal_disable: true,
     };
   }
 
@@ -3965,25 +3561,57 @@ const onClickEnd = async (item) => {
   };
   await updateAssemble(payload);
 
-  //let response = null
+  // 記錄當前紀錄, 目前途程結束
+  payload = {
+    assemble_id: current_assemble_id,
+    record_name: 'process_step_code',
+    record_data: 0,
+  };
+  await updateAssemble(payload);
 
-  //if (!isPartialEnd) {
-    // 記錄當前紀錄, 目前途程結束
-    payload = {
-      assemble_id: current_assemble_id,
-      record_name: 'process_step_code',
-      record_data: 0,
-    };
-    await updateAssemble(payload);
-
-    // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
-    let response = await updateAssembleProcessStep({
-      id: current_material_id,
-      assemble_id: current_assemble_id,
-    });
-  //}
+  // 若組裝區內所有途程結束, 並記錄組裝區內所有途程結束
+  let response = await updateAssembleProcessStep({
+    id: current_material_id,
+    assemble_id: current_assemble_id,
+  });
 
   console.log('updateAssembleProcessStep res =', response);
+
+  //const waitingIds = Array.isArray(response?.waiting_ids)
+  //? response.waiting_ids.map(Number)
+  //: []
+  //
+  //waitingSendRows.value = materials_and_assembles_by_user.value.filter(r =>
+  //  waitingIds.includes(Number(r.assemble_id))
+  //)
+
+  console.log('waitingSendRows =', waitingSendRows.value)
+
+  //socket.value?.emit('assemble-batch-released2', {
+  //  material_id: current_material_id,
+  //  assemble_id: current_assemble_id,
+  //  order_num: item.order_num,
+  //  reason: 'end_process'
+  //})
+  //
+  //if (response?.released_next_group) {
+  //  socket.value?.emit('assemble-batch-released', {
+  //    material_id: current_material_id,
+  //    assemble_id: current_assemble_id,
+  //    created_ids: response.created_ids
+  //  })
+  //}
+
+  //// 不管是不是最後工序，都先重撈，讓後端目前群組規則決定畫面顯示
+  //await reloadEndLocked();
+
+  //const waitingIds = Array.isArray(response?.waiting_ids)
+  //? response.waiting_ids.map(Number)
+  //: []
+  //
+  //waitingSendRows.value = materials_and_assembles_by_user.value.filter(r =>
+  //  waitingIds.includes(Number(r.assemble_id))
+  //)
 
   // 若 material 全完，再補最後工序標記
   if (response?.status === true && response?.material_done === true) {
@@ -4024,8 +3652,6 @@ const onClickEnd = async (item) => {
   const waitingIds = Array.isArray(response?.waiting_ids)
   ? response.waiting_ids.map(Number)
   : []
-
-  console.log('waitingSendRows =', waitingSendRows.value)
 
   waitingSendRows.value = materials_and_assembles_by_user.value.filter(r =>
     waitingIds.includes(Number(r.assemble_id))
@@ -4512,18 +4138,11 @@ const isEndWaitingSend = (item) => {
     Number(item?.assemble_process_num) === 9
 }
 
-//const isAbnormalReworkRow = (item) => {
-//  return Number(item.abnormal_qty || 0) > 0 ||
-//         !!String(item.Incoming1_Abnormal || '').trim() ||
-//         !!String(item.reason || '').trim() ||
-//         !!String(item.confirm_comment || '').trim()
-//}
-
 const isAbnormalReworkRow = (item) => {
-  return (
-    item?.is_abnormal_process === true ||
-    item?.is_abnormal_process === 1
-  )
+  return Number(item.abnormal_qty || 0) > 0 ||
+         !!String(item.Incoming1_Abnormal || '').trim() ||
+         !!String(item.reason || '').trim() ||
+         !!String(item.confirm_comment || '').trim()
 }
 
 const getProcessDisplayName = (item) => {

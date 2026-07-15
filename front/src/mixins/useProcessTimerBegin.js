@@ -420,10 +420,19 @@ if (!paused && data?.begin_time) {
 
 		try {
 			// 先同步後端 process 狀態
+			//const res = await dialog2ToggleProcess({
+			//	process_id: processId.value,
+			//	is_paused: nextPaused,
+			//});
+
+			//
 			const res = await dialog2ToggleProcess({
 				process_id: processId.value,
 				is_paused: nextPaused,
+				start_from_button: !nextPaused && !hasStarted.value,
 			});
+			//
+
 			const data = res?.data ?? res ?? {};
 
 			// 以後端結果為準
@@ -514,6 +523,7 @@ if (!paused && data?.begin_time) {
 		}
 	}
 
+	// 20260708版
 	// 週期性/關閉前更新（把目前毫秒回傳）
 	async function updateProcess() {
 		if (!processId.value) return;
@@ -534,35 +544,67 @@ if (!paused && data?.begin_time) {
 
 			const data = res?.data ?? res;
 
-  // === 新增：伺服器校正 elapsed_time（只在差距很大時才套用） ===
-  const srvSecsRaw = data?.elapsed_time;
-  const srvSecs = Number(srvSecsRaw);
-  if (Number.isFinite(srvSecs)) {
-    const srvMs   = srvSecs * 1000;
-    const localMs = timer()?.getElapsedMs?.() ?? elapsedMs.value;
-    const diff    = Math.abs(srvMs - localMs);
+			//
+			// ------------------------------------------------------
+			// process 已被刪除：停止這個 timer 的所有背景更新
+			// ------------------------------------------------------
+			if (data?.stop_timer === true) {
+				const deletedProcessId = processId.value;
 
-    if (diff > DRIFT_THRESHOLD_MS) {
-      // 差距超過 N 秒 → 視為「別台電腦/別個視窗」已經更新過，跟著校正
-      console.log(
-        `[updateProcess] drift detected, local=${localMs}ms, server=${srvMs}ms, diff=${diff}ms → apply server value`
-      );
+				console.warn(
+					'[updateProcess] process deleted, stop timer:',
+					deletedProcessId
+				);
 
-      elapsedMs.value = srvMs;
+				// 1. 停止每 5 秒的 API 回寫
+				_stopAutoUpdate();
 
-      // 若 TimerDisplay 有提供 setState，就一起調整畫面時間
-      const t = timer();
-      if (t?.setState) {
-        t.setState(srvSecs, isPaused.value);
-      }
+				// 2. 停止本地 ticker
+				_stopLocalTicker();
 
-      // 如果目前是暫停狀態，順便更新凍結值
-      if (isPaused.value) {
-        _frozenElapsedOnPause = srvSecs;
-      }
-    }
-  }
+				// 3. 停止 TimerDisplay
+				timer()?.pause?.();
 
+				// 4. 標記此 timer 已結束
+				isClosed.value = true;
+				isPaused.value = true;
+
+				// 5. 清掉已不存在的 process id
+				processId.value = null;
+
+				return;
+			}
+			//
+
+			// === 新增：伺服器校正 elapsed_time（只在差距很大時才套用） ===
+			const srvSecsRaw = data?.elapsed_time;
+
+			const srvSecs = Number(srvSecsRaw);
+			if (Number.isFinite(srvSecs)) {
+				const srvMs   = srvSecs * 1000;
+				const localMs = timer()?.getElapsedMs?.() ?? elapsedMs.value;
+				const diff    = Math.abs(srvMs - localMs);
+
+				if (diff > DRIFT_THRESHOLD_MS) {
+				// 差距超過 N 秒 → 視為「別台電腦/別個視窗」已經更新過，跟著校正
+				console.log(
+					`[updateProcess] drift detected, local=${localMs}ms, server=${srvMs}ms, diff=${diff}ms → apply server value`
+				);
+
+				elapsedMs.value = srvMs;
+
+				// 若 TimerDisplay 有提供 setState，就一起調整畫面時間
+				const t = timer();
+				if (t?.setState) {
+					t.setState(srvSecs, isPaused.value);
+				}
+
+				// 如果目前是暫停狀態，順便更新凍結值
+				if (isPaused.value) {
+					_frozenElapsedOnPause = srvSecs;
+				}
+				}
+			}
 
 			// 2025-11-20 mark// 後端可能回傳校正後的 elapsed_time（秒）
 			// 2025-11-20 mark if (data?.elapsed_time != null) {
@@ -607,6 +649,7 @@ if (!paused && data?.begin_time) {
 		//pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
 		//pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
 	}
+
 
 	// ESC/外點關閉時使用 —— 維持「計時中」
 	async function updateActiveNoPause() {

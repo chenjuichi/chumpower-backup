@@ -1,5 +1,6 @@
 import datetime
 from datetime import datetime as dt
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_
 
@@ -470,6 +471,33 @@ def release_b109_batch_to_b110(session, material_id):
 
     now_str_value = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    #
+    # ------------------------------------------------------------
+    # 4-1) 避免重複建立同一批 B110
+    # 同 material + B109_RELEASE_BATCH + release_qty + schedule_id 已存在
+    # 就直接回傳，不再新增 20/35/15 重複批次
+    # ------------------------------------------------------------
+    existed_b110_rows = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == "B110")
+        .filter(Assemble.reason == "B109_RELEASE_BATCH")
+        .filter(Assemble.must_receive_qty == release_qty)
+        .filter(Assemble.schedule_id.in_(check_ids))
+        .all()
+    )
+
+    existed_sids = {int(r.schedule_id or 0) for r in existed_b110_rows}
+    if all(int(sid) in existed_sids for sid in check_ids):
+        return {
+            "released": False,
+            "release_qty": 0,
+            "created_ids": [r.id for r in existed_b110_rows],
+            "available_by_schedule": available_by_schedule,
+            "message": f"B110 batch qty={release_qty} already exists, skip duplicate"
+        }
+    #
+
     # ------------------------------------------------------------
     # 5) 建立 B110 批次檢驗 rows
     # ------------------------------------------------------------
@@ -752,7 +780,9 @@ def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
 
         row.must_receive_qty = base_qty
         row.ask_qty = base_qty
-        row.total_ask_qty = base_qty
+        #row.total_ask_qty = base_qty
+        # total_ask_qty 不做累加，永遠等於本列 ask_qty
+        row.total_ask_qty = row.ask_qty
         row.must_receive_end_qty = base_qty
 
         if qty is not None and qty != '':
@@ -904,4 +934,488 @@ def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
         process_step_code=2,
         target_steps=process_steps.get('check', [])
     )
+
+
+#for
+def to_int(v, default=0):
+    try:
+        return int(v or default)
+    except Exception:
+        return default
+
+
+def mark_assemble_finished(row, qty=None):
+    done_qty = to_int(qty)
+
+    if done_qty <= 0:
+        done_qty = to_int(row.completed_qty)
+
+    if done_qty <= 0:
+        done_qty = to_int(row.must_receive_end_qty or row.ask_qty)
+
+    row.process_step_code = 0
+    row.completed_qty = done_qty
+    row.total_completed_qty = done_qty
+    row.allOk_qty = done_qty
+
+    if not row.currentEndTime:
+        row.currentEndTime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    row.input_disable = True
+    row.input_end_disable = True
+    row.input_abnormal_disable = True
+
+    return done_qty
+
+
+def count_running_process(session, assemble_ids, process_type):
+    if not assemble_ids:
+        return 0
+
+    return (
+        session.query(Process)
+        .filter(Process.assemble_id.in_(assemble_ids))
+        .filter(Process.process_type == process_type)
+        .filter(Process.has_started.is_(True))
+        .filter(Process.begin_time.isnot(None))
+        .filter(Process.begin_time != '')
+        .filter(or_(
+            Process.end_time.is_(None),
+            Process.end_time == ''
+        ))
+        .count()
+    )
+
+
+def mark_waiting_send(material_record, assemble_record, qty):
+    assemble_record.isAssembleStationShow = True
+    assemble_record.isWarehouseStationShow = False
+
+    assemble_record.show1_ok = 1
+    assemble_record.show2_ok = 9
+    assemble_record.show3_ok = 9
+
+    assemble_record.input_disable = True
+    assemble_record.input_end_disable = True
+    assemble_record.input_abnormal_disable = True
+    assemble_record.input_allOk_disable = False
+
+    material_record.isAssembleStationShow = True
+    material_record.isAssembleStation3TakeOk = True
+    material_record.whichStation = 2
+    material_record.show1_ok = 3
+    material_record.show2_ok = 9
+    material_record.show3_ok = 9
+    material_record.assemble_qty = qty
+    material_record.total_assemble_qty = qty
+
+    material_record.isOpen = False
+    material_record.isOpenEmpId = ''
+    material_record.hasStarted = False
+    material_record.startStatus = 1
+
+
+def mark_finished_hidden(row):
+    row.isAssembleStationShow = False
+    row.isWarehouseStationShow = False
+
+    row.input_disable = True
+    row.input_end_disable = True
+    row.input_abnormal_disable = True
+    row.input_allOk_disable = True
+
+    row.show1_ok = 1
+    row.show2_ok = 7
+    row.show3_ok = 7
+
+
+#
+from datetime import datetime, timedelta
+
+def ensure_process_log(s, material_id, process_type, user_id, begin_time, end_time):
+    exists = s.query(Process).filter(
+        Process.material_id == material_id,
+        Process.process_type == process_type
+    ).first()
+
+    if exists:
+        return
+
+    seconds = max(int((end_time - begin_time).total_seconds()), 1)
+
+    p = Process(
+        material_id=material_id,
+        assemble_id=0,
+        has_started=False,
+        user_id=user_id,
+        user_delegate_id='',
+        begin_time=begin_time,
+        end_time=end_time,
+        period_time=f"0:00:{seconds:02d}",
+        pause_time=0,
+        pause_started_at=None,
+        elapsedActive_time=0,
+        str_elapsedActive_time=None,
+        is_pause=True,
+        process_type=process_type,
+        process_work_time_qty=0,
+        must_allOk_qty=0,
+        allOk_qty=0,
+        isAllOk=False,
+        normal_work_time=1,
+        abnormal_cause_message='',
+        create_at=datetime.now()
+    )
+    s.add(p)
+
+
+def move_assemble_to_warehouse(s, material_record, assemble_record, agv_user_wait='AGV2-1', agv_user_run='AGV2-2'):
+    now = datetime.now()
+
+    # 1) assemble：End -> Warehouse
+    assemble_record.isAssembleStationShow = False
+    assemble_record.isWarehouseStationShow = True
+    assemble_record.isStockIn = False
+
+    assemble_record.show1_ok = 1
+    assemble_record.show2_ok = 10
+    assemble_record.show3_ok = 10
+    assemble_record.whichStation = 2
+
+    assemble_record.input_disable = True
+    assemble_record.input_end_disable = True
+    assemble_record.input_allOk_disable = False
+    assemble_record.input_abnormal_disable = True
+
+    assemble_record.update_time = now
+
+    # 2) material：同步等待入庫狀態
+    material_record.isShow = True
+    material_record.isTakeOk = True
+    material_record.isAssembleStationShow = False
+    material_record.isAssembleStation3TakeOk = True
+
+    material_record.show1_ok = 3
+    material_record.show2_ok = 10
+    material_record.show3_ok = 11
+    material_record.whichStation = 3
+
+    material_record.hasStarted = False
+    material_record.startStatus = 1
+    material_record.isOpen = False
+    material_record.isOpenEmpId = ''
+
+    material_record.update_time = now
+
+    # 3) 補 Information process：等待 AGV、AGV 運行
+    wait_begin = now
+    wait_end = now + timedelta(seconds=1)
+    run_begin = now + timedelta(seconds=2)
+    run_end = now + timedelta(seconds=3)
+
+    ensure_process_log(
+        s=s,
+        material_id=material_record.id,
+        process_type=29,
+        user_id=agv_user_wait,
+        begin_time=wait_begin,
+        end_time=wait_end
+    )
+
+    ensure_process_log(
+        s=s,
+        material_id=material_record.id,
+        process_type=3,
+        user_id=agv_user_run,
+        begin_time=run_begin,
+        end_time=run_end
+    )
+
+
+# ------------------------------------------------------------------
+# batch 批次識別
+# ------------------------------------------------------------------
+
+
+def get_next_release_batch_no_batch(session, material_id):
+    max_no = (
+        session.query(func.coalesce(func.max(Assemble.release_batch_no), 0))
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == 'B110')
+        .scalar()
+    ) or 0
+
+    return int(max_no) + 1
+
+
+def calc_b109_releasable_qty_batch(session, material_id):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        return {
+            "ok": False,
+            "release_qty": 0,
+            "message": "material not found",
+        }
+
+    process_steps = material.process_steps or default_process_steps()
+
+    assemble_step_ids = [
+        int(x.get("id"))
+        for x in (process_steps.get("assemble") or [])
+        if x.get("checked") and not x.get("deleted", False) and x.get("id") is not None
+    ]
+
+    if not assemble_step_ids:
+        return {
+            "ok": False,
+            "release_qty": 0,
+            "message": "no B109 assemble steps",
+        }
+
+    done_qty_list = []
+
+    for sid in assemble_step_ids:
+        rows = (
+            session.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .filter(Assemble.work_num == 'B109')
+            .filter(Assemble.schedule_id == sid)
+            .all()
+        )
+
+        if not rows:
+            done_qty_list.append(0)
+            continue
+
+        total_done = 0
+
+        for r in rows:
+            process_done = (
+                session.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                .filter(Process.material_id == material_id)
+                .filter(Process.assemble_id == r.id)
+                .filter(Process.process_type == 21)
+                .filter(Process.has_started.is_(True))
+                .filter(Process.end_time.isnot(None))
+                .filter(Process.end_time != '')
+                .scalar()
+            ) or 0
+            '''
+            row_done = max(
+                int(process_done or 0),
+                int(r.completed_qty or 0),
+                int(r.total_completed_qty or 0),
+                int(r.allOk_qty or 0),
+            )
+            '''
+            row_done = max(
+                int(process_done or 0),
+                int(r.completed_qty or 0) + int(r.total_completed_qty or 0),
+                int(r.allOk_qty or 0),
+            )
+
+            total_done += row_done
+
+        done_qty_list.append(total_done)
+
+    min_done_qty = min(done_qty_list) if done_qty_list else 0
+
+    # 每批 B110 有 b1/b2 多筆，所以每批只算一次 ask_qty
+    released_total = 0
+    #
+    released_batches = (
+        session.query(
+            func.coalesce(Assemble.release_batch_no, Assemble.id),
+            func.max(Assemble.ask_qty)
+        )
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == 'B110')
+        .filter(Assemble.reason == 'B109_RELEASE_BATCH')
+        .filter(Assemble.schedule_id.isnot(None))
+        .filter(Assemble.schedule_id > 0)
+        .filter(Assemble.ask_qty > 0)
+        .group_by(func.coalesce(Assemble.release_batch_no, Assemble.id))
+        .all()
+    )
+
+    for _, qty in released_batches:
+        released_total += int(qty or 0)
+    #
+
+    release_qty = max(min_done_qty - released_total, 0)
+
+    return {
+        "ok": True,
+        "min_done_qty": min_done_qty,
+        "released_total": released_total,
+        "release_qty": release_qty,
+        "message": "ok",
+    }
+
+
+def create_b110_batch_rows_batch(session, material_id, release_qty):
+    material = session.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        return []
+
+    process_steps = material.process_steps or default_process_steps()
+
+    check_step_ids = [
+        int(x.get("id"))
+        for x in (process_steps.get("check") or [])
+        if x.get("checked") and not x.get("deleted", False) and x.get("id") is not None
+    ]
+
+    if not check_step_ids:
+        return []
+
+    template = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == 'B110')
+        .order_by(Assemble.id.asc())
+        .first()
+    )
+
+    if not template:
+        template = (
+            session.query(Assemble)
+            .filter(Assemble.material_id == material_id)
+            .order_by(Assemble.id.asc())
+            .first()
+        )
+
+    #
+    # 關閉原始 B110 template，避免 Begin 顯示 qty=35
+    old_b110_rows = (
+        session.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == 'B110')
+        .filter(or_(
+            Assemble.reason.is_(None),
+            Assemble.reason == '',
+            Assemble.reason != 'B109_RELEASE_BATCH'
+        ))
+        .all()
+    )
+
+    for r in old_b110_rows:
+        r.process_step_code = 0
+        r.isAssembleStationShow = False
+        r.isWarehouseStationShow = False
+        r.input_disable = True
+        r.input_end_disable = True
+        r.input_abnormal_disable = True
+        r.input_allOk_disable = True
+        r.show1_ok = 1
+        r.show2_ok = 7
+        r.show3_ok = 7
+    #
+
+    batch_no = get_next_release_batch_no_batch(session, material_id)
+    created_ids = []
+
+    for sid in check_step_ids:
+        row = Assemble(
+            material_id=material.id,
+            material_num=material.material_num,
+            material_comment=material.material_comment,
+            seq_num=getattr(template, 'seq_num', 10) if template else 10,
+            work_num='B110',
+            process_step_code=2,
+
+            must_receive_qty=release_qty,
+            ask_qty=release_qty,
+            total_ask_qty=release_qty,
+            total_ask_qty_end=0,
+            must_receive_end_qty=release_qty,
+
+            abnormal_qty=0,
+            user_id=getattr(template, 'user_id', '') if template else '',
+            writer_id=getattr(template, 'writer_id', None) if template else None,
+            write_date=getattr(template, 'write_date', None) if template else None,
+
+            good_qty=0,
+            total_good_qty=0,
+            non_good_qty=0,
+            meinh_qty=0,
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+            reason='B109_RELEASE_BATCH',
+            confirm_comment='',
+            is_assemble_ok=0,
+
+            currentStartTime=None,
+            currentEndTime=None,
+
+            input_disable=False,
+            input_end_disable=False,
+            input_allOk_disable=True,
+            input_abnormal_disable=False,
+
+            isAssembleStationShow=True,
+            isWarehouseStationShow=False,
+
+            alarm_enable=True,
+            alarm_message='',
+            isAssembleFirstAlarm=True,
+            isAssembleFirstAlarm_message='',
+            isAssembleFirstAlarm_qty=0,
+
+            whichStation=2,
+            show1_ok=1,
+            show2_ok=5,
+            show3_ok=5,
+
+            schedule_id=sid,
+            is_copied_from_id=None,
+            release_batch_no=batch_no,
+        )
+
+        session.add(row)
+        session.flush()
+        created_ids.append(row.id)
+
+    return created_ids
+
+
+def release_b109_to_b110_batch(session, material_id):
+    calc = calc_b109_releasable_qty_batch(session, material_id)
+
+    if not calc.get("ok"):
+        return {
+            "released": False,
+            "release_qty": 0,
+            "created_ids": [],
+            "message": calc.get("message", ""),
+        }
+
+    release_qty = int(calc.get("release_qty", 0) or 0)
+
+    if release_qty <= 0:
+        return {
+            "released": False,
+            "release_qty": 0,
+            "created_ids": [],
+            "min_done_qty": calc.get("min_done_qty", 0),
+            "released_total": calc.get("released_total", 0),
+            "message": "no new B110 batch to release",
+        }
+
+    created_ids = create_b110_batch_rows_batch(
+        session=session,
+        material_id=material_id,
+        release_qty=release_qty,
+    )
+
+    return {
+        "released": len(created_ids) > 0,
+        "release_qty": release_qty,
+        "created_ids": created_ids,
+        "min_done_qty": calc.get("min_done_qty", 0),
+        "released_total": calc.get("released_total", 0),
+        "message": "B109 released new B110 batch",
+    }
 

@@ -384,7 +384,8 @@
                   fontWeight: '700'
                 }"
                 @click="setActive(1)"
-                :disabled="selectedEmployee || selectedEmployee?.length > 0"
+
+                :disabled="!!selectedEmployee"
               >
                 <v-icon right color="#003171">mdi-forklift</v-icon>
                 <span>手動推車</span>
@@ -398,7 +399,8 @@
                   fontWeight: '700'
                 }"
                 @click="setActive(2)"
-                :disabled="selectedEmployee || selectedEmployee?.length > 0"
+
+                :disabled="!!selectedEmployee"
               >
                 <span>AGV送料</span>
                 <v-icon right color="#003171">mdi-truck-flatbed</v-icon>
@@ -1553,7 +1555,8 @@ onMounted(async () => {
         // 同步更新 Assemble（你的 API 名稱保留）
         await updateAssmbleDataByMaterialID({
           material_id: m.id,
-          delivery_qty: 0,
+          //delivery_qty: 0,
+          delivery_qty: Number(m.total_delivery_qty || m.delivery_qty || 0),
           record_name1: 'show1_ok',
           record_data1: 2,
           record_name2: 'show2_ok',
@@ -1657,7 +1660,13 @@ onMounted(async () => {
       activeColor.value='DarkOrange';   //物料送達組裝區
 
       await delay(1000);  // 停 1 秒顯示送達
-
+      //
+      socket.value?.emit('assemble-feed-released', {
+        source: 'MaterialListForAssem',
+        reason: 'agv_arrived_assemble',
+        material_ids: selectedIds,
+      });
+      //
       selectedItems.value = [];
       if (localStorage.getItem('selectedItems')) {
         localStorage.removeItem('selectedItems');
@@ -1707,7 +1716,8 @@ onMounted(async () => {
         // 同步更新 assemble
         await updateAssmbleDataByMaterialID({
           material_id: m.id,
-          delivery_qty: 0,
+          //delivery_qty: 0,
+          delivery_qty: Number(m.total_delivery_qty || m.delivery_qty || 0),
           record_name1: 'show1_ok',
           record_data1: 2,
           record_name2: 'show2_ok',
@@ -1747,9 +1757,8 @@ onMounted(async () => {
         // 2-1. 建立「堆高機到組裝區」流程
         await createProcess({
           begin_time: formattedStartTime,
-          end_time: formattedEndTime,
-          periodTime: PeriodTime,
-          //user_id: currentUser.value?.empID ?? '', // 操作人
+          //end_time: formattedEndTime,
+          //periodTime: PeriodTime,
           user_id: String(currentUser.value.empID || ''), // 操作人
           order_num: m.order_num,
           process_type: 5, // forklift到組裝區
@@ -1757,6 +1766,7 @@ onMounted(async () => {
         });
         console.log('步驟2-1...');
 
+        /* 20260707 刪除
         // 2-1b.（保留你原本的備料報工）*若 editedRecord 存在才送*
         if (editedRecord?.value?.id) {
           await createProcess({
@@ -1770,6 +1780,7 @@ onMounted(async () => {
             process_work_time_qty: editedRecord.value.req_qty, // 報工數量
           });
         }
+        */
 
         // 2-2. 記錄送料數量
         await updateMaterial({
@@ -2027,6 +2038,8 @@ onBeforeUnmount(() => {
     isCallForklift.value = false;
   } catch (_) {}
 
+  if (!socket.value) return
+
   socket.value?.off('material-delivered-callForklift', onMaterialDeliveredCallForklift);
   socket.value?.off('material-delivered-callAGV', onMaterialDeliveredCallAGV);
 
@@ -2063,7 +2076,7 @@ function setRowState(materialId, patch) {
   if (idx === -1) return;
   materials.value[idx] = { ...materials.value[idx], ...patch };
 }
-
+/*
 function startAutoRefresh() {
   stopAutoRefresh()
   refreshTimerId = setInterval(() => {
@@ -2073,7 +2086,7 @@ function startAutoRefresh() {
     }
   }, refreshTimerMs.value) // 10 秒
 }
-
+*/
 function stopAutoRefresh() {
   if (refreshTimerId) {
     clearInterval(refreshTimerId)
@@ -2081,13 +2094,14 @@ function stopAutoRefresh() {
   }
 }
 
+/*
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
     // 回到前景就立刻更新一次，避免看到舊資料
     fetchMaterials()
   }
 }
-/*
+
 async function fetchMaterials() {
   try {
     tableLoading.value = true
@@ -3179,6 +3193,18 @@ const callForklift = async () => {
 
   isCallForklift.value = true;
   try {
+    // 本次手動搬運開始時間
+    forklift2StartTime.value = new Date();
+
+    const formattedStartTime = formatDateTime(
+      forklift2StartTime.value
+    );
+
+    console.log(
+      '[callForklift] formattedStartTime:',
+      formattedStartTime
+    );
+
     console.log('trans_end 處理步驟1...');
 
     // 步驟 1：更新 material/assemble 顯示狀態 + 紀錄搬運方式
@@ -3201,7 +3227,8 @@ const callForklift = async () => {
       // 同步更新 assemble
       await updateAssmbleDataByMaterialID({
         material_id: m.id,
-        delivery_qty: 0,
+        //delivery_qty: 0,
+        delivery_qty: Number(m.total_delivery_qty || m.delivery_qty || 0),
         record_name1: 'show1_ok',
         record_data1: 2,
         record_name2: 'show2_ok',
@@ -3226,12 +3253,21 @@ const callForklift = async () => {
       if (!m) continue;
 
       // 2-1. 建立「forklift 到組裝區」流程
+      //await createProcess({
+      //  user_id: selectedEmployee.value,
+      //  process_type: 5, // forklift到組裝區
+      //  id: m.id,
+      //});
+      //
       await createProcess({
-        //user_id: currentUser.value?.empID ?? '',
+        begin_time: formattedStartTime,
+        //end_time: formattedEndTime,
+        //periodTime: PeriodTime,
         user_id: selectedEmployee.value,
-        process_type: 5, // forklift到組裝區
+        process_type: 5,
         id: m.id,
       });
+      //
       console.log('步驟2-1...');
 
       // 2-2. 記錄送料數量
@@ -3615,6 +3651,51 @@ const removelocalStorage = () => {
     localStorage.removeItem('Authenticated');
   }
 };
+
+const onMaterialDeliveredCallForklift = async (payload = {}) => {
+  console.log('[MaterialListForAssem] material-delivered-callForklift:', payload)
+
+  try {
+    // 若是自己送出的事件，也可以略過；如果你想自己畫面也刷新，就刪掉這段
+    if (payload?.client_id && payload.client_id === schedulingClientId) {
+      return
+    }
+
+    // 重新取得備料/待送出資料
+    await fetchMaterials();
+  } catch (err) {
+    console.error('[onMaterialDeliveredCallForklift] refresh failed:', err)
+  }
+}
+
+const onMaterialDeliveredCallAGV = async (payload = {}) => {
+  console.log('[MaterialListForAssem] material-delivered-callAGV:', payload)
+
+  try {
+    // 若是自己送出的事件，可略過；若希望自己畫面也刷新，就刪掉這段
+    if (payload?.client_id && payload.client_id === schedulingClientId) {
+      return
+    }
+
+    //await nextTick()
+    await fetchMaterials();
+    /*
+    // 改成你目前實際重新讀資料的函式名稱
+    if (typeof getMaterialFun === 'function') {
+      await getMaterialFun()
+    } else if (typeof listMaterialFun === 'function') {
+      await listMaterialFun()
+    } else if (typeof initialize === 'function') {
+      await initialize()
+    } else {
+      console.warn('[onMaterialDeliveredCallAGV] 找不到重新載入資料的函式')
+    }
+    */
+  } catch (err) {
+    console.error('[onMaterialDeliveredCallAGV] refresh failed:', err)
+  }
+}
+
 </script>
 
 <style lang="scss" scoped>

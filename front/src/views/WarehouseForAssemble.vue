@@ -1785,6 +1785,7 @@ const updateAnimationPosition = () => {
   animationLeft.value = rect.right + 10;
 }
 
+// 20260709版
 const onClickWarehouseIn = async () => {
 
   updateAnimationPosition();
@@ -1828,12 +1829,6 @@ const onClickWarehouseIn = async () => {
 
       let d2 = 0;
 
-      //if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
-      //  d2 = Number(row.delivery_qty) || 0;
-      //} else {
-      //  d2 = Number(row.allOk_qty) || 0;
-      //}
-
       if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
         d2 = getRemainQty(row);
       } else {
@@ -1851,20 +1846,7 @@ const onClickWarehouseIn = async () => {
       const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
 
       console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
-      /*
-      const productPayload = {
-        material_id: current_material_id,
-        assemble_id: current_assemble_id,
-        process_id: current_process_id,
-        user_id: currentUser.value?.empID ?? '',
-        line_difference: (current_line === 'process') ? 1 : 0,
-        allOk_qty: d2,
-        good_qty: d2,
-        non_good_qty: 0,
-        delivery_qty: Number(row.delivery_qty) || 0,
-        assemble_qty: 0,
-      };
-      */
+
       const productPayload = {
         material_id: current_material_id,
         assemble_id: current_assemble_id,
@@ -1887,7 +1869,8 @@ const onClickWarehouseIn = async () => {
       await updateAssem({
         assemble_id: current_assemble_id,
         record_name: 'allOk_qty',
-        record_data: d2,
+        //record_data: d2,
+        record_data: new_total,
       });
 
       if (!is_done) {
@@ -1896,6 +1879,7 @@ const onClickWarehouseIn = async () => {
           record_name: 'input_allOk_disable',
           record_data: false,
         });
+      /*
       } else {
         await updateMat({
           id: current_material_id,
@@ -1930,9 +1914,112 @@ const onClickWarehouseIn = async () => {
           });
         }
       }
+      */
+      //
+      } else {
+        // ------------------------------------------------------------
+        // 入庫完成：material 狀態補完整，避免 Information 還顯示組裝已結束
+        // ------------------------------------------------------------
+        if (current_line === 'assemble') {
+          await updateMat({
+            id: current_material_id,
+            record_name: 'show1_ok',
+            record_data: 3,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'show2_ok',
+            record_data: 12,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'show3_ok',
+            record_data: 13,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'whichStation',
+            record_data: 3,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'isAssembleStationShow',
+            record_data: false,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'isAssembleStation3TakeOk',
+            record_data: true,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'isAllOk',
+            record_data: true,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'allOk_qty',
+            //record_data: d2,
+            record_data: new_total,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'total_allOk_qty',
+            record_data: new_total,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'material_stockin_date',
+            record_data: formatDateTime(new Date()),
+          });
+        } else {
+          await updateMat({
+            id: current_material_id,
+            record_name: 'show2_ok',
+            record_data: 8,
+          });
+
+          await updateMat({
+            id: current_material_id,
+            record_name: 'show3_ok',
+            record_data: 8,
+          });
+        }
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'input_allOk_disable',
+          record_data: true,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'isWarehouseStationShow',
+          record_data: false,
+        });
+
+        if (current_line === 'process') {
+          await updateAssem({
+            assemble_id: current_assemble_id,
+            record_name: 'isStockIn',
+            record_data: true,
+          });
+        }
+      }
+      //
 
       successCount++;
     }
+    // end for loop
 
     if (successCount > 0) {
       await updateAGV({

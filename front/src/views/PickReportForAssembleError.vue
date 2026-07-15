@@ -419,6 +419,8 @@
             v-model.trim="causeDlg.form.msg"
             clearable
             @click:clear="clearMsg()"
+            @keydown="handleCauseMsgKeyDown"
+            @paste.prevent
             density="comfortable"
             variant="underlined"
             hide-details
@@ -429,22 +431,35 @@
         </div>
 
         <div style="display: flex;">
-        <!--<div style="position: relative; display: inline-block;">-->
           <div class="cause_dlg_wrapper">
+          <!--
             <v-text-field
               v-model="causeDlg.form.qty"
               label="數量"
               variant="outlined"
               hide-details
-
+              inputmode="numeric"
               @keydown="handleKeyDown"
-              @update:modelValue="checkReceiveQty()"
-              @update:focused="(focused) => checkTextEditField(focused, item)"
-              @keyup.enter="updateItem2(item)"
+              @paste.prevent
+              @update:modelValue="checkReceiveQty"
 
               class="cause_dlg_text"
               style="min-width:0;"
             />
+          -->
+<v-text-field
+  v-model="causeDlg.form.qty"
+  label="數量"
+  variant="outlined"
+  hide-details
+  inputmode="numeric"
+  :disabled="!causeDlg.form.err_msg"
+  @keydown="handleQtyKeyDown"
+  @paste.prevent
+  @update:modelValue="checkReceiveQty"
+  class="cause_dlg_text"
+/>
+
             <span
               v-show="abnormal_tooltipVisible"
               class="cause_dlg_tooltip"
@@ -456,7 +471,7 @@
             v-model="causeDlg.form.err_msg"
             :items="abnormal_causes_msg"
             hide-details
-            clearable
+
             class="cause_dlg_combo"
             style="min-width:0; position: relative; left: 15px;"
           />
@@ -472,19 +487,30 @@
             <span class="composed-preview-box">
               <strong>{{ composedMsg || ' ' }}</strong>
             </span>
-            <span style="position: relative; left: 35px;">
-              選取：
-              <v-icon color="blue" >
-                mdi-mouse-left-click-outline
-              </v-icon>
-            </span>
+          </span>
+
+          <span
+            @click="appendPreviewToMsg"
+            style="position: relative; left: 35px; cursor:pointer; user-select:none;"
+            title="點一下把預覽內容加入訊息"
+          >
+            選取：
+            <v-icon color="blue">
+              mdi-mouse-left-click-outline
+            </v-icon>
           </span>
         </div>
       </v-card-text>
 
       <v-card-actions class="justify-end">
         <v-btn variant="text" @click="closeCauseDlg()">取消</v-btn>
-        <v-btn color="primary" @click="confirmCauseMsg()">確定</v-btn>
+        <v-btn
+          color="primary"
+          @click="confirmCauseMsg()"
+          :disabled="!causeDlg.form.msg?.trim()"
+        >
+          確定
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -537,6 +563,17 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
+
+const allowEditKeys = [
+  'Backspace',
+  'Delete',
+  'ArrowLeft',
+  'ArrowRight',
+  'Tab',
+  'Home',
+  'End'
+]
+
 //# let intervalId = null;              // 10秒鐘, 倒數計時器
 
 let observer = null;
@@ -645,6 +682,7 @@ watch(
 )
 */
 
+/*
 watch(
   () => [causeDlg.form.qty, causeDlg.form.err_msg],
   () => {
@@ -663,6 +701,7 @@ watch(
   },
   { deep: true }
 )
+*/
 
 watch(
   () => informations_for_assemble_error.value || [],
@@ -929,6 +968,7 @@ function toStr(v) {
   return String(v)
 }
 
+/*
 function appendPreviewToMsg () {
   const addRaw = toStr(composedMsg.value).trim()
   if (!addRaw) return
@@ -945,6 +985,7 @@ function appendPreviewToMsg () {
 
   causeDlg.form.msg = `${curRaw}、${addRaw}`
 }
+*/
 
 /*
 function appendPreviewToMsg () {
@@ -1019,6 +1060,7 @@ function appendPreviewToMsg () {
   causeDlg.form.msg = pieces.join('、')
 }
 */
+
 function editCauseMessage (item) {
   console.log("editCauseMessage(), item:", item);
 
@@ -1095,7 +1137,7 @@ const handleKeyDown = (event) => {
     //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
   }
 };
-
+/*
 const checkReceiveQty = () => {
   console.log("checkReceiveQty()...");
 
@@ -1114,6 +1156,7 @@ const checkReceiveQty = () => {
     abnormal_tooltipVisible.value = false;
   }
 };
+*/
 
 const checkTextEditField = (focused, item) => {
   if (!focused) { // 當失去焦點時
@@ -1722,6 +1765,185 @@ const showSnackbar = (message, color) => {
 
 function stripQtyPrefix(s) {
   return toStr(s).trim().replace(/^\d+\s*x\s*/i, '')
+}
+
+const handleCauseMsgKeyDown = (event) => {
+  if (allowEditKeys.includes(event.key)) return
+  event.preventDefault()
+}
+
+/*
+const handleQtyKeyDown = (event) => {
+  if (allowEditKeys.includes(event.key)) return
+
+  if (!/^\d$/.test(event.key)) {
+    event.preventDefault()
+    return
+  }
+
+  const el = event.target
+  const oldValue = String(el.value || '')
+  const start = el.selectionStart ?? oldValue.length
+  const end = el.selectionEnd ?? oldValue.length
+
+  const nextValue = oldValue.slice(0, start) + event.key + oldValue.slice(end)
+  const maxQty = Number(causeDlg.form.max_qty) || 0
+
+  if (Number(nextValue) > maxQty) {
+    event.preventDefault()
+    abnormal_alarm.value = `數量不可大於異常數量 ${maxQty}`
+    abnormal_tooltipVisible.value = true
+
+    setTimeout(() => {
+      abnormal_tooltipVisible.value = false
+      abnormal_alarm.value = ''
+    }, 2000)
+  }
+}
+*/
+
+/*
+const handleQtyKeyDown = (event) => {
+  // 數量欄位按 Enter：貼入異常原因
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    appendPreviewToMsg()
+    return
+  }
+
+  // 允許編輯鍵
+  if (allowEditKeys.includes(event.key)) return
+
+  // 只允許數字
+  if (!/^\d$/.test(event.key)) {
+    event.preventDefault()
+    return
+  }
+
+  const el = event.target
+  const oldValue = String(el.value || '')
+  const start = el.selectionStart ?? oldValue.length
+  const end = el.selectionEnd ?? oldValue.length
+
+  const nextValue = oldValue.slice(0, start) + event.key + oldValue.slice(end)
+  const maxQty = Number(causeDlg.form.max_qty) || 0
+
+  if (Number(nextValue) > maxQty) {
+    event.preventDefault()
+    abnormal_alarm.value = `數量不可大於異常數量 ${maxQty}`
+    abnormal_tooltipVisible.value = true
+
+    setTimeout(() => {
+      abnormal_tooltipVisible.value = false
+      abnormal_alarm.value = ''
+    }, 2000)
+  }
+}
+*/
+const handleQtyKeyDown = (event) => {
+  if (!causeDlg.form.err_msg) {
+    event.preventDefault()
+    return
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    appendPreviewToMsg()
+    return
+  }
+
+  if (allowEditKeys.includes(event.key)) return
+
+  if (!/^\d$/.test(event.key)) {
+    event.preventDefault()
+    return
+  }
+
+  const el = event.target
+  const oldValue = String(el.value || '')
+  const start = el.selectionStart ?? oldValue.length
+  const end = el.selectionEnd ?? oldValue.length
+
+  const nextValue = oldValue.slice(0, start) + event.key + oldValue.slice(end)
+  const maxQty = Number(causeDlg.form.max_qty) || 0
+
+  if (Number(nextValue) > maxQty) {
+    event.preventDefault()
+    abnormal_alarm.value = `數量不可大於異常數量 ${maxQty}`
+    abnormal_tooltipVisible.value = true
+
+    setTimeout(() => {
+      abnormal_tooltipVisible.value = false
+      abnormal_alarm.value = ''
+    }, 2000)
+  }
+}
+
+const checkReceiveQty = () => {
+  let qty = String(causeDlg.form.qty ?? '').replace(/\D/g, '')
+  const maxQty = Number(causeDlg.form.max_qty) || 0
+
+  if (qty !== '' && Number(qty) > maxQty) {
+    qty = String(maxQty)
+
+    abnormal_alarm.value = `數量不可大於異常數量 ${maxQty}`
+    abnormal_tooltipVisible.value = true
+
+    setTimeout(() => {
+      abnormal_tooltipVisible.value = false
+      abnormal_alarm.value = ''
+    }, 2000)
+  } else {
+    abnormal_tooltipVisible.value = false
+  }
+
+  causeDlg.form.qty = qty
+}
+
+/*
+function appendPreviewToMsg () {
+  const addRaw = toStr(composedMsg.value).trim()
+  if (!addRaw) return
+
+  const isQtyWithReason = /^\d+\s*x.+$/.test(addRaw)
+
+  if (!isQtyWithReason) {
+    showSnackbar('請先輸入數量並選擇異常原因', 'red accent-2')
+    return
+  }
+
+  const curRaw = toStr(causeDlg.form.msg || '').trim()
+
+  if (!curRaw || stripQtyPrefix(curRaw) === stripQtyPrefix(addRaw)) {
+    causeDlg.form.msg = addRaw
+    return
+  }
+
+  causeDlg.form.msg = `${curRaw}、${addRaw}`
+}
+*/
+function appendPreviewToMsg () {
+  const addRaw = toStr(composedMsg.value).trim()
+  if (!addRaw) return
+
+  const isQtyWithReason = /^\d+\s*x.+$/.test(addRaw)
+
+  if (!isQtyWithReason) {
+    showSnackbar('請先輸入數量並選擇異常原因', 'red accent-2')
+    return
+  }
+
+  const curRaw = toStr(causeDlg.form.msg || '').trim()
+
+  if (!curRaw || stripQtyPrefix(curRaw) === stripQtyPrefix(addRaw)) {
+    causeDlg.form.msg = addRaw
+  } else {
+    causeDlg.form.msg = `${curRaw}、${addRaw}`
+  }
+
+  // 清空本次輸入
+  causeDlg.form.err_msg = ''
+  causeDlg.form.qty = ''
 }
 
 </script>

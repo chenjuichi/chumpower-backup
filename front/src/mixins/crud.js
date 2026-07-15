@@ -89,6 +89,9 @@ export const warehouse_history = ref([]);
 // for getProcessesByOrderNum
 export const processes = ref([]);
 
+// 20260710版, Information 依 material_id 分群
+export const processGroups = ref([]);
+
 // for listMaterialsAndAssembles
 export const materials_and_assembles = ref([]);
 export const assembles_active_user_count = ref([]);
@@ -569,15 +572,56 @@ export const apiOperation = (operation, path, payload) => {
             warehouse_history.value = [...res.data.warehouse_history];
           }
 
+          //if (path == '/getProcessesByOrderNum') {
+          //  const rows = res.data.processes || []
+          //  processes.value = rows.map(r => ({
+          //    ...r,
+          //    schedule_name: resolveScheduleName2(r),
+          //  }))
+          //}
+          //
           if (path == '/getProcessesByOrderNum') {
-            //console.log("hello, test")
-            //processes.value = [...res.data.processes];
-            const rows = res.data.processes || []
+            // ----------------------------------------------------------
+            // 1. 舊版扁平資料
+            // ----------------------------------------------------------
+            const rows = Array.isArray(res.data.processes)
+              ? res.data.processes
+              : []
+
             processes.value = rows.map(r => ({
               ...r,
               schedule_name: resolveScheduleName2(r),
             }))
+
+
+            // ----------------------------------------------------------
+            // 2. 新版 material_id 分群資料
+            // ----------------------------------------------------------
+            const groups = Array.isArray(res.data.groups)
+              ? res.data.groups
+              : []
+
+            processGroups.value = groups.map(group => ({
+              ...group,
+
+              processes: (
+                Array.isArray(group.processes)
+                  ? group.processes
+                  : []
+              ).map(r => ({
+                ...r,
+                schedule_name: resolveScheduleName2(r),
+              })),
+            }))
+
+            console.log('/getProcessesByOrderNum processes:', processes.value)
+
+            console.log('/getProcessesByOrderNum processGroups:', processGroups.value)
+
+            // 建議回傳完整 response data
+            return res.data
           }
+          //
 
           /*
           if (path === '/saveFile') {
@@ -781,6 +825,16 @@ export const apiOperation = (operation, path, payload) => {
         //return res.data;
       })
       .catch((error) => {
+        console.error('AxiosError full:', error)
+
+        console.error('Catch API error response:', {
+          status: error?.response?.status,
+          data: error?.response?.data,
+          message: error?.message,
+          url: error?.config?.url,
+          method: error?.config?.method,
+          payload: error?.config?.data,
+        })
 
         // ✅ 被 abort 的 request：直接忽略，不要彈錯誤
         if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {

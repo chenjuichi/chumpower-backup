@@ -488,7 +488,9 @@ class Assemble(BASE):
     show2_ok = Column(String(20), server_default='0')
     show3_ok = Column(String(20), server_default='0')
 
-    schedule_id = Column(Integer, default = 0)            # +工序, material table內 process_steps json資料的id
+    schedule_id = Column(Integer, default = 0)  # +工序, material table內 process_steps json資料的id
+
+    release_batch_no = Column(Integer, nullable=False, default=0)   # 批次識別
 
     update_time = Column(String(30))
     create_at = Column(DateTime, server_default=func.now())

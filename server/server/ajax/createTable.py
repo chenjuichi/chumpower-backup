@@ -13,6 +13,7 @@ from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Proces
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.inspection import inspect
 from werkzeug.security import generate_password_hash
+from sqlalchemy import func, or_
 
 from datetime import datetime, timezone
 
@@ -244,8 +245,7 @@ def create_delegate():
     s.commit()
     return jsonify(success=True, id=ud.id)
 
-
-# create process data table
+"""
 @createTable.route("/createProcess", methods=['POST'])
 def create_process():
   print("createProcess....")
@@ -273,6 +273,89 @@ def create_process():
   print("has_started:", _has_started)
   print("begin_time:", _begin_time)
   print("end_time:", _end_time)
+
+  period_time = ''
+  process_type_int = int(_process_type)
+
+  # ------------------------------------------------------------
+  # process_type=5：堆高機送備料到組裝
+  # 只做狀態更新，不建立 process 空白紀錄
+  # ------------------------------------------------------------
+  if process_type_int == 5:
+      s = Session()
+
+      try:
+          material = s.query(Material).filter(Material.id == _id).first()
+
+          if not material:
+              return jsonify({
+                  "status": False,
+                  "message": f"material_id={_id} 不存在"
+              }), 404
+
+          # 備料 -> 組裝區
+          material.isAssembleStationShow = True
+          material.show2_ok = 5
+          material.show3_ok = 5
+
+          material.isOpen = False
+          material.isOpenEmpId = ''
+          material.hasStarted = False
+          material.startStatus = 1
+
+          # 若有 assemble_id，只開啟該筆；若沒有，就不動 assemble
+          if _assemble_id:
+              assemble = (
+                  s.query(Assemble)
+                  .filter(Assemble.id == _assemble_id)
+                  .filter(Assemble.material_id == _id)
+                  .first()
+              )
+
+              if assemble:
+                  assemble.isAssembleStationShow = True
+                  assemble.isWarehouseStationShow = False
+                  assemble.input_disable = False
+                  assemble.input_end_disable = False
+                  assemble.input_allOk_disable = False
+                  assemble.input_abnormal_disable = False
+                  assemble.show1_ok = 1
+                  assemble.show2_ok = 5
+                  assemble.show3_ok = 5
+                  assemble.update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+          s.commit()
+
+          return jsonify({
+              "status": True,
+              "process_id": None,
+              "skipped_process": True,
+              "message": "process_type=5 只更新狀態，不建立 process"
+          }), 200
+
+      except Exception as e:
+          s.rollback()
+          return jsonify({
+              "status": False,
+              "message": str(e)
+          }), 500
+
+      finally:
+          s.close()
+
+  # process_type=5 / 6 若沒有實際時間與數量，不建立空白 process
+  if process_type_int == 6:
+
+      has_real_time = bool(_begin_time) and bool(_end_time)
+      has_real_qty = int(_process_work_time_qty or 0) > 0
+
+      if not has_real_time and not has_real_qty:
+          return jsonify({
+              "status": True,
+              "process_id": None,
+              "skipped": True,
+              "message": f"process_type={_process_type} 無實際時間/數量，不建立空白 process"
+          }), 200
 
   s = Session()
 
@@ -339,6 +422,7 @@ def create_process():
   print("new_process_id:", new_process_id)
 
   # AGV：組裝區 -> 成品區，送到後開啟 Warehouse 待入庫
+  '''
   if int(_process_type) == 3:
     s.query(Assemble).filter(
       Assemble.material_id == _id
@@ -347,6 +431,42 @@ def create_process():
       Assemble.input_allOk_disable: False,
       Assemble.update_time: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }, synchronize_session=False)
+  '''
+
+  ''''
+  if int(_process_type) == 3 and _assemble_id:
+      s.query(Assemble).filter(
+          Assemble.id == _assemble_id,
+          Assemble.material_id == _id
+      ).update({
+          Assemble.isWarehouseStationShow: True,
+          Assemble.input_allOk_disable: False,
+          Assemble.update_time: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      }, synchronize_session=False)
+  '''
+  #
+  # AGV：組裝區 -> 成品區，送到後開啟 Warehouse 待入庫
+  if int(_process_type) == 3 and _assemble_id:
+
+      updated = (
+          s.query(Assemble)
+          .filter(
+              Assemble.id == _assemble_id,
+              Assemble.material_id == _id,
+              Assemble.process_step_code == 0,
+              Assemble.isAssembleStationShow.is_(True),
+              Assemble.isWarehouseStationShow.is_(False),
+              Assemble.show2_ok.in_([9, 10])
+          )
+          .update({
+              Assemble.isWarehouseStationShow: True,
+              Assemble.input_allOk_disable: False,
+              Assemble.update_time: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          }, synchronize_session=False)
+      )
+
+      print(f"[createProcess] AGV2 -> Warehouse update rows = {updated}")
+  #
 
   s.commit()
   print("step5...")
@@ -357,6 +477,1018 @@ def create_process():
     'status': True,
     'process_id': new_process_id
   })
+"""
+
+"""
+# 20260709版
+@createTable.route("/createProcess", methods=['POST'])
+def create_process():
+  print("createProcess....")
+
+  request_data = request.get_json() or {}
+
+  _begin_time = request_data.get('begin_time')
+  _end_time = request_data.get('end_time')
+  _period_time = request_data.get('periodTime')
+  _period_time2 = request_data.get('periodTime2')
+  _process_work_time_qty = request_data.get('process_work_time_qty')
+
+  _normal_work_time = request_data.get('normal_work_time')
+  _assemble_id = request_data.get('assemble_id')
+  _has_started = bool(request_data.get('has_started'))
+
+  _user_id = request_data.get('user_id')
+  _id = request_data.get('id')
+  _process_type = request_data.get('process_type')
+
+  print("process_type:", _process_type)
+  print("id:", _id)
+  print("assemble_id:", _assemble_id)
+  print("has_started:", _has_started)
+  print("begin_time:", _begin_time)
+  print("end_time:", _end_time)
+
+  def release_to_assemble_begin(session, material):
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    material.isShow = True
+    material.isTakeOk = True
+    material.isAssembleStationShow = True
+    material.whichStation = 2
+    material.show1_ok = 2
+    material.show2_ok = 3
+    material.show3_ok = 3
+
+    material.isOpen = False
+    material.isOpenEmpId = ''
+    material.hasStarted = False
+    material.startStatus = 1
+
+    # 關鍵：讓 Begin 顯示 +工序，而不是直接顯示 B109/B110
+    material.process_step_enable = False
+
+    material.update_time = now_str
+
+  if not _user_id or not _id or _process_type is None:
+    return jsonify({
+      "status": False,
+      "message": "missing params: user_id / id / process_type"
+    }), 400
+
+  process_type_int = int(_process_type)
+  period_time = ''
+
+  # ------------------------------------------------------------
+  # process_type=6：若沒有實際時間與數量，不建立空白 process
+  # 注意：process_type=5 要建立紀錄，所以不能在這裡 skip
+  # ------------------------------------------------------------
+  if process_type_int == 6:
+    has_real_time = bool(_begin_time) and bool(_end_time)
+    has_real_qty = int(_process_work_time_qty or 0) > 0
+
+    if not has_real_time and not has_real_qty:
+      return jsonify({
+        "status": True,
+        "process_id": None,
+        "skipped": True,
+        "message": "process_type=6 無實際時間/數量，不建立空白 process"
+      }), 200
+
+  s = Session()
+
+  try:
+    material = s.query(Material).filter(Material.id == _id).first()
+
+    if not material:
+      print("error, order_num 不存在!")
+      return jsonify({
+        "status": False,
+        "message": f"material_id={_id} 不存在"
+      }), 400
+
+    print("step1...", material.id)
+
+    #
+    # ------------------------------------------------------------
+    # process_type=6：堆高機 組裝區 -> 成品區
+    # 若已經成品入庫 process_type=31，禁止再新增 type=6
+    # ------------------------------------------------------------
+    if process_type_int == 6:
+        has_stockin = (
+            s.query(Process.id)
+            .filter(Process.material_id == _id)
+            .filter(Process.process_type == 31)
+            .first()
+        )
+
+        if has_stockin:
+            return jsonify({
+                "status": True,
+                "process_id": None,
+                "skipped": True,
+                "message": "此工單已成品入庫，不再建立 process_type=6"
+            }), 200
+
+    #
+    # ------------------------------------------------------------
+    # AGV / 堆高機已送達組裝區
+    # process_type=2：AGV 備料區 -> 組裝區
+    # process_type=5：堆高機 備料區 -> 組裝區
+    # ------------------------------------------------------------
+    #if process_type_int in (2, 5):
+    #    release_to_assemble_begin(
+    #        session=s,
+    #        material=material,
+    #        qty=material.total_delivery_qty or material.delivery_qty
+    #    )
+
+    if process_type_int in (2, 5):
+        release_to_assemble_begin(
+            session=s,
+            material=material
+        )
+    #
+
+    # ------------------------------------------------------------
+    # 計算 period_time
+    # process_type=5 也要計算，因為 Information 要顯示堆高機紀錄
+    # process_type=6 可允許空白
+    # ------------------------------------------------------------
+    if process_type_int != 6:
+      if _period_time2:
+        period_time = _period_time2
+      elif _period_time:
+        period_time = _period_time
+      elif _begin_time and _end_time:
+        time_diff = (
+          datetime.strptime(_end_time, "%Y-%m-%d %H:%M:%S")
+          - datetime.strptime(_begin_time, "%Y-%m-%d %H:%M:%S")
+        )
+        period_time = str(time_diff).split('.')[0]
+      else:
+        period_time = '00:00:00'
+
+      print("period_time:", period_time)
+
+    '''
+    # ------------------------------------------------------------
+    # process_type=5：堆高機送備料到組裝區
+    # 這裡只更新狀態，但不要 return，後面仍要建立 process row
+    # ------------------------------------------------------------
+    if process_type_int == 5:
+      material.isAssembleStationShow = True
+      material.show2_ok = 5
+      material.show3_ok = 5
+
+      material.isOpen = False
+      material.isOpenEmpId = ''
+      material.hasStarted = False
+      material.startStatus = 1
+
+      if _assemble_id:
+        assemble = (
+          s.query(Assemble)
+          .filter(Assemble.id == _assemble_id)
+          .filter(Assemble.material_id == _id)
+          .first()
+        )
+
+        if assemble:
+          assemble.isAssembleStationShow = True
+          assemble.isWarehouseStationShow = False
+          assemble.input_disable = False
+          assemble.input_end_disable = False
+          assemble.input_allOk_disable = False
+          assemble.input_abnormal_disable = False
+          assemble.show1_ok = 1
+          assemble.show2_ok = 5
+          assemble.show3_ok = 5
+          assemble.update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    '''
+
+    # ------------------------------------------------------------
+    # 不要重複建立同一個人/同一工序的 active process
+    # ------------------------------------------------------------
+    if process_type_int in (21, 22, 23) and _has_started:
+      existed = (
+        s.query(Process)
+        .filter(Process.material_id == _id)
+        .filter(Process.assemble_id == _assemble_id)
+        .filter(Process.process_type == _process_type)
+        .filter(Process.user_id == _user_id)
+        .filter(Process.has_started.is_(True))
+        .filter(Process.end_time.is_(None))
+        .first()
+      )
+
+      if existed:
+        return jsonify({
+          'status': True,
+          'process_id': existed.id,
+          'message': '此員工此工序已開始，不重複新增'
+        })
+
+    # ------------------------------------------------------------
+    # 新增 process
+    # process_type=5 要保留 begin/end/period_time
+    # process_type=6 目前仍維持空白紀錄邏輯
+    # ------------------------------------------------------------
+    new_process = Process(
+      material_id=_id,
+      assemble_id=_assemble_id or 0,
+      has_started=_has_started,
+      user_id=_user_id,
+      #process_type=_process_type,
+      process_type=process_type_int,
+      normal_work_time=_normal_work_time,
+
+      begin_time=_begin_time if process_type_int != 6 else '',
+      end_time=_end_time if process_type_int != 6 else '',
+      period_time=period_time if process_type_int != 6 else '',
+      process_work_time_qty=_process_work_time_qty if process_type_int != 6 else 0,
+    )
+
+    s.add(new_process)
+    s.flush()
+
+    new_process_id = new_process.id
+    print("new_process_id:", new_process_id)
+
+    # ------------------------------------------------------------
+    # AGV：組裝區 -> 成品區，送到後開啟 Warehouse 待入庫
+    # ------------------------------------------------------------
+    if process_type_int == 3 and _assemble_id:
+      updated = (
+        s.query(Assemble)
+        .filter(
+          Assemble.id == _assemble_id,
+          Assemble.material_id == _id,
+          Assemble.process_step_code == 0,
+          Assemble.isAssembleStationShow.is_(True),
+          Assemble.isWarehouseStationShow.is_(False),
+          Assemble.show2_ok.in_([9, 10])
+        )
+        .update({
+          Assemble.isWarehouseStationShow: True,
+          Assemble.input_allOk_disable: False,
+          Assemble.update_time: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }, synchronize_session=False)
+      )
+
+      print(f"[createProcess] AGV2 -> Warehouse update rows = {updated}")
+
+    s.commit()
+    print("createProcess done")
+
+    return jsonify({
+      'status': True,
+      'process_id': new_process_id
+    })
+
+  except Exception as e:
+    s.rollback()
+    print("createProcess ERROR:", repr(e))
+    return jsonify({
+      "status": False,
+      "message": str(e)
+    }), 500
+
+  finally:
+    s.close()
+"""
+
+
+# 20260713版
+# createProcess：
+# 1. type=6 空白堆高機紀錄防重複
+# 2. 使用 material row lock，避免多人同時 INSERT
+# 3. 保留 type=2/3/5 與 21/22/23 原有流程
+@createTable.route("/createProcess", methods=['POST'])
+def create_process():
+    print("createProcess....")
+
+    request_data = request.get_json(silent=True) or {}
+
+    _begin_time = request_data.get('begin_time')
+    _end_time = request_data.get('end_time')
+    _period_time = request_data.get('periodTime')
+    _period_time2 = request_data.get('periodTime2')
+    _process_work_time_qty = request_data.get(
+        'process_work_time_qty'
+    )
+
+    _normal_work_time = request_data.get(
+        'normal_work_time'
+    )
+
+    _assemble_id = request_data.get('assemble_id')
+    _has_started = bool(
+        request_data.get('has_started')
+    )
+
+    _user_id = str(
+        request_data.get('user_id') or ''
+    ).strip()
+
+    _id = request_data.get('id')
+    _process_type = request_data.get('process_type')
+
+    print("process_type:", _process_type)
+    print("id:", _id)
+    print("assemble_id:", _assemble_id)
+    print("has_started:", _has_started)
+    print("begin_time:", _begin_time)
+    print("end_time:", _end_time)
+
+    # ------------------------------------------------------------
+    # AGV / 堆高機送達組裝區後，釋放到 Begin
+    # ------------------------------------------------------------
+    '''
+    def release_to_assemble_begin(session, material):
+        now_str = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        material.isShow = True
+        material.isTakeOk = True
+        material.isAssembleStationShow = True
+        material.whichStation = 2
+
+        material.show1_ok = 2
+        material.show2_ok = 3
+        material.show3_ok = 3
+
+        material.isOpen = False
+        material.isOpenEmpId = ''
+        material.hasStarted = False
+        material.startStatus = 1
+
+        # 讓 Begin 顯示 +工序
+        material.process_step_enable = False
+
+        material.update_time = now_str
+    '''
+    #
+    def release_to_assemble_begin(session, material):
+        #AGV / 堆高機送達組裝區後，將 material 與 assemble
+        #同步釋放到 Begin.vue。
+
+        now_str = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        # --------------------------------------------------------
+        # 1. material：進入組裝區
+        # --------------------------------------------------------
+        material.isShow = True
+        material.isTakeOk = True
+        material.isAssembleStationShow = True
+        material.whichStation = 2
+
+        material.show1_ok = 2
+        material.show2_ok = 3
+        material.show3_ok = 3
+
+        material.isOpen = False
+        material.isOpenEmpId = ''
+        material.hasStarted = False
+        material.startStatus = 1
+
+        material.update_time = now_str
+
+        # 尚未設定工序時，Begin 顯示 B109 樣板及「+工序」
+        has_scheduled_rows = (
+            session.query(Assemble.id)
+            .filter(
+                Assemble.material_id == material.id,
+                Assemble.schedule_id.isnot(None),
+                Assemble.schedule_id > 0
+            )
+            .first()
+            is not None
+        )
+
+        material.process_step_enable = has_scheduled_rows
+
+        # --------------------------------------------------------
+        # 2. assemble：同步釋放到 Begin
+        # --------------------------------------------------------
+        assemble_rows = (
+            session.query(Assemble)
+            .filter(Assemble.material_id == material.id)
+            .filter(
+                or_(
+                    Assemble.reason.is_(None),
+                    Assemble.reason != 'B110_DONE_COPY'
+                )
+            )
+            .order_by(Assemble.id.asc())
+            .all()
+        )
+
+        # 有排程時，只開啟 schedule_id > 0 的工序列。
+        # 尚未排程時，只開啟一筆 B109 樣板列。
+        template_opened = False
+
+        for row in assemble_rows:
+            work_num = (row.work_num or '').strip()
+            schedule_id = int(row.schedule_id or 0)
+            step = int(row.process_step_code or 0)
+
+            # 已送入庫、待入庫或已完成的歷史列不可重新開啟
+            if bool(row.isWarehouseStationShow):
+                continue
+
+            if int(row.show2_ok or 0) >= 9:
+                continue
+
+            should_show = False
+
+            if has_scheduled_rows:
+                # 已設定工序，只顯示有效排程列
+                should_show = (
+                    schedule_id > 0
+                    and step > 0
+                    and work_num in ('B109', 'B110')
+                )
+            else:
+                # 尚未按 +工序，只顯示唯一一筆 B109 樣板
+                if (
+                    not template_opened
+                    and work_num == 'B109'
+                    and schedule_id == 0
+                ):
+                    should_show = True
+                    template_opened = True
+
+                    # 樣板列必須保留正確 step，Begin 才不會排除
+                    if step <= 0:
+                        row.process_step_code = 3
+
+            if not should_show:
+                row.isAssembleStationShow = False
+                row.isWarehouseStationShow = False
+                continue
+
+            row.isAssembleStationShow = True
+            row.isWarehouseStationShow = False
+
+            row.whichStation = 2
+            row.show1_ok = 2
+
+            if work_num == 'B110':
+                row.show2_ok = 5
+                row.show3_ok = 5
+            else:
+                row.show2_ok = 3
+                row.show3_ok = 3
+
+            row.input_disable = False
+            row.input_end_disable = False
+            row.input_abnormal_disable = False
+            row.input_allOk_disable = False
+
+            row.currentStartTime = None
+            row.currentEndTime = None
+            row.update_time = now_str
+
+        print(
+            '[release_to_assemble_begin]',
+            {
+                'material_id': material.id,
+                'has_scheduled_rows': has_scheduled_rows,
+                'assemble_count': len(assemble_rows),
+            }
+        )
+    #
+
+    # ------------------------------------------------------------
+    # 參數檢查
+    # ------------------------------------------------------------
+    if (
+        not _user_id
+        or _id is None
+        or _process_type is None
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "missing params: user_id / id / process_type"
+        }), 400
+
+    try:
+        material_id_int = int(_id)
+        process_type_int = int(_process_type)
+        assemble_id_int = int(_assemble_id or 0)
+
+        process_work_time_qty_int = int(
+            _process_work_time_qty or 0
+        )
+
+    except (TypeError, ValueError):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid params: id / process_type / "
+                "assemble_id / process_work_time_qty"
+        }), 400
+
+    period_time = ''
+
+    s = Session()
+
+    try:
+        # --------------------------------------------------------
+        # 鎖定 material
+        #
+        # 防止 A、B 電腦同時對同一 material 建立 type=6。
+        # --------------------------------------------------------
+        material = (
+            s.query(Material)
+            .filter(
+                Material.id == material_id_int
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not material:
+            s.rollback()
+
+            print(
+                "error, material 不存在:",
+                material_id_int
+            )
+
+            return jsonify({
+                "status": False,
+                "message":
+                    f"material_id={material_id_int} 不存在"
+            }), 400
+
+        print(
+            "[createProcess] material locked:",
+            material.id
+        )
+
+        #
+        # ------------------------------------------------------------
+        # process_type=5：
+        # 堆高機運行（備料區 -> 組裝區）防重複
+        #
+        # 分批備料可能有多次 type=5，
+        # 因此只阻止「同一組開始/結束時間」的重複請求。
+        # ------------------------------------------------------------
+        '''
+        if process_type_int == 5:
+            has_begin_time = bool(
+                str(_begin_time or '').strip()
+            )
+
+            has_end_time = bool(
+                str(_end_time or '').strip()
+            )
+
+            # 有完整時間：同 material、同開始/結束時間只能一筆
+            if has_begin_time and has_end_time:
+                existed_type5 = (
+                    s.query(Process)
+                    .filter(
+                        Process.material_id == material_id_int,
+                        Process.process_type == 5,
+                        Process.begin_time == _begin_time,
+                        Process.end_time == _end_time,
+                    )
+                    .order_by(
+                        Process.id.asc()
+                    )
+                    .first()
+                )
+
+                if existed_type5:
+                    s.commit()
+
+                    return jsonify({
+                        "status": True,
+                        "created": False,
+                        "process_id": existed_type5.id,
+                        "skipped": True,
+                        "duplicate": True,
+                        "message":
+                            "相同時間的堆高機運行"
+                            "(備料區->組裝區)已存在，"
+                            "不重複新增"
+                    }), 200
+
+            # 無完整時間：不建議再建立空白 type=5
+            else:
+                existed_blank_type5 = (
+                    s.query(Process)
+                    .filter(
+                        Process.material_id == material_id_int,
+                        Process.process_type == 5,
+                        Process.begin_time.is_(None),
+                        Process.end_time.is_(None),
+                    )
+                    .order_by(
+                        Process.create_at.asc(),
+                        Process.id.asc()
+                    )
+                    .first()
+                )
+
+                if existed_blank_type5:
+                    s.commit()
+
+                    return jsonify({
+                        "status": True,
+                        "created": False,
+                        "process_id": existed_blank_type5.id,
+                        "skipped": True,
+                        "duplicate": True,
+                        "message":
+                            "已有空白堆高機運行"
+                            "(備料區->組裝區)紀錄，"
+                            "不重複新增"
+                    }), 200
+        '''
+        #
+        # --------------------------------------------------------
+        # type=2 / 5 / 19
+        # 同一開始時間只建立一次
+        # --------------------------------------------------------
+        if process_type_int in {2, 5, 19}:
+
+            has_begin_time = bool(
+                str(_begin_time or "").strip()
+            )
+
+            if has_begin_time:
+
+                existed_transport = (
+                    s.query(Process)
+                    .filter(
+                        Process.material_id == material_id_int,
+                        Process.process_type == process_type_int,
+                        Process.begin_time == _begin_time
+                    )
+                    .order_by(
+                        Process.id.asc()
+                    )
+                    .first()
+                )
+
+                if existed_transport:
+                    s.commit()
+
+                    print(
+                        "[createProcess] duplicate transport skipped:",
+                        existed_transport.id
+                    )
+
+                    return jsonify({
+                        "status": True,
+                        "created": False,
+                        "process_id": existed_transport.id,
+                        "skipped": True,
+                        "duplicate": True,
+                        "message": "相同搬運開始時間已存在，不重複新增"
+                    }), 200
+        #
+
+        # --------------------------------------------------------
+        # process_type=6：
+        # 堆高機運行（組裝區 -> 成品區）
+        # --------------------------------------------------------
+        if process_type_int == 6:
+            # ----------------------------------------------------
+            # 已經有成品入庫紀錄，不再補 type=6
+            # ----------------------------------------------------
+            has_stockin = (
+                s.query(Process.id)
+                .filter(
+                    Process.material_id
+                    == material_id_int,
+
+                    Process.process_type == 31
+                )
+                .first()
+            )
+
+            if has_stockin:
+                s.commit()
+
+                print(
+                    "[createProcess] type=6 skipped, "
+                    "stockin already exists:",
+                    material_id_int
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id": None,
+                    "skipped": True,
+                    "duplicate": False,
+                    "message":
+                        "此工單已成品入庫，"
+                        "不再建立 process_type=6"
+                }), 200
+
+            # ----------------------------------------------------
+            # 已有尚未執行的空白 type=6，保留最早一筆
+            # ----------------------------------------------------
+            existed_type6 = (
+                s.query(Process)
+                .filter(
+                    Process.material_id
+                    == material_id_int,
+
+                    Process.process_type == 6,
+
+                    Process.begin_time.is_(None),
+
+                    Process.end_time.is_(None)
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_type6:
+                s.commit()
+
+                print(
+                    "[createProcess] duplicate type=6 "
+                    "skipped:",
+                    {
+                        "material_id": material_id_int,
+                        "existing_process_id":
+                            existed_type6.id
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id":
+                        existed_type6.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message":
+                        "已有堆高機運行"
+                        "(組裝區->成品區)紀錄，"
+                        "不重複新增"
+                }), 200
+
+        # --------------------------------------------------------
+        # process_type=2：
+        # AGV 備料區 -> 組裝區
+        #
+        # process_type=5：
+        # 堆高機 備料區 -> 組裝區
+        # --------------------------------------------------------
+        if process_type_int in (2, 5):
+            release_to_assemble_begin(
+                session=s,
+                material=material
+            )
+
+        # --------------------------------------------------------
+        # 計算 period_time
+        #
+        # type=5 要保留時間與 period_time
+        # type=6 為空白搬運通知，不計算
+        # --------------------------------------------------------
+        if process_type_int != 6:
+            if _period_time2:
+                period_time = str(
+                    _period_time2
+                )
+
+            elif _period_time:
+                period_time = str(
+                    _period_time
+                )
+
+            elif _begin_time and _end_time:
+                begin_dt = datetime.strptime(
+                    str(_begin_time),
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+                end_dt = datetime.strptime(
+                    str(_end_time),
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+                time_diff = end_dt - begin_dt
+
+                period_time = str(
+                    time_diff
+                ).split('.')[0]
+
+            else:
+                #period_time = '00:00:00'
+                # 只有開始時間(尚未結束)
+                period_time = ''
+
+            print(
+                "period_time:",
+                period_time
+            )
+
+        # --------------------------------------------------------
+        # 不重複建立同一員工、同 assemble、同製程的
+        # active process
+        # --------------------------------------------------------
+        if (
+            process_type_int in (21, 22, 23)
+            and _has_started
+        ):
+            existed_active = (
+                s.query(Process)
+                .filter(
+                    Process.material_id
+                    == material_id_int,
+
+                    Process.assemble_id
+                    == assemble_id_int,
+
+                    Process.process_type
+                    == process_type_int,
+
+                    Process.user_id
+                    == _user_id,
+
+                    Process.has_started.is_(True),
+
+                    Process.end_time.is_(None)
+                )
+                .order_by(
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_active:
+                s.commit()
+
+                print(
+                    "[createProcess] active duplicate "
+                    "skipped:",
+                    existed_active.id
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id":
+                        existed_active.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message":
+                        "此員工此工序已開始，"
+                        "不重複新增"
+                }), 200
+
+        # --------------------------------------------------------
+        # 新增 process
+        #
+        # type=5：
+        # 保留 begin/end/period_time
+        #
+        # type=6：
+        # begin_time/end_time 使用 NULL
+        # --------------------------------------------------------
+        new_process = Process(
+            material_id=material_id_int,
+            assemble_id=assemble_id_int,
+            has_started=_has_started,
+            user_id=_user_id,
+            process_type=process_type_int,
+            normal_work_time=_normal_work_time,
+
+            begin_time=(
+                _begin_time
+                if process_type_int != 6
+                else None
+            ),
+
+            end_time=(
+                _end_time
+                if process_type_int != 6
+                else None
+            ),
+
+            period_time=(
+                period_time
+                if process_type_int != 6
+                else ''
+            ),
+
+            process_work_time_qty=(
+                process_work_time_qty_int
+                if process_type_int != 6
+                else 0
+            ),
+        )
+
+        s.add(new_process)
+        s.flush()
+
+        new_process_id = new_process.id
+
+        print(
+            "[createProcess] new_process_id:",
+            new_process_id
+        )
+
+        # --------------------------------------------------------
+        # AGV 組裝區 -> 成品區
+        # 送達後開啟 Warehouse 待入庫
+        # --------------------------------------------------------
+        if (
+            process_type_int == 3
+            and assemble_id_int > 0
+        ):
+            updated = (
+                s.query(Assemble)
+                .filter(
+                    Assemble.id
+                    == assemble_id_int,
+
+                    Assemble.material_id
+                    == material_id_int,
+
+                    Assemble.process_step_code == 0,
+
+                    Assemble.isAssembleStationShow
+                    .is_(True),
+
+                    Assemble.isWarehouseStationShow
+                    .is_(False),
+
+                    Assemble.show2_ok.in_(
+                        [9, 10]
+                    )
+                )
+                .update({
+                    Assemble.isWarehouseStationShow:
+                        True,
+
+                    Assemble.input_allOk_disable:
+                        False,
+
+                    Assemble.update_time:
+                        datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
+                }, synchronize_session=False)
+            )
+
+            print(
+                "[createProcess] AGV2 -> "
+                "Warehouse update rows =",
+                updated
+            )
+
+        s.commit()
+
+        print(
+            "createProcess done:",
+            {
+                "process_id": new_process_id,
+                "material_id": material_id_int,
+                "process_type": process_type_int,
+            }
+        )
+
+        return jsonify({
+            "status": True,
+            "created": True,
+            "process_id": new_process_id,
+            "skipped": False,
+            "duplicate": False
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+
+        print(
+            "createProcess ERROR:",
+            repr(e)
+        )
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
 
 
 @createTable.route("/createProcessP", methods=['POST'])
@@ -2351,7 +3483,7 @@ def create_product():
 
 @createTable.route("/createProduct", methods=["POST"])
 def create_product():
-    """
+    '''
     組裝線入庫：
     1. 支援單筆或批次
     2. allOk_qty 必須 > 0
@@ -2359,7 +3491,7 @@ def create_product():
     4. 若沒送 process_id，會自動補一筆 Process(process_type=31)
     5. 建立 Product
     6. 回寫 Material / Assemble 狀態
-    """
+    '''
     s = Session()
     try:
         payload = request.get_json() or {}
@@ -2439,12 +3571,24 @@ def create_product():
                     .one_or_none()
                 )
 
-            # 已入庫就禁止重複入庫
-            #if a and bool(getattr(a, "isStockIn", False)):
-            #    return jsonify({
-            #        "status": False,
-            #        "error": f"material_id={mid}, assemble_id={assemble_id} 已入庫，禁止重複入庫"
-            #    }), 400
+            if assemble_id <= 0 or not a:
+                return jsonify({
+                    "status": False,
+                    "error": f"material_id={mid} 找不到有效的 assemble_id={assemble_id}"
+                }), 400
+
+            if bool(getattr(a, "isStockIn", False)):
+                return jsonify({
+                    "status": False,
+                    "error": f"material_id={mid}, assemble_id={assemble_id} 已入庫，禁止重複入庫"
+                }), 400
+
+            if not bool(getattr(a, "isWarehouseStationShow", False)):
+                return jsonify({
+                    "status": False,
+                    "error": f"material_id={mid}, assemble_id={assemble_id} 尚未進入待入庫，不可入庫"
+                }), 400
+            #
 
             process_id_to_use = _normalize_int(it.get("process_id"), 0)
 
@@ -2518,36 +3662,17 @@ def create_product():
                 m.total_allOk_qty = new_total
 
                 must_qty2 = _normalize_int(getattr(m, "must_allOk_qty", 0), 0)
-                #if must_qty2 > 0 and new_total >= must_qty2:
-                if new_total >= must_qty2:
+
+                if must_qty2 > 0 and new_total >= must_qty2:
                     m.isAllOk = True
+                    m.show1_ok = 3
                     m.show2_ok = 12
                     m.show3_ok = 13
+                    m.isOpen = False
+                    m.isOpenEmpId = ''
+                    m.hasStarted = False
+                    m.startStatus = 1
 
-            ## 回寫 Assemble：已入庫後不要再顯示於待入庫清單
-            #if a:
-            #    a.allOk_qty = add_qty
-            #    #a.isStockIn = True
-            #    #a.isWarehouseStationShow = False
-            #    a.isWarehouseStationShow = True
-            #    a.update_time = now_str
-            #
-            '''
-            # 回寫 Assemble：同一張 material 底下所有待入庫列，入庫後都不要再顯示
-            stockin_rows = (
-                s.query(Assemble)
-                 .filter(Assemble.material_id == mid)
-                 .filter(Assemble.isWarehouseStationShow == True)
-                 .all()
-            )
-
-            for row in stockin_rows:
-                row.allOk_qty = add_qty
-                row.isWarehouseStationShow = False
-                row.input_allOk_disable = True
-                row.update_time = now_str
-            '''
-            #
             # 回寫 Assemble：只關閉這次入庫的單筆 assemble
             if assemble_id > 0:
                 a = (
@@ -2559,10 +3684,11 @@ def create_product():
 
                 if a:
                     a.allOk_qty = add_qty
+                    a.isStockIn = True
                     a.isWarehouseStationShow = False
                     a.input_allOk_disable = True
                     a.update_time = now_str
-            #
+           #
 
         s.commit()
 
@@ -2596,8 +3722,6 @@ def create_product():
         return jsonify({"status": False, "error": str(e)}), 500
     finally:
         s.close()
-
-
 
 
 """

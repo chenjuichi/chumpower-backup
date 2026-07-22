@@ -80,6 +80,9 @@ class User(BASE):
   emp_name = Column(String(10), nullable=False)           #員工姓名
   dep_name = Column(String(20), nullable=False)           #部門名稱
   password = Column(String(255))                          #預設值 a12345
+
+  record_perm = Column(Integer, default=4)                # 0:none, 1:system, 2:admin, 3: staff, 4:member
+
   perm_id = Column(Integer, ForeignKey('permission.id'))  # 一對多(多)
   setting_id = Column(Integer, ForeignKey('setting.id'))  # 一對多(多)
   is_user_delegate = Column(Boolean, default=False)       # false: 目前不須代理人
@@ -311,7 +314,7 @@ class Material(BASE):
     _abnormal_cause = relationship("AbnormalCause", secondary=association_material_abnormal, back_populates="_material")
     _product =  relationship('Product', backref="material")         # 一對多(一),
     _process =  relationship('Process', backref="material")         # 一對多(一),
-    material_stockin_date = Column(String(12))                      # 入庫日期
+    material_stockin_date = Column(String(20))                      # 入庫日期
 
     #process_steps = Column(Text, nullable=True)                     # 組裝/檢驗工序, 格式: id:name:checked(t/f),....;id:name:checked(t/f),....
     process_steps = Column(JSON, default=default_process_steps)     # ial 是否

@@ -8,11 +8,11 @@ if not exist "C:\chumpower-backup\front"                        mkdir "C:\chumpo
 if not exist "C:\chumpower-backup\front\public"                 mkdir "C:\chumpower-backup\front\public"
 if not exist "C:\chumpower-backup\front\src"                    mkdir "C:\chumpower-backup\front\src"
 if not exist "C:\chumpower-backup\front\src\views"              mkdir "C:\chumpower-backup\front\src\views"
-if not exist "C:\chumpower-backup\front\src\views\old_source"   mkdir "C:\chumpower-backup\front\src\views\old_source"
+::if not exist "C:\chumpower-backup\front\src\views\old_source"   mkdir "C:\chumpower-backup\front\src\views\old_source"
 if not exist "C:\chumpower-backup\front\src\styles"             mkdir "C:\chumpower-backup\front\src\styles"
 if not exist "C:\chumpower-backup\front\src\store"              mkdir "C:\chumpower-backup\front\src\store"
 if not exist "C:\chumpower-backup\front\src\router"             mkdir "C:\chumpower-backup\front\src\router"
-if not exist "C:\chumpower-backup\front\src\router\old_source"  mkdir "C:\chumpower-backup\front\src\router\old_source"
+::if not exist "C:\chumpower-backup\front\src\router\old_source"  mkdir "C:\chumpower-backup\front\src\router\old_source"
 if not exist "C:\chumpower-backup\front\src\mixins"             mkdir "C:\chumpower-backup\front\src\mixins"
 if not exist "C:\chumpower-backup\front\src\components"         mkdir "C:\chumpower-backup\front\src\components"
 if not exist "C:\chumpower-backup\front\src\assets"             mkdir "C:\chumpower-backup\front\src\assets"
@@ -34,8 +34,8 @@ copy "D:\vue3\chumpower\src\mixins\*.*"             "C:\chumpower-backup\front\s
 copy "D:\vue3\chumpower\src\components\*.*"         "C:\chumpower-backup\front\src\components"
 copy "D:\vue3\chumpower\src\assets\*.*"             "C:\chumpower-backup\front\src\assets"
 
-copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
-copy "D:\vue3\chumpower\src\router\old_source\*.js" "C:\chumpower-backup\front\src\router\old_source"
+::copy "D:\vue3\chumpower\src\views\old_source\*.vue" "C:\chumpower-backup\front\src\views\old_source"
+::copy "D:\vue3\chumpower\src\router\old_source\*.js" "C:\chumpower-backup\front\src\router\old_source"
 
 :: server端, 檢查並建立其他必要目錄
 if not exist "C:\chumpower-backup\server\server" (

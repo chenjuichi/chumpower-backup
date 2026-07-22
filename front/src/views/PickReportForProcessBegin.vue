@@ -1353,6 +1353,7 @@ const onClickBegin =  async (row) => {
   await listMaterialsAndAssembles()
 }
 
+/*
 const updateItem = async (item) => {
   console.log("PickReportForAssembleBegin, updateItem(),", item);
 
@@ -1474,6 +1475,244 @@ const updateItem = async (item) => {
 
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+};
+*/
+//
+const updateItem = async (item) => {
+  console.log(
+    'PickReportForAssembleBegin, updateItem():',
+    item
+  );
+
+  if (!item) {
+    throw new Error('updateItem(): item 不存在');
+  }
+
+  const materialId = Number(
+    item.material_id ??
+    item.id ??
+    0
+  );
+
+  const assembleId = Number(
+    item.assemble_id ?? 0
+  );
+
+  const userId = String(
+    currentUser.value?.empID ?? ''
+  ).trim();
+
+  if (!materialId) {
+    throw new Error(
+      'updateItem(): material_id 不存在'
+    );
+  }
+
+  if (!assembleId) {
+    throw new Error(
+      'updateItem(): assemble_id 不存在'
+    );
+  }
+
+  if (!userId) {
+    throw new Error(
+      'updateItem(): 使用者工號不存在'
+    );
+  }
+
+   // receive_qty：
+   // Begin 按開始時可能沒有輸入數量。
+   // 若空白，改用原本應領數量或需求數量。
+  const receiveQty = Number(
+    item.receive_qty ??
+    item.ask_qty ??
+    item.must_receive_qty ??
+    item.req_qty ??
+    0
+  );
+
+  const oldTotalReceiveQty = Number(
+    item.total_receive_qty_num ??
+    item.total_ask_qty ??
+    0
+  );
+
+  if (
+    !Number.isFinite(receiveQty) ||
+    receiveQty < 0
+  ) {
+    throw new Error(
+      `updateItem(): receive_qty 不正確：${item.receive_qty}`
+    );
+  }
+
+  const total =
+    receiveQty + oldTotalReceiveQty;
+
+  const formattedStartTime =
+    formatDateTime(new Date());
+
+  console.log(
+    '[updateItem]',
+    {
+      materialId,
+      assembleId,
+      userId,
+      receiveQty,
+      oldTotalReceiveQty,
+      total,
+      formattedStartTime,
+    }
+  );
+
+  // 1. 記錄目前報工開始時間
+  await updateAssemble({
+    assemble_id: assembleId,
+    record_name: 'currentStartTime',
+    record_data: formattedStartTime,
+  });
+
+  // 2. 記錄本次領取數量
+  await updateAssemble({
+    assemble_id: assembleId,
+    record_name: 'ask_qty',
+    record_data: receiveQty,
+  });
+
+  // 3. 第一次開始時，補完工應領數量
+  const mustReceiveEndQty = Number(
+    item.must_receive_end_qty ?? 0
+  );
+
+  if (
+    mustReceiveEndQty === 0 &&
+    receiveQty > 0
+  ) {
+    await updateAssembleMustReceiveQtyByMaterialIDAndDate({
+      material_id: materialId,
+      assemble_id: assembleId,
+      create_at: item.create_at,
+      record_name: 'must_receive_end_qty',
+      record_data: receiveQty,
+    });
+  }
+
+  // 4. 記錄累計領取數量
+  await updateAssemble({
+    assemble_id: assembleId,
+    record_name: 'total_ask_qty',
+    record_data: total,
+  });
+
+  // 5. 記錄目前操作人員
+  await updateAssemble({
+    assemble_id: assembleId,
+    record_name: 'user_id',
+    record_data: userId,
+  });
+
+  // 6. Material 顯示狀態：
+  // show2_ok = 4，表示加工作業進行中
+  await updateMaterial({
+    id: materialId,
+    record_name: 'show2_ok',
+    record_data: 4,
+  });
+
+  // 7. Assemble 顯示狀態
+  await updateAssemble({
+    assemble_id: assembleId,
+    record_name: 'show2_ok',
+    record_data: 4,
+  });
+
+  // 8. 判斷領取數量是否已達上限
+  let inputDisabled = Boolean(
+    item.input_disable
+  );
+
+  if (startDisabled(item)) {
+    inputDisabled = true;
+
+    await updateAssemble({
+      assemble_id: assembleId,
+      record_name: 'input_disable',
+      record_data: true,
+    });
+  }
+
+  // 9. 更新目前頁面的 reactive row
+  const targetIndex =
+    materials_and_assembles.value.findIndex(
+      row => row.index === item.index
+    );
+
+  const localPatch = {
+    receive_qty: receiveQty,
+    ask_qty: receiveQty,
+
+    total_receive_qty_num: total,
+    total_receive_qty: `(${total})`,
+    total_ask_qty: total,
+
+    assemble_process_num: 4,
+    show2_ok: 4,
+
+    input_disable: inputDisabled,
+
+    user_id: userId,
+    currentStartTime: formattedStartTime,
+  };
+
+  if (targetIndex >= 0) {
+    materials_and_assembles.value[targetIndex] = {
+      ...materials_and_assembles.value[targetIndex],
+      ...localPatch,
+    };
+  } else {
+    // 找不到 index 時不要寫入 [-1]。
+    // 直接更新傳入的 item 即可。
+    Object.assign(item, localPatch);
+
+    console.warn(
+      '[updateItem] 找不到對應 row，改為直接更新 item',
+      {
+        itemIndex: item.index,
+        materialId,
+        assembleId,
+      }
+    );
+  }
+
+  // 10. 通知同瀏覽器的 End 頁面同步
+  const syncKey = [
+    materialId,
+    assembleId,
+    Number(item.process_step_code ?? 0),
+    userId,
+  ].join(':');
+
+  localStorage.setItem(
+    `PROCESS_PR_END_SYNC_${userId}`,
+    `${syncKey}|${Date.now()}`
+  );
+
+  console.log(
+    '[updateItem] completed:',
+    {
+      storageKey:
+        `PROCESS_PR_END_SYNC_${userId}`,
+      syncKey,
+    }
+  );
+
+  return {
+    success: true,
+    material_id: materialId,
+    assemble_id: assembleId,
+    receive_qty: receiveQty,
+    total_ask_qty: total,
+  };
 };
 
 function startDisabled(row) {

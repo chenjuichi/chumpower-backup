@@ -1285,3 +1285,19 @@
 連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
 連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
 連線時間: Wed Jul 15 2026 09:59:57 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Thu Jul 16 2026 14:37:05 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Fri Jul 17 2026 09:24:13 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Sat Jul 18 2026 14:15:37 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Jul 20 2026 09:39:10 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Mon Jul 20 2026 10:57:23 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Mon Jul 20 2026 15:40:29 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線時間: Mon Jul 20 2026 15:40:42 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線時間: Tue Jul 21 2026 09:24:52 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.32.50:6600, mode: false, RUN_MODE: false
+連線時間: Wed Jul 22 2026 09:25:59 GMT+0800 (台北標準時間), mode: false, RUN_MODE: false

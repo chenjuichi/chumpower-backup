@@ -136,7 +136,7 @@
         single-line
         class="top-input"
       />
-
+  <!--
       <v-text-field
         id="bar_code"
         v-model="bar_code"
@@ -152,6 +152,21 @@
         variant="outlined"
         class="barcode-input top-input"
       />
+  -->
+<v-text-field
+  id="bar_code"
+  v-model="bar_code"
+  label="條碼"
+  prepend-inner-icon="mdi-barcode"
+  ref="barcodeInput"
+  @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
+  @keyup.enter="handleBarCode"
+  hide-details
+  single-line
+  variant="outlined"
+  class="barcode-input top-input"
+/>
+
   </v-col>
 
           </v-row>

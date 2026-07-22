@@ -727,6 +727,10 @@ export const apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
+          if (path == '/checkDeleteBatchPermission') {
+            return res.data;
+          }
+
           if (path == '/copyNewAssemble') {
             assemble_new_copy_ids.value = res.data.assemble_data;
           }

@@ -10,10 +10,10 @@ from database.tables import default_process_steps
 from zoneinfo import ZoneInfo
 
 
-TPE = ZoneInfo("Asia/Taipei")
-
-
 # ------------------------------------------------------------------
+
+
+TPE = ZoneInfo("Asia/Taipei")
 
 
 def fmt_hhmmss(seconds: int):
@@ -24,10 +24,10 @@ def fmt_hhmmss(seconds: int):
 
 
 def parse_dt_maybe_aw2(value):
-    """
-    把 value(可能是 str/datetime/None) 轉成 Asia/Taipei 的 aware datetime。
-    若無法解析回傳 None。
-    """
+
+    # 把 value(可能是 str/datetime/None) 轉成 Asia/Taipei 的 aware datetime。
+    # 若無法解析回傳 None。
+
     if value in (None, "", "None"):
         return None
 
@@ -68,10 +68,10 @@ def parse_dt_maybe_aw2(value):
 
 
 def parse_dt_maybe_aw(value):
-    """
-    把 value(可能是 str/datetime/None) 轉成 Asia/Taipei 的 aware datetime。
-    若無法解析回傳 None。
-    """
+
+    # 把 value(可能是 str/datetime/None) 轉成 Asia/Taipei 的 aware datetime。
+    # 若無法解析回傳 None。
+
     if value in (None, "", "None"):
         return None
 
@@ -111,9 +111,9 @@ def parse_dt_maybe_aw(value):
 
 
 def parse_dt_maybe(v):
-    '''
-    把 v 轉成 datetime；支援 'YYYY-MM-DD HH:MM:SS[.ffffff]'、'YYYY-MM-DDTHH:MM:SS[.ffffff]'、結尾 'Z'。失敗回 None。
-    '''
+    # 把 v 轉成 datetime；
+    # 支援 'YYYY-MM-DD HH:MM:SS[.ffffff]'、'YYYY-MM-DDTHH:MM:SS[.ffffff]'、結尾 'Z'。失敗回 None。
+
     if not v:
         return None
     if isinstance(v, datetime):
@@ -134,12 +134,12 @@ def parse_dt_maybe(v):
 
 
 def normalize_create_at(raw):
-    """
-    把前端丟來的 create_at 正常化成 datetime 物件：
-    - 若本來就是 datetime → 直接回傳
-    - 若是 timestamp(int/float) → 轉成 datetime
-    - 若是字串 → 嘗試用幾種格式解析（含 'Tue, 18 Nov 2025 13:11:52 GMT'）
-    """
+
+    # 把前端丟來的 create_at 正常化成 datetime 物件：
+    # - 若本來就是 datetime → 直接回傳
+    # - 若是 timestamp(int/float) → 轉成 datetime
+    # - 若是字串 → 嘗試用幾種格式解析（含 'Tue, 18 Nov 2025 13:11:52 GMT'）
+
     if raw is None:
         return None
 
@@ -212,17 +212,16 @@ def _checked_ids(process_steps, group_name):
 
 
 def release_b109_batch_to_b110(session, material_id):
-    """
-    B109 組裝批次釋放到 B110 檢驗。
 
-    規則：
-    1. 只看 process_steps['assemble'] 目前 checked 的組裝工序。
-    2. 每個 schedule_id 取最大可釋放數量，避免剩餘補工序 0 擋住 min。
-    3. release_qty = 各組裝工序可釋放數量的最小值。
-    4. release_qty > 0 時，依 process_steps['check'] 建立 B110 批次檢驗列。
-    5. 原始 B110 只當 template，不顯示在 Begin。
-    6. B109 total_ask_qty_end 作為「已釋放到 B110 的數量」。
-    """
+    # B109 組裝批次釋放到 B110 檢驗。
+    #
+    # 規則：
+    # 1. 只看 process_steps['assemble'] 目前 checked 的組裝工序。
+    # 2. 每個 schedule_id 取最大可釋放數量，避免剩餘補工序 0 擋住 min。
+    # 3. release_qty = 各組裝工序可釋放數量的最小值。
+    # 4. release_qty > 0 時，依 process_steps['check'] 建立 B110 批次檢驗列。
+    # 5. 原始 B110 只當 template，不顯示在 Begin。
+    # 6. B109 total_ask_qty_end 作為「已釋放到 B110 的數量」。
 
     def safe_str(v):
         try:
@@ -315,9 +314,7 @@ def release_b109_batch_to_b110(session, material_id):
             "remaining_b109_ids": [r.id for r in remaining_b109_not_done],
             "message": "B109 still active, do not release B110"
         }
-    #
 
-    #
     # ------------------------------------------------------------
     # 異常返工：B109[異常] 完成後，只釋放它自己的 B110[異常]
     # 不要走一般 B109_RELEASE_BATCH 建立新 B110
@@ -655,7 +652,6 @@ def release_b109_batch_to_b110(session, material_id):
     }
 
 
-
 def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
@@ -936,7 +932,6 @@ def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
     )
 
 
-#for
 def to_int(v, default=0):
     try:
         return int(v or default)
@@ -1029,9 +1024,6 @@ def mark_finished_hidden(row):
     row.show3_ok = 7
 
 
-#
-from datetime import datetime, timedelta
-
 def ensure_process_log(s, material_id, process_type, user_id, begin_time, end_time):
     exists = s.query(Process).filter(
         Process.material_id == material_id,
@@ -1069,67 +1061,281 @@ def ensure_process_log(s, material_id, process_type, user_id, begin_time, end_ti
     s.add(p)
 
 
-def move_assemble_to_warehouse(s, material_record, assemble_record, agv_user_wait='AGV2-1', agv_user_run='AGV2-2'):
-    now = datetime.now()
+from datetime import datetime
 
-    # 1) assemble：End -> Warehouse
+
+def _is_empty_datetime(value):
+    # 相容資料庫中 datetime 欄位可能是 NULL 或 空字串
+
+    return value is None or str(value).strip() == ''
+
+
+def _has_real_process_time(process_record):
+
+    # 判斷 process 是否已經真正執行過。
+    # 只要 begin_time / end_time / elapsedActive_time 任一有值，
+    # 就視為已有實際紀錄，不可任意刪除。
+
+    if not process_record:
+        return False
+
+    if not _is_empty_datetime(process_record.begin_time):
+        return True
+
+    if not _is_empty_datetime(process_record.end_time):
+        return True
+
+    if int(process_record.elapsedActive_time or 0) > 0:
+        return True
+
+    return False
+
+
+# 20260716版
+def move_assemble_to_warehouse(
+    session,
+    material_record,
+    assemble_record,
+    mode,
+    operator_user=None,
+    agv_wait_user='AGV2-1',
+    agv_run_user='AGV2-2',
+    handle_transport=True
+):
+
+    # 將一筆 assemble 完成列移往 Warehouse。
+    #
+    # mode:
+    #     agv       -> 使用 AGV
+    #     forklift  -> 使用堆高機
+    #
+    # 注意：
+    # 1. 此函式不 commit，由呼叫端統一 commit。
+    # 2. 此函式不累加 material.total_assemble_qty。
+    # 3. 此函式不建立任何搬運 Process。
+    #    - process_type=29 / 3：由 AGV callback/API 建立
+    #    - process_type=6：由 createTable.py 的 /createProcess 建立
+    # 4. 同一 material 有多筆 assemble 時，只有第一筆
+    #    handle_transport=True 才執行搬運 placeholder 清理。
+
+    mode = str(mode or '').strip().lower()
+
+    if mode not in ('agv', 'forklift'):
+        raise ValueError('mode 必須為 agv 或 forklift')
+
+    if material_record is None:
+        raise ValueError('material_record 不可為空')
+
+    if assemble_record is None:
+        raise ValueError('assemble_record 不可為空')
+
+    material_id = int(material_record.id)
+    assemble_id = int(assemble_record.id)
+
+    work_num = str(getattr(assemble_record, 'work_num', '') or '').strip()
+
+    process_step_code = int(getattr(assemble_record, 'process_step_code', 0) or 0)
+
+    completed_qty = int(getattr(assemble_record, 'completed_qty', 0) or 0)
+
+    show2_ok = int(getattr(assemble_record, 'show2_ok', 0) or 0)
+
+    # ------------------------------------------------------------
+    # 1. 確認這筆 assemble 是可送出的完成列
+    # ------------------------------------------------------------
+    if process_step_code != 0:
+        raise ValueError(
+            f'assemble_id={assemble_id} 尚未成為結束列，'
+            f'process_step_code={process_step_code}'
+        )
+
+    if completed_qty <= 0:
+        raise ValueError(
+            f'assemble_id={assemble_id} completed_qty 必須大於 0'
+        )
+
+    if show2_ok not in (9, 10):
+        raise ValueError(
+            f'assemble_id={assemble_id} 尚未進入待送出狀態，'
+            f'show2_ok={show2_ok}'
+        )
+
+    # B109-only 與 B110 都允許送出
+    if work_num not in ('B109', 'B110'):
+        print(
+            '[move_assemble_to_warehouse] warning:',
+            f'material_id={material_id}, '
+            f'assemble_id={assemble_id}, '
+            f'work_num={work_num}'
+        )
+
+    deleted_empty_forklift_ids = []
+    deleted_empty_agv_ids = []
+
+    # helper 不再新增搬運 Process，永遠維持空陣列
+    created_process_ids = []
+
+    # ------------------------------------------------------------
+    # 2. 只有第一筆 assemble 才處理搬運 placeholder
+    #
+    # process_type:
+    # 29 = 等待 AGV（組裝區）
+    # 3  = AGV 組裝區 -> 成品區
+    # 6  = 堆高機 組裝區 -> 成品區
+    # ------------------------------------------------------------
+    if handle_transport:
+        transport_rows = (
+            session.query(Process)
+            .filter(
+                Process.material_id == material_id,
+                Process.process_type.in_([3, 6, 29])
+            )
+            .order_by(Process.id.asc())
+            .with_for_update()
+            .all()
+        )
+
+        agv_wait_rows = [
+            row
+            for row in transport_rows
+            if int(row.process_type or 0) == 29
+        ]
+
+        agv_run_rows = [
+            row
+            for row in transport_rows
+            if int(row.process_type or 0) == 3
+        ]
+
+        forklift_rows = [
+            row
+            for row in transport_rows
+            if int(row.process_type or 0) == 6
+        ]
+
+        # --------------------------------------------------------
+        # 2-1. AGV 模式
+        #
+        # 選擇 AGV：
+        # - 刪除完全未執行的空白堆高機 placeholder
+        # - 不建立 process_type=29
+        # - 不建立 process_type=3
+        # --------------------------------------------------------
+        if mode == 'agv':
+            for forklift_process in forklift_rows:
+                if not _has_real_process_time(forklift_process):
+                    deleted_empty_forklift_ids.append(
+                        forklift_process.id
+                    )
+                    session.delete(forklift_process)
+
+            session.flush()
+
+        # --------------------------------------------------------
+        # 2-2. 堆高機模式
+        #
+        # 選擇堆高機：
+        # - 刪除完全未執行的 AGV placeholder
+        # - 不建立 process_type=6
+        #
+        # 正式的 type=6 統一由 /createProcess 建立。
+        # --------------------------------------------------------
+        elif mode == 'forklift':
+            for agv_process in agv_wait_rows + agv_run_rows:
+                if not _has_real_process_time(agv_process):
+                    deleted_empty_agv_ids.append(
+                        agv_process.id
+                    )
+                    session.delete(agv_process)
+
+            session.flush()
+
+    # ------------------------------------------------------------
+    # 3. 更新 assemble 為 Warehouse 待入庫
+    #
+    # B109-only 維持 B109，不轉成 B110。
+    # ------------------------------------------------------------
     assemble_record.isAssembleStationShow = False
     assemble_record.isWarehouseStationShow = True
-    assemble_record.isStockIn = False
 
-    assemble_record.show1_ok = 1
+    if hasattr(assemble_record, 'isStockIn'):
+        assemble_record.isStockIn = False
+
+    assemble_record.whichStation = 3
+
+    assemble_record.show1_ok = 3
     assemble_record.show2_ok = 10
     assemble_record.show3_ok = 10
-    assemble_record.whichStation = 2
 
     assemble_record.input_disable = True
     assemble_record.input_end_disable = True
-    assemble_record.input_allOk_disable = False
     assemble_record.input_abnormal_disable = True
 
-    assemble_record.update_time = now
+    # Warehouse 等待入庫時，入庫數量欄位應可操作
+    if hasattr(assemble_record, 'input_allOk_disable'):
+        assemble_record.input_allOk_disable = False
 
-    # 2) material：同步等待入庫狀態
-    material_record.isShow = True
-    material_record.isTakeOk = True
+    if hasattr(assemble_record, 'update_time'):
+        assemble_record.update_time = datetime.now()
+
+    # ------------------------------------------------------------
+    # 4. 同步 material 為 Warehouse 待入庫狀態
+    #
+    # 不修改 total_assemble_qty，避免多筆 assemble 重複累加。
+    # ------------------------------------------------------------
+    if hasattr(material_record, 'isShow'):
+        material_record.isShow = True
+
+    if hasattr(material_record, 'isTakeOk'):
+        material_record.isTakeOk = True
+
+    if hasattr(material_record, 'isAssembleStation3TakeOk'):
+        material_record.isAssembleStation3TakeOk = True
+
     material_record.isAssembleStationShow = False
-    material_record.isAssembleStation3TakeOk = True
+    material_record.whichStation = 3
 
     material_record.show1_ok = 3
     material_record.show2_ok = 10
     material_record.show3_ok = 11
-    material_record.whichStation = 3
 
-    material_record.hasStarted = False
-    material_record.startStatus = 1
     material_record.isOpen = False
     material_record.isOpenEmpId = ''
+    material_record.hasStarted = False
+    material_record.startStatus = 1
 
-    material_record.update_time = now
+    if hasattr(material_record, 'update_time'):
+        material_record.update_time = datetime.now()
 
-    # 3) 補 Information process：等待 AGV、AGV 運行
-    wait_begin = now
-    wait_end = now + timedelta(seconds=1)
-    run_begin = now + timedelta(seconds=2)
-    run_end = now + timedelta(seconds=3)
+    session.flush()
 
-    ensure_process_log(
-        s=s,
-        material_id=material_record.id,
-        process_type=29,
-        user_id=agv_user_wait,
-        begin_time=wait_begin,
-        end_time=wait_end
-    )
+    return {
+        'status': True,
+        'mode': mode,
 
-    ensure_process_log(
-        s=s,
-        material_id=material_record.id,
-        process_type=3,
-        user_id=agv_user_run,
-        begin_time=run_begin,
-        end_time=run_end
-    )
+        'material_id': material_id,
+        'assemble_id': assemble_id,
+
+        'work_num': work_num,
+        'process_step_code': process_step_code,
+        'completed_qty': completed_qty,
+
+        'handle_transport': bool(handle_transport),
+
+        'isWarehouseStationShow': bool(
+            assemble_record.isWarehouseStationShow
+        ),
+
+        'deleted_empty_forklift_ids':
+            deleted_empty_forklift_ids,
+
+        'deleted_empty_agv_ids':
+            deleted_empty_agv_ids,
+
+        # 此 helper 不再新增搬運 process
+        'created_process_ids':
+            created_process_ids
+    }
 
 
 # ------------------------------------------------------------------
@@ -1190,6 +1396,7 @@ def calc_b109_releasable_qty_batch(session, material_id):
         total_done = 0
 
         for r in rows:
+            '''
             process_done = (
                 session.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
                 .filter(Process.material_id == material_id)
@@ -1201,6 +1408,36 @@ def calc_b109_releasable_qty_batch(session, material_id):
                 .scalar()
             ) or 0
             '''
+            #
+            process_done = (
+                session.query(
+                    func.coalesce(
+                        func.sum(
+                            Process.process_work_time_qty
+                        ),
+                        0
+                    )
+                )
+                .filter(
+                    Process.material_id == material_id
+                )
+                .filter(
+                    Process.assemble_id == r.id
+                )
+                .filter(
+                    Process.process_type == 21
+                )
+                .filter(
+                    Process.end_time.isnot(None)
+                )
+                .filter(
+                    Process.end_time != ''
+                )
+                .scalar()
+            ) or 0
+            #
+
+            '''
             row_done = max(
                 int(process_done or 0),
                 int(r.completed_qty or 0),
@@ -1208,10 +1445,17 @@ def calc_b109_releasable_qty_batch(session, material_id):
                 int(r.allOk_qty or 0),
             )
             '''
+            #row_done = max(
+            #    int(process_done or 0),
+            #    int(r.completed_qty or 0) + int(r.total_completed_qty or 0),
+            #    int(r.allOk_qty or 0),
+            #)
+            #
             row_done = max(
                 int(process_done or 0),
-                int(r.completed_qty or 0) + int(r.total_completed_qty or 0),
+                int(r.total_completed_qty or 0),
                 int(r.allOk_qty or 0),
+                int(r.completed_qty or 0),
             )
 
             total_done += row_done
@@ -1418,4 +1662,15 @@ def release_b109_to_b110_batch(session, material_id):
         "released_total": calc.get("released_total", 0),
         "message": "B109 released new B110 batch",
     }
+
+
+def pick_user_list(bucket, pt: str, mid: str):
+    # 從 user_ids_by_type 取出該製程/料號的名單（兼容 list 或字串)
+    val = (bucket.get(pt) or {}).get(mid)
+    if val is None:
+        return []
+    # 目前 user_ids_by_type(as_string=False) 回 list，若未來改成字串也可相容
+    if isinstance(val, str):
+        return [u.strip() for u in val.split(',') if u.strip()]
+    return list(val)
 

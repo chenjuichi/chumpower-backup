@@ -1,30 +1,22 @@
 import os
-import time
 import datetime
 from datetime import datetime as dt
-import shutil
-import pytz
+from datetime import datetime as DateTime
 
 from flask import Blueprint, jsonify, request, current_app
 
 import traceback
 
-import pymysql
-from sqlalchemy import func
-from sqlalchemy import inspect, or_
-from sqlalchemy import and_
+from sqlalchemy import inspect, or_, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import cast, Integer
 
-from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
-from database.tables import default_process_steps
+#from database.tables import User, UserDelegate, Permission, Setting, Bom, Material, Assemble, AbnormalCause, Process, Product, Agv, Session
 
-from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
+from database.p_tables import P_Material, P_Assemble,  P_Process
 
 from werkzeug.security import generate_password_hash
 
-from operator import itemgetter, attrgetter
 
 from .assemble_update_utils import (
     ALLOWED_FIELDS, FIELD_SCHEMAS,
@@ -42,6 +34,24 @@ from .helper import (
     count_running_process,
     mark_waiting_send,
     mark_finished_hidden,
+
+    move_assemble_to_warehouse,
+)
+
+from database.tables import (
+    User,
+    UserDelegate,
+    Permission,
+    Setting,
+    Bom,
+    Material,
+    Assemble,
+    AbnormalCause,
+    Process,
+    Product,
+    Agv,
+    Session,
+    default_process_steps,
 )
 
 updateTable = Blueprint('updateTable', __name__)
@@ -51,9 +61,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
 def format_period_time(start_dt, end_dt):
-    """
-    回傳類似 '0:00:04' 的 period_time
-    """
+    # 回傳類似 '0:00:04' 的 period_time
     try:
         seconds = int((end_dt - start_dt).total_seconds())
     except Exception:
@@ -77,14 +85,13 @@ def ensure_process_log(
     end_time=None,
     assemble_id=0
 ):
-    """
-    確保 Information 有指定 process_type 紀錄。
-    已存在就不重複新增。
+    #確保 Information 有指定 process_type 紀錄。
+    #已存在就不重複新增。
+    #
+    #process_type:
+    #  29 = 等待AGV，組裝區 -> 成品區
+    #  3  = AGV運行，組裝區 -> 成品區
 
-    process_type:
-      29 = 等待AGV，組裝區 -> 成品區
-      3  = AGV運行，組裝區 -> 成品區
-    """
     exists = (
         session.query(Process)
         .filter(Process.material_id == material_id)
@@ -136,716 +143,7 @@ def ensure_process_log(
     return row
 
 
-def move_assemble_to_warehouse(
-    session,
-    material_record,
-    assemble_record,
-    agv_wait_user='AGV2-1',
-    agv_run_user='AGV2-2'
-):
-    """
-    End.vue 送出後，統一把工單移到 Warehouse 等待入庫。
-
-    同步處理：
-      1. assemble 從 End 隱藏
-      2. assemble 顯示到 Warehouse
-      3. material 狀態改為等待入庫
-      4. Information 補 process_type=29
-      5. Information 補 process_type=3
-    """
-
-    now = dt.now()
-
-    # ------------------------------------------------------------
-    # 1) assemble：End -> Warehouse
-    # ------------------------------------------------------------
-    assemble_record.isAssembleStationShow = False
-    assemble_record.isWarehouseStationShow = True
-    assemble_record.isStockIn = False
-
-    assemble_record.show1_ok = 1
-    assemble_record.show2_ok = 10
-    assemble_record.show3_ok = 10
-    assemble_record.whichStation = 2
-
-    assemble_record.input_disable = True
-    assemble_record.input_end_disable = True
-    assemble_record.input_abnormal_disable = True
-    assemble_record.input_allOk_disable = False
-
-    assemble_record.update_time = now
-
-    # ------------------------------------------------------------
-    # 2) material：等待入庫狀態
-    # ------------------------------------------------------------
-    material_record.isShow = True
-    material_record.isTakeOk = True
-    material_record.isAssembleStationShow = False
-    material_record.isAssembleStation3TakeOk = True
-
-    material_record.show1_ok = 3
-    material_record.show2_ok = 10
-    material_record.show3_ok = 11
-    material_record.whichStation = 3
-
-    material_record.hasStarted = False
-    material_record.startStatus = 1
-    material_record.isOpen = False
-    material_record.isOpenEmpId = ''
-
-    material_record.update_time = now
-
-    # ------------------------------------------------------------
-    # 3) Information：補等待AGV / AGV運行
-    # ------------------------------------------------------------
-    wait_begin = now
-    wait_end = wait_begin + datetime.timedelta(seconds=1)
-
-    run_begin = wait_end + datetime.timedelta(seconds=1)
-    run_end = run_begin + datetime.timedelta(seconds=1)
-
-    wait_process = ensure_process_log(
-        session=session,
-        material_id=material_record.id,
-        process_type=29,
-        user_id=agv_wait_user,
-        begin_time=wait_begin,
-        end_time=wait_end,
-        assemble_id=0
-    )
-
-    run_process = ensure_process_log(
-        session=session,
-        material_id=material_record.id,
-        process_type=3,
-        user_id=agv_run_user,
-        begin_time=run_begin,
-        end_time=run_end,
-        assemble_id=0
-    )
-
-    return {
-        "material_id": material_record.id,
-        "order_num": material_record.order_num,
-        "assemble_id": assemble_record.id,
-        "wait_process_id": wait_process.id if wait_process else None,
-        "run_process_id": run_process.id if run_process else None,
-    }
-
-
 # ------------------------------------------------------------------
-
-"""
-def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
-    material = session.query(Material).filter(Material.id == material_id).first()
-    if not material:
-        print("material not found:", material_id)
-        return
-
-    process_steps = process_steps or default_process_steps()
-
-    all_rows = (
-        session.query(Assemble)
-        .filter(Assemble.material_id == material_id)
-        .all()
-    )
-
-    def get_base_by_work_num(work_num):
-        for row in all_rows:
-            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
-                return row
-        return None
-
-    def get_any_template_base():
-        for row in all_rows:
-            if row.is_copied_from_id is None:
-                return row
-        return all_rows[0] if all_rows else None
-
-    def build_base_row_from_template(template, work_num, process_step_code):
-        new_base = Assemble(
-            material_id=material.id,
-            material_num=material.material_num,
-            material_comment=material.material_comment,
-            seq_num=getattr(template, 'seq_num', 10) if template else 10,
-            work_num=work_num,
-            process_step_code=process_step_code,
-            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
-            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
-            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
-            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
-            writer_id=getattr(template, 'writer_id', None) if template else None,
-            write_date=getattr(template, 'write_date', None) if template else None,
-            good_qty=getattr(template, 'good_qty', 0) if template else 0,
-            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
-            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
-            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
-            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
-            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
-            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
-            reason=getattr(template, 'reason', '') if template else '',
-            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
-            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
-            currentStartTime=None,
-            currentEndTime=None,
-            input_disable=getattr(template, 'input_disable', 1) if template else 1,
-            input_end_disable=getattr(template, 'input_end_disable', 0) if template else 0,
-            input_allOk_disable=getattr(template, 'input_allOk_disable', 0) if template else 0,
-            input_abnormal_disable=getattr(template, 'input_abnormal_disable', 0) if template else 0,
-            isAssembleStationShow=getattr(template, 'isAssembleStationShow', 0) if template else 0,
-            isWarehouseStationShow=getattr(template, 'isWarehouseStationShow', 0) if template else 0,
-            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
-            alarm_message=getattr(template, 'alarm_message', '') if template else '',
-            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
-            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
-            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
-            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
-            show1_ok=getattr(template, 'show1_ok', material.show1_ok) if template else material.show1_ok,
-            show2_ok=getattr(template, 'show2_ok', material.show2_ok) if template else material.show2_ok,
-            show3_ok=getattr(template, 'show3_ok', material.show3_ok) if template else material.show3_ok,
-            schedule_id=None,
-            is_copied_from_id=None
-        )
-        session.add(new_base)
-        session.flush()
-        return new_base
-
-    def ensure_base_row(work_num, process_step_code, target_steps):
-        if work_num == 'B109':
-            process_type = 21
-        elif work_num == 'B110':
-            process_type = 22
-        else:
-            process_type = None
-
-        completed_schedule_ids = set()
-
-        if process_type:
-            completed_schedule_ids = {
-                int(r[0])
-                for r in (
-                    session.query(Assemble.schedule_id)
-                    .join(Process, Process.assemble_id == Assemble.id)
-                    .filter(Assemble.material_id == material_id)
-                    .filter(Assemble.work_num == work_num)
-                    .filter(Assemble.schedule_id.isnot(None))
-                    .filter(Process.process_type == process_type)
-                    .filter(Process.has_started.is_(True))
-                    .filter(Process.end_time.isnot(None))
-                    .filter(Process.end_time != '')
-                    .all()
-                )
-                if r[0] is not None
-            }
-
-        #checked_ids = [
-        #    int(x.get('id'))
-        #    for x in (target_steps or [])
-        #    if (
-        #        x.get('checked')
-        #        and x.get('id') is not None
-        #        and int(x.get('id')) not in completed_schedule_ids
-        #    )
-        #]
-        #
-        checked_ids = [
-            int(x.get('id'))
-            for x in (target_steps or [])
-            if (
-                x.get('checked')
-                and not x.get('deleted', False)
-                and x.get('id') is not None
-                and int(x.get('id')) not in completed_schedule_ids
-            )
-        ]
-
-        print("sync schedule:", material_id, work_num, checked_ids)
-        #
-
-        base = get_base_by_work_num(work_num)
-
-        if not base and checked_ids:
-            template = get_any_template_base()
-            base = build_base_row_from_template(template, work_num, process_step_code)
-            all_rows.append(base)
-
-        if not base:
-            return
-        '''
-        session.query(Assemble).filter(
-            Assemble.is_copied_from_id == base.id
-        ).delete(synchronize_session='fetch')
-        '''
-        #
-        # ✅ 先清掉同 material + 同 work_num + 有 schedule_id 的舊排程列
-        # 只保留 base row，避免 b1/b2/b3 舊 copied rows 殘留
-        session.query(Assemble).filter(
-            Assemble.material_id == material_id,
-            Assemble.work_num == work_num,
-            Assemble.id != base.id,
-            Assemble.schedule_id.isnot(None),
-            Assemble.reason != '異常返工'
-        ).delete(synchronize_session='fetch')
-        #
-
-        '''
-        if not checked_ids:
-            base.schedule_id = None
-            #base.process_step_code = 0
-            base.isAssembleStationShow = False
-            base.isWarehouseStationShow = False
-            #base.input_disable = True
-            #base.input_end_disable = True
-            #base.input_allOk_disable = True
-            #base.input_abnormal_disable = True
-            #base.show1_ok = 0
-            #base.show2_ok = 0
-            #base.show3_ok = 0
-            base.must_receive_qty = 0
-            base.ask_qty = 0
-            base.total_ask_qty = 0
-            base.must_receive_end_qty = 0
-            base.total_ask_qty_end = 0
-            #
-            base.process_step_code = process_step_code
-            base.input_disable = False
-            base.input_end_disable = False
-            base.input_allOk_disable = False
-            base.input_abnormal_disable = False
-
-            # ⭐ 只選檢驗時，B110 也要能在 Begin 顯示
-            base.isAssembleStationShow = True
-            base.isWarehouseStationShow = False
-
-            base.show1_ok = 1
-            base.show2_ok = 5 if work_num == 'B110' else 3
-            base.show3_ok = 5 if work_num == 'B110' else 3
-            #
-            return
-        '''
-        #
-        if not checked_ids:
-            # ⭐ 沒選此 work_num，只把這個 work_num 關掉
-            base.schedule_id = None
-            base.process_step_code = 0
-            base.isAssembleStationShow = False
-            base.isWarehouseStationShow = False
-            base.input_disable = True
-            base.input_end_disable = True
-            base.input_allOk_disable = True
-            base.input_abnormal_disable = True
-            base.show1_ok = 0
-            base.show2_ok = 0
-            base.show3_ok = 0
-            base.must_receive_qty = 0
-            base.ask_qty = 0
-            base.total_ask_qty = 0
-            base.must_receive_end_qty = 0
-            base.total_ask_qty_end = 0
-            return
-        #
-
-        base.process_step_code = process_step_code
-        base.input_disable = False
-        base.input_end_disable = False
-        base.input_allOk_disable = False
-        base.input_abnormal_disable = False
-        #
-        #base.isAssembleStationShow = False
-        # ⭐ 有選工序就要顯示，包含「只選檢驗 B110」
-        base.isAssembleStationShow = True
-        #
-
-        base.isWarehouseStationShow = False
-        #base.show1_ok = material.show1_ok
-        #base.show2_ok = material.show2_ok
-        #base.show3_ok = material.show3_ok
-        #
-        base.show1_ok = 1
-        if work_num == 'B110':
-            base.show2_ok = 5
-            base.show3_ok = 5
-        else:
-            base.show2_ok = 3
-            base.show3_ok = 3
-        #
-
-        #base_qty = (
-        #    qty
-        #    or material.delivery_qty
-        #    or material.total_delivery_qty
-        #    or material.material_qty
-        #    or 0
-        #)
-        #
-        base_qty = (
-            qty
-            or material.total_delivery_qty
-            or material.delivery_qty
-            or material.material_qty
-            or 0
-        )
-        base_qty = int(base_qty or 0)
-        #
-
-        base.must_receive_qty = base_qty
-        base.ask_qty = base_qty
-        base.total_ask_qty = base_qty
-        base.must_receive_end_qty = base_qty
-
-        if qty is not None and qty != '':
-          base.abnormal_qty = int(base_qty or 0)
-          base.reason = '異常返工'
-
-        base.schedule_id = checked_ids[0]
-
-        for sid in checked_ids[1:]:
-            new_row = Assemble(
-                material_id=base.material_id,
-                material_num=base.material_num,
-                material_comment=base.material_comment,
-                seq_num=base.seq_num,
-                work_num=base.work_num,
-                process_step_code=base.process_step_code,
-                Incoming1_Abnormal=base.Incoming1_Abnormal,
-                must_receive_qty=base.must_receive_qty,
-                ask_qty=base.ask_qty,
-                total_ask_qty=base.total_ask_qty,
-                total_ask_qty_end=base.total_ask_qty_end,
-                must_receive_end_qty=base.must_receive_end_qty,
-                abnormal_qty=base.abnormal_qty,
-                user_id=base.user_id,
-                writer_id=base.writer_id,
-                write_date=base.write_date,
-                good_qty=base.good_qty,
-                total_good_qty=base.total_good_qty,
-                non_good_qty=base.non_good_qty,
-                meinh_qty=base.meinh_qty,
-                completed_qty=base.completed_qty,
-                total_completed_qty=base.total_completed_qty,
-                allOk_qty=base.allOk_qty,
-                reason=base.reason,
-                confirm_comment=base.confirm_comment,
-                is_assemble_ok=base.is_assemble_ok,
-                currentStartTime=None,
-                currentEndTime=None,
-                input_disable=base.input_disable,
-                input_end_disable=base.input_end_disable,
-                input_allOk_disable=base.input_allOk_disable,
-                input_abnormal_disable=base.input_abnormal_disable,
-                isAssembleStationShow=base.isAssembleStationShow,
-                isWarehouseStationShow=base.isWarehouseStationShow,
-                alarm_enable=base.alarm_enable,
-                alarm_message=base.alarm_message,
-                isAssembleFirstAlarm=base.isAssembleFirstAlarm,
-                isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
-                isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
-                whichStation=base.whichStation,
-                show1_ok=base.show1_ok,
-                show2_ok=base.show2_ok,
-                show3_ok=base.show3_ok,
-                schedule_id=sid,
-                is_copied_from_id=base.id
-            )
-            session.add(new_row)
-
-    ensure_base_row(
-        work_num='B109',
-        process_step_code=3,
-        target_steps=process_steps.get('assemble', [])
-    )
-
-    ensure_base_row(
-        work_num='B110',
-        process_step_code=2,
-        target_steps=process_steps.get('check', [])
-    )
-"""
-
-
-"""
-# helper.py
-def sync_assemble_schedule_rows(session, material_id, process_steps, qty=None):
-    material = session.query(Material).filter(Material.id == material_id).first()
-    if not material:
-        print("material not found:", material_id)
-        return
-
-    process_steps = process_steps or default_process_steps()
-
-    all_rows = (
-        session.query(Assemble)
-        .filter(Assemble.material_id == material_id)
-        .all()
-    )
-
-    def get_base_by_work_num(work_num):
-        for row in all_rows:
-            if row.is_copied_from_id is None and (row.work_num or '').strip() == work_num:
-                return row
-        return None
-
-    def get_any_template_base():
-        for row in all_rows:
-            if row.is_copied_from_id is None:
-                return row
-        return all_rows[0] if all_rows else None
-
-    def build_base_row_from_template(template, work_num, process_step_code):
-        new_base = Assemble(
-            material_id=material.id,
-            material_num=material.material_num,
-            material_comment=material.material_comment,
-            seq_num=getattr(template, 'seq_num', 10) if template else 10,
-            work_num=work_num,
-            process_step_code=process_step_code,
-            Incoming1_Abnormal=getattr(template, 'Incoming1_Abnormal', '') if template else '',
-            must_receive_qty=getattr(template, 'must_receive_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            ask_qty=getattr(template, 'ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty=getattr(template, 'total_ask_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            total_ask_qty_end=getattr(template, 'total_ask_qty_end', 0) if template else 0,
-            must_receive_end_qty=getattr(template, 'must_receive_end_qty', material.delivery_qty or 0) if template else (material.delivery_qty or 0),
-            abnormal_qty=getattr(template, 'abnormal_qty', 0) if template else 0,
-            user_id=getattr(template, 'user_id', material.isOpenEmpId) if template else material.isOpenEmpId,
-            writer_id=getattr(template, 'writer_id', None) if template else None,
-            write_date=getattr(template, 'write_date', None) if template else None,
-            good_qty=getattr(template, 'good_qty', 0) if template else 0,
-            total_good_qty=getattr(template, 'total_good_qty', 0) if template else 0,
-            non_good_qty=getattr(template, 'non_good_qty', 0) if template else 0,
-            meinh_qty=getattr(template, 'meinh_qty', 0) if template else 0,
-            completed_qty=getattr(template, 'completed_qty', 0) if template else 0,
-            total_completed_qty=getattr(template, 'total_completed_qty', 0) if template else 0,
-            allOk_qty=getattr(template, 'allOk_qty', 0) if template else 0,
-            reason='',
-            confirm_comment=getattr(template, 'confirm_comment', '') if template else '',
-            is_assemble_ok=getattr(template, 'is_assemble_ok', 0) if template else 0,
-            currentStartTime=None,
-            currentEndTime=None,
-            input_disable=True,
-            input_end_disable=True,
-            input_allOk_disable=True,
-            input_abnormal_disable=True,
-            isAssembleStationShow=False,
-            isWarehouseStationShow=False,
-            alarm_enable=getattr(template, 'alarm_enable', 1) if template else 1,
-            alarm_message=getattr(template, 'alarm_message', '') if template else '',
-            isAssembleFirstAlarm=getattr(template, 'isAssembleFirstAlarm', 1) if template else 1,
-            isAssembleFirstAlarm_message=getattr(template, 'isAssembleFirstAlarm_message', '') if template else '',
-            isAssembleFirstAlarm_qty=getattr(template, 'isAssembleFirstAlarm_qty', 0) if template else 0,
-            whichStation=getattr(template, 'whichStation', material.whichStation) if template else material.whichStation,
-            show1_ok=0,
-            show2_ok=0,
-            show3_ok=0,
-            schedule_id=None,
-            is_copied_from_id=None
-        )
-        session.add(new_base)
-        session.flush()
-        return new_base
-
-    def close_schedule_row(row):
-        row.schedule_id = None
-        row.process_step_code = 0
-        row.isAssembleStationShow = False
-        row.isWarehouseStationShow = False
-        row.input_disable = True
-        row.input_end_disable = True
-        row.input_allOk_disable = True
-        row.input_abnormal_disable = True
-        row.show1_ok = 0
-        row.show2_ok = 0
-        row.show3_ok = 0
-        row.must_receive_qty = 0
-        row.ask_qty = 0
-        row.total_ask_qty = 0
-        row.must_receive_end_qty = 0
-        row.total_ask_qty_end = 0
-        row.currentStartTime = None
-        row.currentEndTime = None
-
-    def apply_schedule_row(row, sid, process_step_code, base_qty, work_num, base):
-        row.schedule_id = sid
-        row.process_step_code = process_step_code
-        row.work_num = work_num
-        row.material_num = base.material_num
-        row.material_comment = base.material_comment
-        row.seq_num = base.seq_num
-
-        row.input_disable = False
-        row.input_end_disable = False
-        row.input_allOk_disable = False
-        row.input_abnormal_disable = False
-
-        row.isAssembleStationShow = True
-        row.isWarehouseStationShow = False
-
-        row.show1_ok = 1
-        if work_num == "B110":
-            row.show2_ok = 5
-            row.show3_ok = 5
-        else:
-            row.show2_ok = 3
-            row.show3_ok = 3
-
-        row.must_receive_qty = base_qty
-        row.ask_qty = base_qty
-        row.total_ask_qty = base_qty
-        row.must_receive_end_qty = base_qty
-
-        if qty is not None and qty != '':
-            row.abnormal_qty = int(base_qty or 0)
-            row.reason = '異常返工'
-        else:
-            if row.reason == '異常返工':
-                row.reason = ''
-
-    def ensure_base_row(work_num, process_step_code, target_steps):
-        if work_num == 'B109':
-            process_type = 21
-        elif work_num == 'B110':
-            process_type = 22
-        else:
-            process_type = None
-
-        completed_schedule_ids = set()
-
-        if process_type:
-            completed_schedule_ids = {
-                int(r[0])
-                for r in (
-                    session.query(Assemble.schedule_id)
-                    .join(Process, Process.assemble_id == Assemble.id)
-                    .filter(Assemble.material_id == material_id)
-                    .filter(Assemble.work_num == work_num)
-                    .filter(Assemble.schedule_id.isnot(None))
-                    .filter(Process.process_type == process_type)
-                    .filter(Process.has_started.is_(True))
-                    .filter(Process.end_time.isnot(None))
-                    .filter(Process.end_time != '')
-                    .all()
-                )
-                if r[0] is not None
-            }
-
-        checked_ids = [
-            int(x.get('id'))
-            for x in (target_steps or [])
-            if (
-                x.get('checked')
-                and not x.get('deleted', False)
-                and x.get('id') is not None
-                and int(x.get('id')) not in completed_schedule_ids
-            )
-        ]
-
-        print("sync schedule:", material_id, work_num, checked_ids)
-
-        base = get_base_by_work_num(work_num)
-
-        if not base and checked_ids:
-            template = get_any_template_base()
-            base = build_base_row_from_template(template, work_num, process_step_code)
-            all_rows.append(base)
-
-        if not base:
-            return
-
-        base_qty = (
-            qty
-            or material.total_delivery_qty
-            or material.delivery_qty
-            or material.material_qty
-            or 0
-        )
-        base_qty = int(base_qty or 0)
-
-        schedule_rows = (
-            session.query(Assemble)
-            .filter(Assemble.material_id == material_id)
-            .filter(Assemble.work_num == work_num)
-            .filter(or_(Assemble.reason.is_(None), Assemble.reason != '異常返工'))
-            .order_by(Assemble.id)
-            .all()
-        )
-
-        usable_rows = [base] + [r for r in schedule_rows if r.id != base.id]
-
-        for idx, sid in enumerate(checked_ids):
-            if idx < len(usable_rows):
-                row = usable_rows[idx]
-            else:
-                row = Assemble(
-                    material_id=base.material_id,
-                    material_num=base.material_num,
-                    material_comment=base.material_comment,
-                    seq_num=base.seq_num,
-                    work_num=base.work_num,
-                    process_step_code=base.process_step_code,
-                    Incoming1_Abnormal=base.Incoming1_Abnormal,
-                    must_receive_qty=base.must_receive_qty,
-                    ask_qty=base.ask_qty,
-                    total_ask_qty=base.total_ask_qty,
-                    total_ask_qty_end=base.total_ask_qty_end,
-                    must_receive_end_qty=base.must_receive_end_qty,
-                    abnormal_qty=base.abnormal_qty,
-                    user_id=base.user_id,
-                    writer_id=base.writer_id,
-                    write_date=base.write_date,
-                    good_qty=base.good_qty,
-                    total_good_qty=base.total_good_qty,
-                    non_good_qty=base.non_good_qty,
-                    meinh_qty=base.meinh_qty,
-                    completed_qty=base.completed_qty,
-                    total_completed_qty=base.total_completed_qty,
-                    allOk_qty=base.allOk_qty,
-                    reason='',
-                    confirm_comment=base.confirm_comment,
-                    is_assemble_ok=base.is_assemble_ok,
-                    currentStartTime=None,
-                    currentEndTime=None,
-                    input_disable=False,
-                    input_end_disable=False,
-                    input_allOk_disable=False,
-                    input_abnormal_disable=False,
-                    isAssembleStationShow=True,
-                    isWarehouseStationShow=False,
-                    alarm_enable=base.alarm_enable,
-                    alarm_message=base.alarm_message,
-                    isAssembleFirstAlarm=base.isAssembleFirstAlarm,
-                    isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
-                    isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
-                    whichStation=base.whichStation,
-                    show1_ok=1,
-                    show2_ok=5 if work_num == "B110" else 3,
-                    show3_ok=5 if work_num == "B110" else 3,
-                    schedule_id=sid,
-                    is_copied_from_id=base.id
-                )
-                session.add(row)
-                session.flush()
-                usable_rows.append(row)
-
-            apply_schedule_row(row, sid, process_step_code, base_qty, work_num, base)
-
-        for row in usable_rows[len(checked_ids):]:
-            close_schedule_row(row)
-
-    ensure_base_row(
-        work_num='B109',
-        process_step_code=3,
-        target_steps=process_steps.get('assemble', [])
-    )
-
-    ensure_base_row(
-        work_num='B110',
-        process_step_code=2,
-        target_steps=process_steps.get('check', [])
-    )
-"""
 
 
 def parse_datetime_or_none(val):
@@ -1003,76 +301,9 @@ def get_unique_filename(target_dir, filename, chip):
     return unique_filename
 
 
-
-"""
-def normalize_create_at(raw):
-    '''
-    把前端丟來的 create_at 正常化成 datetime 物件：
-    - 若本來就是 datetime → 直接回傳
-    - 若是 timestamp(int/float) → 轉成 datetime
-    - 若是字串 → 嘗試用幾種格式解析（含 'Tue, 18 Nov 2025 13:11:52 GMT'）
-    '''
-    if raw is None:
-        return None
-
-    # 已經是 datetime.datetime，就直接用
-    if isinstance(raw, dt):
-        return raw
-
-    # 若是 timestamp（秒或毫秒）
-    if isinstance(raw, (int, float)):
-        ts = raw / 1000.0 if raw > 10**10 else raw
-        return dt.fromtimestamp(ts)
-
-    # 若是字串
-    if isinstance(raw, str):
-        txt = raw.strip()
-        if not txt:
-            return None
-
-        # 1) 先試 RFC 1123 / HTTP Date 格式: "Tue, 18 Nov 2025 13:11:52 GMT"
-        try:
-            # 注意：這個格式完全符合你 log 看到的字串
-            return dt.strptime(txt, "%a, %d %b %Y %H:%M:%S GMT")
-        except ValueError:
-            pass
-
-        # 2) 再試 ISO 格式（2025-11-18T13:11:52 或 2025-11-18 13:11:52）
-        try:
-            return dt.fromisoformat(txt.replace('Z', ''))
-        except ValueError:
-            pass
-
-        # 3) 其它常見格式（看你 DB 實際有沒有用到）
-        for fmt in (
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d %H:%M",
-            "%Y/%m/%d %H:%M:%S",
-            "%Y/%m/%d %H:%M",
-        ):
-            try:
-                return dt.strptime(txt, fmt)
-            except ValueError:
-                continue
-
-        # 4) 有小數秒的情況：2025-11-18 13:11:52.123456
-        try:
-            base, _, _ = txt.partition(".")
-            return dt.strptime(base, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            pass
-
-        raise ValueError(f"無法解析 create_at 字串格式: {txt}")
-
-    # 其它型態不支援
-    raise TypeError(f"不支援的 create_at 型態: {type(raw)}")
-"""
-
-
 # ------------------------------------------------------------------
 
 
-# update user's password from user table
 @updateTable.route("/updatePassword", methods=['POST'])
 def update_password():
     print("updatePassword....")
@@ -1092,43 +323,6 @@ def update_password():
     return jsonify({
       'status': True,
     })
-
-
-# update user's setting from user table some data
-"""
-@updateTable.route("/updateSetting", methods=['POST'])
-def update_setting():
-    print("updateSetting....")
-
-    request_data = request.get_json()
-    #print("request_data:", request_data)
-
-    userID = request_data['empID']
-    new_isSee = request_data['seeIsOk']
-    new_lastRoutingName = request_data['lastRoutingName']
-    new_itemsPerPage = request_data['itemsPerPage']
-
-    s = Session()
-    # 修改user的設定資料
-    _user = s.query(User).filter_by(emp_id = userID).first()
-    if new_itemsPerPage != 0:
-      s.query(Setting).filter(Setting.id == _user.setting_id).update(
-        { 'items_per_page': new_itemsPerPage, 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee }
-      )
-    else:
-      s.query(Setting).filter(Setting.id == _user.setting_id).update(
-        { 'lastRoutingName': new_lastRoutingName, 'isSee': new_isSee }
-      )
-
-    s.query(User).filter(User.emp_id == userID).update({'isOnline': False})  # false:user已經登出(logout)
-
-    s.commit()
-    s.close()
-
-    return jsonify({
-      'status': True,
-    })
-"""
 
 
 @updateTable.route("/updateSetting", methods=['POST'])
@@ -1201,167 +395,6 @@ def update_setting():
       }), 500
     finally:
       s.close()
-
-
-# from user table update some data by id
-"""
-@updateTable.route("/updateUser", methods=['POST'])
-def update_user():
-    print("updateUser.")
-
-    request_data = request.get_json() or {}
-
-    _emp_id = request_data.get('emp_id', '').strip()
-    _emp_name = request_data.get('emp_name', '').strip()
-    _dep_name = request_data.get('dep_name', '').strip()
-    _emp_perm = request_data.get('emp_perm')
-    _routingPriv = request_data.get('routingPriv', '')
-    _password_reset = request_data.get('password_reset', 'no')
-
-    # ===== 新增：請假 / 代理資料 =====
-    _leave_start = request_data.get('leave_start')
-    _leave_end = request_data.get('leave_end')
-    _leave_type = request_data.get('leave_type')
-    _delegate_emp_id = (request_data.get('delegate_emp_id') or '').strip()
-
-    newPassword = 'a12345678'
-
-    return_value = True
-    if _emp_id == "" or _emp_name == "":
-        return_value = False
-        return jsonify({
-            'status': False,
-            'message': 'emp_id 或 emp_name 不可為空'
-        }), 400
-
-    s = Session()
-
-    try:
-        user = s.query(User).filter_by(emp_id=_emp_id).first()
-        if not user:
-            return jsonify({
-                'status': False,
-                'message': f'找不到使用者: {_emp_id}'
-            }), 404
-
-        if not user.isRemoved:
-            return jsonify({
-                'status': False,
-                'message': f'使用者 {_emp_id} 已刪除或不可更新'
-            }), 400
-
-        # ===== 1) 更新 Permission =====
-        try:
-            _emp_perm = int(_emp_perm)
-        except Exception:
-            return jsonify({
-                'status': False,
-                'message': 'emp_perm 格式錯誤'
-            }), 400
-
-        _auth_name = (
-            'member' if _emp_perm == 4 else
-            ('staff' if _emp_perm == 3 else
-             ('admin' if _emp_perm == 2 else
-              ('system' if _emp_perm == 1 else 'member')))
-        )
-
-        s.query(Permission).filter(Permission.id == user.perm_id).update({
-            "auth_code": _emp_perm,
-            "auth_name": _auth_name
-        })
-
-        # ===== 2) 更新 Setting =====
-        s.query(Setting).filter(Setting.id == user.setting_id).update({
-            "routingPriv": _routingPriv
-        })
-
-        # ===== 3) 更新 User =====
-        update_user_data = {
-            "emp_name": _emp_name,
-            "dep_name": _dep_name,
-        }
-
-        if _password_reset == 'yes':
-            update_user_data["password"] = generate_password_hash(newPassword, method='scrypt')
-
-        s.query(User).filter(User.emp_id == _emp_id).update(update_user_data)
-
-        # ===== 4) 更新 / 新增 UserDelegate =====
-        has_any_leave_field = any([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
-        leave_fully_set = all([_leave_start, _leave_end, _leave_type, _delegate_emp_id])
-
-        if has_any_leave_field and not leave_fully_set:
-            return jsonify({
-                'status': False,
-                'message': '請假資料需同時填寫：開始時間、結束時間、假別、代理人工號'
-            }), 400
-
-
-        if leave_fully_set:
-            start_dt = parse_datetime_or_none(_leave_start)
-            end_dt = parse_datetime_or_none(_leave_end)
-
-            if start_dt is None or end_dt is None:
-                return jsonify({
-                    'status': False,
-                    'message': '請假開始/結束日期時間不可為空'
-                }), 400
-
-            # 先確認代理人工號是否存在
-            delegate_user = s.query(User).filter_by(emp_id=_delegate_emp_id).first()
-            if not delegate_user:
-                return jsonify({
-                    'status': False,
-                    'message': f'找不到代理人工號: {_delegate_emp_id}'
-                }), 404
-
-            # 找該員工最後一筆 UserDelegate
-            delegate_row = (
-                s.query(UserDelegate)
-                .filter(UserDelegate.user_id == user.id)
-                .order_by(UserDelegate.id.desc())
-                .first()
-            )
-
-            if delegate_row:
-                # 有資料就更新
-                delegate_row.delegate_emp_id = _delegate_emp_id
-                delegate_row.start_date = start_dt
-                delegate_row.end_date = end_dt
-                delegate_row.reason = _leave_type
-            else:
-                # 沒資料就新增
-                new_delegate = UserDelegate(
-                    user_id=user.id,
-                    delegate_emp_id=_delegate_emp_id,
-                    start_date=start_dt,
-                    end_date=end_dt,
-                    reason=_leave_type
-                )
-                s.add(new_delegate)
-
-            # 可選：同步更新 user.is_user_delegate
-            user.is_user_delegate = True
-
-        s.commit()
-
-        return jsonify({
-            'status': True,
-            'message': '更新成功'
-        })
-
-    except Exception as e:
-        s.rollback()
-        current_app.logger.exception("updateUser failed")
-        return jsonify({
-            'status': False,
-            'message': str(e)
-        }), 500
-
-    finally:
-        s.close()
-"""
 
 
 @updateTable.route("/updateUser", methods=['POST'])
@@ -1537,13 +570,11 @@ def terminate_active():
     return jsonify(success=True, affected=len(rows))
 
 
-# from bom table update some data
 @updateTable.route("/updateBoms", methods=['POST'])
 def update_boms():
   print("updateBoms....")
 
   request_data = request.get_json()
-  #print("request_data =", request_data, type(request_data))
 
   s = Session()
   return_value = True
@@ -1709,7 +740,7 @@ def update_bom(material_id):
   })
 
 
-# 20260704 batch版
+# 20260722 batch版
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
     print("updateAssembleProcessStep.")
@@ -1750,6 +781,43 @@ def update_assemble_process_step():
                 }, synchronize_session=False)
             )
 
+        def finish_all_process_logs(process_type):
+
+            # 工序已經 FULL END 時使用。
+            #
+            # 關閉同一 material_id + assemble_id + process_type
+            # 的所有未結束／殘留 process。
+            #
+            # PARTIAL END 不可使用此函式，
+            # 因為其他員工可能仍在繼續執行剩餘數量。
+
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            logs = (
+                s.query(Process)
+                .filter(Process.material_id == material_id)
+                .filter(Process.assemble_id == assemble_id)
+                .filter(Process.process_type == process_type)
+                .filter(
+                    or_(
+                        Process.has_started.is_(True),
+                        Process.end_time.is_(None),
+                        Process.end_time == ''
+                    )
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for log in logs:
+                # 尚未補 end_time 的殘留 process，現在一併關閉
+                if not log.end_time:
+                    log.end_time = now_str
+
+                log.has_started = False
+                log.is_pause = True
+                log.pause_started_at = None
+
         def get_group_rows(work_num, release_batch_no=None):
             rows = [
                 r for r in assemble_records
@@ -1767,7 +835,6 @@ def update_assemble_process_step():
 
             return rows
 
-        #
         def has_checked_b110_steps():
             steps = material_record.process_steps or default_process_steps()
             return any(
@@ -1777,7 +844,6 @@ def update_assemble_process_step():
                 for x in (steps.get("check") or [])
             )
 
-        #def create_b109_direct_waiting_send(qty):
         def create_b109_direct_waiting_send(qty, total_done=None):
             qty = to_int(qty)
             total_done = to_int(total_done if total_done is not None else qty)
@@ -1852,7 +918,6 @@ def update_assemble_process_step():
             s.flush()
             return row
 
-        #
         def create_b109_done_copy(qty):
             qty = to_int(qty)
             if qty <= 0:
@@ -1924,7 +989,8 @@ def update_assemble_process_step():
             s.add(row)
             s.flush()
             return row
-        #
+
+        # end define function
 
         material_record = (
             s.query(Material)
@@ -1969,6 +1035,18 @@ def update_assemble_process_step():
         finished_work_num = (assemble_record.work_num or '').strip()
         current_batch_no = to_int(getattr(assemble_record, 'release_batch_no', 0))
 
+        # ------------------------------------------------------------
+        # 必須在 mark_assemble_finished() 前保存歷史累計量。
+        # mark_assemble_finished() 可能已經把本次完成量寫回
+        # total_completed_qty / allOk_qty；若之後再讀並加一次，
+        # 例如本次完成 50，就會錯誤變成 100。
+        # ------------------------------------------------------------
+        previous_total_before_finish = max(
+            to_int(getattr(assemble_record, 'total_completed_qty', 0)),
+            to_int(getattr(assemble_record, 'allOk_qty', 0)),
+            0
+        )
+
         done_qty = mark_assemble_finished(assemble_record)
 
         if done_qty <= 0:
@@ -1988,7 +1066,6 @@ def update_assemble_process_step():
         is_partial_end = done_qty < must_qty
 
         # ------------------------------------------------------------
-        # 注意：
         # 這裡只能先記住「進入本次結束前」的累積值，
         # 不可以先覆寫 total_completed_qty / allOk_qty。
         #
@@ -2000,78 +1077,165 @@ def update_assemble_process_step():
         # 只先更新「本次完成量」
         current_done_qty = to_int(done_qty)
         assemble_record.completed_qty = current_done_qty
-        #
 
         # ============================================================
         # PARTIAL END
         # ============================================================
         if is_partial_end:
-            # ------------------------------------------------------------
-            # B109 PARTIAL
-            # 例：a2 完成 20 / 35
-            # 結果：
-            #   a2 回 Begin 做 15
-            #   a1 End 顯示：已完成總數量=20、應完成總數量=15
-            #   建立 B110 batch=20
-            # ------------------------------------------------------------
             if finished_work_num == 'B109':
-                split_qty = to_int(done_qty)
-                remain_qty = max(must_qty - split_qty, 0)
+                #
+                # ------------------------------------------------------------
+                # 本次輸入數量
+                # ------------------------------------------------------------
+                current_done_qty = to_int(done_qty)
+
+                # ------------------------------------------------------------
+                # 查詢此 assemble_id 已經結束的 B109 Process 完成量。
+                #
+                # 注意：
+                # 不使用 previous_total_before_finish + current_done_qty，
+                # 避免本次輸入50被重複計算成100。
+                # ------------------------------------------------------------
+                process_completed_total = (
+                    s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.assemble_id == assemble_record.id)
+                    .filter(Process.process_type == 21)
+                    .filter(Process.end_time.isnot(None))
+                    .filter(Process.end_time != '')
+                    .scalar()
+                ) or 0
+
+                cumulative_done_qty = to_int(
+                    process_completed_total
+                )
+
+                # ------------------------------------------------------------
+                # 原始工序總數量
+                #
+                # total_ask_qty 是此工序最初應完成數量，例如72。
+                # 不可使用 cumulative_done_qty + must_qty，
+                # 因為 must_qty 此時仍可能是原始72：
+                #
+                #   50 + 72 = 122
+                #   122 - 50 = 72  ← 錯誤
+                # ------------------------------------------------------------
+                original_required_qty = max(
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'total_ask_qty',
+                            0
+                        )
+                    ),
+                    to_int(
+                        material_record.total_delivery_qty
+                        or material_record.delivery_qty
+                        or material_record.material_qty
+                    ),
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'must_receive_qty',
+                            0
+                        )
+                    ),
+                    0
+                )
+
+                if original_required_qty <= 0:
+                    original_required_qty = max(to_int(must_qty), cumulative_done_qty, 0)
+
+                cumulative_done_qty = min(cumulative_done_qty, original_required_qty)
+
+                remain_qty = max(original_required_qty - cumulative_done_qty, 0)
+
+                print(
+                    "[B109 PARTIAL QTY]",
+                    {
+                        "material_id": material_id,
+                        "assemble_id": assemble_record.id,
+                        "current_done_qty": current_done_qty,
+                        "process_completed_total": process_completed_total,
+                        "total_ask_qty": to_int(
+                            getattr(
+                                assemble_record,
+                                'total_ask_qty',
+                                0
+                            )
+                        ),
+                        "must_qty_before_end": must_qty,
+                        "original_required_qty": original_required_qty,
+                        "cumulative_done_qty": cumulative_done_qty,
+                        "remain_qty": remain_qty,
+                    }
+                )
 
                 has_b110 = has_checked_b110_steps()
 
                 b109_rows = [
                     r for r in assemble_records
-                    if (r.work_num or '').strip() == 'B109'
-                    and to_int(getattr(r, 'schedule_id', 0)) > 0
+                    if ((r.work_num or '').strip() == 'B109' and to_int(getattr(r, 'schedule_id', 0)) > 0)
                 ]
 
+                current_schedule_id = to_int(getattr(assemble_record, 'schedule_id', 0))
+
                 for r in b109_rows:
+                    # --------------------------------------------------------
+                    # B109 PARTIAL 只能更新本次按 End 的工序。
+                    #
+                    # 其他 B109 可能已經 FULL END，例如 a2：
+                    #   process_step_code = 0
+                    #   isAssembleStationShow = False
+                    #
+                    # 不可重新改成 active，否則完成的 a2 會再次出現。
+                    # --------------------------------------------------------
+                    if (
+                        to_int(r.id)
+                        != to_int(assemble_record.id)
+                    ):
+                        continue
+
+                    # --------------------------------------------------------
+                    # 只有目前 partial 的工序回到 Begin
+                    # --------------------------------------------------------
                     r.process_step_code = 3
-
-                    r.must_receive_qty = remain_qty
-                    r.ask_qty = remain_qty
-                    r.must_receive_end_qty = remain_qty
-
-                    r.total_completed_qty = split_qty
-                    r.allOk_qty = split_qty
 
                     r.show1_ok = 1
                     r.show2_ok = 3
                     r.show3_ok = 3
 
-                    if to_int(r.id) == to_int(assemble_record.id):
-                        # 本次完成的 a2：回 Begin 補剩餘 15
-                        r.completed_qty = 0
-                        r.currentStartTime = None
-                        r.currentEndTime = None
+                    r.isWarehouseStationShow = False
 
-                        r.isAssembleStationShow = True
-                        r.isWarehouseStationShow = False
+                    # 剩餘數量
+                    r.must_receive_qty = remain_qty
+                    r.ask_qty = remain_qty
+                    r.must_receive_end_qty = remain_qty
 
-                        r.input_disable = False
-                        r.input_end_disable = False
-                        r.input_abnormal_disable = False
-                        r.input_allOk_disable = True
+                    # 本次輸入欄位清空
+                    r.completed_qty = 0
 
-                    else:
-                        # 其他 B109，例如 a1：
-                        # 只選 B109 時，a1 要繼續留在 End 給使用者完成 15
-                        # 不可結束 process，也不可回 Begin 顯示
-                        r.completed_qty = 0
+                    # 保存累計完成數量
+                    r.total_completed_qty = (
+                        cumulative_done_qty
+                    )
 
-                        if has_b110:
-                            r.isAssembleStationShow = True
-                            r.isWarehouseStationShow = False
-                        else:
-                            # 只選 B109 時，a1 要留在 End 顯示，不回 Begin
-                            r.isAssembleStationShow = True
-                            r.isWarehouseStationShow = False
+                    r.allOk_qty = (
+                        cumulative_done_qty
+                    )
 
-                        r.input_disable = False
-                        r.input_end_disable = False
-                        r.input_abnormal_disable = False
-                        r.input_allOk_disable = True
+                    # 回 Begin 後重新等待開始
+                    r.currentStartTime = None
+                    r.currentEndTime = None
+
+                    r.isAssembleStationShow = True
+
+                    r.input_disable = False
+                    r.input_end_disable = False
+                    r.input_abnormal_disable = False
+                    r.input_allOk_disable = True
+
+                # end for loop
 
                 finish_process_log(21)
 
@@ -2093,29 +1257,32 @@ def update_assemble_process_step():
                     r.show2_ok = 7
                     r.show3_ok = 7
 
-                if has_b110:
-                    release_result = release_b109_to_b110_batch(
-                        session=s,
-                        material_id=material_id
+                # end for loop
+
+                # ------------------------------------------------------------
+                # B109 PARTIAL 時不可釋放 B110。
+                # 只要任一 B109（例如 a1）仍有剩餘數量，Begin 只能顯示
+                # 尚未完成的 B109；b1 / b2 必須等所有 B109 FULL END 後
+                # 才由下方 B109 FULL END 區塊建立。
+                # ------------------------------------------------------------
+                release_result = {
+                    "released": False,
+                    "release_qty": 0,
+                    "created_ids": [],
+                    "min_done_qty": cumulative_done_qty,
+                    "released_total": 0,
+                    "message": (
+                        "B109 partial finished; "
+                        "B110 remains hidden until all B109 steps finish"
                     )
-                else:
-                    release_result = {
-                        "released": False,
-                        "release_qty": 0,
-                        "created_ids": [],
-                        "min_done_qty": split_qty,
-                        "released_total": 0,
-                        "message": "B109 partial finished, no B110 selected"
-                    }
+                }
 
                 material_record.isAssembleStationShow = True
                 material_record.isAssembleStation3TakeOk = False
                 material_record.whichStation = 2
-
-                if release_result.get("released"):
-                    material_record.show1_ok = 3
-                    material_record.show2_ok = 5
-                    material_record.show3_ok = 5
+                material_record.show1_ok = 1
+                material_record.show2_ok = 3
+                material_record.show3_ok = 3
 
                 s.commit()
 
@@ -2123,29 +1290,67 @@ def update_assemble_process_step():
                     "status": False,
                     "material_done": False,
                     "partial_end": True,
+
                     "released_next_group": bool(release_result.get("released")),
+
                     "released_count": release_result.get("release_qty", 0),
+
                     "created_ids": release_result.get("created_ids", []),
-                    "split_qty": split_qty,
+
+                    "current_done_qty": current_done_qty,
+
+                    "total_completed_qty": cumulative_done_qty,
+
                     "remain_qty": remain_qty,
-                    "message": release_result.get("message", "B109 partial finished")
+
+                    "message":
+                        release_result.get(
+                            "message",
+                            "B109 partial finished"
+                        )
                 }), 200
-            #
+
+            # end if_finished_work_num == 'B109':
 
             # ------------------------------------------------------------
             # B110 PARTIAL
+            #
+            # 只修改本次按結束的 B110。
+            # 不可修改同批其他 b1 / b2，避免其他檢驗工序的
+            # 領取數量、應完成總數量、已完成總數量被一起覆寫。
             # ------------------------------------------------------------
             if finished_work_num == 'B110':
-                remain_qty = max(must_qty - done_qty, 0)
+                current_done_qty = to_int(done_qty)
+
+                # --------------------------------------------------------
+                # 先記住本次操作前的歷史累積量。
+                #
+                # 第一次 partial：
+                #   previous_total = 0
+                #   current_done   = 20
+                #   new_total      = 20
+                #
+                # 第二次 partial：
+                #   previous_total = 20
+                #   current_done   = 5
+                #   new_total      = 25
+                # --------------------------------------------------------
+                previous_total = previous_total_before_finish
+
+                new_total = previous_total + current_done_qty
+                remain_qty = max(must_qty - current_done_qty, 0)
 
                 assemble_record.process_step_code = 2
+
+                # 目前這筆回 Begin 補做剩餘數量
                 assemble_record.must_receive_qty = remain_qty
                 assemble_record.ask_qty = remain_qty
                 assemble_record.must_receive_end_qty = remain_qty
 
+                # 本次輸入量清零；歷史完成量保留累積
                 assemble_record.completed_qty = 0
-                assemble_record.total_completed_qty = done_qty
-                assemble_record.allOk_qty = done_qty
+                assemble_record.total_completed_qty = new_total
+                assemble_record.allOk_qty = new_total
 
                 assemble_record.isAssembleStationShow = True
                 assemble_record.isWarehouseStationShow = False
@@ -2175,10 +1380,13 @@ def update_assemble_process_step():
                     "waiting_send": False,
                     "release_batch_no": current_batch_no,
                     "current_assemble_id": assemble_record.id,
-                    "completed_qty": done_qty,
+                    "completed_qty": current_done_qty,
+                    "total_completed_qty": new_total,
                     "remain_qty": remain_qty,
-                    "message": "B110 partial finished, return to Begin"
+                    "message": "B110 partial finished, current row returns to Begin"
                 }), 200
+
+            # end if_finished_work_num == 'B110':
 
             assemble_record.process_step_code = 0
 
@@ -2193,7 +1401,10 @@ def update_assemble_process_step():
                 r.show2_ok = 3
                 r.show3_ok = 3
 
+            # end for loop
+
             material_record.isAssembleStation3TakeOk = False
+
             s.commit()
 
             return jsonify({
@@ -2211,20 +1422,32 @@ def update_assemble_process_step():
         # FULL END
         # ============================================================
         assemble_record.process_step_code = 0
+
         assemble_record.input_disable = True
         assemble_record.input_end_disable = True
         assemble_record.input_abnormal_disable = True
         assemble_record.input_allOk_disable = True
 
         if not assemble_record.currentEndTime:
-            assemble_record.currentEndTime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            assemble_record.currentEndTime = (
+                datetime.datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            )
 
+        # end if
+
+        # ------------------------------------------------------------
+        # FULL END：
+        # 同一 assemble_id 已經完全完成，
+        # 所有員工殘留的 process 都必須一併結束。
+        # ------------------------------------------------------------
         if finished_work_num == 'B109':
-            finish_process_log(21)
-        elif finished_work_num == 'B110':
-            finish_process_log(22)
+            finish_all_process_logs(21)
 
-        #
+        elif finished_work_num == 'B110':
+            finish_all_process_logs(22)
+
         # ============================================================
         # 異常返工：B109 完成
         # ============================================================
@@ -2291,6 +1514,8 @@ def update_assemble_process_step():
                     "message": "B109 abnormal rework finished, open child B110 abnormal rework"
                 }), 200
 
+            # end if
+
             release_result = release_b109_to_b110_batch(
                 session=s,
                 material_id=material_id
@@ -2305,6 +1530,8 @@ def update_assemble_process_step():
                 material_record.show2_ok = 5
                 material_record.show3_ok = 5
 
+            # end if
+
             s.commit()
 
             return jsonify({
@@ -2316,6 +1543,8 @@ def update_assemble_process_step():
                 "created_ids": release_result.get("created_ids", []),
                 "message": "B109 abnormal rework finished, return to normal B110 flow"
             }), 200
+
+        # end if 異常返工, B109 完成
 
         # ============================================================
         # 異常返工：B110 完成後直接待送出
@@ -2366,6 +1595,8 @@ def update_assemble_process_step():
                 "message": "B110 abnormal rework finished, waiting send"
             }), 200
 
+        # end if 異常返工, B110 完成
+
         # ============================================================
         # B109 FULL END
         #
@@ -2390,10 +1621,29 @@ def update_assemble_process_step():
             current_done_qty = to_int(done_qty)
 
             # --------------------------------------------------------
-            # 1) 目前這次完成列
+            # 目前 a2 已完成最後剩餘數量，不可再出現在 Begin／End
             # --------------------------------------------------------
             assemble_record.process_step_code = 0
 
+            assemble_record.isAssembleStationShow = False
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = True
+
+            assemble_record.currentStartTime = None
+
+            if not assemble_record.currentEndTime:
+                assemble_record.currentEndTime = (
+                    datetime.datetime.now().strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+
+            # end if
+            '''
             # 已釋放到 B110 的總量，才是真正 previous_total
             # 例：第一次已釋放 20，第二次補 15，所以 final_total=35
             if has_checked_b110_steps():
@@ -2435,11 +1685,131 @@ def update_assemble_process_step():
                     ] or [0]
                 )
 
+            # end if-else has_checked_b110_steps():
+
             final_total = previous_total + current_done_qty
 
             assemble_record.completed_qty = current_done_qty
             assemble_record.total_completed_qty = previous_total
             assemble_record.allOk_qty = final_total
+            '''
+            #
+            # ------------------------------------------------------------
+            # B109 FULL END 的真正累計完成量
+            #
+            # 必須直接加總此 assemble_id 已結束的 Process 數量。
+            #
+            # 本案例：
+            #   第一次完成 50
+            #   第二次完成 22
+            #   Process 合計 = 72
+            #
+            # 不可只用已釋放 B110 的數量當 previous_total，
+            # 因為 B109 PARTIAL 時目前沒有釋放 B110，
+            # 會導致 previous_total=0、final_total=22。
+            # ------------------------------------------------------------
+            process_completed_total = (
+                s.query(
+                    func.coalesce(
+                        func.sum(
+                            Process.process_work_time_qty
+                        ),
+                        0
+                    )
+                )
+                .filter(
+                    Process.material_id == material_id
+                )
+                .filter(
+                    Process.assemble_id == assemble_record.id
+                )
+                .filter(
+                    Process.process_type == 21
+                )
+                .filter(
+                    Process.end_time.isnot(None)
+                )
+                .filter(
+                    Process.end_time != ''
+                )
+                .scalar()
+            ) or 0
+
+            final_total = to_int(
+                process_completed_total
+            )
+
+            # 舊資料防呆：
+            # 若 Process 數量未完整保存，才使用欄位累計。
+            if final_total <= 0:
+                final_total = max(
+                    previous_total_before_finish
+                    + current_done_qty,
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'total_completed_qty',
+                            0
+                        )
+                    )
+                    + current_done_qty,
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'allOk_qty',
+                            0
+                        )
+                    )
+                    + current_done_qty,
+                    current_done_qty,
+                    0
+                )
+
+            # 原始總數量上限
+            original_required_qty = max(
+                to_int(
+                    getattr(
+                        assemble_record,
+                        'total_ask_qty',
+                        0
+                    )
+                ),
+                to_int(
+                    material_record.total_delivery_qty
+                    or material_record.delivery_qty
+                    or material_record.material_qty
+                ),
+                0
+            )
+
+            if original_required_qty > 0:
+                final_total = min(
+                    final_total,
+                    original_required_qty
+                )
+
+            previous_total = max(
+                final_total - current_done_qty,
+                0
+            )
+
+            assemble_record.completed_qty = current_done_qty
+            assemble_record.total_completed_qty = final_total
+            assemble_record.allOk_qty = final_total
+
+            print(
+                "[B109 FULL END QTY]",
+                {
+                    "material_id": material_id,
+                    "assemble_id": assemble_record.id,
+                    "current_done_qty": current_done_qty,
+                    "process_completed_total": process_completed_total,
+                    "previous_total": previous_total,
+                    "final_total": final_total,
+                    "original_required_qty": original_required_qty,
+                }
+            )
+            #
 
             assemble_record.input_disable = True
 
@@ -2529,7 +1899,6 @@ def update_assemble_process_step():
             #    a1/a2 全部從 Begin / End 隱藏
             # --------------------------------------------------------
             if all_b109_done:
-
                 for r in b109_rows:
                     r.process_step_code = 0
 
@@ -2547,47 +1916,37 @@ def update_assemble_process_step():
                     r.show1_ok = 1
                     r.show2_ok = 7
                     r.show3_ok = 7
-            #
             else:
-                # ----------------------------------------------------
-                # 還有其他 B109 尚未完成
+                # --------------------------------------------------------
+                # 還有其他 B109 尚未完成。
                 #
-                # 分兩種：
-                # 1. 有分批前量 previous_total > 0：
-                #    例 a2 先完成 20，a1 再完成 15
-                #    這時 a1 要留在 End 顯示已完成資料。
+                # 目前按結束的工序已經 FULL END，
+                # 不論 previous_total 是否大於 0，都不可再顯示於 Begin／End。
                 #
-                # 2. 沒有分批前量 previous_total == 0：
-                #    例 a1 直接完成 35
-                #    這時 a1 不可顯示，只留下 a2。
-                # ----------------------------------------------------
-                if previous_total > 0:
-                    assemble_record.isAssembleStationShow = True
-                    assemble_record.isWarehouseStationShow = False
+                # 例如：
+                #   a2 partial 20，剩餘15
+                #   a1 full end 35
+                #
+                # 此時只留下 a2 繼續做15，a1必須隱藏。
+                # --------------------------------------------------------
+                assemble_record.process_step_code = 0
 
-                    assemble_record.input_disable = True
-                    assemble_record.input_end_disable = True
-                    assemble_record.input_abnormal_disable = True
-                    assemble_record.input_allOk_disable = True
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
 
-                    assemble_record.show1_ok = 1
-                    assemble_record.show2_ok = 5
-                    assemble_record.show3_ok = 5
-                else:
-                    assemble_record.isAssembleStationShow = False
-                    assemble_record.isWarehouseStationShow = False
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+                assemble_record.input_allOk_disable = True
 
-                    assemble_record.input_disable = True
-                    assemble_record.input_end_disable = True
-                    assemble_record.input_abnormal_disable = True
-                    assemble_record.input_allOk_disable = True
+                assemble_record.currentStartTime = None
+                assemble_record.currentEndTime = None
 
-                    assemble_record.currentStartTime = None
-                    assemble_record.currentEndTime = None
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
 
-                    assemble_record.show1_ok = 1
-                    assemble_record.show2_ok = 7
-                    assemble_record.show3_ok = 7
+            # end if-else all_b109_done:
 
             # --------------------------------------------------------
             # 5) B109 -> B110 增量釋放
@@ -2642,7 +2001,8 @@ def update_assemble_process_step():
                         r.show1_ok = 1
                         r.show2_ok = 7
                         r.show3_ok = 7
-                #
+
+                    # end for loop
                 else:
                     # 還有其他 B109 未完成。
                     # 只有「前面真的有分批完成量」時，才建立待送出與已完成 copy。
@@ -2662,11 +2022,7 @@ def update_assemble_process_step():
                     assemble_record.show2_ok = 7
                     assemble_record.show3_ok = 7
 
-                    assemble_record.isAssembleStationShow = False
-                    assemble_record.isWarehouseStationShow = False
-                    assemble_record.show1_ok = 1
-                    assemble_record.show2_ok = 7
-                    assemble_record.show3_ok = 7
+                # end if-else all_b109_done:
 
                 release_result = {
                     "released": waiting_row is not None,
@@ -2678,16 +2034,15 @@ def update_assemble_process_step():
                     "message": "B109 direct waiting send, no B110 selected"
                 }
 
+            # end if-else has_checked_b110_steps():
+
             # --------------------------------------------------------
             # 6) 再次隱藏原始 B110 batch_no=0 template
             #
             # 避免 Begin 出現：
             #   b1/b2 qty=35
             # --------------------------------------------------------
-            old_b110_rows = get_group_rows(
-                'B110',
-                release_batch_no=0
-            )
+            old_b110_rows = get_group_rows('B110', release_batch_no=0)
 
             for r in old_b110_rows:
                 r.isAssembleStationShow = False
@@ -2704,6 +2059,8 @@ def update_assemble_process_step():
                 r.show1_ok = 1
                 r.show2_ok = 7
                 r.show3_ok = 7
+
+            # end for loop
 
             # --------------------------------------------------------
             # 7) Material 狀態
@@ -2742,13 +2099,138 @@ def update_assemble_process_step():
                 "message": release_result.get("message", "")
             }), 200
 
+        # end if B109 FULL END
+
         # ============================================================
         # B110
         # ============================================================
         if finished_work_num == 'B110':
-            current_batch_no = to_int(getattr(assemble_record, 'release_batch_no', 0))
+            #current_batch_no = to_int(getattr(assemble_record, 'release_batch_no', 0))
+            #
+            #b110_rows = get_group_rows('B110', current_batch_no)
+            #
+            #
+            current_batch_no = to_int(
+                getattr(
+                    assemble_record,
+                    'release_batch_no',
+                    0
+                )
+            )
 
-            b110_rows = get_group_rows('B110', current_batch_no)
+            # ------------------------------------------------------------
+            # B110 FULL END：
+            # 將前次 partial 累計量，加上本次最後完成量。
+            #
+            # 本案例：
+            #   previous_total_before_finish = 50
+            #   current_done_qty             = 22
+            #   current_total_qty            = 72
+            # ------------------------------------------------------------
+            current_done_qty = to_int(done_qty)
+
+            current_total_qty = (
+                previous_total_before_finish
+                + current_done_qty
+            )
+
+            # 防止舊資料／重複送出造成超過本批應完成量
+            '''
+            current_required_qty = max(
+                to_int(
+                    getattr(
+                        assemble_record,
+                        'total_ask_qty',
+                        0
+                    )
+                ),
+                to_int(
+                    getattr(
+                        assemble_record,
+                        'must_receive_qty',
+                        0
+                    )
+                ),
+                to_int(
+                    getattr(
+                        assemble_record,
+                        'must_receive_end_qty',
+                        0
+                    )
+                ),
+                current_total_qty,
+                0
+            )
+            '''
+
+            #
+            current_required_qty = max(
+                to_int(
+                    getattr(
+                        assemble_record,
+                        'total_ask_qty',
+                        0
+                    )
+                ),
+                to_int(
+                    material_record.total_delivery_qty
+                    or material_record.delivery_qty
+                    or material_record.material_qty
+                ),
+                0
+            )
+
+            if current_required_qty > 0:
+                current_total_qty = min(
+                    current_total_qty,
+                    current_required_qty
+                )
+            #
+
+            if current_required_qty > 0:
+                current_total_qty = min(
+                    current_total_qty,
+                    current_required_qty
+                )
+
+            assemble_record.completed_qty = current_done_qty
+            assemble_record.total_completed_qty = current_total_qty
+            assemble_record.allOk_qty = current_total_qty
+
+            b110_rows = get_group_rows(
+                'B110',
+                current_batch_no
+            )
+
+            # 統一取得 B110 累計完成量。
+            # 不可使用 completed_qty or total_completed_qty，
+            # 因為 completed_qty=22 會遮住 total_completed_qty=72。
+            def get_b110_done_qty(row):
+                return max(
+                    to_int(
+                        getattr(
+                            row,
+                            'total_completed_qty',
+                            0
+                        )
+                    ),
+                    to_int(
+                        getattr(
+                            row,
+                            'allOk_qty',
+                            0
+                        )
+                    ),
+                    to_int(
+                        getattr(
+                            row,
+                            'completed_qty',
+                            0
+                        )
+                    ),
+                    0
+                )
+            #
 
             done_copy_rows = (
                 s.query(Assemble)
@@ -2853,12 +2335,18 @@ def update_assemble_process_step():
                     "message": "B110 batch final waiting send rows ready"
                 }), 200
 
+            #not_finished = [
+            #    r for r in b110_rows
+            #    if to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty) <= 0
+            #]
+            #
+            #
             not_finished = [
                 r for r in b110_rows
-                if to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty) <= 0
+                if get_b110_done_qty(r) <= 0
             ]
-
             #
+
             if not_finished:
                 # 目前這筆 B110 已完成，例如 b2=35
                 # 但同批還有 b1 未完成，所以：
@@ -2919,36 +2407,94 @@ def update_assemble_process_step():
                     "message": "B110 row finished, wait other rows in same batch"
                 }), 200
 
+            #min_qty = min(
+            #    to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty)
+            #    for r in b110_rows
+            #)
+            #
             min_qty = min(
-                to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty)
+                get_b110_done_qty(r)
                 for r in b110_rows
             )
 
+            #waiting_row = min(
+            #    b110_rows,
+            #    key=lambda r: (
+            #        to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty),
+            #        to_int(r.id)
+            #    )
+            #)
+            #
             waiting_row = min(
                 b110_rows,
                 key=lambda r: (
-                    to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty),
+                    get_b110_done_qty(r),
                     to_int(r.id)
                 )
             )
 
+            #send_row = max(
+            #    b110_rows,
+            #    key=lambda r: (
+            #        to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty),
+            #        to_int(r.id)
+            #    )
+            #)
+            #
             send_row = max(
                 b110_rows,
                 key=lambda r: (
-                    to_int(r.completed_qty or r.total_completed_qty or r.allOk_qty),
+                    get_b110_done_qty(r),
                     to_int(r.id)
                 )
             )
 
-            send_completed = to_int(
-                send_row.completed_qty
-                or send_row.total_completed_qty
-                or send_row.allOk_qty
+            #send_completed = to_int(
+            #    send_row.completed_qty
+            #    or send_row.total_completed_qty
+            #    or send_row.allOk_qty
+            #)
+            #
+            send_completed = get_b110_done_qty(
+                send_row
             )
 
             remain_qty = max(send_completed - min_qty, 0)
 
             #
+            print(
+                "[B110 FULL END QTY]",
+                {
+                    "material_id": material_id,
+                    "assemble_id": assemble_record.id,
+                    "release_batch_no": current_batch_no,
+                    "previous_total_before_finish":
+                        previous_total_before_finish,
+                    "current_done_qty":
+                        current_done_qty,
+                    "current_total_qty":
+                        current_total_qty,
+                    "rows": [
+                        {
+                            "id": r.id,
+                            "completed_qty":
+                                to_int(r.completed_qty),
+                            "total_completed_qty":
+                                to_int(r.total_completed_qty),
+                            "allOk_qty":
+                                to_int(r.allOk_qty),
+                            "effective_done_qty":
+                                get_b110_done_qty(r),
+                        }
+                        for r in b110_rows
+                    ],
+                    "min_qty": min_qty,
+                    "send_completed": send_completed,
+                    "remain_qty": remain_qty,
+                }
+            )
+            #
+
             # --------------------------------------------------------
             # 若此 material 還有異常返工流程，代表 B110 的差額
             # 已經由 B109異常返工 -> B110異常返工 處理。
@@ -2966,7 +2512,6 @@ def update_assemble_process_step():
             #    is not None
             #)
 
-            #
             has_abnormal_rework_flow = (
                 s.query(Assemble.id)
                 .filter(Assemble.material_id == material_id)
@@ -2997,6 +2542,14 @@ def update_assemble_process_step():
                 r.show2_ok = 7
                 r.show3_ok = 7
 
+            #
+            send_row.isAssembleStationShow = True
+            send_row.isWarehouseStationShow = False
+            send_row.process_step_code = 0
+            send_row.show2_ok = 9
+            #
+
+            '''
             send_row.process_step_code = 0
             send_row.completed_qty = send_completed
             send_row.total_completed_qty = min_qty
@@ -3005,6 +2558,20 @@ def update_assemble_process_step():
             # 待送出列的應完成總數量要顯示本批完成量
             # 不可以用 remain_qty，否則完整完成 20/20 時會變 0
             send_row.must_receive_end_qty = min_qty
+            '''
+            #
+            send_row.process_step_code = 0
+
+            # 待送出列的本批完成數量與累計量都固定為共同完成量
+            send_row.completed_qty = min_qty
+            send_row.total_completed_qty = min_qty
+            send_row.allOk_qty = min_qty
+
+            send_row.must_receive_qty = min_qty
+            send_row.ask_qty = min_qty
+            send_row.total_ask_qty = min_qty
+            send_row.must_receive_end_qty = min_qty
+            #
 
             send_row.isAssembleStationShow = True
             send_row.isWarehouseStationShow = False
@@ -3141,6 +2708,8 @@ def update_assemble_process_step():
                 "message": "B110 batch waiting send plus finished copy"
             }), 200
 
+        # end if B110 FULL END
+
         material_record.isAssembleStation3TakeOk = False
 
         s.commit()
@@ -3165,7 +2734,7 @@ def update_assemble_process_step():
         s.close()
 
 
-# 20260702版
+# 20260722版
 @updateTable.route('/sendAssembleToWarehouse', methods=['POST'])
 def send_assemble_to_warehouse():
     print("sendAssembleToWarehouse...")
@@ -3174,7 +2743,13 @@ def send_assemble_to_warehouse():
 
     material_id = data.get("id") or data.get("material_id")
     assemble_id = data.get("assemble_id")
-    mode = data.get("mode", "forklift")
+    mode = str(data.get("mode") or "").strip().lower()
+
+    if mode not in ("agv", "forklift"):
+        return jsonify({
+            "status": False,
+            "message": "缺少或錯誤的搬運方式，mode 必須為 agv 或 forklift"
+        }), 400
 
     if not material_id:
         return jsonify({
@@ -3182,9 +2757,47 @@ def send_assemble_to_warehouse():
             "message": "missing material_id"
         }), 400
 
-    s = Session()
+    def safe_int(value):
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+
+    def get_effective_done_qty(row):
+        return max(
+            safe_int(row.total_completed_qty),
+            safe_int(row.allOk_qty),
+            safe_int(row.completed_qty),
+            safe_int(row.total_ask_qty),
+            safe_int(row.must_receive_qty),
+            0,
+        )
 
     try:
+        material_id = int(material_id)
+    except (TypeError, ValueError):
+        return jsonify({
+            "status": False,
+            "message": "material_id 格式錯誤"
+        }), 400
+
+    if assemble_id not in (None, ''):
+        try:
+            assemble_id = int(assemble_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                "status": False,
+                "message": "assemble_id 格式錯誤"
+            }), 400
+    else:
+        assemble_id = None
+
+    s = Session()
+    try:
+        # ------------------------------------------------------------
+        # 1. 鎖定 material
+        # ------------------------------------------------------------
         material = (
             s.query(Material)
             .filter(Material.id == material_id)
@@ -3198,68 +2811,102 @@ def send_assemble_to_warehouse():
                 "message": "找不到 material"
             }), 404
 
-        #
         # ------------------------------------------------------------
-        # 1) 若前端有傳 assemble_id，先找 target
+        # 2. 若前端傳 assemble_id，先找指定列
         # ------------------------------------------------------------
         target = None
         current_batch_no = 0
 
-        if assemble_id:
-            target = (
-                s.query(Assemble)
-                .filter(Assemble.id == assemble_id)
-                .filter(Assemble.material_id == material_id)
+        if assemble_id is not None:
+            target = (s.query(Assemble)
+                .filter(Assemble.id == assemble_id, Assemble.material_id == material_id)
                 .with_for_update()
                 .first()
             )
 
-            if target:
-                current_batch_no = to_int(getattr(target, "release_batch_no", 0))
+            if not target:
+                return jsonify({
+                    "status": False,
+                    "message": "找不到指定的 assemble 完成資料"
+                }), 200
+
+            current_batch_no = to_int(getattr(target, "release_batch_no", 0))
 
         # ------------------------------------------------------------
-        # 2) B110 最終送出：
-        # 只送出同一個 release_batch_no 的 B110 待送出資料
+        # 3. 共用的「可送出」條件
+        #
+        # B109-only：
+        #   work_num=B109、process_step_code=0，也可直接送出
+        #
+        # B110：
+        #   若有 release_batch_no，僅送同一批 B110
         # ------------------------------------------------------------
-        targets_query = (
-            s.query(Assemble)
-            .filter(Assemble.material_id == material_id)
-            .filter(Assemble.work_num == 'B110')
-            .filter(Assemble.process_step_code == 0)
-            .filter(Assemble.show2_ok.in_([9, 10]))
-            .filter(Assemble.completed_qty > 0)
-            .filter(or_(Assemble.reason.is_(None), Assemble.reason != 'B110_DONE_COPY'))
-        )
+        common_filters = [
+            Assemble.material_id == material_id,
+            Assemble.process_step_code == 0,
+            Assemble.show2_ok.in_([9, 10]),
+            Assemble.completed_qty > 0,
+            #or_(
+            #    Assemble.reason.is_(None),
+            #    Assemble.reason != 'B110_DONE_COPY'
+            #)
+            or_(
+                Assemble.reason.is_(None),
+                Assemble.reason == '',
+                Assemble.reason.notin_(['B110_DONE_COPY'])
+            )
+        ]
 
-        # batch_no > 0 才限制 batch；舊資料 batch_no=0 則維持舊邏輯
-        if current_batch_no > 0:
-            targets_query = targets_query.filter(Assemble.release_batch_no == current_batch_no)
+        targets = []
 
-        targets = (
-            targets_query
-            .order_by(Assemble.id.asc())
-            .with_for_update()
-            .all()
-        )
-
-        # ------------------------------------------------------------
-        # 3) 如果不是 B110 batch 送出，就退回單筆 target
-        # ------------------------------------------------------------
-        if not targets:
-            if target:
-                targets = [target]
-            else:
+        if target:
+            # --------------------------------------------------------
+            # 3-1. 指定的是 B110：送同 release_batch_no 的 B110 群組
+            # --------------------------------------------------------
+            if (
+                str(target.work_num or '').strip() == 'B110'
+                and current_batch_no > 0
+            ):
                 targets = (
                     s.query(Assemble)
-                    .filter(Assemble.material_id == material_id)
-                    .filter(Assemble.process_step_code == 0)
-                    .filter(Assemble.show2_ok.in_([9, 10]))
-                    .filter(Assemble.completed_qty > 0)
-                    .filter(or_(Assemble.reason.is_(None), Assemble.reason != 'B110_DONE_COPY'))
+                    .filter(*common_filters)
+                    .filter(Assemble.work_num == 'B110')
+                    .filter(
+                        Assemble.release_batch_no == current_batch_no
+                    )
                     .order_by(Assemble.id.asc())
                     .with_for_update()
                     .all()
                 )
+
+            # --------------------------------------------------------
+            # 3-2. 指定的是 B109-only，或舊資料 batch_no=0：
+            #      只能送指定的完成列，不可無條件送 target
+            # --------------------------------------------------------
+            else:
+                valid_target = (
+                    s.query(Assemble)
+                    .filter(*common_filters)
+                    .filter(Assemble.id == target.id)
+                    .with_for_update()
+                    .first()
+                )
+
+                if valid_target:
+                    targets = [valid_target]
+
+        # ------------------------------------------------------------
+        # 3-3. 前端沒有傳 assemble_id：
+        #      取得該 material 所有符合條件的完成列
+        # ------------------------------------------------------------
+        else:
+            targets = (
+                s.query(Assemble)
+                .filter(*common_filters)
+                .order_by(Assemble.id.asc())
+                .with_for_update()
+                .all()
+            )
 
         if not targets:
             return jsonify({
@@ -3267,48 +2914,304 @@ def send_assemble_to_warehouse():
                 "message": "沒有可送出的組裝完成資料"
             }), 200
 
-        results = []
+        # ------------------------------------------------------------
+        # 4. 防止已在 Warehouse 的資料被重複送出
+        # ------------------------------------------------------------
+        pending_targets = [
+            row for row in targets
+            if not bool(row.isWarehouseStationShow)
+        ]
+
+        if not pending_targets:
+            return jsonify({
+                "status": False,
+                "message": "此批資料已送至 Warehouse，請勿重複送出",
+                "material_id": material.id,
+                "assemble_ids": [row.id for row in targets]
+            }), 200
+
+        #
+        # ------------------------------------------------------------
+        # 5-0. 計算本次實際可送至 Warehouse 的完成數量
+        #
+        # 注意：
+        # 不能只取前端指定 target 的 completed_qty。
+        #
+        # 例如：
+        # 組立第一次完成50，第二位員工再完成22，
+        # 最終整張工單實際完成量應為72，而不是50或22。
+        # ------------------------------------------------------------
+        completed_source_rows = (
+            s.query(Assemble)
+            .filter(
+                Assemble.material_id == material_id,
+
+                # 已經完成的工序或待送出列
+                or_(
+                    Assemble.process_step_code == 0,
+                    Assemble.total_completed_qty > 0,
+                    Assemble.completed_qty > 0,
+                    Assemble.allOk_qty > 0,
+                ),
+
+                # 排除純歷史複製列
+                or_(
+                    Assemble.reason.is_(None),
+                    Assemble.reason == '',
+                    Assemble.reason != 'B110_DONE_COPY'
+                )
+            )
+            .with_for_update()
+            .all()
+        )
+
+        source_qty_list = []
+
+        for source_row in completed_source_rows:
+            source_qty_list.append(
+                get_effective_done_qty(source_row)
+            )
+
+        material_delivery_qty = safe_int(
+            material.delivery_qty
+        )
+
+        material_assemble_qty = safe_int(
+            material.assemble_qty
+        )
+
+        material_total_assemble_qty = safe_int(
+            material.total_assemble_qty
+        )
+
+        effective_completed_qty = max(
+            source_qty_list + [
+                material_delivery_qty,
+                material_assemble_qty,
+                material_total_assemble_qty,
+                0,
+            ]
+        )
+
+        # 不可超過應完成數量
+        if material_delivery_qty > 0:
+            effective_completed_qty = min(
+                effective_completed_qty,
+                material_delivery_qty
+            )
+
+        print(
+            '[sendAssembleToWarehouse] effective qty:',
+            {
+                'material_id': material_id,
+                'order_num': material.order_num,
+                'delivery_qty': material_delivery_qty,
+                'effective_completed_qty':
+                    effective_completed_qty,
+                'source_qty_list':
+                    source_qty_list,
+            }
+        )
         #
 
-        for row in targets:
+        # ------------------------------------------------------------
+        # 5. 執行送出
+        #
+        # 重要：
+        # move_assemble_to_warehouse() 必須接收 mode，
+        # 由 mode 決定只建立 AGV 或只建立堆高機資料。
+        # ------------------------------------------------------------
+        results = []
+
+        for index, row in enumerate(pending_targets):
             result = move_assemble_to_warehouse(
                 session=s,
                 material_record=material,
                 assemble_record=row,
+                mode=mode,
+
+                operator_user=(
+                    data.get("user_id")
+                    or data.get("emp_id")
+                ),
+
                 agv_wait_user='AGV2-1',
-                agv_run_user='AGV2-2' if mode == 'agv' else 'FORKLIFT'
+                agv_run_user='AGV2-2',
+
+                # 同一 material 若有多筆 assemble，
+                # 只有第一筆負責清理搬運 placeholder
+                handle_transport=(index == 0)
             )
+
             results.append(result)
 
         # ------------------------------------------------------------
-        # 4) 注意：不要把其他 assemble 的 isWarehouseStationShow 關掉
-        #    否則 Warehouse 只會剩 1 筆
+        # 6. 確保完成列正式進入 Warehouse
+        #
+        # move_assemble_to_warehouse() 負責搬運相關處理；
+        # 這裡負責最後一致化 material / assemble 狀態。
         # ------------------------------------------------------------
+        #now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_str = DateTime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        release_material_lock = None
-        try:
-            material.isOpen = False
-            material.isOpenEmpId = ''
-            material.hasStarted = False
-            material.startStatus = 1
-        except Exception:
-            pass
+        for row in pending_targets:
+            work_num = str(row.work_num or '').strip()
+
+            reason = str(row.reason or '').strip()
+
+            # --------------------------------------------------------
+            # B109-only 或直接待送出列：
+            # 數量必須同步成整張工單實際完成量。
+            #
+            # B110 批次列不要強制改成整張工單總量，
+            # 否則分批72件可能每一批都被改成72。
+            # --------------------------------------------------------
+            is_direct_b109 = (work_num == 'B109' or reason == 'B109_DIRECT_WAIT_SEND')
+
+            if is_direct_b109:
+                row.must_receive_qty = effective_completed_qty
+
+                row.ask_qty = effective_completed_qty
+
+                row.total_ask_qty = (
+                    effective_completed_qty
+                )
+
+                row.must_receive_end_qty = (
+                    effective_completed_qty
+                )
+
+                row.completed_qty = (
+                    effective_completed_qty
+                )
+
+                row.total_completed_qty = (
+                    effective_completed_qty
+                )
+
+                row.allOk_qty = (
+                    effective_completed_qty
+                )
+
+            # --------------------------------------------------------
+            # B110 批次列：
+            # 保留該批次原本數量，只修正明顯為0的欄位。
+            # --------------------------------------------------------
+            else:
+                row_effective_qty = (
+                    get_effective_done_qty(row)
+                )
+
+                if row_effective_qty <= 0:
+                    row_effective_qty = (
+                        effective_completed_qty
+                    )
+
+                if safe_int(row.completed_qty) <= 0:
+                    row.completed_qty = (
+                        row_effective_qty
+                    )
+
+                if (
+                    safe_int(
+                        row.total_completed_qty
+                    )
+                    <= 0
+                ):
+                    row.total_completed_qty = (
+                        row_effective_qty
+                    )
+
+                if safe_int(row.allOk_qty) <= 0:
+                    row.allOk_qty = (
+                        row_effective_qty
+                    )
+
+            # --------------------------------------------------------
+            # Warehouse 顯示狀態
+            # --------------------------------------------------------
+            row.process_step_code = 0
+
+            row.isAssembleStationShow = False
+            row.isWarehouseStationShow = True
+
+            row.whichStation = 3
+
+            row.show1_ok = 3
+            row.show2_ok = 10
+            row.show3_ok = 10
+
+            row.input_disable = True
+            row.input_end_disable = True
+            row.input_abnormal_disable = True
+
+            # Warehouse 頁面仍需輸入/確認入庫數量時，
+            # input_allOk_disable 必須為 False
+            row.input_allOk_disable = False
+
+            row.update_time = now_str
+
+
+        # ------------------------------------------------------------
+        # 7. material 正式抵達成品區，等待入庫
+        # ------------------------------------------------------------
+        material.isAssembleStationShow = False
+        material.isAssembleStation3TakeOk = True
+
+        material.whichStation = 3
+
+        material.show1_ok = 3
+        material.show2_ok = 10
+        material.show3_ok = 11
+
+        # 同步實際完成數量
+        material.assemble_qty = (
+            effective_completed_qty
+        )
+
+        material.total_assemble_qty = (
+            effective_completed_qty
+        )
+
+        material.must_allOk_qty = (
+            effective_completed_qty
+        )
+
+        # 注意：
+        # 此時還只是等待入庫，
+        # 不可設定 material.total_allOk_qty
+        # 也不可設定 material.isAllOk=True
+
+        # 釋放 Begin / End 操作鎖
+        material.isOpen = False
+        material.isOpenEmpId = ''
+        material.hasStarted = False
+        material.startStatus = 1
+
+        material.update_time = now_str
+        #
 
         s.commit()
 
         return jsonify({
             "status": True,
-            "message": "已送到成品區，Warehouse 可顯示",
+            "message": (
+                "已呼叫 AGV 送往成品區"
+                if mode == "agv"
+                else "已呼叫堆高機送往成品區"
+            ),
+            "mode": mode,
             "material_id": material.id,
             "order_num": material.order_num,
-            "assemble_ids": [r.id for r in targets],
-            "count": len(targets),
+            "assemble_ids": [row.id for row in pending_targets],
+            "count": len(pending_targets),
             "data": results
         }), 200
 
     except Exception as e:
         s.rollback()
         print("sendAssembleToWarehouse error:", e)
+
         return jsonify({
             "status": False,
             "message": str(e)
@@ -3382,91 +3285,6 @@ def send_process_to_warehouse():
 
     finally:
         s.close()
-
-
-"""
-@updateTable.route('/updateAssembleProcessStepP', methods=['POST'])
-def update_assemble_process_step_p():
-  print("updateAssembleProcessStepP....")
-
-  data = request.json
-
-  if not data or 'id' not in data or 'assemble_id' not in data:
-    return jsonify({"error": "Missing parameters 'id' or 'assemble_id'"}), 400
-
-  material_id = data['id']
-  assemble_id = data['assemble_id']
-  return_value = False
-
-  s = Session()
-
-  material_record = s.query(P_Material).filter_by(id=material_id).first()
-  if not material_record:
-    return jsonify({"error": f"P_Material with id {material_id} not found"}), 404
-
-  assemble_record = s.query(P_Assemble).filter_by(id=assemble_id, material_id=material_id).first()
-  if not assemble_record:
-    return jsonify({"error": f"P_Assemble with id {assemble_id} and material_id {material_id} not found"}), 404
-
-  target_create_at = normalize_create_at(assemble_record.create_at)
-
-  assemble_records = (s.query(P_Assemble)
-    .filter(and_(P_Assemble.material_id == material_id, P_Assemble.create_at == target_create_at))
-    .all()
-  )
-
-  # 如果同組至少有一筆，判斷是否全部都是 process_step_code=0
-  all_process_step_zero = bool(assemble_records) and all(r.process_step_code == 0 for r in assemble_records)
-
-  # 如果條件滿足，更新 material 表
-  if all_process_step_zero:
-    print("updateAssembleProcessStepP , all_process_step_zero", all_process_step_zero)
-
-    material_record.isAssembleStation3TakeOk = True
-    assemble_record.isAssembleStationShow = True
-
-    ## ✅ 完工 → 進倉儲等待入庫
-    #assemble_record.isWarehouseStationShow = True
-    #assemble_record.isStockIn = False   # 尚未入庫（等待入庫清單要看這個）
-    #
-    # 加工結束後，仍留在 ~ProcessEnd.vue
-    # 不可直接進 Ware~.vue
-    assemble_record.isAssembleStationShow = True
-    assemble_record.isWarehouseStationShow = False
-
-    # 這個表示「需要入庫」，但尚未送到成品區
-    assemble_record.isStockIn = True
-    #
-
-    return_value = True
-  else:
-    print("updateAssembleProcessStepP , not all_process_step_zero")
-
-    material_record.isAssembleStation3TakeOk = False
-    assemble_record.isAssembleStationShow = False
-
-    # 把同一批加工製程排好順序，找出『現在做的是第幾道』，然後抓『下一道製程』出來。
-
-    # assemble.seq_num 越小 → 越前面的製程
-    sorted_records = sorted(assemble_records, key=lambda r: r.seq_num)
-
-    # 現在在哪一個製程
-    current_index = next((i for i, r in enumerate(sorted_records) if r.id == assemble_id), None)
-
-    print("current_index, current_index + 1, len(sorted_records:",current_index, current_index + 1, len(sorted_records))
-    if current_index is not None and current_index + 1 < len(sorted_records):
-      next_record = sorted_records[current_index + 1]
-      print(f"next_assemble_id 已設為 {next_record.id}")
-
-      next_record.completed_qty = 0
-
-    return_value = False
-  s.commit()
-
-  return jsonify({
-    'status': return_value
-  })
-"""
 
 
 @updateTable.route("/updateModifyMaterialAndBoms", methods=['POST'])
@@ -3586,7 +3404,7 @@ def update_assemble_data_by_material_id():
   print("updateAssmbleDataByMaterialID....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _material_id = request_data.get('material_id')
   _delivery_qty = request_data.get('delivery_qty')
   _record_name1 = request_data.get('record_name1')
@@ -3871,11 +3689,10 @@ def update_assembleMustReceiveQty_by_MaterialID():
   print("updateAssembleMustReceiveQtyByMaterialID....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _material_id = request_data.get('material_id')
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
-  #print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
 
   return_value = True  # true: 資料正確,
   s = Session()
@@ -3914,122 +3731,6 @@ def update_assembleMustReceiveQty_by_MaterialID():
     'status': return_value
   })
 
-
-"""updateTablep
-@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDP", methods=['POST'])
-def update_assembleMustReceiveQty_by_MaterialID_p():
-  print("updateAssembleMustReceiveQtyByMaterialIDP....")
-
-  request_data = request.get_json()
-  #print("request_data", request_data)
-  _material_id = request_data.get('material_id')
-  _record_name = request_data['record_name']
-  _record_data = request_data['record_data']
-  #print("_order_num, _id, _record_name, _record_data:", _material_id, _record_name, _record_data)
-
-  return_value = True  # true: 資料正確,
-  s = Session()
-
-  # 確認 record_name 是 Assemble 的合法欄位
-  valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
-  if _record_name not in valid_columns:
-    return_value = False
-    raise ValueError(f"'{ _record_name }' 不是 P_Assemble 表中的合法欄位")
-
-  # 查詢所有 material_id 相符的 Assemble 記錄
-  assemble_records = s.query(P_Assemble).filter_by(material_id = _material_id).all()
-
-  if not assemble_records:
-    return_value = False
-    raise ValueError(f"No P_Assemble records found for material_id { _material_id }")
-
-  updated_ids = []
-  for record in assemble_records:
-    setattr(record, _record_name, _record_data)  # 動態設欄位
-    updated_ids.append(record.id)
-
-  s.commit()
-
-  s.close()
-
-  return jsonify({
-    'status': return_value
-  })
-"""
-
-
-"""
-@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
-def update_assembleMustReceiveQty_by_materialID_and_date():
-    print("updateAssembleMustReceiveQtyByMaterialIDAndDate....")
-
-    request_data = request.get_json()
-    #print("request_data", request_data)
-
-    _material_id   = request_data.get('material_id')
-    _raw_create_at = request_data.get('create_at')
-    _record_name   = request_data['record_name']
-    _record_data   = request_data['record_data']
-
-    #print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
-    #print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
-
-    return_value = True
-    s = Session()
-
-    try:
-        # 1) 檢查欄位是否合法
-        valid_columns = [c.key for c in inspect(Assemble).mapper.column_attrs]
-        if _record_name not in valid_columns:
-            return_value = False
-            raise ValueError(f"'{_record_name}' 不是 Assemble 表中的合法欄位")
-
-        # 2) 正常化 create_at
-        if _raw_create_at is None:
-            return_value = False
-            raise ValueError("缺少 create_at 參數")
-
-        target_create_at = normalize_create_at(_raw_create_at)
-        print("normalized create_at:", target_create_at, "type:", type(target_create_at))
-
-        # 3) 查出同 material_id + 同 create_at 的那一批資料
-        assemble_records = (
-            s.query(Assemble)
-             .filter(
-                and_(
-                    Assemble.material_id == _material_id,
-                    Assemble.create_at == target_create_at
-                )
-             )
-             .all()
-        )
-
-        if not assemble_records:
-            return_value = False
-            raise ValueError(
-                f"No Assemble records found for material_id={_material_id} and create_at={_raw_create_at}"
-            )
-
-        updated_ids = []
-        for record in assemble_records:
-            setattr(record, _record_name, _record_data)
-            updated_ids.append(record.id)
-
-        print("updated assemble ids:", updated_ids)
-
-        s.commit()
-
-    except Exception as e:
-        s.rollback()
-        print("update_assembleMustReceiveQty_by_materialID_and_date error:", e)
-        raise
-    finally:
-        s.close()
-
-    return jsonify({
-        'status': return_value
-    })
-"""
 
 @updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDate", methods=['POST'])
 def update_assembleMustReceiveQty_by_materialID_and_date():
@@ -4105,80 +3806,6 @@ def update_assembleMustReceiveQty_by_materialID_and_date():
 
     finally:
         s.close()
-
-
-"""
-@updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDateP", methods=['POST'])
-def update_assembleMustReceiveQty_by_materialID_and_date_p():
-    print("updateAssembleMustReceiveQtyByMaterialIDAndDateP....")
-
-    request_data = request.get_json()
-    #print("request_data", request_data)
-
-    _material_id   = request_data.get('material_id')
-    _raw_create_at = request_data.get('create_at')
-    _record_name   = request_data['record_name']
-    _record_data   = request_data['record_data']
-
-    #print("_material_id, _record_name, _record_data:", _material_id, _record_name, _record_data)
-    #print("raw create_at type:", type(_raw_create_at), "value:", _raw_create_at)
-
-    return_value = True
-    s = Session()
-
-    try:
-        # 1) 檢查欄位是否合法
-        valid_columns = [c.key for c in inspect(P_Assemble).mapper.column_attrs]
-        if _record_name not in valid_columns:
-            return_value = False
-            raise ValueError(f"'{_record_name}' 不是 P_Assemble 表中的合法欄位")
-
-        # 2) 正常化 create_at
-        if _raw_create_at is None:
-            return_value = False
-            raise ValueError("缺少 create_at 參數")
-
-        target_create_at = normalize_create_at(_raw_create_at)
-        print("normalized create_at:", target_create_at, "type:", type(target_create_at))
-
-        # 3) 查出同 material_id + 同 create_at 的那一批資料
-        assemble_records = (
-            s.query(P_Assemble)
-             .filter(
-                and_(
-                    P_Assemble.material_id == _material_id,
-                    P_Assemble.create_at == target_create_at
-                )
-             )
-             .all()
-        )
-
-        if not assemble_records:
-            return_value = False
-            raise ValueError(
-                f"No P_Assemble records found for material_id={_material_id} and create_at={_raw_create_at}"
-            )
-
-        updated_ids = []
-        for record in assemble_records:
-            setattr(record, _record_name, _record_data)
-            updated_ids.append(record.id)
-
-        print("updated p assemble ids:", updated_ids)
-
-        s.commit()
-
-    except Exception as e:
-        s.rollback()
-        print("update_assembleMustReceiveQty_by_materialID_and_date_p error:", e)
-        raise
-    finally:
-        s.close()
-
-    return jsonify({
-        'status': return_value
-    })
-"""
 
 
 @updateTable.route("/updateAssembleMustReceiveQtyByMaterialIDAndDateP", methods=['POST'])
@@ -4309,307 +3936,6 @@ def update_material_fields():
         s.close()
 
 
-"""
-def sync_assemble_schedule_rows(session, material_id, process_steps):
-  #
-  #依 material_id 對應的 assemble 紀錄，根據 process_steps 同步 schedule_id 複製列
-  #規則：
-  #- B109 -> 使用 process_steps['assemble']
-  #- B110 -> 使用 process_steps['check']
-  #- 每個 work_num 群組保留 1 筆原始紀錄
-  #- 其餘 schedule_id 用複製列表示
-  #
-  #s = Session()
-
-  #assembles = (
-  #  s.query(Assemble)
-  #  .filter(Assemble.material_id == material_id)
-  #  .order_by(Assemble.id.asc())
-  #  .all()
-  #)
-
-  # 只抓主列
-  assembles = (
-      session.query(Assemble)
-      .filter(
-          Assemble.material_id == material_id,
-          Assemble.is_copied_from_id.is_(None)
-      )
-      .all()
-  )
-
-  if not assembles:
-    return
-    #session.close()
-    #return jsonify({
-    #  'status': False
-    #})
-
-  for base in assembles:      # for_loop_a
-    ## 只處理主列，避免複製列再被拿來展開
-    #if base.is_copied_from_id is not None:
-    #  continue
-
-    work_num = (base.work_num or '').strip()
-
-    if 'B109' in work_num:
-      target_steps = process_steps.get('assemble', [])
-    elif 'B110' in work_num:
-      target_steps = process_steps.get('check', [])
-    else:
-      continue
-
-    checked_ids = [
-      int(x.get('id'))
-      for x in target_steps
-      if x.get('checked') and x.get('id') is not None
-    ]
-
-    # 取出這個 base 對應的複製列
-    copied_rows = (
-      session.query(Assemble)
-      .filter(
-        Assemble.material_id == base.material_id,
-        Assemble.work_num == base.work_num,
-        Assemble.is_copied_from_id == base.material_id
-      )
-      #.order_by(Assemble.id.asc())
-      .all()
-    )
-
-    existing_copy_ids = {
-      int(r.schedule_id): r
-      for r in copied_rows
-      if r.schedule_id is not None
-    }
-
-    # -------------------------
-    # 1. 沒有任何勾選
-    # -------------------------
-    if not checked_ids:
-      base.schedule_id = None
-
-      for row in copied_rows:
-        session.delete(row)
-
-      continue
-
-    # -------------------------
-    # 2. 主列保留第一個 checked id
-    # -------------------------
-    base_schedule_id = checked_ids[0]
-    base.schedule_id = base_schedule_id
-
-    # 其餘要存在於 copied rows
-    desired_copy_ids = set(checked_ids[1:])
-    existing_copy_id_set = set(existing_copy_ids.keys())
-
-    # -------------------------
-    # 3. 刪除不需要的 copied rows
-    # -------------------------
-    for sid in (existing_copy_id_set - desired_copy_ids):
-      session.delete(existing_copy_ids[sid])
-
-    # -------------------------
-    # 4. 新增缺少的 copied rows
-    # -------------------------
-    for sid in (desired_copy_ids - existing_copy_id_set):   # for_loop_b
-      new_row = Assemble(
-        material_id=base.material_id,
-        material_num=base.material_num,
-        material_comment=base.material_comment,
-        seq_num=base.seq_num,
-        work_num=base.work_num,
-        process_step_code=base.process_step_code,
-
-        Incoming1_Abnormal=base.Incoming1_Abnormal,
-        must_receive_qty=base.must_receive_qty,
-
-        ask_qty=base.ask_qty,
-        total_ask_qty=base.total_ask_qty,
-        total_ask_qty_end=base.total_ask_qty_end,
-
-        must_receive_end_qty=base.must_receive_end_qty,
-        abnormal_qty=base.abnormal_qty,
-
-        user_id=base.user_id,
-        writer_id=base.writer_id,
-        write_date=base.write_date,
-
-        good_qty=base.good_qty,
-        total_good_qty=base.total_good_qty,
-        non_good_qty=base.non_good_qty,
-
-        meinh_qty=base.meinh_qty,
-
-        completed_qty=base.completed_qty,
-        total_completed_qty=base.total_completed_qty,
-        allOk_qty=base.allOk_qty,
-
-        reason=base.reason,
-        confirm_comment=base.confirm_comment,
-        is_assemble_ok=base.is_assemble_ok,
-
-        currentStartTime=None,
-        currentEndTime=None,
-
-        input_disable=base.input_disable,
-        input_end_disable=base.input_end_disable,
-        input_allOk_disable=base.input_allOk_disable,
-        input_abnormal_disable=base.input_abnormal_disable,
-
-        isAssembleStationShow=base.isAssembleStationShow,
-        isWarehouseStationShow=base.isWarehouseStationShow,
-
-        alarm_enable=base.alarm_enable,
-        alarm_message=base.alarm_message,
-
-        isAssembleFirstAlarm=base.isAssembleFirstAlarm,
-        isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
-        isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
-
-        whichStation=base.whichStation,
-        show1_ok=base.show1_ok,
-        show2_ok=base.show2_ok,
-        show3_ok=base.show3_ok,
-
-        schedule_id=sid,
-
-        is_copied_from_id = base.id
-      )
-      session.add(new_row)
-    # end for_loop_b
-  # end for_loop_a
-
-  #session.close()
-  #return jsonify({
-  #  'status': True,
-  #})
-"""
-
-"""
-def sync_assemble_schedule_rows(session, material_id, process_steps):
-
-    bases = (
-        session.query(Assemble)
-        .filter(
-            Assemble.material_id == material_id,
-            Assemble.is_copied_from_id.is_(None),
-            Assemble.material_num.isnot(None),
-            Assemble.seq_num.isnot(None)
-        )
-        .all()
-    )
-
-    if not bases:
-      print("no valid base rows")
-      return
-
-    for base in bases:
-        print("BASE:", base.id, base.work_num, base.material_num, base.seq_num)
-
-        #if not base.material_num or base.seq_num is None:
-        #    print("skip invalid base:", base.id)
-        #    continue
-
-        work_num = (base.work_num or '').strip()
-
-        if 'B109' in work_num:
-            target_steps = process_steps.get('assemble', [])
-        elif 'B110' in work_num:
-            target_steps = process_steps.get('check', [])
-        else:
-            continue
-
-        checked_ids = [
-            int(x.get('id'))
-            for x in target_steps
-            if x.get('checked') and x.get('id') is not None
-        ]
-
-        # 🔥 1️⃣ 先刪掉所有 copied rows（關鍵）
-        session.query(Assemble).filter(
-            #Assemble.material_id == base.material_id,
-            #Assemble.work_num == base.work_num,
-            Assemble.is_copied_from_id == base.id
-        ).delete(synchronize_session=False)
-
-        if not checked_ids:
-            base.schedule_id = None
-            continue
-
-        # 🔥 2️⃣ 主列
-        base.schedule_id = checked_ids[0]
-
-        # 🔥 3️⃣ 重新建立 copied rows
-        for sid in checked_ids[1:]:
-            new_row = Assemble(
-              material_id=base.material_id,
-              material_num=base.material_num,
-              material_comment=base.material_comment,
-              seq_num=base.seq_num,
-              work_num=base.work_num,
-              process_step_code=base.process_step_code,
-
-              Incoming1_Abnormal=base.Incoming1_Abnormal,
-              must_receive_qty=base.must_receive_qty,
-
-              ask_qty=base.ask_qty,
-              total_ask_qty=base.total_ask_qty,
-              total_ask_qty_end=base.total_ask_qty_end,
-
-              must_receive_end_qty=base.must_receive_end_qty,
-              abnormal_qty=base.abnormal_qty,
-
-              user_id=base.user_id,
-              writer_id=base.writer_id,
-              write_date=base.write_date,
-
-              good_qty=base.good_qty,
-              total_good_qty=base.total_good_qty,
-              non_good_qty=base.non_good_qty,
-
-              meinh_qty=base.meinh_qty,
-
-              completed_qty=base.completed_qty,
-              total_completed_qty=base.total_completed_qty,
-              allOk_qty=base.allOk_qty,
-
-              reason=base.reason,
-              confirm_comment=base.confirm_comment,
-              is_assemble_ok=base.is_assemble_ok,
-
-              currentStartTime=None,
-              currentEndTime=None,
-
-              input_disable=base.input_disable,
-              input_end_disable=base.input_end_disable,
-              input_allOk_disable=base.input_allOk_disable,
-              input_abnormal_disable=base.input_abnormal_disable,
-
-              isAssembleStationShow=base.isAssembleStationShow,
-              isWarehouseStationShow=base.isWarehouseStationShow,
-
-              alarm_enable=base.alarm_enable,
-              alarm_message=base.alarm_message,
-
-              isAssembleFirstAlarm=base.isAssembleFirstAlarm,
-              isAssembleFirstAlarm_message=base.isAssembleFirstAlarm_message,
-              isAssembleFirstAlarm_qty=base.isAssembleFirstAlarm_qty,
-
-              whichStation=base.whichStation,
-              show1_ok=base.show1_ok,
-              show2_ok=base.show2_ok,
-              show3_ok=base.show3_ok,
-
-              schedule_id=sid,
-
-              is_copied_from_id = base.id
-            )
-            session.add(new_row)
-"""
-
-
 @updateTable.route("/updateAssembleScheduleRows", methods=['POST'])
 def update_assemble_schedule_rows():
     print("updateAssembleScheduleRows....")
@@ -4617,9 +3943,7 @@ def update_assemble_schedule_rows():
     request_data = request.get_json()
     material_id = request_data.get('id')
     process_steps = request_data.get('process_steps') or {}
-
     abnormal_qty = request_data.get('abnormal_qty', None)
-    #print("process_steps:", process_steps)
 
     s = Session()
 
@@ -5002,82 +4326,6 @@ def update_assemble_field_by_assemble_id():
         s.close()
 
 
-"""
-# from material table update some data by id or orde_num
-@updateTable.route("/updateMaterial", methods=['POST'])
-def update_material():
-    print("updateMaterial....")
-
-    request_data = request.get_json()
-    #print("request_data", request_data)
-    _order_num = request_data.get('order_num')
-    _id = request_data.get('id')
-    _record_name = request_data['record_name']
-    _record_data = request_data['record_data']
-    #print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
-
-    return_value = True  # true: 資料正確, 註冊成功
-    s = Session()
-
-    # 查找對應的記錄
-    #material_record = s.query(Material).filter_by(order_num = _order_num).first()
-
-    # 檢查傳入的參數，選擇查詢條件
-    material_record = None
-    if _order_num is not None:  # 如果傳入了 order_num
-        material_record = s.query(Material).filter_by(order_num=_order_num).first()
-    elif _id is not None:  # 如果傳入了 id
-        material_record = s.query(Material).filter_by(id=_id).first()
-
-    if material_record is None:
-      return_value = False
-    else:
-      # 動態設置欄位值
-      if hasattr(material_record, _record_name):
-
-        # +工序按鍵狀態
-        #if _record_name == 'process_step_enable':
-        if _record_name in ['process_step_enable', 'merge_enabled']:
-            if isinstance(_record_data, str):
-                v = _record_data.strip().lower()
-                if v in ['1', 'true', 'yes', 'y', 'on']:
-                    _record_data = True
-                elif v in ['0', 'false', 'no', 'n', 'off', '']:
-                    _record_data = False
-            else:
-                _record_data = bool(_record_data)
-
-        setattr(material_record, _record_name, _record_data)
-        s.commit()
-
-    '''
-    try:
-      # 查找對應的記錄
-      material_record = s.query(Material).filter_by(order_num = _order_num).first()
-
-      # 動態設置欄位值
-      if hasattr(material_record, _record_name):
-          setattr(material_record, _record_name, _record_data)
-          s.commit()
-          #print(f"Updated {material_record} with {_record_name} = {_record_data}")
-      else:
-          #print(f"Field {_record_name} does not exist in Material.")
-          return_value = False
-
-    except Exception as e:
-        s.rollback()
-        print(f"Error: {e}")
-        return_value = False
-    '''
-    s.commit()
-    s.close()
-
-    return jsonify({
-      'status': return_value
-    })
-"""
-
-
 @updateTable.route("/updateMaterial", methods=['POST'])
 def update_material():
     print("updateMaterial....")
@@ -5136,12 +4384,11 @@ def update_material_p():
     print("updateMaterialP....")
 
     request_data = request.get_json()
-    #print("request_data", request_data)
+
     _order_num = request_data.get('order_num')
     _id = request_data.get('id')
     _record_name = request_data['record_name']
     _record_data = request_data['record_data']
-    #print("_order_num, _id, _record_name, _record_data:", _order_num, _id, _record_name, _record_data)
 
     return_value = True  # true: 資料正確, 註冊成功
     s = Session()
@@ -5174,13 +4421,12 @@ def update_material_p():
     })
 
 
-# from material table update some data by id
 @updateTable.route("/updateAssemble", methods=['POST'])
 def update_assemble():
   print("updateAssemble....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _assemble_id = request_data['assemble_id']
   _record_name = request_data['record_name']
 
@@ -5198,10 +4444,6 @@ def update_assemble():
   assemble_record = s.query(Assemble).filter_by(id = _assemble_id).first()
 
   # 動態設置欄位值
-  #if hasattr(assemble_record, _record_name):
-  #  setattr(assemble_record, _record_name, _record_data)
-  #  s.commit()
-  #
   if hasattr(assemble_record, _record_name):
 
     # total_ask_qty 不允許前端任意累加
@@ -5224,7 +4466,6 @@ def update_assemble():
         assemble_record.total_ask_qty = assemble_record.ask_qty
 
     s.commit()
-  #
 
   s.close()
 
@@ -5233,13 +4474,12 @@ def update_assemble():
   })
 
 
-# from material table update some data by id
 @updateTable.route("/updateAssembleP", methods=['POST'])
 def update_assemble_p():
   print("updateAssembleP....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _assemble_id = request_data['assemble_id']
   _record_name = request_data['record_name']
 
@@ -5270,18 +4510,15 @@ def update_assemble_p():
   })
 
 
-# from material table update some data by id
 @updateTable.route("/updateProcessData", methods=['POST'])
 def update_process_data():
   print("updateProcessData....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _process_id = request_data['process_id']
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
-
-  #print("_record_name:", _record_name)
 
   return_value = True  # true: 資料正確, 註冊成功
   s = Session()
@@ -5306,7 +4543,7 @@ def update_process_data_p():
   print("updateProcessDataP....")
 
   request_data = request.get_json()
-  #print("request_data", request_data)
+
   _process_id = request_data['process_id']
   _record_name = request_data['record_name']
   _record_data = request_data['record_data']
@@ -5329,7 +4566,6 @@ def update_process_data_p():
   })
 
 
-# from material table update some data by id
 @updateTable.route("/updateMaterialRecord", methods=['POST'])
 def update_material_record():
   print("updateMaterialRecord....")
@@ -5410,7 +4646,6 @@ def update_material_record_p():
   })
 
 
-# from reagent table update some data by id
 @updateTable.route("/updatePermissions", methods=['POST'])
 def update_permissions():
   print("updatePermissions....")
@@ -5449,7 +4684,6 @@ def update_permissions():
   })
 
 
-# create agv data table
 @updateTable.route("/updateAGV", methods=['POST'])
 def update_agv():
   print("updateAGV....")
@@ -5476,101 +4710,6 @@ def update_agv():
   })
 
 
-"""
-@updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
-def update_assemble_alarm_message():
-    print("updateAssembleAlarmMessage....")
-
-    data = request.get_json()
-
-    assemble_id = data.get("assemble_id")
-    #print("assemble_id:", assemble_id)
-    cause_message_list = data.get("cause_message")  # 前端預期傳 list 或字串
-    #print("cause_message_list:", cause_message_list)
-    cause_user = data.get("cause_user")
-    #print("cause_user:", cause_user)
-
-    s = Session()
-
-    try:
-        # 1) 先抓本尊那筆 assemble
-        assemble_record = s.query(Assemble).get(assemble_id)
-        pre_assemble_record = s.query(Assemble).get(assemble_id-1)
-        if not assemble_record or not pre_assemble_record:
-            s.close()
-            return jsonify({"status": False, "message": "Assemble record not found"}), 404
-
-        # 2) 把 cause_message_list 轉成要存進 String(250) 的字串
-        #    - 若是 list: 用 "、" 接起來
-        #    - 若是字串: 直接用
-        #    - 其他型態: 強制轉字串
-        if isinstance(cause_message_list, list):
-            alarm_message_str = "、".join(str(x).strip() for x in cause_message_list if str(x).strip())
-        elif isinstance(cause_message_list, str):
-            alarm_message_str = cause_message_list.strip()
-        else:
-            alarm_message_str = str(cause_message_list or "").strip()
-
-        now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-
-        # 3) 更新本尊那筆
-        assemble_record.alarm_message = alarm_message_str
-        #assemble_record.alarm_message = ''
-        assemble_record.writer_id = cause_user
-        assemble_record.write_date = now_str
-        assemble_record.isAssembleFirstAlarm = True
-        assemble_record.alarm_enable = False
-
-        # 4) 同步到所有「從這筆複製出去」的資料
-        #    透過 model 上設定的 backref: copied_to
-        #    copied_to = 所有 is_copied_from_id = assemble_record.id 的子筆數
-        for child in assemble_record.copied_to:
-          print("child.id:", child.id)
-          # 只更新 user_id 有值的子筆數
-          if child.user_id and str(child.user_id).strip() != "":
-              child.alarm_message = alarm_message_str
-              child.writer_id = cause_user
-              child.write_date = now_str
-              child.isAssembleFirstAlarm = False
-              child.alarm_enable = False
-
-        for child in pre_assemble_record.copied_to:
-          print("child.id:", child.id)
-          # 只更新 user_id 有值的子筆數
-          if child.user_id and str(child.user_id).strip() != "":
-              child.alarm_message = alarm_message_str
-              child.writer_id = cause_user
-              child.write_date = now_str
-              child.isAssembleFirstAlarm = False
-              child.alarm_enable = False
-
-        # 如果沒有用 backref，也可以用下面這種查詢方式 (擇一即可)
-        # children = (
-        #     s.query(Assemble)
-        #      .filter(Assemble.is_copied_from_id == assemble_id)
-        #      .all()
-        # )
-        # for child in children:
-        #     child.alarm_message = alarm_message_str
-        #     child.writer_id = cause_user
-        #     child.write_date = now_str
-
-        s.commit()
-
-        return jsonify({
-            "status": True,
-            "message": "Alarm message updated successfully"
-        })
-
-    except Exception as e:
-        s.rollback()
-        return jsonify({"status": False, "message": str(e)}), 500
-
-    finally:
-        s.close()
-"""
-
-
 @updateTable.route("/updateAssembleAlarmMessage", methods=["POST"])
 def update_assemble_alarm_message():
     print("updateAssembleAlarmMessage....")
@@ -5578,7 +4717,6 @@ def update_assemble_alarm_message():
     data = request.get_json(silent=True) or {}
 
     assemble_id = data.get("assemble_id")
-    #alarm_message = (data.get("alarm_message") or "").strip()
     raw_message = data.get("alarm_message", None)
 
     if raw_message is None:
@@ -5777,7 +4915,6 @@ def update_bom_xor_receive_p():
 
     data = request.get_json()
     copied_id = data.get("copied_material_id")
-    #print("copied_id", copied_id)
 
     s = Session()
 
@@ -5994,4 +5131,3 @@ def update_assemble_table_data():
 # ------------------------------------------------------------------
 # batch 批次識別
 # ------------------------------------------------------------------
-

@@ -1,6 +1,5 @@
 <template>
-  <v-dialog v-model="isOpen" max-width="320">
-    <!--<v-card :title="opts.title">-->
+  <v-dialog  v-model="isOpen" :max-width="props.maxWidth">
     <v-card>
       <v-toolbar dense flat color="purple-lighten-1">
         <v-toolbar-title class="text-body-2 font-weight-bold text-center w-100">
@@ -8,7 +7,10 @@
         </v-toolbar-title>
       </v-toolbar>
 
-      <v-card-text v-html="opts.message"></v-card-text>
+      <v-card-text
+        v-html="opts.message"
+        class="confirm-message"
+      />
 
       <v-card-actions class="justify-center">
         <v-btn
@@ -41,6 +43,13 @@
 <script setup>
 import { ref } from 'vue'
 
+const props = defineProps({
+  maxWidth: {
+    type: [Number, String],
+    default: 320
+  }
+})
+
 const isOpen = ref(false)
 const opts = ref({
   title: '確認',
@@ -65,3 +74,21 @@ function close(ok) {
 
 defineExpose({ open })
 </script>
+
+<style lang="scss" scoped>
+
+* {
+  font-family:
+    "Microsoft JhengHei",
+    "微軟正黑體",
+    "Noto Sans TC",
+    sans-serif;
+}
+
+.confirm-message{
+  white-space: pre-line;
+  line-height: 1.8;
+  font-size:16px;
+}
+
+</style>

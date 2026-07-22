@@ -15,6 +15,7 @@ from ajax.listTableP import listTableP
 from ajax.getTable import getTable
 from ajax.getTableP import getTableP
 from ajax.createTable import createTable
+from ajax.createTableP import createTableP
 from ajax.updateTable import updateTable
 from ajax.updateTableP import updateTableP
 from ajax.deleteTable import deleteTable
@@ -60,6 +61,7 @@ app.register_blueprint(listTableP)
 app.register_blueprint(getTable)
 app.register_blueprint(getTableP)
 app.register_blueprint(createTable)
+app.register_blueprint(createTableP)
 app.register_blueprint(updateTable)
 app.register_blueprint(updateTableP)
 app.register_blueprint(deleteTable)

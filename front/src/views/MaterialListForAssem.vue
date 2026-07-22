@@ -448,7 +448,7 @@
               density="compact"
             />
 
-
+            <!--
             <v-text-field
               v-model="bar_code"
               label="條碼"
@@ -463,6 +463,21 @@
               density="compact"
 
             ></v-text-field>
+          -->
+<v-text-field
+  v-model="bar_code"
+  label="條碼"
+  ref="barcodeInput"
+  @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
+  @keyup.enter="handleBarCode"
+  hide-details
+  single-line
+  prepend-icon="mdi-barcode"
+  style="min-width:200px; position: relative; top: 18px;"
+  class="align-center"
+  density="compact"
+/>
+
 
 
 

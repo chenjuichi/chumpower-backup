@@ -12,8 +12,6 @@
 
   <ConfirmDialog ref="confirmRef" />
 
-  <ConfirmDialog ref="confirmScheduleRef" :max-width="560" />
-
   <v-dialog v-model="scheduling_dialog" persistent max-width="420">
     <v-card>
       <v-card-title style="font-weight: 600">
@@ -102,17 +100,16 @@
           </div>
         </div>
       </v-card-text>
-<!--@click="confirmSchedulingDialog"-->
+
       <v-card-actions class="justify-center pb-4">
         <v-btn
           color="success"
           prepend-icon="mdi-check"
-          text="完成"
+          text="確定"
           class="text-none"
           variant="flat"
           :loading="scheduling_dialog_loading"
-
-          @click="onClickProcessSettingConfirm"
+          @click="confirmSchedulingDialog"
         />
 
         <v-btn
@@ -391,7 +388,7 @@
                   single-line
                   class="top-input"
                 />
-            <!--
+
                 <v-text-field
                   id="bar_code"
                   v-model="bar_code"
@@ -407,20 +404,6 @@
                   variant="outlined"
                   class="barcode-input top-input"
                 />
-            -->
-<v-text-field
-  id="bar_code"
-  v-model="bar_code"
-  label="條碼"
-  prepend-inner-icon="mdi-barcode"
-  ref="barcodeInput"
-  @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
-  @keyup.enter="handleBarCode"
-  hide-details
-  single-line
-  variant="outlined"
-  class="barcode-input top-input"
-/>
             </v-col>
           </v-row>
         </v-card-title>
@@ -874,7 +857,6 @@ const updateAssembleScheduleRows = apiOperation('post', '/updateAssembleSchedule
 const getBoms = apiOperation('post', '/getBoms');
 
 const getOrderPickedBoms = apiOperation('post', '/getOrderPickedBoms');
-const checkDeleteBatchPermission = apiOperation('post', '/checkDeleteBatchPermission');
 
 const removeMaterialsAndRelationTable = apiOperation('post', '/removeMaterialsAndRelationTable');
 const removeMaterialsAndRelationTableByDeliveryDateRange = apiOperation('post', '/removeMaterialsAndRelationTableByDeliveryDateRange');
@@ -891,24 +873,10 @@ const { initAxios } = myMixin();
 const props = defineProps({ showFooter: Boolean });
 
 //=== data ===
-// ------------------------------------------------------------
-// 工序選擇後的二次確認 Dialog
-// ------------------------------------------------------------
-//const processConfirmDialog = ref(false)
-
-// 避免確認送出時重複點擊
-const processConfirmLoading = ref(false)
-
-// 本次等待確認的 item
-const pendingProcessItem = ref(null)
-
-//const scheduleItem = ref(null)
-
 // 刪除對話框相關
 const deleteTitle = ref('刪除工單');
 const deleteMessage = ref('此操作將刪除相關資料(BOM/Assemble/Process)，確定？');
 const confirmRef = ref(null);
-const confirmScheduleRef = ref(null);
 
 const animationImageSrc = ref(require('../assets/document-hover-swipe.gif'));
 const staticImageSrc = ref(require('../assets/document-hover-swipe.png'));
@@ -1671,49 +1639,6 @@ const shouldRestoreRow = (row) => {
 };
 */
 
-const shouldRestoreRow = (row) => {
-  const me = String(safeUserId.value || '').trim();
-
-  if (!row || !me) return false;
-
-  // 後端若已直接提供目前登入者的 process_id，優先使用
-  if (Number(row.my_process_id || 0) > 0) {
-    return true;
-  }
-
-  // 只找屬於目前登入者的 begin record
-  const myBeginRecord = Array.isArray(row.begin_records)
-    ? row.begin_records.find(record => {
-        const recordUserId = String(
-          record?.user_id ??
-          record?.process_user_id ??
-          ''
-        ).trim();
-
-        return recordUserId === me;
-      })
-    : null;
-
-  if (myBeginRecord) {
-    return true;
-  }
-
-  // 相容舊欄位，但必須確認 timer owner 是目前登入者
-  const timerUserId = String(
-    row.process_user_id ??
-    row.user_id ??
-    row.show_name ??
-    ''
-  ).trim();
-
-  const hasTimerFlag =
-    row.show_timer === true ||
-    row.show_timer === 1 ||
-    row.show_timer === '1';
-
-  return hasTimerFlag && timerUserId === me;
-};
-
 /*
 async function restoreActiveTimersOnly() {
   const me = safeUserId.value;
@@ -1807,122 +1732,289 @@ async function restoreActiveTimersOnly() {
   }
 }
 */
-//
+
+/*
 async function restoreActiveTimersOnly() {
-  const me = String(safeUserId.value || '').trim();
+  const me = String(
+    safeUserId.value || ''
+  ).trim()
 
   if (!me) {
     console.warn(
-      '[restoreActiveTimersOnly] skip: current user not ready'
-    );
-    return;
+      '[restoreActiveTimersOnly] current user not ready'
+    )
+    return
   }
 
-  const allRows = Array.isArray(
-    materials_and_assembles.value
-  )
-    ? materials_and_assembles.value
-    : [];
+  const normalizedMe =
+    normalizeUserId(me)
 
-  // 只 restore 目前登入者自己的 process
-  const rows = allRows.filter(shouldRestoreRow);
+  const allRows =
+    materials_and_assembles.value || []
+
+  //
+  // ==================================================
+  // 暫時檢查：
+  // refresh 後 API 是否有回傳目前登入員工的 process
+  // ==================================================
+  console.table(
+    (materials_and_assembles.value || [])
+      .filter(row =>
+        String(row.order_num || '')
+          .includes('111')
+      )
+      .map(row => ({
+        id: row.id,
+        assemble_id:
+          row.assemble_id,
+        work_num:
+          row.work_num,
+        schedule_id:
+          row.schedule_id,
+        my_process_id:
+          row.my_process_id,
+        active_process_id:
+          row.active_process_id,
+        active_user_ids:
+          JSON.stringify(
+            row.active_user_ids || []
+          ),
+        begin_records:
+          JSON.stringify(
+            row.begin_records || []
+          )
+      }))
+  )
+  //
 
   console.log(
-    '[restoreActiveTimersOnly]',
-    {
-      me,
-      rows: rows.map(row => ({
-        id: row.id,
-        assemble_id: row.assemble_id,
-        my_process_id: row.my_process_id,
-        show_name: row.show_name,
-      })),
+    '[restoreActiveTimersOnly] current user:',
+    me
+  )
+
+  // --------------------------------------------------
+  // 只恢復「目前登入員工本人」正在執行的工序。
+  //
+  // 不可看到 active_process_id 就恢復，
+  // 因為 active_process_id 可能是其他員工的 process。
+  // --------------------------------------------------
+  const rows = allRows.filter(row => {
+    if (!row) return false
+
+    if (Number(row.my_process_id || 0) > 0) {
+      return true
     }
-  );
 
-  if (!rows.length) return;
+    const activeUsers =
+      Array.isArray(row.active_user_ids)
+        ? row.active_user_ids
+        : Array.isArray(
+            row.active_user_ids_all
+          )
+          ? row.active_user_ids_all
+          : []
 
+    return activeUsers.some(
+      userId =>
+        normalizeUserId(userId) ===
+        normalizedMe
+    )
+  })
+
+  console.log(
+    '[restoreActiveTimersOnly] my active rows:',
+    rows.map(row => ({
+      id: row.id,
+      assemble_id: row.assemble_id,
+      order_num: row.order_num,
+      my_process_id: row.my_process_id,
+      active_process_id:
+        row.active_process_id,
+      active_user_ids:
+        row.active_user_ids
+    }))
+  )
+
+  if (!rows.length) return
+
+  // --------------------------------------------------
+  // 先顯示 TimerDisplay，使 timerRef 可以掛載。
+  // --------------------------------------------------
   for (const row of rows) {
-    // 找目前登入者自己的 begin record
-    const myBeginRecord = Array.isArray(row.begin_records)
-      ? row.begin_records.find(record => {
-          const recordUserId = String(
-            record?.user_id ??
-            record?.process_user_id ??
-            ''
-          ).trim();
-
-          return recordUserId === me;
-        })
-      : null;
-
-    // 若後端沒有 my_process_id，但 begin_records 有，
-    // 將目前登入者自己的 process_id 補回 row
-    if (
-      Number(row.my_process_id || 0) <= 0 &&
-      Number(
-        myBeginRecord?.process_id ??
-        myBeginRecord?.id ??
-        0
-      ) > 0
-    ) {
-      row.my_process_id = Number(
-        myBeginRecord?.process_id ??
-        myBeginRecord?.id
-      );
-    }
-
-    row._showMyTimer = true;
-    row.show_name = me;
+    row._showMyTimer = true
+    row.show_timer = true
+    row.show_name = me
   }
 
-  await nextTick();
+  await nextTick()
 
   for (const row of rows) {
-    const t = getT(row);
+    const t = getT(row)
 
     if (!t?.restoreProcess) {
       console.warn(
-        '[restoreActiveTimersOnly] timer not ready',
-        row
-      );
-      continue;
+        '[restoreActiveTimersOnly] no restoreProcess',
+        row.id,
+        row.assemble_id
+      )
+      continue
     }
 
-    const processType = processTypeOf(row);
+    const processType =
+      processTypeOf(row)
 
     if (!processType) {
       console.warn(
-        '[restoreActiveTimersOnly] process type missing',
+        '[restoreActiveTimersOnly] processType missing',
         row
-      );
-      continue;
+      )
+      continue
     }
 
     try {
-      // 關鍵：永遠只能傳目前登入者 me
-      await t.restoreProcess(
-        row.id,
-        processType,
-        me,
-        row.assemble_id
-      );
+      // ----------------------------------------------
+      // 重要：
+      // 一定使用目前登入員工 me。
+      // 不可使用 row.show_name 或 active_user_ids[0]。
+      // ----------------------------------------------
+      const restoreResult =
+        await t.restoreProcess(
+          row.id,
+          processType,
+          me,
+          row.assemble_id
+        )
 
-      row._showMyTimer = true;
-      row.show_name = me;
+      console.log(
+        '[restoreActiveTimersOnly] restore result:',
+        {
+          id: row.id,
+          assemble_id: row.assemble_id,
+          me,
+          restoreResult,
+          processId:
+            t.processId?.value,
+          elapsedMs:
+            t.elapsedMs?.value,
+          isPaused:
+            t.isPaused?.value,
+          hasStarted:
+            t.hasStarted?.value
+        }
+      )
+
+      const restoredProcessId =
+        Number(
+          restoreResult?.process_id ||
+          t.processId?.value ||
+          row.my_process_id ||
+          0
+        )
+
+      // ----------------------------------------------
+      // 找不到本人 active process：
+      // 不可顯示別人的 timer。
+      // ----------------------------------------------
+      if (!restoredProcessId) {
+        row.my_process_id = 0
+        row._showMyTimer = false
+        row.show_timer = false
+
+        console.warn(
+          '[restoreActiveTimersOnly] no active process for current user',
+          {
+            material_id: row.id,
+            assemble_id:
+              row.assemble_id,
+            user_id: me
+          }
+        )
+
+        continue
+      }
+
+      // ----------------------------------------------
+      // 把 restore 結果正式寫回 row。
+      // refresh 後按開始鍵才會被正確阻擋。
+      // ----------------------------------------------
+      row.my_process_id =
+        restoredProcessId
+
+      row.my_begin_time =
+        restoreResult?.begin_time ||
+        row.my_begin_time ||
+        ''
+
+      row.my_elapsedActive_time =
+        Number(
+          restoreResult
+            ?.elapsed_time ??
+          restoreResult
+            ?.elapsedActive_time ??
+          row.my_elapsedActive_time ??
+          0
+        )
+
+      row._showMyTimer = true
+      row.show_timer = true
+      row.show_name = me
+      row.hasStarted = true
+      row.startStatus = true
+
+      // 把本人補入 active_user_ids
+      const activeUsers =
+        Array.isArray(
+          row.active_user_ids
+        )
+          ? [...row.active_user_ids]
+          : []
+
+      if (
+        !activeUsers.some(
+          userId =>
+            normalizeUserId(userId) ===
+            normalizedMe
+        )
+      ) {
+        activeUsers.push(me)
+      }
+
+      row.active_user_ids =
+        activeUsers
+
+      // ----------------------------------------------
+      // 等 TimerDisplay 完成掛載，再恢復前端 interval。
+      // ----------------------------------------------
+      await nextTick()
+
+      await new Promise(resolve =>
+        setTimeout(resolve, 50)
+      )
+
+      await nextTick()
+
+      if (t.nudgeResume) {
+        await t.nudgeResume()
+      }
     } catch (error) {
-      console.warn(
-        '[restoreActiveTimersOnly] restore failed',
+      console.error(
+        '[restoreActiveTimersOnly] restore failed:',
         {
           material_id: row.id,
-          assemble_id: row.assemble_id,
+          assemble_id:
+            row.assemble_id,
           user_id: me,
-          error,
+          error
         }
-      );
+      )
+
+      row.my_process_id = 0
+      row._showMyTimer = false
+      row.show_timer = false
     }
   }
 }
+*/
 
 function makeStub() {
   const isPaused = ref(true)
@@ -2024,6 +2116,7 @@ async function nudgeResume () {
   timer()?.resume?.()
 }
 
+/*
 function checkShowTimer(row) {
   if (row?.show_timer === true || row?.show_timer === 1 || row?.show_timer === '1') {
     return true
@@ -2036,6 +2129,7 @@ function checkShowTimer(row) {
   const t = getT(row)
   return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
 }
+*/
 
 /*
 async function onClickBegin(row) {
@@ -2060,10 +2154,34 @@ async function onClickBegin(row) {
 
   console.log("t, t.processId.value, t.hasStarted?.value, t.isPaused.value:", t, t.processId.value, t.hasStarted?.value, t.isPaused.value)
 
-  if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
-    showSnackbar("已經領料生產報工了...", "orange-darken-2")
-    return
+  //if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
+  //  showSnackbar("已經領料生產報工了...", "orange-darken-2")
+  //  return
+  //}
+
+  // --------------------------------------------------
+  // 只禁止「目前登入員工」重複開始此工序
+  // 不可用 active_process_id 或其他員工的 timer 阻擋
+  // --------------------------------------------------
+  if (hasCurrentUserStarted(row)) {
+    showSnackbar(
+      "您已經開始此工序，不可重複開始!",
+      "orange-darken-2"
+    );
+    return;
   }
+
+  // --------------------------------------------------
+  // 額外防呆：
+  // 如果本地 timer 已經有本人 process，也禁止重複開始
+  // --------------------------------------------------
+  //if (t.processId?.value && (t.hasStarted?.value === true || t.isPaused?.value === false)) {
+  //  showSnackbar(
+  //    "2您已經開始此工序，不可重複開始!",
+  //    "orange-darken-2"
+  //  );
+  //  return;
+  //}
 
   selectedAsmId.value = row.index;
 
@@ -2138,313 +2256,158 @@ async function onClickBegin(row) {
   //await restoreAllMyTimers();
 }
 */
-
-/*
 async function onClickBegin(row) {
-  console.log('onClickBegin(), row', row);
+  console.log(
+    'onClickBegin(), row',
+    row
+  )
 
-  const me = String(safeUserId.value || '').trim();
+  const me = safeUserId.value
 
   if (!me) {
     showSnackbar(
       '使用者資料尚未載入，請稍後再試!',
       'red-darken-2'
-    );
-    return;
-  }
-
-  if (!row?.id || !row?.assemble_id) {
-    showSnackbar(
-      '資料異常，缺少工單或工序資料!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  const t = getT(row);
-
-  if (!t) {
-    showSnackbar(
-      '計時器尚未準備好!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  // 只判斷目前登入者自己的 timer instance
-  if (
-    t.processId.value &&
-    (
-      t.hasStarted.value ||
-      !t.isPaused.value
     )
-  ) {
+    return
+  }
+
+  if (!row?.id) {
     showSnackbar(
-      '此工序已經開始計時!',
+      '資料異常，按鍵無效!',
+      'red-darken-2'
+    )
+    return
+  }
+
+  // 只禁止本人重複開始
+  if (hasCurrentUserStarted(row)) {
+    showSnackbar(
+      '您已經開始此工序，不可重複開始!',
       'orange-darken-2'
-    );
-    return;
+    )
+    return
   }
 
-  selectedAsmId.value = row.index;
-
-  // 先顯示目前登入者自己的 timer 區塊
-  row._showMyTimer = true;
-  row.show_name = me;
-
-  await nextTick();
-
-  try {
-    if (!t.processId.value) {
-      const result = await t.startProcess(
-        row.id,
-        processTypeOf(row),
-        me,
-        row.assemble_id
-      );
-
-      const processId =
-        typeof result === 'object'
-          ? Number(
-              result?.process_id ??
-              result?.id ??
-              0
-            )
-          : Number(result || 0);
-
-      const success =
-        typeof result === 'object'
-          ? result?.success !== false
-          : processId > 0;
-
-      if (!success || processId <= 0) {
-        row._showMyTimer = false;
-        row.show_name = '';
-
-        showSnackbar(
-          '開始失敗：無法建立個人報工流程!',
-          'red-darken-2'
-        );
-        return;
-      }
-
-      row.my_process_id = processId;
-
-      markSameOrderProcessLocked(row);
-
-      socket.value?.emit('assemble-started', {
-        assemble_id: row.assemble_id,
-        material_id: row.id,
-        order_num: row.order_num,
-        user_id: me,
-        user_name: currentUser.value?.name || '',
-      });
-
-      socket.value?.emit('icon-disable', {
-        material_id: row.material_id || row.id,
-        assemble_id: row.assemble_id,
-        order_num: row.order_num,
-      });
-    }
-
-    // 只啟動目前使用者自己的 process
-    if (t.isPaused.value) {
-      await t.toggleTimer();
-    }
-
-    t.isPaused.value = false;
-
-    // 後端成功後才更新顯示狀態
-    row._showMyTimer = true;
-    row.show_timer = true;
-    row.show_name = me;
-    row.hasStarted = true;
-    row.startStatus = true;
-    row.isOpen = true;
-    row.isOpenEmpId = me;
-
-    // 開始計時後不需要呼叫 updateItem()。
-    // startProcess / toggleTimer 後端已經更新 process 狀態。
-    //await updateItem(row);
-    await nextTick();
-  } catch (error) {
-    console.error('[onClickBegin] start failed:', error);
-
-    row._showMyTimer = false;
-    row.show_timer = false;
-
-    showSnackbar(
-      `開始失敗：${error?.message || '系統錯誤'}`,
-      'red-darken-2'
-    );
-  }
-}
-*/
-//
-async function onClickBegin(row) {
-  console.log('onClickBegin(), row', row);
-
-  const me = String(safeUserId.value || '').trim();
-
-  if (!me) {
-    showSnackbar(
-      '使用者資料尚未載入，請稍後再試!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  if (!row?.id || !row?.assemble_id) {
-    showSnackbar(
-      '資料異常，缺少工單或工序資料!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  const t = getT(row);
+  const t = getT(row)
 
   if (!t) {
     showSnackbar(
       '計時器尚未準備好!',
       'red-darken-2'
-    );
-    return;
+    )
+    return
   }
-
-  const processType = processTypeOf(row);
-
-  if (!processType) {
-    showSnackbar(
-      '無法判斷製程類型!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  selectedAsmId.value = row.index;
-
-  // 先顯示目前登入者自己的 timer component
-  row._showMyTimer = true;
-  row.show_name = me;
-
-  await nextTick();
-
-  let processCreated = false;
 
   try {
-    // 目前使用者尚無自己的 process，才建立
-    if (!Number(t.processId.value || 0)) {
-      const result = await t.startProcess(
-        row.id,
-        processType,
-        me,
-        row.assemble_id
-      );
+    // ------------------------------------------------
+    // 原本開始前的資料更新
+    // ------------------------------------------------
+    await updateItem(row)
 
-      console.log(
-        '[onClickBegin] startProcess result:',
-        result
-      );
-
-      const processId =
-        typeof result === 'object'
-          ? Number(
-              result?.process_id ??
-              result?.id ??
-              t.processId.value ??
-              0
-            )
-          : Number(
-              result ??
-              t.processId.value ??
-              0
-            );
-
-      const success =
-        typeof result === 'object'
-          ? result?.success !== false
-          : processId > 0;
-
-      if (!success || processId <= 0) {
-        throw new Error(
-          result?.message ||
-          '無法建立個人報工流程'
-        );
+    // ------------------------------------------------
+    // 建立本人 process 並啟動 timer
+    // ------------------------------------------------
+    const startResult = await t.startProcess(
+      row.id,
+      processTypeOf(row),
+      me,
+      row.assemble_id,
+      {
+        restoreOnly: false
       }
+    )
 
-      t.processId.value = processId;
-      row.my_process_id = processId;
-
-      processCreated = true;
+    if (
+      startResult === false ||
+      startResult?.success === false
+    ) {
+      showSnackbar(
+        startResult?.message ||
+          '開始計時失敗!',
+        'red-darken-2'
+      )
+      return
     }
 
-    // process 是暫停狀態才啟動
-    if (t.isPaused.value) {
-      await t.toggleTimer();
+    const newProcessId = Number(
+      startResult?.process_id ||
+      t.processId?.value ||
+      0
+    )
+
+    if (!newProcessId) {
+      showSnackbar(
+        '啟動成功，但未取得 process_id!',
+        'red-darken-2'
+      )
+      return
     }
 
-    t.isPaused.value = false;
+    // ------------------------------------------------
+    // 立即更新目前 row
+    // ------------------------------------------------
+    row.my_process_id =
+      newProcessId
 
-    // 啟動成功後才設定畫面狀態
-    row._showMyTimer = true;
-    row.show_timer = true;
-    row.show_name = me;
+    row.my_begin_time =
+      startResult?.begin_time ||
+      new Date().toISOString()
 
-    row.hasStarted = true;
-    row.startStatus = true;
-    row.isOpen = true;
-    row.isOpenEmpId = me;
+    row.my_elapsedActive_time =
+      Number(
+        startResult?.elapsed_time || 0
+      )
 
-    markSameOrderProcessLocked(row);
+    row.show_timer = true
+    row.show_name = me
+    row._showMyTimer = true
 
-    socket.value?.emit('assemble-started', {
-      assemble_id: row.assemble_id,
-      material_id: row.id,
-      order_num: row.order_num,
-      user_id: me,
-      user_name: currentUser.value?.name || '',
-    });
+    const activeUsers =
+      Array.isArray(row.active_user_ids)
+        ? [...row.active_user_ids]
+        : []
 
-    socket.value?.emit('icon-disable', {
-      material_id: row.material_id || row.id,
-      assemble_id: row.assemble_id,
-      order_num: row.order_num,
-    });
+    if (
+      !activeUsers.some(
+        id =>
+          normalizeUserId(id) ===
+          normalizeUserId(me)
+      )
+    ) {
+      activeUsers.push(me)
+    }
 
-    // 不要在此呼叫 updateItem(row)
-    await nextTick();
+    row.active_user_ids =
+      activeUsers
+
+    // --------------------------------------------------
+    // 等 TimerDisplay 因 row.my_process_id 更新而掛載完成
+    // 再真正啟動 TimerDisplay 內部計時
+    // --------------------------------------------------
+    await nextTick()
+
+    await t.nudgeResume()
+
+    // 防止第一次 nextTick 時 v-data-table 尚未完成掛載
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await nextTick()
+    await t.nudgeResume()
 
     showSnackbar(
       '開始計時!',
       'green-darken-2'
-    );
+    )
   } catch (error) {
     console.error(
-      '[onClickBegin] start failed:',
+      '[onClickBegin] ERROR:',
       error
-    );
-
-    /*
-     * process 已成功建立時，不要因後續畫面錯誤
-     * 把 timer 隱藏。
-     */
-    if (
-      !processCreated &&
-      !Number(t.processId.value || 0)
-    ) {
-      row._showMyTimer = false;
-      row.show_timer = false;
-    }
+    )
 
     showSnackbar(
-      `開始失敗：${
-        error?.response?.data?.message ||
-        error?.message ||
-        '系統錯誤'
-      }`,
+      error?.message || '開始操作失敗!',
       'red-darken-2'
-    );
+    )
   }
 }
 
@@ -2530,25 +2493,6 @@ async function onDelete(item) {
     cancelText: '取消',
   })
   if (ok) {
-
-    const empId = String(currentUser.value?.empID || currentUser?.empID || '').trim()
-
-    if (!empId) {
-      showSnackbar('無法取得目前登入者資料!', 'red-darken-2')
-      return
-    }
-
-    const result =  await checkDeleteBatchPermission({emp_id: empId});
-
-    if (!result?.success || !result?.allowed) {
-      showSnackbar(result?.message || '權限不足, 請連絡主管!', 'red-darken-2')
-      return
-    }
-
-    // ==================================================
-    // 權限通過後，才執行原本整批刪除流程
-    // ==================================================
-
     await removeMaterialsAndRelationTableFun(item.id);
 
     //待待
@@ -2650,25 +2594,7 @@ const onCancelBatchDelete = () => {
 const onConfirmBatchDelete = async () => {
   if (isInformationEmpty.value) return
 
-  const empId = String(currentUser.value?.empID || currentUser?.empID || '').trim()
-
-  if (!empId) {
-    showSnackbar('無法取得目前登入者資料!', 'red-darken-2')
-    return
-  }
-
   try {
-    const result =  await checkDeleteBatchPermission({emp_id: empId});
-
-    if (!result?.success || !result?.allowed) {
-      showSnackbar(result?.message || '權限不足, 請連絡主管!', 'red-darken-2')
-      return
-    }
-
-    // ==================================================
-    // 權限通過後，才執行原本整批刪除流程
-    // ==================================================
-
     await onClickRemoveByDeliveryDateRange()
   } finally {
     resetBatchDeleteState()
@@ -3119,7 +3045,7 @@ const doConfirmSchedulingDialog = async () => {
 }
 */
 
-/*
+
 const confirmSchedulingDialog = async () => {
   if (!scheduling_target_item.value?.id) {
     closeSchedulingDialog()
@@ -3151,28 +3077,18 @@ const confirmSchedulingDialog = async () => {
   }
 
   // 2. 其中一種沒選
-  //if (!hasAssemble || !hasCheck) {
-  //  scheduleAlertType.value = 'partial'
-  //
-  //  if (!hasAssemble) {
-  //    scheduleAlertMessage.value = '在組裝工序的工序資料不完整'
-  //  } else {
-  //    scheduleAlertMessage.value = '在檢驗工序的工序資料不完整'
-  //  }
-  //
-  //  scheduleAlertDialog.value = true
-  //  return
-  //}
-  //
-  if (!hasAssemble && !hasCheck) {
-    scheduleAlertType.value = 'all-empty'
-    scheduleAlertMessage.value =
-      '組裝及檢驗尚未選擇任何工序'
+  if (!hasAssemble || !hasCheck) {
+    scheduleAlertType.value = 'partial'
+
+    if (!hasAssemble) {
+      scheduleAlertMessage.value = '在組裝工序的工序資料不完整'
+    } else {
+      scheduleAlertMessage.value = '在檢驗工序的工序資料不完整'
+    }
+
     scheduleAlertDialog.value = true
     return
   }
-
-await doConfirmSchedulingDialog()
 
   // 3. 兩種都有選
   await doConfirmSchedulingDialog()
@@ -3181,81 +3097,12 @@ await doConfirmSchedulingDialog()
 
   socket.value?.emit('schedule_mode-ok')
 }
-*/
-//
-const confirmSchedulingDialog =
-  async () => {
-    if (
-      !scheduling_target_item.value?.id
-    ) {
-      showSnackbar(
-        '找不到目前設定工序的工單',
-        'red-darken-2'
-      )
 
-      scheduling_dialog.value = true
-      return false
-    }
-
-    /*
-     * 這裡不要再呼叫：
-     *
-     * saveCurrentSchedulingSteps(
-     *   scheduleMode.value
-     * )
-     *
-     * 因為第一層按完成時已保存。
-     */
-
-    const hasAssemble =
-      hasCheckedStep(
-        assemble_steps.value
-      )
-
-    const hasCheck =
-      hasCheckedStep(
-        check_steps.value
-      )
-
-    if (!hasAssemble && !hasCheck) {
-      showSnackbar(
-        '請至少選擇一個組裝工序或檢驗工序。',
-        'red-darken-2'
-      )
-
-      scheduling_dialog.value = true
-      return false
-    }
-
-    /*
-     * 允許：
-     *
-     * 1. 只有組裝
-     * 2. 只有檢驗
-     * 3. 組裝＋檢驗
-     */
-    const ok =
-      await doConfirmSchedulingDialog()
-
-    if (ok) {
-      console.log(
-        'schedule_mode-ok sock'
-      )
-
-      socket.value?.emit(
-        'schedule_mode-ok'
-      )
-    }
-
-    return ok
-  }
-
-/*
 const doConfirmSchedulingDialog = async () => {
   const targetItem = scheduling_target_item.value
 
   if (!targetItem?.id) {
-    showSnackbar('目找不到前設定工序的工單', 'red-darken-2')
+    showSnackbar('找不到目前設定工序的工單', 'red-darken-2')
     return
   }
 
@@ -3466,206 +3313,6 @@ const doConfirmSchedulingDialog = async () => {
     )
   } finally {
     scheduling_dialog_loading.value = false
-  }
-}
-*/
-//
-const doConfirmSchedulingDialog = async () => {
-  const targetItem =
-    scheduling_target_item.value
-
-  if (!targetItem?.id) {
-    showSnackbar(
-      '找不到目前設定工序的工單',
-      'red-darken-2'
-    )
-    return false
-  }
-
-  console.log(
-    '[doConfirmSchedulingDialog] assemble:',
-    assemble_steps.value
-  )
-
-  console.log(
-    '[doConfirmSchedulingDialog] check:',
-    check_steps.value
-  )
-
-  scheduling_dialog_loading.value = true
-
-  try {
-    /*
-     * 送出前建立固定副本。
-     * 避免 Dialog 關閉或頁籤切換後，
-     * ref 陣列又被其他程式修改。
-     */
-    const selectedProcessSteps = {
-      assemble: deepClone(
-        assemble_steps.value
-      ),
-      check: deepClone(
-        check_steps.value
-      ),
-    }
-
-    const tt =
-      await updateAssembleScheduleRows({
-        id: targetItem.id,
-        process_steps:
-          selectedProcessSteps,
-      })
-
-    console.log(
-      '[doConfirmSchedulingDialog] API response:',
-      tt
-    )
-
-    /*
-     * 相容不同 API wrapper 回傳格式：
-     *
-     * tt.status
-     * tt.return_value
-     * tt.data.status
-     * tt.data.return_value
-     */
-    const apiOk =
-      tt?.status === true ||
-      tt?.status === 1 ||
-      tt?.return_value === true ||
-      tt?.return_value === 1 ||
-      tt?.data?.status === true ||
-      tt?.data?.status === 1 ||
-      tt?.data?.return_value === true ||
-      tt?.data?.return_value === 1
-
-    if (!apiOk) {
-      const errorMessage =
-        tt?.msg ||
-        tt?.message ||
-        tt?.data?.msg ||
-        tt?.data?.message ||
-        '工序設定失敗'
-
-      console.error(
-        '[doConfirmSchedulingDialog] API failed:',
-        tt
-      )
-
-      showSnackbar(
-        errorMessage,
-        'red-darken-2'
-      )
-
-      /*
-       * API 失敗時回到第一層，
-       * checkbox 仍保留。
-       */
-      scheduling_dialog.value = true
-
-      return false
-    }
-
-    const targetId =
-      Number(targetItem.id)
-
-    /*
-     * 先更新前端，避免 safeRefresh 尚未完成時，
-     * 畫面完全沒有工序。
-     */
-    materials_and_assembles.value =
-      materials_and_assembles.value.map(
-        row => {
-          if (
-            Number(row.id) !== targetId
-          ) {
-            return row
-          }
-
-          return {
-            ...row,
-
-            process_step_enable: true,
-
-            process_steps:
-              deepClone(
-                selectedProcessSteps
-              ),
-          }
-        }
-      )
-
-    scheduledMaterialIds.value.add(
-      targetId
-    )
-
-    socket.value?.emit(
-      'assemble-batch-released2',
-      {
-        source:
-          'PickReportForAssembleBegin',
-
-        reason:
-          'schedule_rows_updated',
-
-        material_id:
-          targetId,
-
-        order_num:
-          targetItem.order_num,
-      }
-    )
-
-    socket.value?.emit(
-      'assemble-schedule-updated',
-      {
-        source:
-          'PickReportForAssembleBegin',
-
-        reason:
-          'schedule_rows_updated',
-
-        material_id:
-          targetId,
-
-        order_num:
-          targetItem.order_num,
-      }
-    )
-
-    /*
-     * 必須重新向後端取得新增後的
-     * assemble rows。
-     */
-    await safeRefresh()
-
-    showSnackbar(
-      '已完成工序設定',
-      'success'
-    )
-
-    closeSchedulingDialog()
-
-    return true
-  } catch (error) {
-    console.error(
-      '[doConfirmSchedulingDialog] error:',
-      error
-    )
-
-    showSnackbar(
-      error?.response?.data?.message ||
-      error?.message ||
-      '工序設定失敗',
-      'red-darken-2'
-    )
-
-    scheduling_dialog.value = true
-
-    return false
-  } finally {
-    scheduling_dialog_loading.value =
-      false
   }
 }
 
@@ -4290,6 +3937,7 @@ const updateItem = async (item) => {
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 
+/*
 const checkInputStr = (inputStr) => {
   console.log("checkInputStr(),", inputStr)
   //參考後端python, str2[]的指標
@@ -4303,6 +3951,65 @@ const checkInputStr = (inputStr) => {
     outputStatus.value = { step1: null, step2: null };  // 無匹配時清空結果
   }
 };
+*/
+//
+const checkInputStr = (inputStr) => {
+  const text = String(inputStr ?? '').trim();
+
+  console.log(
+    "checkInputStr(),",
+    text
+  );
+
+  // B109／組裝
+  if (
+    text.includes('109') ||
+    text.includes('組裝') ||
+    text.includes('組立')
+  ) {
+    outputStatus.value = {
+      step1: 4,
+      step2: 5,
+    };
+
+    return outputStatus.value;
+  }
+
+  // B106／雷射
+  if (
+    text.includes('106') ||
+    text.includes('雷射')
+  ) {
+    outputStatus.value = {
+      step1: 8,
+      step2: 9,
+    };
+
+    return outputStatus.value;
+  }
+
+  // B110／檢驗
+  if (
+    text.includes('110') ||
+    text.includes('檢驗') ||
+    text.includes('檢測')
+  ) {
+    outputStatus.value = {
+      step1: 6,
+      step2: 7,
+    };
+
+    return outputStatus.value;
+  }
+
+  outputStatus.value = {
+    step1: null,
+    step2: null,
+  };
+
+  return outputStatus.value;
+};
+//
 
 const formatDateTime = (date) => {
   if (!date || !(date instanceof Date)) {
@@ -4905,273 +4612,451 @@ const isStartButtonDisabled = (item) => {
   return false
 }
 
-const isProcessChecked = (step) => {
-  return (
-    step?.checked === true ||
-    step?.selected === true ||
-    step?.enable === true ||
-    step?.is_checked === true
+//const normalizeUserId = (value) => {
+//  return String(value ?? '')
+//    .trim()
+//    .replace(/^0+/, '')
+//}
+
+/*
+const checkShowTimer = (item) => {
+  const me = normalizeUserId(safeUserId.value)
+
+  if (!me) return false
+
+  const activeUsers = Array.isArray(item?.active_user_ids)
+    ? item.active_user_ids
+    : Array.isArray(item?.active_user_ids_all)
+      ? item.active_user_ids_all
+      : []
+
+  return activeUsers.some(
+    userId => normalizeUserId(userId) === me
   )
 }
+*/
 
-const getProcessText = (step, index) => {
-  return String(
-    step?.name ||
-    step?.label ||
-    step?.step_name ||
-    step?.process_name ||
-    step?.title ||
-    step?.text ||
-    `工序${index + 1}`
-  ).trim()
+/*
+const normalizeUserId = (value) => {
+  return String(value ?? '')
+    .trim()
+    .replace(/^0+/, '')
+}
+
+const hasCurrentUserStarted = (item) => {
+  const me = normalizeUserId(
+    safeUserId.value
+  )
+
+  if (!me) return false
+
+  // 最可靠：後端已回傳本人 process id
+  if (Number(item?.my_process_id || 0) > 0) {
+    return true
+  }
+
+  const activeUsers =
+    Array.isArray(item?.active_user_ids)
+      ? item.active_user_ids
+      : []
+
+  return activeUsers.some(
+    userId =>
+      normalizeUserId(userId) === me
+  )
+}
+*/
+const normalizeUserId = (value) => {
+  return String(value ?? '')
+    .trim()
+    .replace(/^0+/, '')
 }
 
 /*
-const selectedAssembleSteps = computed(() => {
-  const rows = Array.isArray(
-    processSteps.value?.assemble
-  )
-    ? processSteps.value.assemble
+const hasCurrentUserStarted = (row) => {
+  const me = normalizeUserId(safeUserId.value)
+
+  if (!me || !row) return false
+
+  // 後端已明確回傳「目前登入者自己的 process」
+  if (Number(row.my_process_id || 0) > 0) {
+    return true
+  }
+
+  // 防呆：從所有 active user 中確認是否包含本人
+  const activeUsers = Array.isArray(row.active_user_ids)
+    ? row.active_user_ids
     : []
 
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(
-        step,
-        index
-      ),
-    }))
-})
-
-const selectedCheckSteps = computed(() => {
-  const rows = Array.isArray(
-    processSteps.value?.check
+  return activeUsers.some(
+    userId => normalizeUserId(userId) === me
   )
-    ? processSteps.value.check
-    : []
-
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(
-        step,
-        index
-      ),
-    }))
-})
+}
 */
-//
-const selectedAssembleSteps = computed(() => {
-  const rows = Array.isArray(assemble_steps.value)
-    ? assemble_steps.value
-    : []
+const hasCurrentUserStarted = (row) => {
+  if (!row) return false
 
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(step, index),
-    }))
-})
+  const me =
+    normalizeUserId(
+      safeUserId.value
+    )
 
-const selectedCheckSteps = computed(() => {
-  const rows = Array.isArray(check_steps.value)
-    ? check_steps.value
-    : []
+  if (!me) return false
 
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(step, index),
-    }))
-})
-
-const selectedAssembleText = computed(() => {
+  // 1. 後端明確回傳本人 process
   if (
-    selectedAssembleSteps.value.length === 0
+    Number(row.my_process_id || 0) > 0
   ) {
-    return '未選擇'
+    return true
   }
 
-  return selectedAssembleSteps.value
-    .map((step, index) => {
-      return `${index + 1}. ${step.displayText}`
-    })
-    .join('、')
-})
+  // 2. active_user_ids 包含本人
+  const activeUsers =
+    Array.isArray(row.active_user_ids)
+      ? row.active_user_ids
+      : Array.isArray(
+          row.active_user_ids_all
+        )
+        ? row.active_user_ids_all
+        : []
 
-const selectedCheckText = computed(() => {
   if (
-    selectedCheckSteps.value.length === 0
+    activeUsers.some(
+      userId =>
+        normalizeUserId(userId) === me
+    )
   ) {
-    return '未選擇'
+    return true
   }
 
-  return selectedCheckSteps.value
-    .map((step, index) => {
-      return `${index + 1}. ${step.displayText}`
-    })
-    .join('、')
-})
+  // 3. begin_records 有本人未結束 process
+  const beginRecords =
+    Array.isArray(row.begin_records)
+      ? row.begin_records
+      : []
 
-const onConfirmSelectedProcesses =
-  async () => {
-    if (
-      processConfirmLoading.value
-    ) {
-      return
+  return beginRecords.some(record => {
+    const sameUser =
+      normalizeUserId(
+        record?.user_id
+      ) === me
+
+    const notEnded =
+      !record?.end_time
+
+    const hasProcess =
+      Number(
+        record?.process_id ||
+        record?.id ||
+        0
+      ) > 0
+
+    return (
+      sameUser &&
+      notEnded &&
+      hasProcess
+    )
+  })
+}
+
+/*
+const checkShowTimer = (item) => {
+  if (!item) return false
+
+  // 本人 process 已經建立，直接顯示
+  if (
+    Number(item.my_process_id || 0) > 0
+  ) {
+    return true
+  }
+
+  const me =
+    normalizeUserId(safeUserId.value)
+
+  if (!me) return false
+
+  const activeUsers =
+    Array.isArray(item.active_user_ids)
+      ? item.active_user_ids
+      : []
+
+  return activeUsers.some(
+    userId =>
+      normalizeUserId(userId) === me
+  )
+}
+*/
+const checkShowTimer = (row) => {
+  if (!row) return false
+
+  const me =
+    normalizeUserId(
+      safeUserId.value
+    )
+
+  if (!me) return false
+
+  if (
+    Number(row.my_process_id || 0) > 0
+  ) {
+    return true
+  }
+
+  const t = getT(row)
+
+  return Boolean(
+    t?.processId?.value
+  )
+}
+
+const startMountedTimer = async (t) => {
+  for (let i = 0; i < 10; i++) {
+    await nextTick()
+
+    await new Promise(resolve =>
+      setTimeout(resolve, 30)
+    )
+
+    await t.nudgeResume()
+
+    if (Number(t.elapsedMs?.value || 0) > 0) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const shouldRestoreRow = (row) => {
+  if (!row) return false;
+
+  const me = normalizeUserId(
+    safeUserId.value
+  );
+
+  if (!me) return false;
+
+  // --------------------------------------------------
+  // 1. 後端已明確回傳本人 process
+  // --------------------------------------------------
+  if (Number(row.my_process_id || 0) > 0) {
+    return true;
+  }
+
+  // --------------------------------------------------
+  // 2. active_user_ids 包含目前登入者
+  // --------------------------------------------------
+  const activeUsers =
+    Array.isArray(row.active_user_ids)
+      ? row.active_user_ids
+      : [];
+
+  if (
+    activeUsers.some(
+      userId =>
+        normalizeUserId(userId) === me
+    )
+  ) {
+    return true;
+  }
+
+  // --------------------------------------------------
+  // 3. begin_records 有本人未結束紀錄
+  // --------------------------------------------------
+  const beginRecords =
+    Array.isArray(row.begin_records)
+      ? row.begin_records
+      : [];
+
+  return beginRecords.some(record => {
+    const sameUser =
+      normalizeUserId(
+        record?.user_id
+      ) === me;
+
+    const processId = Number(
+      record?.process_id ||
+      record?.id ||
+      0
+    );
+
+    const notEnded =
+      !record?.end_time;
+
+    return (
+      sameUser &&
+      processId > 0 &&
+      notEnded
+    );
+  });
+};
+
+async function restoreActiveTimersOnly() {
+  const me = String(
+    safeUserId.value || ''
+  ).trim();
+
+  if (!me) {
+    console.warn(
+      '[restore] current user not ready'
+    );
+    return;
+  }
+
+  const allRows =
+    materials_and_assembles.value || [];
+
+  // 只挑目前登入者本人的 active rows
+  const rows =
+    allRows.filter(shouldRestoreRow);
+
+  console.log(
+    '[restore] current user:',
+    me
+  );
+
+  console.log(
+    '[restore] my rows:',
+    rows.map(row => ({
+      id: row.id,
+      assemble_id: row.assemble_id,
+      order_num: row.order_num,
+      my_process_id:
+        row.my_process_id,
+      active_user_ids:
+        row.active_user_ids
+    }))
+  );
+
+  if (!rows.length) {
+    return;
+  }
+
+  // --------------------------------------------------
+  // 先讓目前登入者自己的 TimerDisplay 顯示
+  // --------------------------------------------------
+  for (const row of rows) {
+    row._showMyTimer = true;
+    row.show_timer = true;
+
+    // 一定是目前登入者，不可拿第一個 active user
+    row.show_name = me;
+  }
+
+  await nextTick();
+
+  // Vuetify table 可能需要再一個 render cycle
+  await new Promise(resolve =>
+    setTimeout(resolve, 30)
+  );
+
+  await nextTick();
+
+  for (const row of rows) {
+    const processType =
+      processTypeOf(row);
+
+    if (!processType) {
+      console.warn(
+        '[restore] unknown process type:',
+        row
+      );
+      continue;
     }
 
-    processConfirmLoading.value = true
+    const t = getT(row);
+
+    if (!t?.restoreProcess) {
+      console.warn(
+        '[restore] timer unavailable:',
+        row
+      );
+      continue;
+    }
 
     try {
-      const targetItem =
-        pendingProcessItem.value
+      // ================================================
+      // 關鍵：
+      // refresh 只能用目前登入者 me 去找原本 process。
+      // 不可使用 show_name、active_user_ids[0]。
+      // ================================================
+      const result =
+        await t.restoreProcess(
+          row.id,
+          processType,
+          me,
+          row.assemble_id
+        );
 
-      if (!targetItem?.id) {
-        showSnackbar(
-          '找不到目前設定工序的工單',
-          'red-darken-2'
-        )
+      console.log(
+        '[restore] result:',
+        {
+          assemble_id:
+            row.assemble_id,
+          user_id: me,
+          result,
+          processId:
+            t.processId?.value,
+          elapsedMs:
+            t.elapsedMs?.value
+        }
+      );
 
-        scheduling_dialog.value = true
-        return
+      //const restored =
+      //  result?.restored !== false;
+
+      const processId = Number(
+        result?.process_id ||
+        t.processId?.value ||
+        row.my_process_id ||
+        0
+      );
+
+      // 後端明確表示本人沒有 active process
+      //if (!restored || !processId) {
+      if (!processId) {
+        row.my_process_id = 0;
+        row._showMyTimer = false;
+        row.show_timer = false;
+
+        continue;
       }
 
-      scheduling_target_item.value =
-        targetItem
+      // ------------------------------------------------
+      // 找回原本同一筆 process，不建立新 process
+      // ------------------------------------------------
+      row.my_process_id =
+        processId;
 
-      const ok =
-        await confirmSchedulingDialog()
+      row._showMyTimer = true;
+      row.show_timer = true;
+      row.show_name = me;
 
-      /*
-       * 只有真正成功後才清除。
-       */
-      if (ok) {
-        pendingProcessItem.value = null
-      }
+      row.hasStarted = true;
+      row.startStatus = true;
+
+      await nextTick();
+
+      // startProcess/restoreProcess 已會載入 elapsed_time，
+      // 這裡只補喚醒畫面 timer。
+      await t.nudgeResume?.();
     } catch (error) {
       console.error(
-        '[onConfirmSelectedProcesses] failed:',
-        error
-      )
+        '[restore] failed:',
+        {
+          material_id: row.id,
+          assemble_id:
+            row.assemble_id,
+          user_id: me,
+          error
+        }
+      );
 
-      scheduling_dialog.value = true
-
-      showSnackbar(
-        error?.response?.data?.message ||
-        error?.message ||
-        '工序設定失敗，請重新確認。',
-        'red-darken-2'
-      )
-    } finally {
-      processConfirmLoading.value =
-        false
+      row.my_process_id = 0;
+      row._showMyTimer = false;
+      row.show_timer = false;
     }
   }
-
-const onClickProcessSettingConfirm = async () => {
-  // 先保存目前頁籤的 checkbox 與排序
-  saveCurrentSchedulingSteps(
-    scheduleMode.value
-  )
-
-  const assembleCount =
-    selectedAssembleSteps.value.length
-
-  const checkCount =
-    selectedCheckSteps.value.length
-
-  if (
-    assembleCount === 0 &&
-    checkCount === 0
-  ) {
-    showSnackbar(
-      '請至少選擇一個組裝工序或檢驗工序。',
-      'red-darken-2'
-    )
-    return
-  }
-
-  const targetItem =
-    scheduling_target_item.value
-
-  if (!targetItem?.id) {
-    console.error(
-      '[onClickProcessSettingConfirm] missing target',
-      {
-        scheduling_target_item:
-          scheduling_target_item.value,
-      }
-    )
-
-    showSnackbar(
-      '找不到目前設定工序的工單',
-      'red-darken-2'
-    )
-    return
-  }
-
-  /*
-   * 暫存工單。
-   * 使用物件副本，避免其他刷新動作修改原物件。
-   */
-  pendingProcessItem.value = {
-    ...targetItem,
-  }
-
-  /*
-   * 只隱藏第一層 Dialog。
-   * 不可呼叫 closeSchedulingDialog()，
-   * 因為它會：
-   *
-   * scheduling_target_item.value = null
-   * socket unlock
-   */
-  scheduling_dialog.value = false
-
-  const confirmed =
-    await confirmScheduleRef.value.open({
-      title: '確認工序設定',
-
-      message: `
-        <div style="line-height:1;">
-          <div style="margin-bottom:6px;">
-            訂單編號：
-            <strong>
-              ${targetItem.order_num || ''}
-            </strong>
-          </div>
-
-          <div style="margin-bottom:6px;">
-            <strong>組裝工序：</strong><br>
-            ${selectedAssembleText.value}
-          </div>
-
-          <div>
-            <strong>檢驗工序：</strong><br>
-            ${selectedCheckText.value}
-          </div>
-        </div>
-      `,
-
-      okText: '確定',
-      cancelText: '返回',
-    })
-
-  if (!confirmed) {
-    /*
-     * 返回第一層，不重新初始化 checkbox。
-     */
-    scheduling_dialog.value = true
-    return
-  }
-
-  await onConfirmSelectedProcesses()
 }
 
 </script>

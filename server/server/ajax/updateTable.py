@@ -740,7 +740,7 @@ def update_bom(material_id):
   })
 
 
-# 20260722 batch版
+# 20260724 batch版
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
     print("updateAssembleProcessStep.")
@@ -1448,6 +1448,7 @@ def update_assemble_process_step():
         elif finished_work_num == 'B110':
             finish_all_process_logs(22)
 
+        '''
         # ============================================================
         # 異常返工：B109 完成
         # ============================================================
@@ -1543,6 +1544,179 @@ def update_assemble_process_step():
                 "created_ids": release_result.get("created_ids", []),
                 "message": "B109 abnormal rework finished, return to normal B110 flow"
             }), 200
+        '''
+        #
+        # ============================================================
+        # 異常返工：B109 完成
+        # ============================================================
+        if (
+            finished_work_num == 'B109'
+            and (
+                assemble_record.reason or ''
+            ).strip() == '異常返工'
+        ):
+            qty = to_int(
+                done_qty
+                or assemble_record.must_receive_end_qty
+                or assemble_record.ask_qty
+                or assemble_record.must_receive_qty
+            )
+
+            child_b110_rework = (
+                s.query(Assemble)
+                .filter(
+                    Assemble.material_id == material_id
+                )
+                .filter(
+                    Assemble.work_num == 'B110'
+                )
+                .filter(
+                    Assemble.reason == '異常返工'
+                )
+                .filter(
+                    Assemble.is_copied_from_id
+                    == assemble_record.id
+                )
+                .order_by(Assemble.id.asc())
+                .first()
+            )
+
+            # 關閉目前異常返工的所有計時
+            finish_all_process_logs(21)
+
+            # ========================================================
+            # 情況 1：有異常 B110
+            # B109 異常完成後，開啟下一個 B110 異常返工
+            # ========================================================
+            if child_b110_rework:
+                assemble_record.process_step_code = 0
+                assemble_record.completed_qty = qty
+                assemble_record.total_completed_qty = qty
+                assemble_record.allOk_qty = qty
+
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
+
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+                assemble_record.input_allOk_disable = True
+
+                assemble_record.currentStartTime = None
+                assemble_record.currentEndTime = None
+
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
+
+                child_b110_rework.process_step_code = 2
+
+                child_b110_rework.must_receive_qty = qty
+                child_b110_rework.ask_qty = qty
+                child_b110_rework.total_ask_qty = qty
+                child_b110_rework.must_receive_end_qty = qty
+
+                child_b110_rework.completed_qty = 0
+                child_b110_rework.total_completed_qty = 0
+                child_b110_rework.allOk_qty = 0
+
+                child_b110_rework.isAssembleStationShow = True
+                child_b110_rework.isWarehouseStationShow = False
+
+                child_b110_rework.input_disable = False
+                child_b110_rework.input_end_disable = False
+                child_b110_rework.input_abnormal_disable = False
+                child_b110_rework.input_allOk_disable = True
+
+                child_b110_rework.currentStartTime = None
+                child_b110_rework.currentEndTime = None
+
+                child_b110_rework.show1_ok = 1
+                child_b110_rework.show2_ok = 5
+                child_b110_rework.show3_ok = 5
+
+                material_record.isAssembleStationShow = True
+                material_record.isAssembleStation3TakeOk = False
+                material_record.whichStation = 2
+
+                material_record.show1_ok = 3
+                material_record.show2_ok = 5
+                material_record.show3_ok = 5
+
+                s.commit()
+
+                return jsonify({
+                    "status": False,
+                    "material_done": False,
+                    "abnormal_rework": True,
+                    "next_work_num": "B110",
+                    "message": (
+                        "B109 abnormal rework finished, "
+                        "open child B110 abnormal rework"
+                    )
+                }), 200
+
+            # ========================================================
+            # 情況 2：沒有選 B110
+            #
+            # B109 異常返工完成後，這一列本身直接成為待送出。
+            # 不要隱藏，也不要呼叫 release_b109_to_b110_batch。
+            # ========================================================
+            assemble_record.process_step_code = 0
+
+            assemble_record.must_receive_qty = qty
+            assemble_record.ask_qty = qty
+            assemble_record.total_ask_qty = qty
+            assemble_record.must_receive_end_qty = qty
+
+            assemble_record.completed_qty = qty
+            assemble_record.total_completed_qty = qty
+            assemble_record.allOk_qty = qty
+
+            # 保留 reason='異常返工'
+            # End.vue 才能繼續顯示 a2-異常
+            assemble_record.reason = '異常返工'
+
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            assemble_record.currentStartTime = None
+            assemble_record.currentEndTime = None
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            material_record.isAssembleStationShow = True
+            material_record.isAssembleStation3TakeOk = True
+            material_record.whichStation = 2
+
+            material_record.show1_ok = 3
+            material_record.show2_ok = 9
+            material_record.show3_ok = 9
+
+            release_material_lock(material_record)
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": False,
+                "waiting_send": True,
+                "abnormal_rework": True,
+                "current_assemble_id": assemble_record.id,
+                "completed_qty": qty,
+                "message": (
+                    "B109 abnormal rework finished, "
+                    "direct waiting send"
+                )
+            }), 200
+        #
 
         # end if 異常返工, B109 完成
 
@@ -1616,7 +1790,20 @@ def update_assemble_process_step():
         #        b1/b2 qty=20
         #        b1/b2 qty=15
         # ============================================================
-        if finished_work_num == 'B109':
+        #f finished_work_num == 'B109':
+        # ============================================================
+        # B109 FULL END
+        #
+        # 只處理正常 B109。
+        # reason='異常返工' 已由上面的異常返工區塊處理，
+        # 不可再次進入正常 B109 邏輯。
+        # ============================================================
+        if (
+            finished_work_num == 'B109'
+            and (
+                assemble_record.reason or ''
+            ).strip() != '異常返工'
+        ):
 
             current_done_qty = to_int(done_qty)
 
@@ -1837,15 +2024,37 @@ def update_assemble_process_step():
             #
             # 否則第二批完成時，會把第一批待送出資料一起隱藏。
             # --------------------------------------------------------
+            #b109_rows = [
+            #    r for r in assemble_records
+            #    if (r.work_num or '').strip() == 'B109'
+            #    and to_int(getattr(r, 'schedule_id', 0)) > 0
+            #    and (r.reason or '').strip() not in (
+            #        'B109_DIRECT_WAIT_SEND',
+            #        'B109_DONE_COPY',
+            #    )
+            #]
+            #
+            #
+            # --------------------------------------------------------
+            # 原始正常 B109 工序
+            #
+            # 「異常返工」必須獨立計算，不能阻止正常數量待送出。
+            # --------------------------------------------------------
             b109_rows = [
                 r for r in assemble_records
                 if (r.work_num or '').strip() == 'B109'
-                and to_int(getattr(r, 'schedule_id', 0)) > 0
+                and to_int(
+                    getattr(r, 'schedule_id', 0)
+                ) > 0
                 and (r.reason or '').strip() not in (
+                    '異常返工',
                     'B109_DIRECT_WAIT_SEND',
                     'B109_DONE_COPY',
                 )
             ]
+            #
+
+
 
             # --------------------------------------------------------
             # 3) 判斷是否還有 B109 需要繼續加工
@@ -1970,6 +2179,7 @@ def update_assemble_process_step():
                 done_copy_row = None
                 release_qty = 0
 
+                '''
                 if all_b109_done:
                     # 最後補完，例如 a2 補做 15，直接成為待送出
                     release_qty = current_done_qty
@@ -1980,6 +2190,18 @@ def update_assemble_process_step():
                             release_qty,
                             total_done=previous_total
                         )
+                '''
+                #
+                if all_b109_done:
+                    release_qty = current_done_qty
+
+                    if release_qty > 0:
+                        waiting_row = create_b109_direct_waiting_send(
+                            release_qty,
+                            total_done=final_total
+                        )
+                #
+
 
                     # 全部 B109 完成後，B109_DONE_COPY 只是過程顯示資料，要隱藏
                     done_copy_rows = (
@@ -2734,15 +2956,16 @@ def update_assemble_process_step():
         s.close()
 
 
-# 20260722版
+# 20260724版
 @updateTable.route('/sendAssembleToWarehouse', methods=['POST'])
 def send_assemble_to_warehouse():
     print("sendAssembleToWarehouse...")
 
     data = request.get_json(silent=True) or {}
 
-    material_id = data.get("id") or data.get("material_id")
+    material_id = (data.get("id") or data.get("material_id"))
     assemble_id = data.get("assemble_id")
+    raw_assemble_ids = (data.get("assemble_ids") or [])
     mode = str(data.get("mode") or "").strip().lower()
 
     if mode not in ("agv", "forklift"):
@@ -2763,17 +2986,6 @@ def send_assemble_to_warehouse():
         except (TypeError, ValueError):
             return 0
 
-
-    def get_effective_done_qty(row):
-        return max(
-            safe_int(row.total_completed_qty),
-            safe_int(row.allOk_qty),
-            safe_int(row.completed_qty),
-            safe_int(row.total_ask_qty),
-            safe_int(row.must_receive_qty),
-            0,
-        )
-
     try:
         material_id = int(material_id)
     except (TypeError, ValueError):
@@ -2792,6 +3004,31 @@ def send_assemble_to_warehouse():
             }), 400
     else:
         assemble_id = None
+
+    # ------------------------------------------------------------
+    # 支援同一工單一次送出多筆 assemble
+    # ------------------------------------------------------------
+    assemble_ids = []
+
+    if isinstance(raw_assemble_ids, list):
+        for value in raw_assemble_ids:
+            try:
+                current_id = int(value)
+
+                if current_id > 0:
+                    assemble_ids.append(current_id)
+
+            except (TypeError, ValueError):
+                continue
+
+    # 去除重複
+    assemble_ids = list(
+        dict.fromkeys(assemble_ids)
+    )
+
+    # 相容舊前端的單筆 assemble_id
+    if not assemble_ids and assemble_id:
+        assemble_ids = [assemble_id]
 
     s = Session()
     try:
@@ -2812,27 +3049,6 @@ def send_assemble_to_warehouse():
             }), 404
 
         # ------------------------------------------------------------
-        # 2. 若前端傳 assemble_id，先找指定列
-        # ------------------------------------------------------------
-        target = None
-        current_batch_no = 0
-
-        if assemble_id is not None:
-            target = (s.query(Assemble)
-                .filter(Assemble.id == assemble_id, Assemble.material_id == material_id)
-                .with_for_update()
-                .first()
-            )
-
-            if not target:
-                return jsonify({
-                    "status": False,
-                    "message": "找不到指定的 assemble 完成資料"
-                }), 200
-
-            current_batch_no = to_int(getattr(target, "release_batch_no", 0))
-
-        # ------------------------------------------------------------
         # 3. 共用的「可送出」條件
         #
         # B109-only：
@@ -2846,59 +3062,69 @@ def send_assemble_to_warehouse():
             Assemble.process_step_code == 0,
             Assemble.show2_ok.in_([9, 10]),
             Assemble.completed_qty > 0,
-            #or_(
-            #    Assemble.reason.is_(None),
-            #    Assemble.reason != 'B110_DONE_COPY'
-            #)
             or_(
                 Assemble.reason.is_(None),
-                Assemble.reason == '',
-                Assemble.reason.notin_(['B110_DONE_COPY'])
+                Assemble.reason != 'B110_DONE_COPY'
             )
         ]
 
+        # ------------------------------------------------------------
+        # 3. 取得本次真正要送出的完成列
+        #
+        # 前端有傳 assemble_ids：
+        #   只送使用者勾選的資料。
+        #
+        # 前端沒有傳 assemble_ids：
+        #   相容舊程式，取得該 material 所有可送出完成列。
+        # ------------------------------------------------------------
         targets = []
 
-        if target:
-            # --------------------------------------------------------
-            # 3-1. 指定的是 B110：送同 release_batch_no 的 B110 群組
-            # --------------------------------------------------------
-            if (
-                str(target.work_num or '').strip() == 'B110'
-                and current_batch_no > 0
-            ):
-                targets = (
-                    s.query(Assemble)
-                    .filter(*common_filters)
-                    .filter(Assemble.work_num == 'B110')
-                    .filter(
-                        Assemble.release_batch_no == current_batch_no
-                    )
-                    .order_by(Assemble.id.asc())
-                    .with_for_update()
-                    .all()
+        if assemble_ids:
+            targets = (
+                s.query(Assemble)
+                .filter(*common_filters)
+                .filter(
+                    Assemble.id.in_(assemble_ids)
                 )
+                .order_by(Assemble.id.asc())
+                .with_for_update()
+                .all()
+            )
 
             # --------------------------------------------------------
-            # 3-2. 指定的是 B109-only，或舊資料 batch_no=0：
-            #      只能送指定的完成列，不可無條件送 target
+            # 防止前端傳入不存在或不屬於此 material 的 assemble_id
             # --------------------------------------------------------
-            else:
-                valid_target = (
-                    s.query(Assemble)
-                    .filter(*common_filters)
-                    .filter(Assemble.id == target.id)
-                    .with_for_update()
-                    .first()
+            found_ids = {
+                int(row.id)
+                for row in targets
+            }
+
+            missing_ids = [
+                current_id
+                for current_id in assemble_ids
+                if current_id not in found_ids
+            ]
+            '''
+            if missing_ids:
+                print(
+                    "[sendAssembleToWarehouse] ignored assemble ids:",
+                    missing_ids
                 )
+            '''
+            #
+            if missing_ids:
+                s.rollback()
 
-                if valid_target:
-                    targets = [valid_target]
+                return jsonify({
+                    "status": False,
+                    "message": "部分勾選資料不符合送出條件，已取消整批送出",
+                    "material_id": material_id,
+                    "requested_assemble_ids": assemble_ids,
+                    "found_assemble_ids": sorted(found_ids),
+                    "missing_assemble_ids": missing_ids,
+                }), 200
+            #
 
-        # ------------------------------------------------------------
-        # 3-3. 前端沒有傳 assemble_id：
-        #      取得該 material 所有符合條件的完成列
-        # ------------------------------------------------------------
         else:
             targets = (
                 s.query(Assemble)
@@ -2930,70 +3156,46 @@ def send_assemble_to_warehouse():
                 "assemble_ids": [row.id for row in targets]
             }), 200
 
-        #
         # ------------------------------------------------------------
-        # 5-0. 計算本次實際可送至 Warehouse 的完成數量
+        # 5-0. 計算本次實際送往 Warehouse 的總完成數量
         #
-        # 注意：
-        # 不能只取前端指定 target 的 completed_qty。
+        # 必須加總本次 pending_targets 各自的完成數量。
         #
         # 例如：
-        # 組立第一次完成50，第二位員工再完成22，
-        # 最終整張工單實際完成量應為72，而不是50或22。
+        #   正常列 62
+        #   異常列 10
+        #   本次總送出量 = 72
         # ------------------------------------------------------------
-        completed_source_rows = (
-            s.query(Assemble)
-            .filter(
-                Assemble.material_id == material_id,
-
-                # 已經完成的工序或待送出列
-                or_(
-                    Assemble.process_step_code == 0,
-                    Assemble.total_completed_qty > 0,
-                    Assemble.completed_qty > 0,
-                    Assemble.allOk_qty > 0,
-                ),
-
-                # 排除純歷史複製列
-                or_(
-                    Assemble.reason.is_(None),
-                    Assemble.reason == '',
-                    Assemble.reason != 'B110_DONE_COPY'
-                )
-            )
-            .with_for_update()
-            .all()
-        )
-
-        source_qty_list = []
-
-        for source_row in completed_source_rows:
-            source_qty_list.append(
-                get_effective_done_qty(source_row)
-            )
-
         material_delivery_qty = safe_int(
             material.delivery_qty
         )
 
-        material_assemble_qty = safe_int(
-            material.assemble_qty
-        )
+        pending_qty_list = []
 
-        material_total_assemble_qty = safe_int(
-            material.total_assemble_qty
-        )
-
-        effective_completed_qty = max(
-            source_qty_list + [
-                material_delivery_qty,
-                material_assemble_qty,
-                material_total_assemble_qty,
+        for row in pending_targets:
+            row_qty = max(
+                safe_int(row.completed_qty),
+                safe_int(row.total_completed_qty),
+                safe_int(row.allOk_qty),
+                safe_int(row.must_receive_end_qty),
+                safe_int(row.ask_qty),
+                safe_int(row.must_receive_qty),
                 0,
-            ]
+            )
+
+            if row_qty <= 0:
+                raise ValueError(
+                    f"assemble_id={row.id} 沒有有效完成數量"
+                )
+
+            pending_qty_list.append(row_qty)
+
+
+        effective_completed_qty = sum(
+            pending_qty_list
         )
 
-        # 不可超過應完成數量
+        # 不可超過工單應完成數量
         if material_delivery_qty > 0:
             effective_completed_qty = min(
                 effective_completed_qty,
@@ -3006,13 +3208,15 @@ def send_assemble_to_warehouse():
                 'material_id': material_id,
                 'order_num': material.order_num,
                 'delivery_qty': material_delivery_qty,
+                'pending_assemble_ids': [
+                    row.id
+                    for row in pending_targets
+                ],
+                'pending_qty_list': pending_qty_list,
                 'effective_completed_qty':
                     effective_completed_qty,
-                'source_qty_list':
-                    source_qty_list,
             }
         )
-        #
 
         # ------------------------------------------------------------
         # 5. 執行送出
@@ -3051,81 +3255,42 @@ def send_assemble_to_warehouse():
         # move_assemble_to_warehouse() 負責搬運相關處理；
         # 這裡負責最後一致化 material / assemble 狀態。
         # ------------------------------------------------------------
-        #now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         now_str = DateTime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        #
         for row in pending_targets:
-            work_num = str(row.work_num or '').strip()
-
-            reason = str(row.reason or '').strip()
-
             # --------------------------------------------------------
-            # B109-only 或直接待送出列：
-            # 數量必須同步成整張工單實際完成量。
+            # 每一筆待送出列必須保留自己的數量
             #
-            # B110 批次列不要強制改成整張工單總量，
-            # 否則分批72件可能每一批都被改成72。
+            # 例如：
+            #   正常 B109 = 62
+            #   異常 B109 = 10
+            #
+            # 不可將兩筆都覆寫成 material 總數量 72。
             # --------------------------------------------------------
-            is_direct_b109 = (work_num == 'B109' or reason == 'B109_DIRECT_WAIT_SEND')
+            row_effective_qty = max(
+                safe_int(row.completed_qty),
+                safe_int(row.total_completed_qty),
+                safe_int(row.allOk_qty),
+                safe_int(row.must_receive_end_qty),
+                safe_int(row.ask_qty),
+                safe_int(row.must_receive_qty),
+                0,
+            )
 
-            if is_direct_b109:
-                row.must_receive_qty = effective_completed_qty
-
-                row.ask_qty = effective_completed_qty
-
-                row.total_ask_qty = (
-                    effective_completed_qty
+            if row_effective_qty <= 0:
+                raise ValueError(
+                    f"assemble_id={row.id} 沒有有效完成數量"
                 )
 
-                row.must_receive_end_qty = (
-                    effective_completed_qty
-                )
+            # 每一筆保留自己的待送出數量
+            row.must_receive_qty = row_effective_qty
+            row.ask_qty = row_effective_qty
+            row.total_ask_qty = row_effective_qty
+            row.must_receive_end_qty = row_effective_qty
 
-                row.completed_qty = (
-                    effective_completed_qty
-                )
-
-                row.total_completed_qty = (
-                    effective_completed_qty
-                )
-
-                row.allOk_qty = (
-                    effective_completed_qty
-                )
-
-            # --------------------------------------------------------
-            # B110 批次列：
-            # 保留該批次原本數量，只修正明顯為0的欄位。
-            # --------------------------------------------------------
-            else:
-                row_effective_qty = (
-                    get_effective_done_qty(row)
-                )
-
-                if row_effective_qty <= 0:
-                    row_effective_qty = (
-                        effective_completed_qty
-                    )
-
-                if safe_int(row.completed_qty) <= 0:
-                    row.completed_qty = (
-                        row_effective_qty
-                    )
-
-                if (
-                    safe_int(
-                        row.total_completed_qty
-                    )
-                    <= 0
-                ):
-                    row.total_completed_qty = (
-                        row_effective_qty
-                    )
-
-                if safe_int(row.allOk_qty) <= 0:
-                    row.allOk_qty = (
-                        row_effective_qty
-                    )
+            row.completed_qty = row_effective_qty
+            row.total_completed_qty = row_effective_qty
+            row.allOk_qty = row_effective_qty
 
             # --------------------------------------------------------
             # Warehouse 顯示狀態
@@ -3144,13 +3309,9 @@ def send_assemble_to_warehouse():
             row.input_disable = True
             row.input_end_disable = True
             row.input_abnormal_disable = True
-
-            # Warehouse 頁面仍需輸入/確認入庫數量時，
-            # input_allOk_disable 必須為 False
             row.input_allOk_disable = False
 
             row.update_time = now_str
-
 
         # ------------------------------------------------------------
         # 7. material 正式抵達成品區，等待入庫
@@ -3189,7 +3350,6 @@ def send_assemble_to_warehouse():
         material.startStatus = 1
 
         material.update_time = now_str
-        #
 
         s.commit()
 

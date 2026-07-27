@@ -101,7 +101,7 @@ class P_Material(BASE):
     _product = relationship('P_Product', backref="p_material")
     _process = relationship('P_Process', backref="p_material")
 
-    material_stockin_date = Column(String(12))
+    material_stockin_date = Column(String(20))
     update_time = Column(String(30))
     create_at = Column(DateTime, server_default=func.now())
 

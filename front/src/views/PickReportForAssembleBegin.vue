@@ -391,7 +391,7 @@
                   single-line
                   class="top-input"
                 />
-            <!--
+
                 <v-text-field
                   id="bar_code"
                   v-model="bar_code"
@@ -401,13 +401,16 @@
                   :value="bar_code"
                   ref="barcodeInput"
                   @keyup.enter="handleBarCode"
+
+                  @keydown="handleKeyDownForBarCode"
+
                   hide-details
                   single-line
 
                   variant="outlined"
                   class="barcode-input top-input"
                 />
-            -->
+<!--
 <v-text-field
   id="bar_code"
   v-model="bar_code"
@@ -421,6 +424,7 @@
   variant="outlined"
   class="barcode-input top-input"
 />
+            -->
             </v-col>
           </v-row>
         </v-card-title>
@@ -5173,6 +5177,39 @@ const onClickProcessSettingConfirm = async () => {
 
   await onConfirmSelectedProcesses()
 }
+
+const handleKeyDownForBarCode = (event) => {
+  const inputChar = event.key;
+
+  //const caps = event.getModifierState && event.getModifierState('CapsLock');
+  //console.log("CapsLock is: ", caps); // true when CapsLock is on
+
+  // 允許左右方向鍵、backspace 和 delete 鍵
+  if (['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'].includes(inputChar)) {
+    return;
+  }
+
+  // 如果按下的鍵不是數字，阻止輸入
+  if (!/^\d$/.test(inputChar)) {
+    event.preventDefault();  // 阻止非數字輸入
+    return;
+  }
+
+  const inputValue = event.target.value || ''; // 確保 inputValue 是字串
+
+  // 檢查輸入的長度是否超過12, 阻止多餘的輸入
+  if (inputValue.length > 11) {
+    event.preventDefault();
+    return;
+  }
+
+  // 偵測是否按下 Enter 鍵
+  //if (event.key === 'Enter' || event.keyCode === 13) {
+  //  console.log('Return key pressed');
+  //  // 如果需要，可以繼續執行其他操作，或進行額外的驗證
+  //  //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
+  //}
+};
 
 </script>
 

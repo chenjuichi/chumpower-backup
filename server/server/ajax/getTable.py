@@ -15,14 +15,16 @@ from sqlalchemy.orm import selectinload, load_only
 
 from collections import defaultdict
 
-#from flask_cors import CORS
-#from operator import itemgetter
-
 from datetime import datetime, timezone, timedelta
 
 from datetime import datetime as dt, time
 
-from .helper import parse_dt_maybe_aw, parse_dt_maybe_aw2, parse_dt_maybe, fmt_hhmmss, pick_user_list
+from .helper import (
+    parse_dt_maybe_aw,
+    parse_dt_maybe_aw2,
+    parse_dt_maybe,
+    fmt_hhmmss,
+)
 
 from zoneinfo import ZoneInfo
 
@@ -695,144 +697,6 @@ def build_warehouse_history_query(
     return q
 
 
-# --- for get p_table API help function---------------------------------------------------------------
-
-"""
-def active_count_map_by_material_multi_p(
-    s,
-    material_ids,
-    process_types,
-    include_paused=True,
-    only_user_id=None,
-    has_started=None,
-    null_as_not_started=True,
-):
-    #
-    # 回傳格式：
-    # {
-    #   "21": { "101": 2, "103": 1 },
-    #   "22": { "101": 1 },
-    #   "23": {}
-    # }
-    # include_paused: True → 只要未結束就算（包含暫停）
-    #                  False → 只算「正在跑」（不含暫停）
-
-    process_types = list(process_types)             # 確保是可迭代序列
-
-    result = {str(pt): {} for pt in process_types}
-
-    if not material_ids:
-      return result
-
-    q = build_active_process_query_p(
-        s, material_ids, process_types,
-        include_paused=include_paused,
-        only_user_id=only_user_id,
-        has_started=has_started,
-        null_as_not_started=null_as_not_started,
-    )
-
-    rows = q.with_entities(P_Process.process_type, P_Process.material_id).all()
-
-    for pt, mid in rows:
-        pt_str, mid_str = str(pt), str(mid)
-        result[pt_str][mid_str] = result[pt_str].get(mid_str, 0) + 1
-
-    return result
-
-
-def active_user_ids_by_material_multi_p(
-    s,
-    material_ids,
-    process_types,
-    include_paused=True,
-    has_started=None,
-    null_as_not_started=True,
-    only_user_id=None,
-    as_string=False,                # 預設 False（回 list）
-    sep=', '
-):
-    result = {str(pt): {} for pt in process_types}
-
-    if not material_ids:
-        return result
-
-    q = build_active_process_query_p(
-        s, material_ids, process_types,
-        include_paused=include_paused,
-        only_user_id=only_user_id,
-        has_started=has_started,
-        null_as_not_started=null_as_not_started,
-    )
-
-    rows = q.with_entities(
-        P_Process.process_type,
-        P_Process.material_id,
-        P_Process.user_id
-    ).all()
-
-    buckets = {}                  # (pt_str, mid_str) -> set(uids)
-    for pt, mid, uid in rows:
-        if uid is None:
-            continue
-        k = (str(pt), str(mid))
-        buckets.setdefault(k, set()).add(str(uid))
-
-    for (pt_str, mid_str), uids in buckets.items():
-        ulist = sorted(uids)
-        result[pt_str][mid_str] = sep.join(ulist) if as_string else ulist
-    return result
-
-
-def build_active_process_query_p(
-      s,
-      material_ids,
-      process_types,
-      include_paused=True,
-      only_user_id=None,              # 可選的使用者過濾
-      has_started=None,               # None=不過濾 / True=只要已開始 / False=只要未開始
-      null_as_not_started=True,       # False 時才有用；True=把 NULL 視為「未開始」
-  ):
-      #
-      # include_paused:
-      #     True  -> 只要未結束就算（含暫停）
-      #     False -> 只算正在跑（不含暫停）
-      # has_started:
-      #     None  -> 不過濾
-      #     True  -> 只要 has_started=True
-      #     False -> 只要 has_started=False（可選擇是否把 NULL 視為未開始）
-
-      q = (
-          s.query(P_Process)
-          .filter(P_Process.material_id.in_(material_ids))
-          .filter(P_Process.process_type.in_(process_types))
-
-          .filter(
-              or_(
-                  Process.end_time.is_(None),
-                  Process.end_time == ''
-              )
-          )
-      )
-
-      if not include_paused:
-          q = q.filter(or_(P_Process.is_pause.is_(False), P_Process.is_pause.is_(None)))
-
-      if only_user_id:
-          q = q.filter(P_Process.user_id == only_user_id)
-
-      # 處理 has_started 過濾
-      if has_started is True:
-          q = q.filter(P_Process.has_started.is_(True))
-      elif has_started is False:
-          if null_as_not_started:
-              q = q.filter(or_(P_Process.has_started.is_(False), P_Process.has_started.is_(None)))
-          else:
-              q = q.filter(P_Process.has_started.is_(False))
-      return q
-"""
-
-
 # --- API ---------------------------------------------------------------
 
 
@@ -1236,42 +1100,6 @@ def get_order_picked_boms():
         return jsonify(status=True, boms=list(merged.values()))
     finally:
         s.close()
-
-"""
-    try:
-        mids = [r[0] for r in s.query(Material.id).filter(Material.order_num == order_num).all()]
-        if not mids:
-            return jsonify(status=False, boms=[])
-
-        # 只回「已領料」(receive=True) 的 BOM，並合併 A1/A2/A3
-        boms = (
-            s.query(Bom)
-             .filter(Bom.material_id.in_(mids))
-             .filter(Bom.receive.is_(True))
-             .all()
-        )
-
-        # 去重：同料號+序號視為同一筆（你也可改成只用 material_num）
-        merged = {}
-        for bom in boms:
-            key = (bom.material_num, bom.seq_num)
-            if key not in merged:
-                merged[key] = {
-                    "id": bom.id,
-                    "order_num": order_num,
-                    "seq_num": bom.seq_num,
-                    "material_num": bom.material_num,
-                    "mtl_comment": bom.material_comment,
-                    "qty": bom.req_qty,
-                    "receive": bom.receive,
-                    "lack": bom.lack,
-                    "isPickOK": bom.isPickOK,
-                }
-
-        return jsonify(status=True, boms=list(merged.values()))
-    finally:
-        s.close()
-"""
 
 
 @getTable.route("/getBoms", methods=['POST'])
@@ -1893,92 +1721,6 @@ def update_process_begin():
       pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
     )
 
-"""
-@getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
-def toggle_process_begin():
-    print("dialog2ToggleProcessBegin API....")
-
-    #
-    #切換暫停/恢復：
-    #  - is_paused=True  → 進入暫停狀態：只記下 pause_started_at（若當前不是暫停）
-    #  - is_paused=False → 恢復：把 (now - pause_started_at) 累加到 pause_time，並清空 pause_started_at
-    #
-    data = request.json
-    process_id = data["process_id"]
-    want_pause = bool(data["is_paused"])
-
-    s = Session()
-
-    log = s.query(Process).get(process_id)
-    q = s.query(Process).filter_by(id=process_id).with_for_update()   # 鎖定該行後再更新, 避免 pause_started_at/pause_time 在同一瞬間被兩支 API 互相覆寫
-    log = q.one_or_none()
-
-    if not log:
-        return jsonify(success=False, message="process not found"), 404
-    if log.end_time is not None:
-        return jsonify(success=False, message="process already closed"), 400
-
-    # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
-    now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
-    now_tpe_str = now_tpe_aw.strftime(FMT)
-
-    if want_pause:
-        # → 要暫停
-        if not log.is_pause:
-          # 只有從「非暫停」→「暫停」時，才記錄起點
-          log.is_pause = True
-
-          log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
-        else:
-          if not log.pause_started_at:
-            log.pause_started_at = now_tpe_aw.replace(tzinfo=None)
-    else:
-        # → 要恢復
-        if log.is_pause:
-          # 從「暫停」→「恢復」時，把這段暫停秒數累加到 pause_time
-          if log.pause_started_at:
-            ps = log.pause_started_at
-            ps_aw = ps if ps.tzinfo else ps.replace(tzinfo=TPE)
-            delta = int((now_tpe_aw - ps_aw).total_seconds())
-            log.pause_time = (log.pause_time or 0) + max(0, delta)
-          log.pause_started_at = None
-          log.is_pause = False
-
-        # 第一次開始時，標記 has_started=True，並補 begin_time
-        if not getattr(log, "has_started", False):
-          # 若你的模型已有 has_started 欄位，這裡會生效
-          try:
-            log.has_started = True
-          except AttributeError:
-            # 若模型尚未加欄位，就忽略，不影響既有邏輯
-            pass
-
-          if not log.begin_time:
-            log.begin_time = now_tpe_str
-
-    # 先算當下正確的有效秒數
-    live = _live_elapsed_seconds(log)
-
-    # 同步回 DB，避免下次又拿到舊值
-    log.elapsedActive_time = int(live)
-
-    s.commit()
-
-    return jsonify(
-      success=True,
-      is_paused=log.is_pause,
-      #elapsed_time=int(log.elapsedActive_time or 0),
-      #pause_time=log.pause_time or 0,
-      elapsed_time=int(live),
-      pause_time=int(log.pause_time or 0),
-
-      pause_started_at=log.pause_started_at.isoformat() if log.pause_started_at else None,
-      # 回傳 has_started 讓前端可用（即使沒有欄位也安全處理）
-      has_started=bool(log.has_started),
-
-    )
-"""
-
 
 @getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
 def toggle_process_begin():
@@ -2049,165 +1791,6 @@ def toggle_process_begin():
     )
     s.close()
     return result
-
-
-"""
-@getTable.route("/dialog2CloseProcessBegin", methods=['POST'])
-def close_process_begin():
-    print("dialog2CloseProcessBegin API....")
-
-    data = request.json
-    process_id   = data["process_id"]
-    elapsed_time = data.get("elapsed_time")
-    receive_qty  = data.get("receive_qty", 0)
-    alarm_enable = data.get("alarm_enable")
-    alarm_message = data.get("alarm_message")
-    isAssembleFirstAlarm = data.get("isAssembleFirstAlarm")
-    #assemble_id  = data.get("assemble_id", None)
-    assemble_id  = data.get("assemble_id")
-
-    print("process_id:", process_id, "receive_qty:", receive_qty, "alarm_enable:", alarm_enable, "assemble_id:", assemble_id)
-    print("alarm_enable data type:",alarm_enable, type(alarm_enable))
-    print("isAssembleFirstAlarm data type:",isAssembleFirstAlarm, type(isAssembleFirstAlarm))
-
-    myTest  = data.get("test")
-    print("test, qty:", myTest, receive_qty)
-
-    s = Session()
-
-    #log = s.query(Process).get(process_id)
-    log = s.query(Process).filter_by(id=process_id).first()
-
-    if not log:
-      return jsonify(success=False, message="process not found"), 404
-
-    if (log.end_time is not None) and (log.process_work_time_qty !=0):
-      print("@@close_process_begin step1..")
-      return jsonify(
-        success=True,
-        message="already closed",
-        elapsed_time=int(log.elapsedActive_time or 0),
-        pause_time=int(log.pause_time or 0),
-        end_time=log.end_time,
-      ), 200
-
-    TPE = ZoneInfo("Asia/Taipei")
-    now_aw = datetime.now(TPE).replace(microsecond=0)
-
-    # 1) 若暫停中，先把最後一段暫停秒數補進 pause_time
-    if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
-      print("@@close_process_begin step2..")
-
-      try:
-        ps = log.pause_started_at
-        if isinstance(ps, str):
-          # 依你的實際格式調整；若你存 "%Y-%m-%d %H:%M:%S"，改用 datetime.strptime
-          ps = datetime.fromisoformat(ps)
-        if ps.tzinfo is None:
-          ps = ps.replace(tzinfo=TPE)
-
-        delta = int((now_aw - ps).total_seconds())
-        log.pause_time = (log.pause_time or 0) + max(delta, 0)
-      except Exception as e:
-        print("close_process: pause_time accumulate failed:", e)
-      finally:
-        log.pause_started_at = None
-
-    # 2) 校正『有效計時秒數』：採單向遞增（避免寫回比現值還小）
-    if elapsed_time is not None:
-      print("@@close_process_begin step3..")
-
-      try:
-        last_secs = int(elapsed_time)
-      except Exception:
-        last_secs = int(log.elapsedActive_time or 0)
-      cur_secs = int(log.elapsedActive_time or 0)
-
-      log.elapsedActive_time = max(cur_secs, last_secs)
-
-    # 3) 可選：更新 HH:MM:SS 文字欄（若模型有此欄位）
-    try:
-      print("@@close_process_begin step4..")
-
-      log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
-    except Exception:
-      pass
-
-    # 4) 關閉狀態
-    print("@@close_process_begin step5..")
-
-    log.is_pause = True
-    log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
-    print("log.process_work_time_qty:", receive_qty)
-    log.process_work_time_qty = receive_qty
-
-    if alarm_enable:
-      print("@@close_process_begin step5a..")
-      log.normal_work_time = 1
-      log.abnormal_cause_message=''
-    if not alarm_enable and isAssembleFirstAlarm:
-      print("@@close_process_begin step5b..")
-      log.normal_work_time = 1
-      log.abnormal_cause_message=''
-    if not alarm_enable and not isAssembleFirstAlarm:
-      print("@@close_process_begin step5c..")
-      log.normal_work_time = 0
-      log.abnormal_cause_message=alarm_message
-
-    log.must_allOk_qty = receive_qty
-
-    # 5)（重點）若有傳 assemble_id + receive_qty，更新該站完成數
-    # 也就是說, 處理 receive_qty / assemble_id 之類的寫回，都在此處補充
-    is_completed   = False
-    total_completed = None
-    must_qty       = None
-
-    try:
-      print("@@close_process_begin step6..")
-      rq = int(receive_qty or 0)
-    except Exception:
-      rq = 0
-
-    print("@@close_process_begin step7..")
-    if assemble_id is not None and rq > 0:
-      try:
-        asm = s.query(Assemble).get(int(assemble_id))
-        print("@@close_process_begin step8..")
-      except Exception:
-        asm = None
-
-      print("@@close_process_begin step9..")
-      if asm:
-        print("@@close_process_begin step10..")
-        # 依你的實際欄位名調整：
-        # 假設：must_receive_end_qty = 應完成數量、total_ask_qty_end = 已完成總數
-        must_qty = int(asm.must_receive_end_qty or 0)
-        cur_total = int(asm.total_ask_qty_end or 0)
-        new_total = cur_total + rq
-
-        asm.total_ask_qty_end = new_total
-        total_completed = new_total
-        is_completed = (must_qty > 0 and new_total >= must_qty)
-
-        s.add(asm)
-
-    print("@@close_process_begin step11..")
-    s.add(log)
-
-    s.commit()
-
-    return jsonify(
-      success=True,
-      end_time=log.end_time,
-      elapsed_time=int(log.elapsedActive_time or 0),
-      pause_time=int(log.pause_time or 0),
-      # 待確定
-      # ✅ 前端可用來鎖定 Begin/End 的開始/結束鍵
-      is_completed=is_completed,
-      total_completed=total_completed,
-      must_qty=must_qty
-    )
-"""
 
 
 @getTable.route("/dialog2CloseProcessBegin", methods=["POST"])
@@ -3502,223 +3085,6 @@ def get_users_deps_processes_p():
       })
     finally:
       s.close()
-
-
-"""
-@getTable.route("/getProcessesByOrderNum", methods=['POST'])
-def get_processes_by_order_num():
-  print("getProcessesByOrderNum....")
-
-  request_data = request.get_json()
-  _order_num = request_data['order_num']
-  #print("order_num:", _order_num)
-
-  code_to_name = {
-      1:  '備料',
-      19: '等待AGV(備料區)',
-      2:  'AGV運行(備料區->組裝區)',
-      23: '雷射',
-      21: '組裝',
-      22: '檢驗',
-      29: '等待AGV(組裝區)',
-      3:  'AGV運行(組裝區->成品區)',
-      31: '成品入庫',
-      5:  '堆高機運行(備料區->組裝區)',
-      6:  '堆高機運行(組裝區->成品區)',
-  }
-
-  s = Session()
-
-  materials = (
-    s.query(Material)
-    .filter(Material.order_num == _order_num)
-    .order_by(Material.id.asc())     # 可要可不要，但建議固定順序
-    .all()
-  )
-
-  if not materials:
-    s.close()
-    return jsonify(success=False, message="order not found"), 404
-
-  _results = []
-  seq_num = 0
-  now_tpe_aw = datetime.now(TPE).replace(microsecond=0)
-  #print("len materials:", len(materials))
-  for material in materials:    # material_for_loop
-    work_qty = material.total_delivery_qty or 0
-    assemble_records = material._assemble
-
-    for record in material._process:    # process_for_loop
-        alarm_proc_record = [a for a in assemble_records if ((a.id == record.assemble_id and record.has_started))]
-        #print("alarm_proc_record:",alarm_proc_record)
-        if len(alarm_proc_record) == 1:
-          alarm_msg_enable = alarm_proc_record[0].alarm_enable
-          alarm_msg_isAssembleFirstAlarm = alarm_proc_record[0].isAssembleFirstAlarm
-          if not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm:
-            alarm_msg_string = (alarm_proc_record[0].alarm_message or '').strip()
-          else:
-            alarm_msg_string = ''
-
-          if record.process_type == 21:
-            alarm_msg_string = alarm_proc_record[0].Incoming1_Abnormal
-        else:
-          alarm_msg_enable = True
-          alarm_msg_isAssembleFirstAlarm = True
-          alarm_msg_string = ''
-
-          if (
-            material.Incoming0_Abnormal != '' and
-            record.end_time !='' and
-            record.begin_time !='' and
-            record.assemble_id==0 and
-            record.process_type in [1, 5]
-          ):
-            alarm_msg_string = material.Incoming0_Abnormal
-
-        # 跳過 begin_time 為 None、空字串、只有空白、或無效預設值的紀錄
-        bt = (record.begin_time or "").strip()
-        if (not bt or bt == "0000-00-00 00:00:00") and record.process_type not in {5, 6}:
-          continue
-
-        seq_num += 1
-        status = code_to_name.get(record.process_type, '空白')
-        #print("step1...", status)
-
-        # ---- 使用者名稱附註（若有） ----
-        name_core = (record.user_id or "").lstrip("0")
-        if record.process_type in {1, 5, 6, 21, 22, 23, 31}:
-          user = s.query(User).filter_by(emp_id=record.user_id).first()
-          emp_name = user.emp_name if user and getattr(user, "emp_name", None) else ""
-          status = f"{status}({name_core}{emp_name})"
-
-        if record.process_type in {1} and material.isLackMaterial !=99:
-           status = f"{status}-缺料"
-
-        # ---- 計算時長（非 5/6 流動段才算）----
-        temp_period_time = ""
-        work_time_str = ""
-        single_std_time_str = ""
-
-        if record.process_type not in {5, 6}:
-            #start_time = parse_dt_maybe(record.begin_time)
-            #end_time = parse_dt_maybe(record.end_time)
-            start_time = parse_dt_maybe_aw(record.begin_time)
-            end_time   = parse_dt_maybe_aw(record.end_time)
-
-            # 設定各製程標準單件工時字串
-            if record.process_type == 22:   # 檢驗
-                single_std_time_str = str(material.sd_time_B110)
-            elif record.process_type == 23: # 雷射
-                single_std_time_str = str(material.sd_time_B106)
-            elif record.process_type == 21: # 組裝
-                single_std_time_str = str(material.sd_time_B109)
-            elif record.process_type == 31: # 成品入庫
-                single_std_time_str = str(material.sd_time_B110)
-
-            if start_time:
-                if end_time:
-                    # 已結束：用結束時間 - 開始時間
-                    total_seconds = int((end_time - start_time).total_seconds())
-                else:
-                    # 未結束：依目前狀態計算有效作業秒數
-                    pause_total = int(record.pause_time or 0)
-
-                    #if getattr(record, "is_pause", False) and record.pause_started_at:
-                    if getattr(record, "is_pause", False) and getattr(record, "pause_started_at", None):
-                        #ps_aw = attach_tpe(record.pause_started_at)
-                        ps_aw = parse_dt_maybe_aw(record.pause_started_at)
-                        if ps_aw:
-                            #pause_total += max(0, int((now_tpe_aw - ps_aw).total_seconds()))
-                            # 若 DB 時間不小心比現在還未來，多餘負值做保護
-                            extra_pause = int((now_tpe_aw - ps_aw).total_seconds())
-                            pause_total += max(0, extra_pause)
-                        # end if
-                    # end if
-
-                    # 這裡兩邊皆為 aware
-                    total_seconds = int((now_tpe_aw - start_time).total_seconds()) - pause_total
-
-                total_seconds = max(0, total_seconds)
-                time_diff_str_format = fmt_hhmmss(total_seconds)
-
-                # 你的原始需求：製程 1（備料）顯示 front-end 的 str_elapsedActive_time 優先
-                if record.process_type == 1:
-                    temp_period_time = record.str_elapsedActive_time or record.period_time or time_diff_str_format
-                elif record.process_type == 31:
-                    temp_period_time = ""  # 入庫不顯示
-                else:
-                    # 若 DB 已有 period_time 就沿用；否則用動態計算
-                    temp_period_time = record.period_time or time_diff_str_format
-
-                # 分/單件（只對 21/22/23/31 有意義，其它依你原本邏輯空白）
-                if record.process_type in {21, 22, 23} and work_qty > 0:
-                    minutes_total = total_seconds // 60
-                    work_time = round(minutes_total / work_qty, 1)
-                    work_time_str = str(work_time)
-                elif record.process_type == 31:
-                    work_time_str = ""
-            else:
-                # 沒開始時間
-                temp_period_time = record.period_time or ""
-        # else: 5/6 不計時長
-
-        #
-        #
-        # 依照 process.assemble_id 找到對應的 assemble
-        assemble_record = None
-        if record.assemble_id:
-            assemble_record = next(
-                (a for a in assemble_records if a.id == record.assemble_id),
-                None
-            )
-
-        # process_steps 是 material table 的欄位
-        process_steps_value = material.process_steps
-        if not process_steps_value:
-            process_steps_value = default_process_steps()
-        #
-        #
-
-        _object = {
-            'seq_num': seq_num,
-            'id': material.id,
-            'order_num': material.order_num,
-            'process_work_time_qty': (
-              record.process_work_time_qty
-              if record.process_type not in {19, 29, 2, 3, 5, 6}
-              else ''
-            ),
-            'sd_time_B109': material.sd_time_B109,
-            'sd_time_B106': material.sd_time_B106,
-            'sd_time_B110': material.sd_time_B110,
-            'user_id': name_core,
-            'begin_time': record.begin_time,
-            'end_time': record.end_time if record.process_type != 31 else '',
-            'period_time': temp_period_time if record.process_type != 1 else (record.str_elapsedActive_time or temp_period_time),
-            'work_time': work_time_str if record.process_type != 31 else '',
-            'single_std_time': single_std_time_str if record.process_type != 31 else '',
-            'process_type': status,
-            'is_lack_material': True if (record.process_type == 1 and material.isLackMaterial != 99) else False,
-
-            'normal_type': ' - 異常整修' if (not alarm_msg_enable and not alarm_msg_isAssembleFirstAlarm) else '',
-            'user_comment': alarm_msg_string,
-            #
-            'work_num': assemble_record.work_num if assemble_record else '',
-            'schedule_id': assemble_record.schedule_id if assemble_record else None,
-            'process_steps': process_steps_value,
-            #
-            'create_at': record.create_at,
-        }
-        _results.append(_object)
-
-  s.close()
-
-  # 依 create_at 排序
-  #_results = sorted(_results, key=lambda x: x['create_at'])
-  _results = sorted(_results, key=lambda x: x['seq_num'])
-
-  return jsonify({'processes': _results})
-"""
 
 
 """
@@ -6083,229 +5449,7 @@ def get_abnormal_causes_by_history():
         continue
 
 
-"""
-@getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
-def get_Warehouse_For_assemble_by_history():
-    print("getWarehouseForAssembleByHistory...")
-
-    data = request.json
-    #history_flag = data.get('history_flag')
-    #history_flag = bool(data.get('history_flag', False))
-    raw_history_flag = data.get('history_flag', False)
-    if isinstance(raw_history_flag, str):
-        history_flag = raw_history_flag.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
-    else:
-        history_flag = bool(raw_history_flag)
-    print("history_flag:", history_flag)
-
-    def to_int01(v, default=0):
-      try:
-          return 1 if int(v) == 1 else 0
-      except Exception:
-          return default
-
-    def to_int(v, default=0):
-      try:
-          return int(v)
-      except Exception:
-          return default
-
-    s = Session()
-    try:
-        # 組裝線
-        q = (
-            s.query(Material, Assemble, Process)
-             .join(Process, Process.material_id == Material.id)         # Material -> Process
-             .join(Assemble, Assemble.id == Process.assemble_id)        # Process -> Assemble
-             .filter(Process.has_started.is_(True))
-             .filter(Process.end_time.isnot(None))
-             .filter(Process.end_time != '')
-             .filter(Process.normal_work_time.in_([2, 3]))  #最後工序
-        )
-
-        # 加工線
-        p_q = (
-            s.query(P_Material, P_Assemble, P_Process)
-             .join(P_Process, P_Process.material_id == P_Material.id)         # Material -> Process
-             .join(P_Assemble, P_Assemble.id == P_Process.assemble_id)        # Process -> Assemble
-             .filter(P_Process.has_started.is_(True))
-             .filter(P_Process.end_time.isnot(None))
-             .filter(P_Process.end_time != '')
-             .filter(P_Process.normal_work_time.in_([3]))   #最後製程
-        )
-
-        # 資料是 (Material, Assemble, Process) JOIN 回來的 tuple
-        #rows = q.all()
-
-        rows = []
-        rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
-        rows.extend([(m, a, p, "process")  for (m, a, p) in p_q.all()])
-        print("rows:", len(rows))
-
-        def g(obj, name, default=None):
-            return getattr(obj, name, default) if obj is not None else default
-
-        seen = set()
-        results = []
-        index=0
-        for m, a, p, line in rows:
-
-            key = (line, g(m, "id"), g(a, "id"))
-            if key in seen:
-                continue
-            seen.add(key)
-
-            #isStockIn = to_int01(g(a, "isStockIn", 0), 0) == 1
-            if line == "process":
-              isStockIn = g(a, "isStockIn", 1)
-            if line == "assemble":
-              isStockIn = 1
-
-            #isWarehouseStationShow = to_int01(g(a, "isWarehouseStationShow", 0), 0) == 1
-            isWarehouseStationShow = g(a, "isWarehouseStationShow", 0)
-            isAllOk = g(m, "isAllOk", 0)
-
-            #print("history_flag, isWarehouseStationShow, isStockIn:", history_flag, isWarehouseStationShow, isStockIn)
-
-            # history_flag=False：只顯示 未入庫（isStockIn==0）
-            # history_flag=True：只顯示 已入庫（isStockIn==1）
-
-            # ✅ 等待入庫 / 歷史的正確篩選
-            # history_flag=False：等待入庫 → 只顯示 未入庫(isStockIn==0) 且未進歷史(isWarehouseStationShow==0)
-            # history_flag=True ：歷史    → 只顯示 已入庫(isStockIn==1) 且進歷史(isWarehouseStationShow==1)
-
-            # ✅ 若目前這筆是「報廢拆單筆」（abnormal_qty>0 且 allOk_qty==0）
-            #    就改抓同 material_id 的「良品筆」（must_receive_end_qty 最大那筆）
-            abn_qty = int(g(a, "abnormal_qty", 0) or 0)
-            #a_allok = int(g(a, "allOk_qty", 0) or 0)
-            a_allok = int(g(a, "completed_qty", 0) or 0)
-            #print("$$$$$ line, abn_qty, a_allok: ", line, abn_qty, a_allok)
-            #print("line, abn_qty, a_allok: ", line, abn_qty, a_allok)
-            #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
-
-            if m.id==1316:
-                print("line, history_flag, isStockIn, isWarehouseStationShow, isAllOk: ")
-                print(m.id, line, history_flag, isStockIn, isWarehouseStationShow, isAllOk)
-                print(abn_qty ,a_allok)
-
-            if abn_qty > 0 and a_allok == 0:
-                continue
-
-            if history_flag:
-              # 歷史紀錄：已入庫
-              if not isStockIn:
-                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
-                continue
-              if not isWarehouseStationShow:
-                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
-                continue
-            else:
-              #print("line, history_flag, isStockIn, isWarehouseStationShow: ", m.order_num, line, history_flag, isStockIn, isWarehouseStationShow)
-              # 等待入庫：已到成品區、可顯示在入庫畫面、但尚未入庫
-              #if isWarehouseStationShow:
-              if line == "assemble" and isWarehouseStationShow and isAllOk:
-
-                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", m.id, line, history_flag, isStockIn, isWarehouseStationShow)
-                continue
-              #if isStockIn:   # 針對加工線
-              if line == "process" and (( not isStockIn) or (isStockIn and isWarehouseStationShow)):
-
-                #print("line, history_flag, isStockIn, isWarehouseStationShow: ", line, history_flag, isStockIn, isWarehouseStationShow)
-                continue
-
-            #
-            #if history_flag:
-            #    # 歷史：已入庫 + 已進歷史
-            #    if not isStockIn:
-            #        continue
-            #    if not isWarehouseStationShow:
-            #        continue
-            #else:
-            #    # 等待入庫：未入庫 + 未進歷史（⚠️ 這裡要用「isWarehouseStationShow == 0」）
-            #    #if line == "assemblr" and isStockIn:
-            #    #    continue
-            #    # 組裝線且已經入庫
-            #    if line == "assemble" and isWarehouseStationShow:
-            #        continue
-            #    # 加工線且不必入庫, 或者, 加工線且需要入庫且已經入庫
-            #    #if line == "process" and (not isStockIn or not isWarehouseStationShow):
-            #    #if line == ("process" and not isStockIn) or ("process" and isStockIn and isWarehouseStationShow):
-            #    if line == "process" and (( not isStockIn) or (isStockIn and isWarehouseStationShow)):
-            #       continue
-            #
-
-            #print("all step ok...", line)
-            cleaned_comment = (g(m, "material_comment", "") or "").strip()
-            material_id=g(m, "id")
-            assemble_id=g(a, "id")
-            input_allOk_disable=g(a, "input_allOk_disable")
-
-            ProcessCls = Process if line == "assemble" else P_Process
-
-            total_allOk_qty = sum_process_work_qty(
-                s, ProcessCls, material_id, assemble_id, process_type=31
-            )
-
-            delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
-            remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
-
-            can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
-
-            index=index+1
-            results.append({
-                "index": index,
-                "id": material_id,
-                "order_num": g(m, "order_num", ""),
-                "material_num": g(m, "material_num", ""),
-                "req_qty": g(m, "material_qty", 0),
-                "date":                 g(m, "material_delivery_date", ""),
-
-                #"input_allOk_disable":  input_allOk_disable,
-                #"allOk_disable":        g(a, "input_allOk_disable"),
-                "input_allOk_disable": (not can_input_stockin),
-                "allOk_disable": (not can_input_stockin),
-
-                "shortage_note":        g(m, "shortage_note", ""),
-                "comment":              cleaned_comment,
-
-                #"Incoming2_Abnormal":   (g(m, "Incoming2_Abnormal", "") == ""),
-                #"Incoming2_Abnormal": to_int01(g(m, "Incoming2_Abnormal", 0), 0) == 1,
-                "Incoming2_Abnormal": bool(g(m, "Incoming2_Abnormal", False)),
-
-                "process_id":           g(p, "id"),
-                "assemble_id":          assemble_id,
-                #"delivery_qty":         g(p, "process_work_time_qty"),  # 到庫數量
-                "delivery_qty":         delivery_qty,  # 到庫數量
-                #"must_allOk_qty":       g(m, "must_allOk_qty", 0),      # 應入庫總數量
-                "must_allOk_qty":       remain_allOk_qty,      # 應入庫總數量
-                "total_allOk_qty":      total_allOk_qty,                # 已入庫總數量
-                #"allOk_qty":            g(a, "allOk_qty", 0),           # 入庫數量
-                #"allOk_qty":            0,           # 入庫數量, 初始值設為0
-                "allOk_qty": to_int(g(a, "allOk_qty", 0), 0),
-                "isWarehouseStationShow": isWarehouseStationShow,
-
-                "normal_work_time":     g(p, "normal_work_time", 0),
-                "tooltipVisible":       False,
-                "line": line,
-
-                "must_receive_end_qty": g(a, "must_receive_end_qty", 0),
-                "total_ask_qty_end":    g(a, "total_ask_qty_end", 0),
-                "abnormal_qty":         g(a, "abnormal_qty", 0),
-                "transport_mode": "自" if bool(g(m, "move_by_automatic_or_manual_2", False)) else "人",
-            })
-
-        results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
-
-        return jsonify({
-            "status": len(results) > 0,
-            "warehouse_for_assemble": results
-        })
-    finally:
-        s.close()
-"""
-
-
-# 20260722版
+# 20260727版
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
     print("getWarehouseForAssembleByHistory...")
@@ -6329,32 +5473,6 @@ def get_Warehouse_For_assemble_by_history():
 
     s = Session()
     try:
-        '''
-        # 組裝線：每個 assemble 只取最新一筆已完成 process
-        assemble_latest_proc_subq = (
-          s.query(
-            Process.assemble_id.label("assemble_id"),
-            func.max(Process.id).label("max_pid")
-          )
-          .filter(Process.has_started.is_(True))
-          .filter(Process.end_time.isnot(None))
-          .filter(Process.end_time != '')
-          .filter(Process.process_type.in_([21, 22, 23, 31]))
-          .group_by(Process.assemble_id)
-          .subquery()
-        )
-
-        q = (
-          s.query(Material, Assemble, Process)
-            .join(Assemble, Assemble.material_id == Material.id)
-            .join(
-              assemble_latest_proc_subq,
-              assemble_latest_proc_subq.c.assemble_id == Assemble.id
-            )
-            .join(Process, Process.id == assemble_latest_proc_subq.c.max_pid)
-        )
-        '''
-        #
         # ------------------------------------------------------------
         # 組裝線：
         # 每個 assemble 取最新一筆已完成 process。
@@ -6392,12 +5510,7 @@ def get_Warehouse_For_assemble_by_history():
             .subquery()
         )
 
-        q = (
-            s.query(
-                Material,
-                Assemble,
-                Process
-            )
+        q = (s.query(Material, Assemble, Process)
             .join(
                 Assemble,
                 Assemble.material_id
@@ -6446,7 +5559,6 @@ def get_Warehouse_For_assemble_by_history():
                     Material.isAllOk.is_(None)
                 )
             )
-        #
 
         # 加工線：每個 p_assemble 只取最新一筆已完成 process
         p_assemble_latest_proc_subq = (
@@ -6503,13 +5615,6 @@ def get_Warehouse_For_assemble_by_history():
             if abn_qty > 0 and a_allok == 0:
                 continue
 
-            #if history_flag:
-            #    # 歷史紀錄
-            #    if line == "assemble":
-            #        # 組裝線：已進歷史
-            #        if not isWarehouseStationShow:
-            #            continue
-            #
             if history_flag:
                 # 歷史紀錄
                 if line == "assemble":
@@ -6519,7 +5624,6 @@ def get_Warehouse_For_assemble_by_history():
                         and not isAllOk
                     ):
                         continue
-            #
             else:
                 # 待入庫
                 if line == "assemble":
@@ -6540,12 +5644,6 @@ def get_Warehouse_For_assemble_by_history():
             material_id = g(m, "id")
             assemble_id = g(a, "id")
 
-            #ProcessCls = Process if line == "assemble" else P_Process
-            #
-            #total_allOk_qty = sum_process_work_qty(
-            #    s, ProcessCls, material_id, assemble_id, process_type=31
-            #)
-            #
             ProcessCls = (
                 Process
                 if line == "assemble"
@@ -6569,6 +5667,10 @@ def get_Warehouse_For_assemble_by_history():
                         == material_id
                     )
                     .filter(
+                        Process.assemble_id
+                        == assemble_id
+                    )
+                    .filter(
                         Process.process_type == 31
                     )
                     .filter(
@@ -6576,7 +5678,7 @@ def get_Warehouse_For_assemble_by_history():
                     )
                     .scalar()
                 ) or 0
-
+                #
                 total_allOk_qty = to_int(
                     total_allOk_qty,
                     0
@@ -6592,220 +5694,71 @@ def get_Warehouse_For_assemble_by_history():
                         process_type=31
                     )
                 )
-            #
+
+            # end if-else line == "assemble"
 
             if line == "assemble":
                 # ------------------------------------------------------------
-                # Warehouse 到庫數量：
-                # 只取「最後一個已完成 B110 排程 root」
+                # Warehouse 每筆獨立顯示。
                 #
-                # 沒異常：
-                #   3375=1000, 3376=1000, 3377=1000
-                #   只取 schedule_id 最大的 3377 => 1000
+                # 正常列 62 顯示 62；
+                # 異常返工列 10 顯示 10。
                 #
-                # 有異常：
-                #   3377=950, 3379=50
-                #   root=3377，child=3379 => 1000
+                # 不再以 root + child 合併計算。
                 # ------------------------------------------------------------
 
-                # 1) 找此 material 最後一個已完成的 B110 root
-                #    注意：不要用 is_copied_from_id 回推，因為 3377 copied_from=3375 是排程關聯
-                root_asm = (
-                    s.query(Assemble)
-                    .join(Process, Process.assemble_id == Assemble.id)
-                    .filter(Assemble.material_id == material_id)
-                    .filter(Assemble.work_num.like('%B110%'))
-                    .filter(Process.material_id == material_id)
-                    #.filter(Process.process_type == 22)
-                    #.filter(Process.has_started.is_(True))
-                    #.filter(Process.end_time.isnot(None))
-                    #
-                    .filter(Process.process_type == 22)
-                    .filter(Process.end_time.isnot(None))
-                    .filter(Process.end_time != '')
-                    .filter(Process.process_work_time_qty > 0)
-                    #
-                    .filter(Process.end_time != '')
-                    .filter(Process.process_work_time_qty > 0)
-                    # 排除異常返工 child，例如 3379 copied_from=3377 且 parent.abnormal_qty > 0
-                    .filter(
-                        ~Assemble.is_copied_from_id.in_(
-                            s.query(Assemble.id)
-                              .filter(Assemble.material_id == material_id)
-                              .filter(Assemble.abnormal_qty > 0)
-                        )
-                    )
-                    .order_by(
-                        Assemble.schedule_id.desc(),
-                        Assemble.id.desc()
-                    )
-                    .first()
+                process_qty = to_int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ),
+                    0
                 )
 
-                #if not root_asm:
-                #    delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
-                #
-                if not root_asm:
-                    # --------------------------------------------------------
-                    # 沒有 B110：
-                    # 代表可能是 B109-only 工單或直接待送出列。
-                    #
-                    # 不可只依賴 p.process_work_time_qty，
-                    # 因為待入庫 assemble 本身可能沒有 process。
-                    # --------------------------------------------------------
-                    delivery_qty = max(
-                        to_int(
-                            g(a, "allOk_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(a, "total_completed_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(a, "completed_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(a, "total_ask_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(a, "must_receive_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(m, "assemble_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(
-                                m,
-                                "total_assemble_qty",
-                                0
-                            ),
-                            0
-                        ),
-
-                        to_int(
-                            g(m, "must_allOk_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(m, "delivery_qty", 0),
-                            0
-                        ),
-
-                        to_int(
-                            g(
-                                p,
-                                "process_work_time_qty",
-                                0
-                            ),
-                            0
-                        ),
-                    )
-
-                    material_delivery_qty = to_int(
-                        g(m, "delivery_qty", 0),
+                completed_qty = to_int(
+                    g(
+                        a,
+                        "completed_qty",
                         0
-                    )
+                    ),
+                    0
+                )
 
-                    # 不可超過工單應交數量
-                    if material_delivery_qty > 0:
-                        delivery_qty = min(
-                            delivery_qty,
-                            material_delivery_qty
-                        )
+                all_ok_qty = to_int(
+                    g(
+                        a,
+                        "allOk_qty",
+                        0
+                    ),
+                    0
+                )
 
-                else:
-                    root_assemble_id = int(root_asm.id)
+                total_completed_qty = to_int(
+                    g(
+                        a,
+                        "total_completed_qty",
+                        0
+                    ),
+                    0
+                )
 
-                    # 2) root + root 的異常返工 B110 child
-                    chain_ids = [root_assemble_id]
+                # 只取目前這一筆 assemble 的實際完成量
+                delivery_qty = max(
+                    process_qty,
+                    completed_qty,
+                    all_ok_qty,
+                    total_completed_qty,
+                )
 
-                    child_ids = [
-                        int(r[0])
-                        for r in (
-                            s.query(Assemble.id)
-                            .filter(Assemble.material_id == material_id)
-                            .filter(Assemble.is_copied_from_id == root_assemble_id)
-                            .filter(Assemble.work_num.like('%B110%'))
-                            .all()
-                        )
-                    ]
-
-                    chain_ids.extend(child_ids)
-                    chain_ids = list(set(chain_ids))
-
-                    print("WAREHOUSE FINAL CHAIN:", {
-                        "material_id": material_id,
-                        "current_assemble_id": assemble_id,
-                        "root_assemble_id": root_assemble_id,
-                        "chain_ids": chain_ids,
-                    })
-                    '''
-                    delivery_qty = (
-                        s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
-                        .filter(Process.material_id == material_id)
-                        .filter(Process.assemble_id.in_(chain_ids))
-                        .filter(Process.process_type == 22)
-                        .filter(Process.has_started.is_(True))
-                        .filter(Process.end_time.isnot(None))
-                        .filter(Process.end_time != '')
-                        .filter(Process.process_work_time_qty > 0)
-                        .scalar()
-                    ) or 0
-                    '''
-                    #
-                    delivery_qty = (
-                        s.query(
-                            func.coalesce(
-                                func.sum(
-                                    Process.process_work_time_qty
-                                ),
-                                0
-                            )
-                        )
-                        .filter(
-                            Process.material_id == material_id
-                        )
-                        .filter(
-                            Process.assemble_id.in_(chain_ids)
-                        )
-                        .filter(
-                            Process.process_type == 22
-                        )
-                        .filter(
-                            Process.end_time.isnot(None)
-                        )
-                        .filter(
-                            Process.end_time != ''
-                        )
-                        .filter(
-                            Process.process_work_time_qty > 0
-                        )
-                        .scalar()
-                    ) or 0
-
-                    delivery_qty = int(
-                        delivery_qty or 0
-                    )
-                    #
-
-                    delivery_qty = int(delivery_qty or 0)
-
-                # end if-else not root_asm
             else:
-                delivery_qty = int(g(p, "process_work_time_qty", 0) or 0)
-
+                delivery_qty = int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ) or 0
+                )
             # end if-else line =="assemble"
 
             # Warehouse 待入庫資料不應出現應入庫量為0
@@ -6832,7 +5785,7 @@ def get_Warehouse_For_assemble_by_history():
             # end if
 
             remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
-            #can_input_stockin = (not history_flag) and (total_allOk_qty < delivery_qty)
+
             can_input_stockin = (
                 not history_flag
                 and remain_allOk_qty > 0
@@ -6872,6 +5825,17 @@ def get_Warehouse_For_assemble_by_history():
                 "transport_mode": "自" if bool(g(m, "move_by_automatic_or_manual_2", False)) else "人",
             })
 
+        # end for loop
+
+        # ------------------------------------------------------------
+        # Warehouse 顯示規則：
+        #
+        # End 每送出一筆 assemble，
+        # Warehouse 就保留一筆。
+        #
+        # 同一 material_id 不合併，
+        # 只防止同一 assemble_id 因 JOIN 重複出現。
+        # ------------------------------------------------------------
         dedup_map = {}
 
         def _safe_int(v, default=0):
@@ -6881,74 +5845,60 @@ def get_Warehouse_For_assemble_by_history():
                 return default
 
         for row in results:
-            mid = _safe_int(row.get("id"), 0)
-            if mid <= 0:
+            material_id_key = _safe_int(
+                row.get("id"),
+                0
+            )
+
+            assemble_id_key = _safe_int(
+                row.get("assemble_id"),
+                0
+            )
+
+            process_id_key = _safe_int(
+                row.get("process_id"),
+                0
+            )
+
+            if material_id_key <= 0:
                 continue
 
-            old = dedup_map.get(mid)
+            # 組裝線正常情況以 assemble_id 唯一顯示
+            if assemble_id_key > 0:
+                key = (
+                    row.get("line"),
+                    material_id_key,
+                    assemble_id_key,
+                )
+            else:
+                # 防止少數沒有 assemble_id 的資料互相覆蓋
+                key = (
+                    row.get("line"),
+                    material_id_key,
+                    assemble_id_key,
+                    process_id_key,
+                )
+
+            old = dedup_map.get(key)
+
             if old is None:
-                dedup_map[mid] = row
+                dedup_map[key] = row
                 continue
 
-            #row_need = _safe_int(row.get("must_allOk_qty"), 0)
-            #old_need = _safe_int(old.get("must_allOk_qty"), 0)
-            #
-            # ----------------------------------------------------
-            # 同一 material 有多筆 Warehouse 列時，
-            # 優先保留應入庫數量較完整的資料。
-            #
-            # 例如：
-            # 舊列 delivery_qty=72
-            # 新列 delivery_qty=22
-            #
-            # 不可只因新列 assemble_id 較大，就留下 22。
-            # ----------------------------------------------------
-            row_delivery = _safe_int(
-                row.get("delivery_qty"),
+            # 同 assemble 因 JOIN 重複時，
+            # 優先保留較新的 process。
+            old_process_id = _safe_int(
+                old.get("process_id"),
                 0
             )
 
-            old_delivery = _safe_int(
-                old.get("delivery_qty"),
-                0
-            )
+            if process_id_key > old_process_id:
+                dedup_map[key] = row
 
-            if row_delivery > old_delivery:
-                dedup_map[mid] = row
-                continue
+        results = list(
+            dedup_map.values()
+        )
 
-            if row_delivery < old_delivery:
-                continue
-
-            row_need = _safe_int(
-                row.get("must_allOk_qty"),
-                0
-            )
-
-            old_need = _safe_int(
-                old.get("must_allOk_qty"),
-                0
-            )
-            #
-
-            row_asm = _safe_int(row.get("assemble_id"), 0)
-            old_asm = _safe_int(old.get("assemble_id"), 0)
-
-            row_pid = _safe_int(row.get("process_id"), 0)
-            old_pid = _safe_int(old.get("process_id"), 0)
-
-            # 先保留真正還需要入庫的那筆
-            if row_need > 0 and old_need <= 0:
-                dedup_map[mid] = row
-                continue
-            if row_need <= 0 and old_need > 0:
-                continue
-
-            # 若 must_allOk_qty 一樣，再保留較新的 assemble/process
-            if (row_asm, row_pid) > (old_asm, old_pid):
-                dedup_map[mid] = row
-
-        results = list(dedup_map.values())
         results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
 
         return jsonify({
@@ -6957,260 +5907,6 @@ def get_Warehouse_For_assemble_by_history():
         })
     finally:
         s.close()
-
-
-"""
-@getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
-def get_Warehouse_For_assemble_by_history():
-    print("getWarehouseForAssembleByHistory...")
-
-    data = request.json or {}
-    history_flag = bool(data.get('history_flag', False))
-
-    def to_int(v, default=0):
-        try:
-            if v is None:
-                return default
-            return int(v)
-        except Exception:
-            return default
-
-    s = Session()
-    try:
-        # ------------------------------------------------------------
-        # 1) 先把組裝線 / 加工線 的主查詢都壓到 SQL 層處理
-        #    只撈需要的欄位，避免 Material/Assemble/Process 整個 ORM 物件進來
-        # ------------------------------------------------------------
-        aq = (
-            s.query(
-                Material.id.label("material_id"),
-                Material.order_num.label("order_num"),
-                Material.material_num.label("material_num"),
-                Material.material_qty.label("req_qty"),
-                Material.material_delivery_date.label("date"),
-                Material.shortage_note.label("shortage_note"),
-                Material.material_comment.label("material_comment"),
-                Material.Incoming2_Abnormal.label("Incoming2_Abnormal"),
-
-                Assemble.id.label("assemble_id"),
-                Assemble.input_allOk_disable.label("input_allOk_disable"),
-                literal(0).label("isStockIn"),
-                #Assemble.isStockIn.label("isStockIn"),
-                Assemble.isWarehouseStationShow.label("isWarehouseStationShow"),
-                Assemble.completed_qty.label("completed_qty"),
-                Assemble.abnormal_qty.label("abnormal_qty"),
-                Assemble.must_receive_end_qty.label("must_receive_end_qty"),
-                Assemble.total_ask_qty_end.label("total_ask_qty_end"),
-
-                Process.id.label("process_id"),
-                Process.process_work_time_qty.label("delivery_qty"),
-                Process.normal_work_time.label("normal_work_time"),
-
-                literal("assemble").label("line"),
-            )
-            .join(Process, Process.material_id == Material.id)
-            .join(Assemble, Assemble.id == Process.assemble_id)
-            .filter(Process.has_started.is_(True))
-            .filter(Process.end_time.isnot(None))
-            .filter(Process.end_time != '')
-            .filter(Process.normal_work_time.in_([2, 3]))
-        )
-
-        pq = (
-            s.query(
-                P_Material.id.label("material_id"),
-                P_Material.order_num.label("order_num"),
-                P_Material.material_num.label("material_num"),
-                P_Material.material_qty.label("req_qty"),
-                P_Material.material_delivery_date.label("date"),
-                P_Material.shortage_note.label("shortage_note"),
-                P_Material.material_comment.label("material_comment"),
-                P_Material.Incoming2_Abnormal.label("Incoming2_Abnormal"),
-
-                P_Assemble.id.label("assemble_id"),
-                P_Assemble.input_allOk_disable.label("input_allOk_disable"),
-                P_Assemble.isStockIn.label("isStockIn"),
-                P_Assemble.isWarehouseStationShow.label("isWarehouseStationShow"),
-                P_Assemble.completed_qty.label("completed_qty"),
-                P_Assemble.abnormal_qty.label("abnormal_qty"),
-                P_Assemble.must_receive_end_qty.label("must_receive_end_qty"),
-                P_Assemble.total_ask_qty_end.label("total_ask_qty_end"),
-
-                P_Process.id.label("process_id"),
-                P_Process.process_work_time_qty.label("delivery_qty"),
-                P_Process.normal_work_time.label("normal_work_time"),
-
-                literal("process").label("line"),
-            )
-            .join(P_Process, P_Process.material_id == P_Material.id)
-            .join(P_Assemble, P_Assemble.id == P_Process.assemble_id)
-            .filter(P_Process.has_started.is_(True))
-            .filter(P_Process.end_time.isnot(None))
-            .filter(P_Process.end_time != '')
-            .filter(P_Process.normal_work_time.in_([3]))
-        )
-
-        # ------------------------------------------------------------
-        # 2) history_flag 的條件盡量提前在 SQL 過濾
-        # ------------------------------------------------------------
-        if history_flag:
-            # 歷史：已入庫 + 已進歷史
-            #aq = aq.filter(Assemble.isStockIn == 1, Assemble.isWarehouseStationShow == 1)
-            aq = aq.filter(false())
-            pq = pq.filter(P_Assemble.isStockIn == 1, P_Assemble.isWarehouseStationShow == 1)
-        else:
-            # 等待入庫：
-            # 組裝線 -> 未進歷史
-            aq = aq.filter(or_(Assemble.isWarehouseStationShow.is_(False), Assemble.isWarehouseStationShow == 0))
-
-            # 加工線 -> 必須已入庫，但未進歷史
-            pq = pq.filter(P_Assemble.isStockIn == 1).filter(
-                or_(P_Assemble.isWarehouseStationShow.is_(False), P_Assemble.isWarehouseStationShow == 0)
-            )
-
-        # 報廢拆單筆（abnormal_qty > 0 且 completed_qty == 0）直接在 SQL 排除
-        aq = aq.filter(
-            not_(
-                and_(
-                    func.coalesce(Assemble.abnormal_qty, 0) > 0,
-                    func.coalesce(Assemble.completed_qty, 0) == 0
-                )
-            )
-        )
-
-        pq = pq.filter(
-            not_(
-                and_(
-                    func.coalesce(P_Assemble.abnormal_qty, 0) > 0,
-                    func.coalesce(P_Assemble.completed_qty, 0) == 0
-                )
-            )
-        )
-
-        # 一次撈回
-        a_rows = aq.all()
-        p_rows = pq.all()
-
-        rows = list(a_rows) + list(p_rows)
-
-        if not rows:
-            return jsonify({
-                "status": False,
-                "warehouse_for_assemble": []
-            })
-
-        # ------------------------------------------------------------
-        # 3) 批次彙總 process_type=31 的已入庫總數
-        #    取代逐筆 sum_process_work_qty()，避免 N+1 query
-        # ------------------------------------------------------------
-        a_keys = [(r.material_id, r.assemble_id) for r in a_rows]
-        p_keys = [(r.material_id, r.assemble_id) for r in p_rows]
-
-        a_total_map = {}
-        if a_keys:
-            a_total_rows = (
-                s.query(
-                    Process.material_id,
-                    Process.assemble_id,
-                    func.coalesce(func.sum(Process.process_work_time_qty), 0).label("total_allOk_qty")
-                )
-                .filter(Process.process_type == 31)
-                .filter(Process.has_started.is_(True))
-                .filter(Process.end_time.isnot(None))
-                .filter(Process.end_time != '')
-                .filter(tuple_(Process.material_id, Process.assemble_id).in_(a_keys))
-                .group_by(Process.material_id, Process.assemble_id)
-                .all()
-            )
-            a_total_map = {
-                (r.material_id, r.assemble_id): int(r.total_allOk_qty or 0)
-                for r in a_total_rows
-            }
-
-        p_total_map = {}
-        if p_keys:
-            p_total_rows = (
-                s.query(
-                    P_Process.material_id,
-                    P_Process.assemble_id,
-                    func.coalesce(func.sum(P_Process.process_work_time_qty), 0).label("total_allOk_qty")
-                )
-                .filter(P_Process.process_type == 31)
-                .filter(P_Process.has_started.is_(True))
-                .filter(P_Process.end_time.isnot(None))
-                .filter(P_Process.end_time != '')
-                .filter(tuple_(P_Process.material_id, P_Process.assemble_id).in_(p_keys))
-                .group_by(P_Process.material_id, P_Process.assemble_id)
-                .all()
-            )
-            p_total_map = {
-                (r.material_id, r.assemble_id): int(r.total_allOk_qty or 0)
-                for r in p_total_rows
-            }
-
-        # ------------------------------------------------------------
-        # 4) 組結果
-        # ------------------------------------------------------------
-        results = []
-        index = 0
-
-        for r in rows:
-            material_id = r.material_id
-            assemble_id = r.assemble_id
-            line = r.line
-
-            delivery_qty = to_int(r.delivery_qty, 0)
-
-            if line == "assemble":
-                total_allOk_qty = a_total_map.get((material_id, assemble_id), 0)
-            else:
-                total_allOk_qty = p_total_map.get((material_id, assemble_id), 0)
-
-            remain_allOk_qty = max(0, delivery_qty - total_allOk_qty)
-
-            index += 1
-            results.append({
-                "index": index,
-                "id": material_id,
-                "order_num": r.order_num or "",
-                "material_num": r.material_num or "",
-                "req_qty": to_int(r.req_qty, 0),
-                "date": r.date or "",
-                "input_allOk_disable": r.input_allOk_disable,
-                "allOk_disable": r.input_allOk_disable,
-
-                "shortage_note": r.shortage_note or "",
-                "comment": (r.material_comment or "").strip(),
-                "Incoming2_Abnormal": (r.Incoming2_Abnormal == ""),
-
-                "process_id": r.process_id,
-                "assemble_id": assemble_id,
-                "delivery_qty": delivery_qty,
-                "must_allOk_qty": remain_allOk_qty,
-                "total_allOk_qty": total_allOk_qty,
-                "allOk_qty": 0,
-                "isWarehouseStationShow": bool(to_int(r.isWarehouseStationShow, 0) == 1),
-
-                "normal_work_time": to_int(r.normal_work_time, 0),
-                "tooltipVisible": False,
-                "line": line,
-
-                "must_receive_end_qty": to_int(r.must_receive_end_qty, 0),
-                "total_ask_qty_end": to_int(r.total_ask_qty_end, 0),
-                "abnormal_qty": to_int(r.abnormal_qty, 0),
-            })
-
-        #results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
-        results.sort(key=lambda x: (x["date"] or ""), reverse=True)
-
-        return jsonify({
-            "status": len(results) > 0,
-            "warehouse_for_assemble": results
-        })
-
-    finally:
-        s.close()
-"""
 
 
 # 取得訂單「組裝異常」相關的歷史資訊清單
@@ -8026,742 +6722,7 @@ def get_materials_and_assembles():
         }), 200
 
 
-"""
-@getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
-def get_materials_and_assembles_by_user():
-    print("getMaterialsAndAssemblesByUser....")
-
-    request_data = request.get_json()
-
-    _user_id = request_data['user_id']
-
-    s = Session()
-
-    _results = []
-    return_value = True
-    code_to_name = {'106':'雷射', '109':'組裝', '110':'檢驗'}    # 組裝區工作代號
-    code_to_assembleStep = { '109': 3, '106': 1, '110': 2, }    # 組裝區工作順序, 3:最優先
-    code_to_pt = {'106': 23, '109': 21, '110': 22}              # process table 工序代號
-
-    #       0         1       2            3              4            5           6            7           8            9           10             11            12
-    str2=['未備料', '備料中', '備料完成',   '等待組裝作業', '組裝進行中', '00/00/00', '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中',  '入庫完成']
-
-    def safe_str(v, default=''):
-      try:
-        return '' if v is None else str(v)
-      except Exception:
-        return default
-
-    _objects = s.query(Material).all()
-    material_ids_all = [m.id for m in _objects]
-
-    # 1) 篩選「該使用者、且 has_started=True」的未結束 Process 名單/計數
-    counts_by_type = active_count_map_by_material_multi(
-        s, material_ids_all,
-        process_types=(21, 22, 23),
-        include_paused=False,           # 是否把暫停算在「未結束」內，False:不包括
-        # only_user_id=None            # 全員
-        only_user_id=_user_id,          # 只算該使用者本人（看你要哪種）
-        has_started=True,               # 只找 has_started=True
-    )
-    print("start....")
-    # 篩選「誰」正在該料號/該製程上有未結束(進行中或暫停中)的流程, 並將結果依「製程別(21/22/23) → 料號ID」分組，回傳每一組底下的使用者ID清單。
-    user_ids_by_type = active_user_ids_by_material_multi(
-        s, material_ids_all,
-        process_types=(21, 22, 23),
-        include_paused=True,
-        #only_user_id=None,           # 全員名單
-        only_user_id=_user_id,          # 僅該使用者的名單
-        as_string=False,                # 建議回 list
-        has_started=True,               # 只找 has_started=True
-    )
-
-    # 初始化一個 set 來追蹤已處理的 (order_num_id, format_name)
-    processed_records = set()
-
-    # 初始化一個暫存字典來存放每個 order_num_id 下的最大 process_step_code
-    max_step_code_per_order = {}
-
-    # 搜尋所有紀錄，找出每個訂單下最大的 process_step_code
-    for material_record in _objects:
-      for assemble_record in material_record._assemble:
-        step_code = assemble_record.process_step_code   # 直接使用資料中的 step_code
-        order_num_id = material_record.id               # 該筆訂單編號的table id
-
-        # 設定或更新該 order_num_id 下的最大 step code
-        if order_num_id not in max_step_code_per_order:
-          max_step_code_per_order[order_num_id] = step_code
-        else:
-          current_max = max_step_code_per_order[order_num_id]
-          max_step_code_per_order[order_num_id] = max(current_max, step_code)
-
-    print("Final max_step_code_per_order:", max_step_code_per_order)
-
-    #流程追蹤與狀態管理：
-    #根據工序代碼（如 '106', '109', '110'）判斷當前流程階段，並匹配對應的名稱和步驟。
-    #追蹤每個訂單的最大進度階段，確保顯示的資料反映正確的流程狀態。
-
-    # 在此期間，_objects 中的資料會被鎖定，其他進程或交易無法修改這些資料, 但自己可以執行你需要的操作，如更新或處理資料
-    index = 0
-    for material_record in _objects:                      # loop_m_rec
-      assemble_records = material_record._assemble
-      process_records = material_record._process
-
-      for assemble_record in material_record._assemble:   # loop_a_rec
-        # 篩選登入者的製程紀錄
-        user_proc_records = [p for p in process_records if (p.user_id == _user_id and not p.end_time or p.end_time !='')]
-
-        if assemble_record.process_step_code==0 and not assemble_record.isAssembleStationShow:
-          continue
-
-        ### 相同登入者 ###
-
-        # 依 work_num 判斷對應的 process_type
-        work = assemble_record.work_num or ''
-        target_pt = None
-        if 'B109' in work:
-            target_pt = 21
-        elif 'B110' in work:
-            target_pt = 22
-        elif 'B106' in work:
-            target_pt = 23
-
-        matched_count = 0
-        if target_pt is not None:
-          # 這裡一定要是 list，不是數字！
-          target_procs = [
-            p for p in process_records
-            if p.material_id == assemble_record.material_id
-            and p.assemble_id == assemble_record.id
-            and p.process_type == target_pt
-
-            and p.user_id == _user_id
-
-            and p.begin_time
-            and (not p.end_time or p.end_time !='')
-          ]
-
-          matched_count = len(target_procs)
-
-        if matched_count == 0 and not assemble_record.isAssembleStationShow:
-          continue
-
-        ###
-
-        code = assemble_record.work_num[1:]                 # 取得字串中的代碼 (去掉字串中的第一個字元)
-        name = code_to_name.get(code, '')                   # 查找對應的中文名稱
-        format_name = f"{assemble_record.work_num}({name})"
-        order_num_id = material_record.id                   # 該筆訂單編號的table id
-        step_code = assemble_record.process_step_code
-        max_step_code = max_step_code_per_order.get(order_num_id, 0)
-        step_enable = (step_code == max_step_code and material_record.whichStation==2)
-
-        num = int(material_record.show2_ok)
-        cleaned_comment = material_record.material_comment.strip()          # 刪除 material_comment 字串前後的空白
-
-        temp_assemble_process_str = str2[num]
-        temp_show2_ok = int(material_record.show2_ok)
-        temp_assemble_show2_ok = assemble_record.show2_ok
-
-        if temp_show2_ok == 1 or temp_assemble_show2_ok == 1:
-          temp_assemble_process_str = temp_assemble_process_str + material_record.shortage_note
-
-        index += 1
-        #
-        # 處理 show2_ok 的情況
-        #print("temp_show2_ok, temp_assemble_show2_ok:", temp_show2_ok, temp_assemble_show2_ok)
-        if temp_show2_ok in [5, 7, 9] or temp_assemble_show2_ok in [5, 7, 9]:
-          for temp2_assemble_record in assemble_records:
-            if temp2_assemble_record.total_ask_qty_end in [1, 2, 3]:
-              completed_qty = str(temp2_assemble_record.completed_qty)                  # 將數值轉換為字串
-              date_parts = temp_assemble_process_str.split('/')                         # 分割 00/00/00 為 ['00', '00', '00']
-              date_parts[temp2_assemble_record.total_ask_qty_end - 1] = completed_qty   # 替換對應位置
-              temp_assemble_process_str = '/'.join(date_parts)                          # 合併回字串
-        #
-
-        work_num = safe_str(assemble_record.work_num)     # 可能為 ''（避免 None）
-        code = work_num[1:] if len(work_num) >= 2 else work_num
-        name = code_to_name.get(code, '')
-        pt =code_to_pt.get(code, 0)
-
-        ok, process_total = need_more_process_qty(k1=assemble_record.material_id, a1=assemble_record.id, t1=pt, must_qty=assemble_record.must_receive_end_qty, s=s)
-        # ok 為 True 代表 process_total < 50；False 代表已達標或超過
-
-        r = next(
-            (p for p in user_proc_records
-            if p.material_id == assemble_record.material_id and p.process_type == pt),
-            None
-        )
-
-        def _norm_end_time(x):
-          if x is None:
-              return None
-          if isinstance(x, str):
-              x = x.strip()
-              if x == "" or x == "0000-00-00 00:00:00":
-                  return None
-              return x
-          # 若是 datetime 物件就直接回傳
-          return x
-
-        user_receive_qty = int((getattr(r, "process_work_time_qty", 0) or 0))
-
-        _end_time = _norm_end_time(getattr(r, "end_time", None))
-        user_is_show_last_time = _end_time is not None
-
-        # 若有結束時間才顯示字串化的工時；沒有就給空字串
-        user_last_time = getattr(r, "str_elapsedActive_time", "") if user_is_show_last_time else ""
-
-        _object = {
-          'index': index,                                   # agv送料序號
-          'id': material_record.id,                         # 訂單編號 (material id)
-          'order_num': material_record.order_num,           # 訂單編號
-          'material_num': material_record.material_num,     # 物料編號
-          'req_qty': material_record.material_qty,          # 組裝區需求數量(訂單數量)
-          'ask_qty': assemble_record.ask_qty,               # 組裝區領取數量
-
-          'assemble_work': format_name,                     # 工序
-          'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
-          'assemble_process_num': num,
-          'assemble_id': assemble_record.id,
-          'total_ask_qty_end': assemble_record.total_ask_qty_end,
-          'process_step_code': assemble_record.process_step_code,
-
-          # ---------------------------
-          # ✅ 完成/異常/應完成：一律以 assemble 表為準（同一個真相來源）
-          # ---------------------------
-          'must_receive_end_qty': int(getattr(assemble_record, 'must_receive_end_qty', 0) or 0),
-          'abnormal_qty': int(getattr(assemble_record, 'abnormal_qty', 0) or 0),
-          'completed_qty': int(getattr(assemble_record, 'completed_qty', 0) or 0),
-          'total_completed_qty': f"({int(getattr(assemble_record, 'total_completed_qty', 0) or 0)})",
-          'total_completed_qty_num': int(getattr(assemble_record, 'total_completed_qty', 0) or 0),
-
-          # ---------------------------
-          # ✅ 使用者自己的完成數：用 process_work_time_qty（你前面已算 user_receive_qty）
-          #    若你 End.vue 的 receive_qty 是顯示「個人完成」，這行一定要這樣回
-          # ---------------------------
-          'receive_qty': assemble_record.completed_qty,
-
-          # ---------------------------
-          # ✅ 保留「流程加總」(need_more_process_qty 的 process_total)
-          #    以不同 key，避免混淆 total_completed_qty_num
-          # ---------------------------
-          'process_total_qty': int(process_total or 0),
-
-          # ---------------------------
-          # 其他欄位維持原本
-          # ---------------------------
-          'delivery_date': material_record.material_delivery_date,   # 交期
-          'delivery_qty': material_record.delivery_qty,              # 現況數量
-          'total_assemble_qty': material_record.total_assemble_qty,  # 已(組裝)完成總數量
-
-          'comment': cleaned_comment,
-          'isAssembleAlarm': material_record.isAssembleAlarm,
-
-          'isAssembleFirstAlarm': assemble_record.isAssembleFirstAlarm,
-          'isAssembleFirstAlarm_qty': assemble_record.isAssembleFirstAlarm_qty,
-
-          'alarm_enable': assemble_record.alarm_enable,
-
-          'whichStation': material_record.whichStation,
-          'isAssembleStation3TakeOk': material_record.isAssembleStation3TakeOk,
-          'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,
-          'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,
-
-          'isLackMaterial': material_record.isLackMaterial,
-          'shortage_note': material_record.shortage_note,
-
-          'isAssembleStationShow': bool(assemble_record.isAssembleStationShow == 1),
-          'currentStartTime': assemble_record.currentStartTime,
-
-          'tooltipVisible': False,
-          'abnormal_tooltipVisible': False,
-
-          'input_end_disable': assemble_record.input_end_disable,
-          'input_abnormal_disable': assemble_record.input_abnormal_disable,
-
-          'process_step_enable': step_enable,
-          'code': code,
-
-          'isShowLastTime': user_is_show_last_time,
-          'last_time': user_last_time,
-
-          'assemble_count': len(material_record._assemble),
-          'is_copied_from_id': assemble_record.is_copied_from_id,
-          'create_at': assemble_record.create_at,
-        }
-
-        processed_records.add((order_num_id, format_name))
-        _results.append(_object)
-
-      # end loop_a_rec
-    # end loop_m_rec
-
-    record_sum = (
-      s.query(
-        Assemble.material_id,
-        func.coalesce(func.sum(cast(Assemble.completed_qty, Integer)), 0).label("sum_completed_qty")
-      )
-      .filter(Assemble.isAssembleStationShow == 1)
-      .group_by(Assemble.material_id)
-      .order_by(Assemble.material_id)
-      .all()
-    )
-
-    ###
-    all_zero_by_mid = {}
-    for r in _results:
-      mid  = str(r['id'])
-      code = int((r.get('process_step_code') or 0))
-      if mid not in all_zero_by_mid:
-        all_zero_by_mid[mid] = True
-      if code != 0:
-        all_zero_by_mid[mid] = False
-
-      for material_id, total in record_sum:
-        if r['id']==material_id:
-            r['total_completed_qty_num']=total
-
-    # 2) 加上 end_ok 的過濾
-    filtered_results = []
-    for row in _results:
-      # 先處理 isAssembleStationShow==1 且該 material 的所有 step 都是 0 → 直接納入
-      if int(row.get('isAssembleStationShow') or 0) == 1 and all_zero_by_mid.get(mid, False):
-        filtered_results.append(row)
-        index=index-1
-        continue
-
-      ptype = map_pt_from_step_code(int(row['process_step_code']))  # 21/22/23
-      mid   = str(row['id'])
-
-      # 該製程/料的使用者名單（list），挑出是否包含 _user_id
-      #print(user_ids_by_type, ptype, mid)
-      ulist = pick_user_list(user_ids_by_type, ptype, mid)
-      print("ulist:",ulist)
-
-      if _user_id not in ulist:
-        index=index-1
-        continue  # 不是該 user 的「已開始」紀錄 → 略過
-
-      # 3) 再套 end_ok 條件（必須 True 才留下）
-      if not end_ok_flag(s, material_id=row['id'], process_step_code=int(row['process_step_code'])):
-        index=index-1
-        continue
-
-      filtered_results.append(row)
-    ###
-
-    # ① step → pt 對應
-    def _map_step_to_pt(step: int) -> int:
-      return 21 if step == 3 else 22 if step == 2 else 23
-
-    # ② 依 material_id + pt 加總所有 process.process_work_time_qty
-    def count_all_by_mid_and_step(mid: int, step: int) -> int:
-      pt = _map_step_to_pt(int(step or 0))
-      total = (
-        s.query(func.coalesce(func.sum(Process.process_work_time_qty), 0))
-          .filter(Process.material_id == mid)
-          .filter(Process.process_type == pt)
-          .scalar()
-      ) or 0
-      return int(total)
-
-    s.close()
-
-    temp_len = len(_results)
-
-    if (temp_len == 0):
-      return_value = False
-
-    # 先依 id（升冪）排一次
-    _results.sort(key=lambda x: x.get('id') or 0)
-
-    # 再依 create_at（降冪）排一次 → 穩定排序會保留同日期下的 id 排序
-    _results.sort(key=lambda x: x.get('create_at') or datetime.min, reverse=True)
-
-    return jsonify({
-      'status': return_value,
-      'materials_and_assembles_by_user': _results,
-      'active_counts_all': counts_by_type,
-      'active_user_ids_all': user_ids_by_type,
-    })
-"""
-
-
-"""
-@getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
-def get_materials_and_assembles_by_user():
-    print("getMaterialsAndAssemblesByUser....")
-
-    request_data = request.get_json()
-    #_user_id = request_data['user_id']
-
-    _user_id = request_data.get('user_id')
-    if not _user_id:
-        return jsonify({
-            'status': False,
-            'message': 'missing user_id'
-        }), 400
-
-    s = Session()
-    _results = []
-    return_value = True
-
-    code_to_name = {'106': '雷射', '109': '組裝', '110': '檢驗'}
-    #code_to_assembleStep = {'109': 3, '106': 1, '110': 2}
-    code_to_pt = {'106': 23, '109': 21, '110': 22}
-
-    str2 = [
-        '未備料', '備料中', '備料完成', '等待組裝作業', '組裝進行中', '00/00/00',
-        '檢驗進行中', '00/00/00', '雷射進行中', '00/00/00', '等待入庫作業', '入庫進行中', '入庫完成'
-    ]
-
-    def safe_str(v, default=''):
-        try:
-            return '' if v is None else str(v)
-        except Exception:
-            return default
-
-    try:
-        # ------------------------------------------------------------
-        # 1) 一次把 Material + Assemble + Process 載進來
-        # ------------------------------------------------------------
-        _objects = (
-            s.query(Material)
-             .options(
-                 selectinload(Material._assemble),
-                 selectinload(Material._process),
-             )
-             .all()
-        )
-        material_ids_all = [m.id for m in _objects]
-
-        # ------------------------------------------------------------
-        # 2) active count / active users（原本保留）
-        # ------------------------------------------------------------
-        counts_by_type = active_count_map_by_material_multi(
-            s, material_ids_all,
-            process_types=(21, 22, 23),
-            include_paused=False,
-            only_user_id=_user_id,
-            has_started=True,
-        )
-
-        user_ids_by_type = active_user_ids_by_material_multi(
-            s, material_ids_all,
-            process_types=(21, 22, 23),
-            include_paused=True,
-            only_user_id=_user_id,
-            as_string=False,
-            has_started=True,
-        )
-
-        # ------------------------------------------------------------
-        # 3) 每個 material 的最大 process_step_code
-        # ------------------------------------------------------------
-        max_step_code_per_order = {}
-        for material_record in _objects:
-            max_step = 0
-            for assemble_record in (material_record._assemble or []):
-                step_code = int(assemble_record.process_step_code or 0)
-                if step_code > max_step:
-                    max_step = step_code
-            max_step_code_per_order[material_record.id] = max_step
-
-        # ------------------------------------------------------------
-        # 4) process 已完成 qty map：取代 need_more_process_qty 每筆查 DB
-        #    key = (material_id, assemble_id, process_type)
-        # ------------------------------------------------------------
-        process_qty_map = {}
-        proc_sum_rows = (
-            s.query(
-                Process.material_id,
-                Process.assemble_id,
-                Process.process_type,
-                func.coalesce(func.sum(Process.process_work_time_qty), 0)
-            )
-            .filter(Process.material_id.in_(material_ids_all))
-            .filter(Process.has_started.is_(True))
-            .filter(Process.end_time.isnot(None))
-            .filter(Process.end_time != '')
-            .group_by(Process.material_id, Process.assemble_id, Process.process_type)
-            .all()
-        )
-        for mid, aid, ptype, total_qty in proc_sum_rows:
-            process_qty_map[(mid, aid, ptype)] = int(total_qty or 0)
-
-        # ------------------------------------------------------------
-        # 5) 每個 material 的完成總數 map
-        # ------------------------------------------------------------
-        record_sum_rows = (
-            s.query(
-                Assemble.material_id,
-                func.coalesce(func.sum(cast(Assemble.completed_qty, Integer)), 0)
-            )
-            .filter(Assemble.isAssembleStationShow == 1)
-            .group_by(Assemble.material_id)
-            .all()
-        )
-        record_sum_map = {mid: int(total or 0) for mid, total in record_sum_rows}
-
-        # ------------------------------------------------------------
-        # 6) end_ok set：取代 end_ok_flag 每筆查 DB
-        # ------------------------------------------------------------
-        end_ok_set = {
-            (mid, int(step or 0))
-            for mid, step in (
-                s.query(Assemble.material_id, Assemble.process_step_code).all()
-            )
-        }
-
-        # ------------------------------------------------------------
-        # 7) 建 user_proc_map：取代每筆 assemble 都篩一次 user_proc_records
-        #    key = (material_id, process_type)
-        # ------------------------------------------------------------
-        user_proc_map = {}
-        for m in _objects:
-            for p in (m._process or []):
-                if p.user_id != _user_id:
-                    continue
-                key = (p.material_id, p.process_type)
-                # 保留最新一筆（id 最大）
-                old = user_proc_map.get(key)
-                if old is None or (p.id or 0) > (old.id or 0):
-                    user_proc_map[key] = p
-
-        # ------------------------------------------------------------
-        # 8) 主迴圈
-        # ------------------------------------------------------------
-        index = 0
-
-        for material_record in _objects:
-            assemble_records = material_record._assemble or []
-            process_records = material_record._process or []
-
-            order_num_id = material_record.id
-            max_step_code = max_step_code_per_order.get(order_num_id, 0)
-
-            for assemble_record in assemble_records:
-                if assemble_record.process_step_code == 0 and not assemble_record.isAssembleStationShow:
-                    continue
-
-                # 依 work_num 判斷 process_type
-                work = assemble_record.work_num or ''
-                target_pt = None
-                if 'B109' in work:
-                    target_pt = 21
-                elif 'B110' in work:
-                    target_pt = 22
-                elif 'B106' in work:
-                    target_pt = 23
-
-                matched_count = 0
-                if target_pt is not None:
-                    matched_count = sum(
-                        1 for p in process_records
-                        if (
-                            p.material_id == assemble_record.material_id
-                            and p.assemble_id == assemble_record.id
-                            and p.process_type == target_pt
-                            and p.user_id == _user_id
-                            and p.begin_time
-                            and (p.end_time is None or str(p.end_time).strip() != '')
-                        )
-                    )
-
-                if matched_count == 0 and not assemble_record.isAssembleStationShow:
-                    continue
-
-                work_num = safe_str(assemble_record.work_num)
-                code = work_num[1:] if len(work_num) >= 2 else work_num
-                name = code_to_name.get(code, '')
-                format_name = f"{work_num}({name})"
-
-                step_code = int(assemble_record.process_step_code or 0)
-                step_enable = (step_code == max_step_code and material_record.whichStation == 2)
-
-                num = int(material_record.show2_ok or 0)
-                cleaned_comment = (material_record.material_comment or '').strip()
-
-                temp_assemble_process_str = str2[num]
-                temp_show2_ok = int(material_record.show2_ok or 0)
-                temp_assemble_show2_ok = int(assemble_record.show2_ok or 0)
-
-                if temp_show2_ok == 1 or temp_assemble_show2_ok == 1:
-                    temp_assemble_process_str = temp_assemble_process_str + (material_record.shortage_note or '')
-
-                if temp_show2_ok in [5, 7, 9] or temp_assemble_show2_ok in [5, 7, 9]:
-                    for temp2_assemble_record in assemble_records:
-                        if temp2_assemble_record.total_ask_qty_end in [1, 2, 3]:
-                            completed_qty = str(temp2_assemble_record.completed_qty)
-                            date_parts = temp_assemble_process_str.split('/')
-                            if len(date_parts) == 3:
-                                date_parts[temp2_assemble_record.total_ask_qty_end - 1] = completed_qty
-                                temp_assemble_process_str = '/'.join(date_parts)
-
-                pt = code_to_pt.get(code, 0)
-
-                process_total = process_qty_map.get(
-                    (assemble_record.material_id, assemble_record.id, pt),
-                    0
-                )
-                ok = process_total < int(assemble_record.must_receive_end_qty or 0)
-
-                r = user_proc_map.get((assemble_record.material_id, pt))
-
-                def _norm_end_time(x):
-                    if x is None:
-                        return None
-                    if isinstance(x, str):
-                        x = x.strip()
-                        if x == "" or x == "0000-00-00 00:00:00":
-                            return None
-                        return x
-                    return x
-
-                user_receive_qty = int(getattr(r, "process_work_time_qty", 0) or 0)
-                _end_time = _norm_end_time(getattr(r, "end_time", None)) if r else None
-                user_is_show_last_time = _end_time is not None
-                user_last_time = getattr(r, "str_elapsedActive_time", "") if (r and user_is_show_last_time) else ""
-
-                index += 1
-
-                _object = {
-                    'index': index,
-                    'id': material_record.id,
-                    'order_num': material_record.order_num,
-                    'material_num': material_record.material_num,
-                    'req_qty': material_record.material_qty,
-                    'ask_qty': assemble_record.ask_qty,
-
-                    'assemble_work': format_name,
-                    'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
-                    'assemble_process_num': num,
-                    'assemble_id': assemble_record.id,
-                    'total_ask_qty_end': assemble_record.total_ask_qty_end,
-                    'process_step_code': assemble_record.process_step_code,
-
-                    'must_receive_end_qty': int(getattr(assemble_record, 'must_receive_end_qty', 0) or 0),
-                    'abnormal_qty': int(getattr(assemble_record, 'abnormal_qty', 0) or 0),
-                    'completed_qty': int(getattr(assemble_record, 'completed_qty', 0) or 0),
-                    'total_completed_qty': f"({int(getattr(assemble_record, 'total_completed_qty', 0) or 0)})",
-                    'total_completed_qty_num': record_sum_map.get(
-                        material_record.id,
-                        int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
-                    ),
-
-                    'receive_qty': assemble_record.completed_qty,
-                    'process_total_qty': int(process_total or 0),
-
-                    'delivery_date': material_record.material_delivery_date,
-                    'delivery_qty': material_record.delivery_qty,
-                    'total_assemble_qty': material_record.total_assemble_qty,
-
-                    'comment': cleaned_comment,
-                    'isAssembleAlarm': material_record.isAssembleAlarm,
-
-                    'isAssembleFirstAlarm': assemble_record.isAssembleFirstAlarm,
-                    'isAssembleFirstAlarm_qty': assemble_record.isAssembleFirstAlarm_qty,
-                    'alarm_enable': assemble_record.alarm_enable,
-
-                    'whichStation': material_record.whichStation,
-                    'isAssembleStation3TakeOk': material_record.isAssembleStation3TakeOk,
-                    'isAssembleStation2TakeOk': material_record.isAssembleStation2TakeOk,
-                    'isAssembleStation1TakeOk': material_record.isAssembleStation1TakeOk,
-
-                    'isLackMaterial': material_record.isLackMaterial,
-                    'shortage_note': material_record.shortage_note,
-
-                    'isAssembleStationShow': bool(assemble_record.isAssembleStationShow == 1),
-                    'currentStartTime': assemble_record.currentStartTime,
-
-                    'tooltipVisible': False,
-                    'abnormal_tooltipVisible': False,
-
-                    'input_end_disable': assemble_record.input_end_disable,
-                    'input_abnormal_disable': assemble_record.input_abnormal_disable,
-
-                    'process_step_enable': step_enable,
-                    'code': code,
-
-                    'isShowLastTime': user_is_show_last_time,
-                    'last_time': user_last_time,
-
-                    'assemble_count': len(assemble_records),
-                    'is_copied_from_id': assemble_record.is_copied_from_id,
-                    'create_at': assemble_record.create_at,
-                }
-
-                _results.append(_object)
-
-        # ------------------------------------------------------------
-        # 9) 過濾：只留該 user 相關 rows
-        # ------------------------------------------------------------
-        all_zero_by_mid = {}
-        for r in _results:
-            mid = str(r['id'])
-            code = int((r.get('process_step_code') or 0))
-            if mid not in all_zero_by_mid:
-                all_zero_by_mid[mid] = True
-            if code != 0:
-                all_zero_by_mid[mid] = False
-
-        filtered_results = []
-        for row in _results:
-            mid = str(row['id'])
-
-            if int(row.get('isAssembleStationShow') or 0) == 1 and all_zero_by_mid.get(mid, False):
-                filtered_results.append(row)
-                continue
-
-            ptype = map_pt_from_step_code(int(row['process_step_code'] or 0))
-            ulist = pick_user_list(user_ids_by_type, ptype, mid)
-
-            if _user_id not in ulist:
-                continue
-
-            if (row['id'], int(row['process_step_code'] or 0)) not in end_ok_set:
-                continue
-
-            filtered_results.append(row)
-
-        _results = filtered_results
-
-        s.close()
-
-        temp_len = len(_results)
-        if temp_len == 0:
-            return_value = False
-
-        _results.sort(key=lambda x: x.get('id') or 0)
-        _results.sort(key=lambda x: x.get('create_at') or datetime.min, reverse=True)
-
-        return jsonify({
-            'status': return_value,
-            'materials_and_assembles_by_user': _results,
-            'active_counts_all': counts_by_type,
-            'active_user_ids_all': user_ids_by_type,
-        })
-
-    except Exception as e:
-        import traceback
-        print("getMaterialsAndAssemblesByUser ERROR:", repr(e))
-        traceback.print_exc()
-        try:
-            current_app.logger.exception("getMaterialsAndAssemblesByUser failed")
-        except Exception:
-            pass
-        s.close()
-
-        return jsonify({
-            'status': False,
-            'materials_and_assembles_by_user': [],
-            'active_counts_all': {},
-            'active_user_ids_all': {},
-        }), 200
-"""
-
-
+# 20260724版
 @getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
 def get_materials_and_assembles_by_user():
     print("getMaterialsAndAssemblesByUser....")
@@ -8909,29 +6870,7 @@ def get_materials_and_assembles_by_user():
         )
         for mid, aid, ptype, total_qty in proc_sum_rows:
             process_qty_map[(mid, aid, ptype)] = int(total_qty or 0)
-        #
-        '''
-        user_started_count_rows = (
-            s.query(
-                Process.material_id,
-                Process.assemble_id,
-                Process.process_type,
-                func.count(Process.id)
-            )
-            .filter(Process.material_id.in_(material_ids_all))
-            .filter(Process.user_id == _user_id)
-            .filter(Process.begin_time.isnot(None))
-            .filter(Process.begin_time != '')
-            .group_by(Process.material_id, Process.assemble_id, Process.process_type)
-            .all()
-        )
 
-        user_started_count_map = {
-            (int(mid), int(aid or 0), int(ptype)): int(cnt or 0)
-            for mid, aid, ptype, cnt in user_started_count_rows
-        }
-        '''
-        #
         # ------------------------------------------------------------
         # 5) 每個 material 的完成總數 map
         # ------------------------------------------------------------
@@ -8961,7 +6900,7 @@ def get_materials_and_assembles_by_user():
                  .all()
             )
         }
-        #
+
         # ------------------------------------------------------------
         # 5.6) 已完成總數量：依 material + work_num + schedule_id 加總
         #      注意：只能查一次，不可放在 for material_record 內
@@ -8990,7 +6929,7 @@ def get_materials_and_assembles_by_user():
             ): int(total or 0)
             for mid, work_num, schedule_id, total in schedule_completed_rows
         }
-        #
+
         # ------------------------------------------------------------
         # 6) end_ok set
         # ------------------------------------------------------------
@@ -9000,37 +6939,7 @@ def get_materials_and_assembles_by_user():
                 s.query(Assemble.material_id, Assemble.process_step_code).all()
             )
         }
-        '''
-        # ------------------------------------------------------------
-        # 7) 建 user_proc_map
-        #    key = (material_id, process_type)
-        # ------------------------------------------------------------
 
-        latest_user_proc_subq = (
-            s.query(
-                Process.material_id.label("material_id"),
-                Process.assemble_id.label("assemble_id"),     # 20260427 add
-                Process.process_type.label("process_type"),
-                func.max(Process.id).label("max_pid")
-            )
-            .filter(Process.material_id.in_(material_ids_all))
-            .filter(Process.user_id == _user_id)
-            .group_by(Process.material_id, Process.assemble_id, Process.process_type) # 20260427 modify
-            .subquery()
-        )
-
-        latest_user_proc_rows = (
-            s.query(Process)
-            .join(latest_user_proc_subq, Process.id == latest_user_proc_subq.c.max_pid)
-            .all()
-        )
-
-        user_proc_map = {
-            (int(p.material_id), int(p.assemble_id or 0), int(p.process_type)): p   # 20260427 modify
-            for p in latest_user_proc_rows
-        }
-        '''
-        #
         # ------------------------------------------------------------
         # 7) 建立目前登入員工自己的 active process map
         #
@@ -9050,24 +6959,12 @@ def get_materials_and_assembles_by_user():
                 Process.process_type.label("process_type"),
                 func.max(Process.id).label("max_pid")
             )
-            .filter(
-                Process.material_id.in_(material_ids_all)
-            )
-            .filter(
-                Process.user_id == _user_id
-            )
-            .filter(
-                Process.process_type.in_([21, 22, 23])
-            )
-            .filter(
-                Process.has_started.is_(True)
-            )
-            .filter(
-                Process.begin_time.isnot(None)
-            )
-            .filter(
-                Process.begin_time != ''
-            )
+            .filter(Process.material_id.in_(material_ids_all))
+            .filter(Process.user_id == _user_id)
+            .filter(Process.process_type.in_([21, 22, 23]))
+            .filter(Process.has_started.is_(True))
+            .filter(Process.begin_time.isnot(None))
+            .filter(Process.begin_time != '')
             .filter(
                 or_(
                     Process.end_time.is_(None),
@@ -9099,9 +6996,7 @@ def get_materials_and_assembles_by_user():
             ): p
             for p in my_active_proc_rows
         }
-        #
 
-        #
         # ------------------------------------------------------------
         # 8) 主迴圈
         # ------------------------------------------------------------
@@ -9161,37 +7056,9 @@ def get_materials_and_assembles_by_user():
                 if target_pt is None:
                     continue
 
-                '''
-                matched_count = 0
-
-                if target_pt is not None:
-                  matched_count = user_started_count_map.get(
-                      (
-                          int(assemble_record.material_id),
-                          int(assemble_record.id),
-                          int(target_pt)
-                      ),
-                      0
-                  )
-
-                if matched_count == 0 and not assemble_record.isAssembleStationShow:
-                    continue
-                '''
-                #
                 # ------------------------------------------------------------
                 # 判斷目前登入員工是否有自己的 active process
                 # ------------------------------------------------------------
-                #my_active_process = None
-                #
-                #if target_pt is not None:
-                #    my_active_process = my_active_proc_map.get(
-                #        (
-                #            int(assemble_record.material_id),
-                #            int(assemble_record.id),
-                #            int(target_pt)
-                #        )
-                #    )
-                #
                 my_active_process = my_active_proc_map.get(
                     (
                         int(assemble_record.material_id),
@@ -9210,17 +7077,11 @@ def get_materials_and_assembles_by_user():
                 # 不可只判斷 isAssembleStationShow，
                 # 因為尚未開始的 a/b 工序也可能是 True。
                 # ------------------------------------------------------------
-                step_code = int(
-                    assemble_record.process_step_code or 0
-                )
+                step_code = int(assemble_record.process_step_code or 0)
 
-                assemble_show2_ok = int(
-                    assemble_record.show2_ok or 0
-                )
+                assemble_show2_ok = int(assemble_record.show2_ok or 0)
 
-                completed_qty_value = int(
-                    assemble_record.completed_qty or 0
-                )
+                completed_qty_value = int(assemble_record.completed_qty or 0)
 
                 is_waiting_send = (
                     step_code == 0
@@ -9234,7 +7095,6 @@ def get_materials_and_assembles_by_user():
                 # 2. 真正的待送出完成列
                 if not has_my_active_process and not is_waiting_send:
                     continue
-                #
 
                 work_num = safe_str(assemble_record.work_num)
                 code = work_num[1:] if len(work_num) >= 2 else work_num
@@ -9270,21 +7130,7 @@ def get_materials_and_assembles_by_user():
                     assemble_record.id, pt), 0)
                 ok = process_total < int(assemble_record.must_receive_end_qty or 0)
 
-                #r = user_proc_map.get((                   # 20260427 modify
-                #    int(assemble_record.material_id),
-                #    int(assemble_record.id or 0),
-                #    int(pt)
-                #))
-                #
-                #r = my_active_proc_map.get(
-                #    (
-                #        int(assemble_record.material_id),
-                #        int(assemble_record.id or 0),
-                #        int(pt)
-                #    )
-                #)
                 r = my_active_process
-                #
 
                 def _norm_end_time(x):
                     if x is None:
@@ -9304,7 +7150,7 @@ def get_materials_and_assembles_by_user():
                 work_num = safe_str(getattr(assemble_record, 'work_num', ''))
 
                 index += 1
-                #
+
                 group_key = (
                     int(assemble_record.material_id),
                     str(assemble_record.work_num or '').strip(),
@@ -9319,40 +7165,10 @@ def get_materials_and_assembles_by_user():
                 # 單筆完成數（保持原樣）
                 completed_qty = int(getattr(assemble_record, 'completed_qty', 0) or 0)
 
-                #display_total = int(material_completed_total or 0)
-                #display_total_text = '' if display_total == 0 else f"({display_total})"
-                '''
-                display_total = 0
-
-                if 'B110' in str(getattr(assemble_record, 'work_num', '') or ''):
-                    display_total = int(
-                        process_qty_map.get((int(assemble_record.material_id), int(assemble_record.id), 22), 0) or 0
-                    )
-
-                    child_ids = [
-                        int(a.id)
-                        for a in assemble_records
-                        if int(getattr(a, 'is_copied_from_id', 0) or 0) == int(assemble_record.id)
-                        and 'B110' in str(getattr(a, 'work_num', '') or '')
-                    ]
-
-                    for child_id in child_ids:
-                        display_total += int(
-                            process_qty_map.get((int(assemble_record.material_id), child_id, 22), 0) or 0
-                        )
-                '''
-                #
                 # ------------------------------------------------------------
                 # End 顯示「已完成總數量」
                 # ------------------------------------------------------------
-                work_num_text = str(
-                    getattr(
-                        assemble_record,
-                        'work_num',
-                        ''
-                    )
-                    or ''
-                ).strip()
+                work_num_text = str(getattr(assemble_record, 'work_num', '') or '').strip()
 
                 display_total = 0
 
@@ -9372,12 +7188,7 @@ def get_materials_and_assembles_by_user():
                 #   已完成總數量 = 50
                 # ------------------------------------------------------------
                 if 'B109' in work_num_text:
-                    display_total = int(
-                        getattr(
-                            assemble_record,
-                            'total_completed_qty',
-                            0
-                        )
+                    display_total = int(getattr(assemble_record, 'total_completed_qty', 0)
                         or 0
                     )
 
@@ -9386,24 +7197,14 @@ def get_materials_and_assembles_by_user():
                     # 再依序讀 allOk_qty、Process 累積量。
                     if display_total <= 0:
                         display_total = int(
-                            getattr(
-                                assemble_record,
-                                'allOk_qty',
-                                0
-                            )
-                            or 0
+                            getattr(assemble_record, 'allOk_qty', 0) or 0
                         )
 
                     if display_total <= 0:
                         display_total = int(
-                            process_qty_map.get(
-                                (
-                                    int(
-                                        assemble_record.material_id
-                                    ),
-                                    int(
-                                        assemble_record.id
-                                    ),
+                            process_qty_map.get((
+                                    int(assemble_record.material_id),
+                                    int(assemble_record.id),
                                     21
                                 ),
                                 0
@@ -9421,12 +7222,8 @@ def get_materials_and_assembles_by_user():
                     display_total = int(
                         process_qty_map.get(
                             (
-                                int(
-                                    assemble_record.material_id
-                                ),
-                                int(
-                                    assemble_record.id
-                                ),
+                                int(assemble_record.material_id),
+                                int(assemble_record.id),
                                 22
                             ),
                             0
@@ -9537,12 +7334,8 @@ def get_materials_and_assembles_by_user():
 
                     'must_receive_end_qty': int(getattr(assemble_record, 'must_receive_end_qty', 0) or 0),
                     'abnormal_qty': int(getattr(assemble_record, 'abnormal_qty', 0) or 0),
-                    #'completed_qty': int(getattr(assemble_record, 'completed_qty', 0) or 0),
 
                     'completed_qty': completed_qty,
-
-                    #'total_receive_qty': f"({int(material_completed_total or 0)})",
-                    #'total_receive_qty_num': int(material_completed_total or 0),
 
                     'total_completed_qty': display_total_text,
                     'total_completed_qty_num': display_total,
@@ -9594,6 +7387,13 @@ def get_materials_and_assembles_by_user():
                     'is_copied_from_id': assemble_record.is_copied_from_id,
                     'create_at': assemble_record.create_at,
 
+                    # ==================================================
+                    # 異常返工識別
+                    # ==================================================
+                    'reason': (getattr(assemble_record, 'reason', '') or '').strip(),
+
+                    'is_abnormal_process': ((getattr(assemble_record, 'reason', '') or '').strip() == '異常返工'),
+                    #
                     # ✅ 供最後保險過濾使用
                     'isStockInDone': int(material_record.id) in stockin_done_mid_set,
 
@@ -9601,66 +7401,10 @@ def get_materials_and_assembles_by_user():
                     'schedule_id': assemble_record.schedule_id,
                     'process_steps': material_record.process_steps or default_process_steps(),
 
-                    #'total_completed_qty': (f"({assemble_completed_total})"),
-                    #'total_completed_qty_num': (assemble_completed_total),
-
-                    #'total_receive_qty': (f"({assemble_completed_total})"),
-                    #'total_receive_qty_num': (assemble_completed_total),
                 }
 
                 _results.append(_object)
-        '''
-        # ------------------------------------------------------------
-        # 9) 過濾：只留該 user 相關 rows
-        # ------------------------------------------------------------
 
-        all_zero_by_mid_db = {}
-        for m in _objects:
-          rows = m._assemble or []
-
-          if not rows:
-              all_zero_by_mid_db[str(m.id)] = False
-              continue
-
-          all_zero_by_mid_db[str(m.id)] = all(
-              int(getattr(a, 'process_step_code', 0) or 0) == 0
-              for a in rows
-          )
-
-        filtered_results = []
-        for row in _results:
-            mid = str(row['id'])
-
-            # ✅ 已入庫一律不顯示
-            if bool(row.get('isStockInDone')):
-                continue
-
-            ## ✅ 已完成且 DB 內全部 step=0，保留顯示等待入庫資料
-            #if bool(row.get('isAssembleStationShow')) and all_zero_by_mid_db.get(mid, False):
-            #    filtered_results.append(row)
-            #    continue
-            #
-            # ✅ 已按結束報工的資料，要繼續留在 End.vue
-            # 等人工/AGV送出後，sendAssembleToWarehouse() 會把 isAssembleStationShow 改 False，
-            # 到時才會從 End.vue 消失
-            if int(row.get('isAssembleStationShow') or 0) == 1:
-                filtered_results.append(row)
-                continue
-            #
-            ptype = map_pt_from_step_code(int(row['process_step_code'] or 0))
-            ulist = pick_user_list(user_ids_by_type, ptype, mid)
-
-            if _user_id not in ulist:
-                continue
-
-            if (row['id'], int(row['process_step_code'] or 0)) not in end_ok_set:
-                continue
-
-            filtered_results.append(row)
-
-        _results = filtered_results
-        '''
-        #
         # ------------------------------------------------------------
         # 9) 最後保險過濾
         #
@@ -9706,16 +7450,14 @@ def get_materials_and_assembles_by_user():
             continue
 
         _results = filtered_results
-        #
 
-        #
         temp_len = len(_results)
         if temp_len == 0:
             return_value = False
 
         _results.sort(key=lambda x: x.get('id') or 0)
         _results.sort(key=lambda x: x.get('create_at') or datetime.min, reverse=True)
-        #print("_results:", _results)
+
         return jsonify({
             'status': return_value,
             'materials_and_assembles_by_user': _results,
@@ -9842,7 +7584,6 @@ def active_count_map():
 @getTable.route("/getEndOkByMaterialIdAndStepCode", methods=['POST'])
 def get_end_ok_by_material_id_and_step_code():
     print("getEndOkByMaterialIdAndStepCode()...")
-
     #
     # 需求：
     #   針對相同工單(相同 material_id, process_step_code, ask_qty)，計算：
@@ -10031,10 +7772,7 @@ def get_today_unfinished_processes():
         s.close()
 
 
-@getTable.route(
-    '/checkDeleteBatchPermission',
-    methods=['POST']
-)
+@getTable.route('/checkDeleteBatchPermission', methods=['POST'])
 def check_delete_batch_permission():
     print("checkDeleteBatchPermission.")
 

@@ -535,6 +535,7 @@ socket.on('get-assemble-scheduling-dialog-locks', () => {
       'station2_trans_over', 'station2_trans_end', 'station2_trans_begin', 'station2_trans_call',
       'station3_trans_over', 'station3_trans_end', 'station3_trans_begin', 'station3_trans_call',
     ];
+
     //let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect'];
 
     //if (!socket.connected) {

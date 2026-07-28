@@ -1271,7 +1271,8 @@ def update_process():
 
     if not log:
         return jsonify(success=False, message="process not found"), 404
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         return jsonify(success=False, message="process already closed"), 400
 
     cur = int(log.elapsedActive_time or 0)
@@ -1350,7 +1351,8 @@ def toggle_process():
 
     if not log:
         return jsonify(success=False, message="process not found"), 404
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         return jsonify(success=False, message="process already closed"), 400
 
     # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
@@ -1406,6 +1408,7 @@ def toggle_process():
     )
 
 
+# 20260727版
 @getTable.route("/dialog2CloseProcess", methods=['POST'])
 def close_process():
     print("dialog2CloseProcess API....")
@@ -1425,8 +1428,16 @@ def close_process():
     if not log:
         return jsonify(success=False, message="process not found"), 404
 
-    if log.end_time is not None:
-        return jsonify(success=False, message="already closed"), 400
+    #if log.end_time is not None:
+    #    return jsonify(success=False, message="already closed"), 400
+    #
+    if log.end_time not in (None, ""):
+        return jsonify(
+            success=False,
+            message="already closed",
+            end_time=log.end_time
+        ), 400
+    #
 
     now = datetime.now()
 
@@ -1464,6 +1475,7 @@ def close_process():
 
     # 4) 關閉狀態
     log.is_pause = True
+    log.has_started = False   # 20260727 add
     log.end_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # 5)（重點）若有傳 assemble_id + receive_qty，更新該站完成數
@@ -1656,7 +1668,8 @@ def update_process_begin():
         print("error, process not found!")
         return jsonify(success=False, message="process not found"), 404
 
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         print("error, process already closed!")
 
         return jsonify(
@@ -1739,7 +1752,8 @@ def toggle_process_begin():
         s.close()
         return jsonify(success=False, message="process not found"), 404
 
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         s.close()
         return jsonify(success=False, message="process already closed"), 400
 
@@ -1835,7 +1849,8 @@ def close_process_begin():
                 return jsonify(success=False, message="process not found"), 404
 
             # ✅ 2) 只要 end_time 有值就視為已關閉（避免重複加總/重複寫）
-            if log.end_time is not None:
+            #if log.end_time is not None:
+            if log.end_time not in (None, ""):
                 return jsonify(
                     success=True,
                     message="already closed",
@@ -2063,7 +2078,8 @@ def update_process_mp():
         print("error, p process not found!")
         return jsonify(success=False, message="p process not found"), 404
 
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         print("error, p process already closed!")
 
         return jsonify(
@@ -2150,7 +2166,8 @@ def toggle_process_mp():
 
     if not log:
         return jsonify(success=False, message="p process not found"), 404
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         return jsonify(success=False, message="p process already closed"), 400
 
     # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
@@ -2205,6 +2222,7 @@ def toggle_process_mp():
     )
 
 
+# 20260727版
 @getTable.route("/dialog2CloseProcessMP", methods=['POST'])
 def close_process_mp():
     print("dialog2CloseProcessBegin API....")
@@ -2288,6 +2306,7 @@ def close_process_mp():
     #print("@@close_process_begin step5..")
 
     log.is_pause = True
+    log.has_started = False   # 20260727 add
     log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
     #print("log.process_work_time_qty:", receive_qty)
     log.process_work_time_qty = receive_qty
@@ -2490,7 +2509,8 @@ def update_process_process():
       print("error, p process not found!")
       return jsonify(success=False, message="p process not found"), 404
 
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         print("error, p process already closed!")
 
         return jsonify(
@@ -2580,7 +2600,8 @@ def toggle_process_process():
 
     if not log:
         return jsonify(success=False, message="p process not found"), 404
-    if log.end_time is not None:
+    #if log.end_time is not None:
+    if log.end_time not in (None, ""):
         return jsonify(success=False, message="p process already closed"), 400
 
     # 目前時刻（台北 aware）；用來算差、也用來存 begin_time 字串
@@ -2635,6 +2656,7 @@ def toggle_process_process():
     )
 
 
+# 20270727版
 @getTable.route("/dialog2CloseProcessProcess", methods=['POST'])
 def close_process_process():
     print("dialog2CloseProcessProcess API....")
@@ -2719,6 +2741,7 @@ def close_process_process():
     #print("$$close_process_begin step5..")
 
     log.is_pause = True
+    log.has_started = False   # 20260727 add
     log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
     #print("log.process_work_time_qty:", receive_qty)
     log.process_work_time_qty = receive_qty
@@ -5619,10 +5642,7 @@ def get_Warehouse_For_assemble_by_history():
                 # 歷史紀錄
                 if line == "assemble":
                     # 已送達 Warehouse 或已完成入庫都可顯示
-                    if (
-                        not isWarehouseStationShow
-                        and not isAllOk
-                    ):
+                    if (not isWarehouseStationShow and not isAllOk):
                         continue
             else:
                 # 待入庫
@@ -5653,8 +5673,7 @@ def get_Warehouse_For_assemble_by_history():
             if line == "assemble":
                 # 組裝線以整個 material 的入庫量累計，
                 # 避免 process_type=31 掛在其他 assemble_id 時漏算。
-                total_allOk_qty = (
-                    s.query(
+                total_allOk_qty = (s.query(
                         func.coalesce(
                             func.sum(
                                 Process.process_work_time_qty
@@ -5662,20 +5681,10 @@ def get_Warehouse_For_assemble_by_history():
                             0
                         )
                     )
-                    .filter(
-                        Process.material_id
-                        == material_id
-                    )
-                    .filter(
-                        Process.assemble_id
-                        == assemble_id
-                    )
-                    .filter(
-                        Process.process_type == 31
-                    )
-                    .filter(
-                        Process.end_time.isnot(None)
-                    )
+                    .filter(Process.material_id == material_id)
+                    .filter(Process.assemble_id == assemble_id)
+                    .filter(Process.process_type == 31)
+                    .filter(Process.end_time.isnot(None))
                     .scalar()
                 ) or 0
                 #
@@ -5696,7 +5705,7 @@ def get_Warehouse_For_assemble_by_history():
                 )
 
             # end if-else line == "assemble"
-
+            '''
             if line == "assemble":
                 # ------------------------------------------------------------
                 # Warehouse 每筆獨立顯示。
@@ -5750,7 +5759,100 @@ def get_Warehouse_For_assemble_by_history():
                     all_ok_qty,
                     total_completed_qty,
                 )
+            '''
+            #
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # Warehouse 每筆 assemble 獨立計算到庫數量。
+                #
+                # assemble 欄位已經是 End 實際送出的數量時，
+                # 必須優先使用 assemble.completed_qty。
+                #
+                # 不可與舊 Process 數量取 max：
+                #   Process 原始檢驗量 = 72
+                #   扣除異常後正常量 = 62
+                #   Warehouse 應顯示 62，不是 72。
+                # ------------------------------------------------------------
 
+                completed_qty = to_int(
+                    g(
+                        a,
+                        "completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                total_completed_qty = to_int(
+                    g(
+                        a,
+                        "total_completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                all_ok_qty = to_int(
+                    g(
+                        a,
+                        "allOk_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_end_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_end_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_qty",
+                        0
+                    ),
+                    0
+                )
+
+                process_qty = to_int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ),
+                    0
+                )
+
+                # ------------------------------------------------------------
+                # 數量優先順序
+                #
+                # 1. 本筆 assemble 實際完成量
+                # 2. assemble 累計完成量
+                # 3. assemble 應完成量
+                # 4. 舊資料才 fallback 至 Process
+                # ------------------------------------------------------------
+                if completed_qty > 0:
+                    delivery_qty = completed_qty
+
+                elif total_completed_qty > 0:
+                    delivery_qty = total_completed_qty
+
+                elif all_ok_qty > 0:
+                    delivery_qty = all_ok_qty
+
+                elif must_receive_end_qty > 0:
+                    delivery_qty = must_receive_end_qty
+
+                elif must_receive_qty > 0:
+                    delivery_qty = must_receive_qty
+
+                else:
+                    delivery_qty = process_qty
             else:
                 delivery_qty = int(
                     g(
@@ -5759,6 +5861,7 @@ def get_Warehouse_For_assemble_by_history():
                         0
                     ) or 0
                 )
+
             # end if-else line =="assemble"
 
             # Warehouse 待入庫資料不應出現應入庫量為0
@@ -6722,7 +6825,7 @@ def get_materials_and_assembles():
         }), 200
 
 
-# 20260724版
+# 20260728版
 @getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
 def get_materials_and_assembles_by_user():
     print("getMaterialsAndAssemblesByUser....")
@@ -6816,7 +6919,7 @@ def get_materials_and_assembles_by_user():
                 'active_counts_all': {},
                 'active_user_ids_all': {},
             })
-        #
+
         # ------------------------------------------------------------
         # 2) active count / active users
         # ------------------------------------------------------------
@@ -6966,10 +7069,7 @@ def get_materials_and_assembles_by_user():
             .filter(Process.begin_time.isnot(None))
             .filter(Process.begin_time != '')
             .filter(
-                or_(
-                    Process.end_time.is_(None),
-                    Process.end_time == ''
-                )
+                or_(Process.end_time.is_(None), Process.end_time == '')
             )
             .group_by(
                 Process.material_id,
@@ -7061,15 +7161,13 @@ def get_materials_and_assembles_by_user():
                 # ------------------------------------------------------------
                 my_active_process = my_active_proc_map.get(
                     (
-                        int(assemble_record.material_id),
-                        int(assemble_record.id or 0),
-                        int(target_pt)
+                      int(assemble_record.material_id),
+                      int(assemble_record.id or 0),
+                      int(target_pt)
                     )
                 )
 
-                has_my_active_process = (
-                    my_active_process is not None
-                )
+                has_my_active_process = (my_active_process is not None)
 
                 # ------------------------------------------------------------
                 # 判斷是否為真正的待送出列
@@ -7113,6 +7211,7 @@ def get_materials_and_assembles_by_user():
 
                 if temp_show2_ok == 1 or temp_assemble_show2_ok == 1:
                     temp_assemble_process_str = temp_assemble_process_str + (material_record.shortage_note or '')
+                # end if
 
                 if temp_show2_ok in [5, 7, 9] or temp_assemble_show2_ok in [5, 7, 9]:
                     for temp2_assemble_record in assemble_records:
@@ -7122,6 +7221,7 @@ def get_materials_and_assembles_by_user():
                             if len(date_parts) == 3:
                                 date_parts[temp2_assemble_record.total_ask_qty_end - 1] = completed_qty
                                 temp_assemble_process_str = '/'.join(date_parts)
+                # end if
 
                 pt = code_to_pt.get(code, 0)
 
@@ -7141,6 +7241,8 @@ def get_materials_and_assembles_by_user():
                             return None
                         return x
                     return x
+
+                # end definition
 
                 user_receive_qty = int(getattr(r, "process_work_time_qty", 0) or 0)
                 _end_time = _norm_end_time(getattr(r, "end_time", None)) if r else None
@@ -7202,6 +7304,15 @@ def get_materials_and_assembles_by_user():
 
                     if display_total <= 0:
                         display_total = int(
+                            getattr(
+                                assemble_record,
+                                'completed_qty',
+                                0
+                            ) or 0
+                        )
+
+                    if display_total <= 0:
+                        display_total = int(
                             process_qty_map.get((
                                     int(assemble_record.material_id),
                                     int(assemble_record.id),
@@ -7219,59 +7330,48 @@ def get_materials_and_assembles_by_user():
                 # 主列 Process 數量 + B110 子列 Process 數量。
                 # ------------------------------------------------------------
                 elif 'B110' in work_num_text:
+                    # ------------------------------------------------------------
+                    # B110 已完成總數量：
+                    # 優先使用 assemble.total_completed_qty。
+                    #
+                    # 不可再使用 Process 加總，因為：
+                    # 1. Process 可能保留異常拆分前的原始數量。
+                    # 2. 多員工操作時可能重複累加。
+                    # 3. 待送出列的正確完成量已寫在 Assemble。
+                    # ------------------------------------------------------------
                     display_total = int(
-                        process_qty_map.get(
-                            (
-                                int(assemble_record.material_id),
-                                int(assemble_record.id),
-                                22
-                            ),
+                        getattr(
+                            assemble_record,
+                            'total_completed_qty',
                             0
-                        )
-                        or 0
+                        ) or 0
                     )
 
-                    child_ids = [
-                        int(a.id)
-                        for a in assemble_records
-                        if (
-                            int(
-                                getattr(
-                                    a,
-                                    'is_copied_from_id',
-                                    0
-                                )
-                                or 0
-                            )
-                            == int(
-                                assemble_record.id
-                            )
-                            and 'B110'
-                            in str(
-                                getattr(
-                                    a,
-                                    'work_num',
-                                    ''
-                                )
-                                or ''
-                            )
+                    # 舊資料相容：
+                    # total_completed_qty 沒寫入時，
+                    # 再使用本列 completed_qty。
+                    if display_total <= 0:
+                        display_total = int(
+                            getattr(
+                                assemble_record,
+                                'completed_qty',
+                                0
+                            ) or 0
                         )
-                    ]
 
-                    for child_id in child_ids:
-                        display_total += int(
+                    # 最後才使用 Process 當舊資料 fallback。
+                    if display_total <= 0:
+                        display_total = int(
                             process_qty_map.get(
                                 (
-                                    int(
-                                        assemble_record.material_id
-                                    ),
-                                    child_id,
+                                    int(assemble_record.material_id),
+                                    int(assemble_record.id),
                                     22
                                 ),
                                 0
-                            )
-                            or 0
+                            ) or 0
                         )
+                #
 
                 # ------------------------------------------------------------
                 # B106 雷射
@@ -7282,6 +7382,15 @@ def get_materials_and_assembles_by_user():
                         'total_completed_qty',
                         0) or 0
                     )
+
+                    if display_total <= 0:
+                        display_total = int(
+                            getattr(
+                                assemble_record,
+                                'completed_qty',
+                                0
+                            ) or 0
+                        )
 
                     if display_total <= 0:
                         display_total = int(process_qty_map.get(
@@ -7302,9 +7411,19 @@ def get_materials_and_assembles_by_user():
                 # 多名員工操作同一工序時，process_work_time_qty 可能重複累加，
                 # 例如 A=50、B=50，會錯誤顯示成100。
                 # ------------------------------------------------------------
-                assemble_completed_total = int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
+                #assemble_completed_total = int(getattr(assemble_record, 'total_completed_qty', 0) or 0)
+                #
+                #display_total_text = '' if display_total == 0 else f"({display_total})"
+                #
+                assemble_completed_total = int(display_total or 0)
 
-                display_total_text = '' if display_total == 0 else f"({display_total})"
+                display_total_text = (
+                    ''
+                    if assemble_completed_total <= 0
+                    else f"({assemble_completed_total})"
+                )
+                #
+
                 _object = {
                     'index': index,
                     'id': material_record.id,
@@ -7337,15 +7456,23 @@ def get_materials_and_assembles_by_user():
 
                     'completed_qty': completed_qty,
 
-                    'total_completed_qty': display_total_text,
-                    'total_completed_qty_num': display_total,
+                    #'total_completed_qty': display_total_text,
+                    #'total_completed_qty_num': display_total,
 
                     # 保留舊欄位，避免其他程式還有用到
-                    'total_receive_qty': display_total_text,
-                    'total_receive_qty_num': display_total,
+                    #'total_receive_qty': display_total_text,
+                    #'total_receive_qty_num': display_total,
 
-                    # 不要改這個
                     'receive_qty': completed_qty,
+
+                    #
+                    'total_completed_qty': display_total_text,
+                    'total_completed_qty_num': assemble_completed_total,
+
+                    # 保留舊欄位，避免前端其他位置仍使用
+                    'total_receive_qty': display_total_text,
+                    'total_receive_qty_num': assemble_completed_total,
+                    #
 
                     'process_total_qty': int(process_total or 0),
 
@@ -7421,23 +7548,14 @@ def get_materials_and_assembles_by_user():
             if bool(row.get('isStockInDone')):
                 continue
 
-            has_my_active_process = bool(
-                row.get('my_has_active_process')
-            )
+            has_my_active_process = bool(row.get('my_has_active_process'))
 
-            my_process_id = int(
-                row.get('my_process_id') or 0
-            )
+            my_process_id = int(row.get('my_process_id') or 0)
 
-            is_waiting_send = bool(
-                row.get('waiting_send')
-            )
+            is_waiting_send = bool(row.get('waiting_send'))
 
             # 目前登入員工自己的進行中工序
-            if (
-                has_my_active_process
-                and my_process_id > 0
-            ):
+            if (has_my_active_process and my_process_id > 0):
                 filtered_results.append(row)
                 continue
 

@@ -323,27 +323,6 @@ export function useProcessTimer(getTimerRef) {
     await nudgeResume();
     _startLocalTicker();
     _startAutoUpdate();
-
-    // 不改變前端的 isPaused / 不呼叫 pause()
-    /*
-    const data = res?.data ?? res;
-
-    // 後端可能回傳校正後的 elapsed_time（秒）
-    if (data?.elapsed_time != null) {
-      elapsedMs.value = Number(data.elapsed_time) * 1000;
-    }
-
-    // is_paused/pause_time 只是回報，用得到就存下
-    if (typeof data?.is_paused === 'boolean') {
-      isPaused.value = data.is_paused;
-    }
-
-    const pauseTotal = Number(data?.pause_time ?? 0);
-    console.log("🔸 累計暫停時間:", pauseTotal, "秒");
-
-    pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
-    pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
-    */
   }
 
   async function updateKeepPaused() {
@@ -395,13 +374,15 @@ export function useProcessTimer(getTimerRef) {
   }
 
   // 結束（關閉 dialog 時用）
-  //async function closeProcess() {
   async function closeProcess(extra = {}) {
-    if (!processId.value) return { success: false, message: 'no process' };
+    if (!processId.value) {
+      return {  success: false,
+                message: 'no process'
+      };
+    }
 
     _frozenElapsedOnPause = null;  // 這筆作業收掉，清乾淨
 
-    //const ms = timer()?.getElapsedMs?.() ?? elapsedMs.value;
     const live = timer()?.getElapsedMs?.();
     const ms = (live ?? elapsedMs.value ?? 0);
 
@@ -413,28 +394,36 @@ export function useProcessTimer(getTimerRef) {
     timer()?.pause();
     isPaused.value = true;
 
-    console.log("processId:", processId)
     console.log("processId.value:", processId.value)
+    const closingProcessId = processId.value;
 
     // 通知後端關閉
     const payload = {
       // 先展開 extra
       ...extra,
       // 再覆蓋為正確值（確保不被 extra 蓋掉）
-      process_id: processId.value,
+      process_id: closingProcessId,
       elapsed_time: Math.floor(ms / 1000),
     }
     const res = await dialog2CloseProcess(payload)
-    //const res = await dialog2CloseProcess({
-    //  process_id: processId.value,
-    //  elapsed_time: Math.floor(ms / 1000),
-    //});
     const data = res?.data ?? res;
+
+    // 後端沒有成功時，不要假裝已關閉, 20260727 add
+    if (data?.success !== true) {
+      return {
+        success: false,
+        message: data?.message || 'process close failed',
+        process_id: closingProcessId
+      };
+    }
 
     // 視覺重置（可選）
     timer()?.reset();
+
     processId.value = null;
     elapsedMs.value = 0;
+
+    isPaused.value = true;  // 20260727 add
 
     const pauseTotal = Number(data?.pause_time ?? 0);
     console.log("🔸 累計暫停時間:", pauseTotal, "秒");
@@ -442,50 +431,53 @@ export function useProcessTimer(getTimerRef) {
     pauseTime.value  = Number(data?.pause_time ?? pauseTime.value);
     pauseCount.value = Number(data?.pause_count ?? pauseCount.value);
 
-    //return {
-    //	processId, isPaused, elapsedMs, pauseTime, pauseCount,
-    //	onTick,
-    //	startProcess, toggleTimer, updateProcess, closeProcess
-    //};
+    // 20260727 add
+    return {
+      success: true,
+      process_id: closingProcessId,
+      end_time: data?.end_time,
+      elapsed_time: data?.elapsed_time
+    };
   }
 
   // 👉 新增：釋放資源
-function dispose() {
-  try { timer()?.pause?.(); } catch (e) {}
-  _stopLocalTicker();
-  _stopAutoUpdate();
-}
+  function dispose() {
+    try { timer()?.pause?.(); } catch (e) {}
+    _stopLocalTicker();
+    _stopAutoUpdate();
+  }
 
-  return {
-    // 狀態
-    processId,
-    isPaused,
-    elapsedMs,
-    pauseTime,
-    pauseCount,
+    return {
+      // 狀態
+      processId,
+      isPaused,
+      elapsedMs,
+      pauseTime,
+      pauseCount,
 
-    for_vue3_has_started,
-    for_vue3_pause_or_start_status,
+      for_vue3_has_started,
+      for_vue3_pause_or_start_status,
 
-    materialId,
-    processType,
-    userId,
-    assembleId,
+      materialId,
+      processType,
+      userId,
+      assembleId,
 
-    hasStarted,
+      hasStarted,
 
-    // 提供給 <TimerDisplay @update:time>
-    onTick,
-    // 動作
-    startProcess,
-    toggleTimer,
-    updateProcess,
-    closeProcess,
+      // 提供給 <TimerDisplay @update:time>
+      onTick,
+      // 動作
+      startProcess,
+      toggleTimer,
+      updateProcess,
+      closeProcess,
 
-    updateActiveNoPause,
-    updateKeepPaused,
-    nudgeResume,
+      updateActiveNoPause,
+      updateKeepPaused,
+      nudgeResume,
 
-    dispose,
-  };
-}
+      dispose,
+    };
+  }
+

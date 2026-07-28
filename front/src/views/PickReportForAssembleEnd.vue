@@ -549,7 +549,7 @@
               @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
               @update:focused="(focused) => checkAbnormalField(focused, item)"
 
-              :disabled="item.input_abnormal_disable"
+              :disabled="item.input_abnormal_disable || item.alarm_enable === false"
             />
             <span
               v-show="item.abnormal_tooltipVisible"
@@ -652,7 +652,7 @@
               @click="onClickAbnormal(item)"
               style="padding: 0 5px !important;"
               :style="getBtnStyle(item)"
-              :disabled="item.input_abnormal_disable"
+              :disabled="item.input_abnormal_disable || item.alarm_enable === false"
             >
               異 常
               <v-icon start :style="getBtnStyle(item)">mdi-alert-circle-outline</v-icon>

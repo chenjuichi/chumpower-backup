@@ -19,6 +19,7 @@ from ajax.createTableP import createTableP
 from ajax.updateTable import updateTable
 from ajax.updateTableP import updateTableP
 from ajax.deleteTable import deleteTable
+from ajax.deleteTableP import deleteTableP
 from ajax.excelTable import excelTable
 from ajax.browseDirectory import browseDirectory
 from ajax.hardware import hardware
@@ -45,7 +46,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2026-07-22' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2026-07-28' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -65,6 +66,7 @@ app.register_blueprint(createTableP)
 app.register_blueprint(updateTable)
 app.register_blueprint(updateTableP)
 app.register_blueprint(deleteTable)
+app.register_blueprint(deleteTableP)
 app.register_blueprint(excelTable)
 #app.register_blueprint(excelModifyTable)
 app.register_blueprint(browseDirectory)

@@ -1229,6 +1229,7 @@ watch(
         const reason = dlg.closeReason;
 
         try {
+          /*
           if (reason === 'esc' || reason === 'outside') {
             // ✅ ESC/外點：依當下狀態決定保持暫停 or 繼續
             if (dlg.proc.isPaused) {
@@ -1253,6 +1254,49 @@ watch(
             // ✅ 先標記，迴圈後再移除
             toRemove.add(it.k);
           }
+          */
+          //
+          if (reason === 'esc' || reason === 'outside') {
+            // ESC／外點關閉：不結束 process
+            if (dlg.proc.isPaused?.value === true) {
+              await dlg.proc.updateKeepPaused();
+
+              setRowState(dlg.material_id, {
+                is_paused: true,
+                startStatus: false
+              });
+            } else {
+              await dlg.proc.updateActiveNoPause();
+
+              setRowState(dlg.material_id, {
+                is_paused: false,
+                startStatus: true,
+                hasStarted: true,
+                isOpenEmpId: String(
+                  currentUser.value.empID || ''
+                ),
+              });
+            }
+
+          } else if (reason === 'confirm') {
+            // handleConfirm() 已經成功呼叫 closeProcess()
+            // watcher 不可再關閉第二次
+            toRemove.add(it.k);
+
+          } else {
+            // 其他正常關閉方式才由 watcher 負責結束
+            const result = await dlg.proc.closeProcess?.();
+
+            if (result?.success) {
+              toRemove.add(it.k);
+            } else {
+              console.error(
+                '[dialog watcher] closeProcess 失敗:',
+                result
+              );
+            }
+          }
+          //
         } catch (e) {
           console.error("close-handling 失敗：", e);
         } finally {
@@ -2727,17 +2771,91 @@ async function handleClose(dlg) {
   dlg.dialogVisible = false;
 }
 
-// 按「確定」時（視你的流程，可能只是 update）
+// 按「確定」時（視你的流程，可能只是 update)
+/*
 async function handleConfirm(dlg) {
   //await dlg.proc.updateProcess();   // 先把目前時間回寫(不結束)
   if (!dlg?.proc) return;
   console.log("closeProcess(), qty:", editedRecord.value.delivery_qty)
-  await dlg.proc.closeProcess({ receive_qty: editedRecord.value.delivery_qty});   // 停表 + 回寫 + reset
+  await dlg.proc.closeProcess({
+    receive_qty: editedRecord.value.delivery_qty
+  });   // 停表 + 回寫 + reset
   dlg.dialogVisible = false;
 
   // 可選：從 dialogs 移除
   const idx = dialogs.value.indexOf(dlg);
   if (idx !== -1) dialogs.value.splice(idx, 1);
+}
+*/
+// 20260727版
+async function handleConfirm(dlg) {
+  if (!dlg?.proc) return;
+
+  try {
+    console.log(
+      'closeProcess(), qty:',
+      editedRecord.value.delivery_qty
+    );
+
+    // 防止關閉 watcher 再做一次 close
+    dlg.closeReason = 'confirm';
+    dlg._closingOnce = true;
+
+    const result = await dlg.proc.closeProcess({
+      receive_qty: Number(
+        editedRecord.value.delivery_qty || 0
+      )
+    });
+
+    if (!result?.success) {
+      console.error(
+        '[handleConfirm] process 關閉失敗:',
+        result
+      );
+
+      dlg.closeReason = null;
+      dlg._closingOnce = false;
+
+      showSnackbar(
+        result?.message || '計時程序結束失敗，請再試一次',
+        'red accent-2'
+      );
+      return;
+    }
+
+    console.log(
+      '[handleConfirm] process 已結束:',
+      result
+    );
+
+    setRowState?.(dlg.material_id, {
+      is_paused: true,
+      startStatus: false,
+      hasStarted: false,
+      isOpen: false,
+      isOpenEmpId: '',
+    });
+
+    dlg.dialogVisible = false;
+
+    const idx = dialogs.value.indexOf(dlg);
+    if (idx !== -1) {
+      dialogs.value.splice(idx, 1);
+    }
+  } catch (error) {
+    console.error(
+      '[handleConfirm] closeProcess error:',
+      error
+    );
+
+    dlg.closeReason = null;
+    dlg._closingOnce = false;
+
+    showSnackbar(
+      '結束備料計時失敗，請檢查後端紀錄',
+      'red accent-2'
+    );
+  }
 }
 
 const checkTextEditField = (focused, item) => {
@@ -2867,169 +2985,7 @@ const onConfirm = async (dlg) => {
   }
 };
 
-/*
-const updateItem = async () => {    //編輯 bom, material及process後端table資料
-  console.log("MaterialListForAssm.vue, updateItem(),", boms.value);
-
-  isConfirmed.value = true;
-
-  currentEndTime.value = new Date();  // 記錄當前結束時間
-  let periodTime = calculatePeriodTime(currentStartTime.value, currentEndTime.value);  // 計算時間間隔
-  let formattedStartTime = formatDateTime(currentStartTime.value);
-  let formattedEndTime = formatDateTime(currentEndTime.value);
-
-  // 使用 .some() 檢查是否有任何 `receive` 為 false 的項目
-  // 若有則將 `take_out` 設為 false, 缺料且檢料完成
-  // 若無則將 `take_out` 設為 true, 沒有缺料且檢料完成
-  let take_out = !boms.value.some(bom => !bom.receive);
-  console.log("take_out:", take_out);
-
-  // 1. 更新 boms 資料
-  //2025-02-11 mark and update the following block
-  //let response0 = await updateBoms(boms.value);
-  //if (!response0) {
-  //  showSnackbar(response0.message, 'red accent-2');
-  //  dialog.value = false;
-  //  return;
-  //}
-  await updateBoms(boms.value);
-
-  let payload = {}
-
-  // begin block檢查是否缺料
-  if (!take_out || (take_out && editedRecord.value.same_order_num_cnts > 1)) {                // 該筆訂單缺料且檢料完成
-    payload = {                       // 更新 materials 資料，shortage_note = '(缺料)'
-      //order_num: my_material_orderNum,
-      id: editedRecord.value.id,
-      record_name: 'shortage_note',
-      record_data: '(缺料)'
-    };
-    await updateMaterial(payload);
-    editedRecord.value.shortage_note = '(缺料)';
-
-    payload = {                       // 2. 更新 materials 資料，isLackMaterial = 0
-      //order_num: my_material_orderNum,
-      id: editedRecord.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 0,          //缺料flag
-    };
-    await updateMaterial(payload);
-    editedRecord.value.isLackMaterial = 0;    //缺料(尚未拆單)且檢料完成
-
-  } else {                        // 沒有缺料且檢料完成
-    payload = {
-      //order_num: my_material_orderNum,
-      id: editedRecord.value.id,
-      record_name: 'shortage_note',
-      record_data: ''
-    };
-    await updateMaterial(payload);
-    editedRecord.value.shortage_note = '';
-
-    payload = {       // 2. 更新 materials 資料，isLackMaterial = 99
-      //order_num: my_material_orderNum,
-      id: editedRecord.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 99,
-    };
-    await updateMaterial(payload);
-
-    editedRecord.value.isLackMaterial = 99;   //沒有缺料且檢料完成 flag
-  }
-  // end block檢查是否缺料
-
-  // 紀錄前端已經按了確定鍵的狀態
-  payload = {
-    //order_num: my_material_orderNum,
-    id: editedRecord.value.id,
-    record_name: 'isTakeOk',
-    record_data: true
-  };
-  await updateMaterial(payload);
-  editedRecord.value.isTakeOk = true;
-
-  // 紀錄前端備料已完成
-  payload = {
-    //order_num: my_material_orderNum,
-    id: editedRecord.value.id,
-    record_name: 'hasStarted',
-    record_data: false
-  };
-  await updateMaterial(payload);
-  editedRecord.value.hasStarted = false;
-
-  await nextTick();
-
-  payload = {
-    //order_num: my_material_orderNum,
-    id: editedRecord.value.id,
-    record_name: 'show2_ok',
-    record_data: 2                  // 備料完成
-  };
-  await updateMaterial(payload);
-
-  payload = {
-    process_id: currentProcessId.value,
-    record_name: 'process_work_time_qty',
-    record_data: editedRecord.value.req_qty,
-  };
-  await updateProcessData(payload);
-
-  await fetchMaterials();
-
-  payload = {                   // 2. 更新 materials 資料，isLackMaterial = 99
-    id: editedRecord.value.id,
-    record_name: 'isLackMaterial',
-    record_data: 99,            // 不缺料flag
-  };
-  await updateMaterial(payload);
-  editedRecord.value.isLackMaterial = 99;
-
-  if (!take_out) {                     // 該筆訂單檢料完成且缺料
-    payload = {
-      copy_id: editedRecord.value.id,
-      delivery_qty: editedRecord.value.delivery_qty,
-      //total_delivery_qty: tempDelivery,
-      show2_ok: 2,            //備料完成
-      shortage_note: '',
-    }
-    await copyMaterialAndBom(payload);
-    //console.log("material_copy:", material_copy.value)
-
-    payload = {               // 2. 更新 materials 資料，isLackMaterial = 0
-      id: material_copy.value.id,
-      record_name: 'isLackMaterial',
-      record_data: 0,          //缺料flag
-      //record_data: 99,          //沒有缺料flag
-    };
-    await updateMaterial(payload);
-    material_copy.value.isLackMaterial = 0;
-    //material_copy.value.isLackMaterial = 99;
-
-    materials.value.push(material_copy.value);
-
-    // 立刻排序：
-    materials.value.sort((a, b) => {
-      if (a.order_num === b.order_num) {
-        // isTakeOk: True 排前面 → False > True 時應該 return 1
-        return (a.isTakeOk === b.isTakeOk) ? 0 : (a.isTakeOk ? -1 : 1);
-      }
-      // order_num 升序
-      return a.order_num.localeCompare(b.order_num);
-    });
-  } // end if
-  ////} else {
-  //  payload = {                   // 2. 更新 materials 資料，isLackMaterial = 99
-  //    id: editedRecord.value.id,
-  //    record_name: 'isLackMaterial',
-  //    record_data: 99,            // 不缺料flag
-  //  };
-  //  await updateMaterial(payload);
-  //  editedRecord.value.isLackMaterial = 99;
-  ////}
-};
-*/
-
+// 20260727版
 const updateItem = async () => {    //編輯 bom, material及process後端table資料
   console.log("MaterialListForAssm.vue, updateItem(),", boms.value);
 
@@ -3052,7 +3008,6 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   // 2. 更新目前這筆 material 的缺料狀態
   // 缺料 => isLackMaterial = 0
   // 不缺料 => isLackMaterial = 99
-  //if (!take_out || (take_out && editedRecord.value.same_order_num_cnts > 1)) {
   if (!take_out) {
     payload = {
       id: editedRecord.value.id,
@@ -3105,6 +3060,30 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
   await updateMaterial(payload);
   editedRecord.value.hasStarted = false;
 
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'startStatus',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.startStatus = false;
+  //
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'isOpen',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isOpen = false;
+
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'isOpenEmpId',
+    record_data: ''
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isOpenEmpId = '';
+  //
   await nextTick();
 
   payload = {

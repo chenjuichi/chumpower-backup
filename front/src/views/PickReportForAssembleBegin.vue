@@ -35,17 +35,6 @@
               </span>
             </template>
           </v-switch>
-        <!--
-          <v-radio-group
-            :model-value="scheduleMode"
-            @update:modelValue="switchScheduleMode"
-            inline
-            class="d-flex justify-center"
-          >
-            <v-radio label="組裝工序" value="assemble" class="mr-4" />
-            <v-radio label="檢驗工序" value="check" />
-          </v-radio-group>
-        -->
         </div>
 
         <div class="text-grey-darken-1 mb-3">
@@ -56,10 +45,7 @@
           <div v-for="(step, index) in schedulingSteps"
             :key="`${scheduleMode}-${step.id}`"
             class="scheduling-item"
-
-
             draggable="true"
-
             @dragstart="onDragStartStep(index)"
             @dragover="onDragOverStep"
             @drop="onDropStep(index)"
@@ -67,27 +53,7 @@
           >
             <div class="scheduling-item-left">
               <v-icon size="18" class="drag-handle me-2">mdi-drag</v-icon>
-            <!--
-              <v-checkbox
-                :model-value="step.checked"
-                hide-details
-                density="compact"
-                class="me-2"
 
-                @click.stop="step.checked = !step.checked"
-              />
-            -->
-            <!--
-              <v-checkbox
-                v-model="step.checked"
-
-                :disabled="step.locked === true"
-
-                hide-details
-                density="compact"
-                class="me-2"
-              />
-            -->
 <!--0714丁副-->
 <v-checkbox
   v-model="step.checked"
@@ -102,7 +68,7 @@
           </div>
         </div>
       </v-card-text>
-<!--@click="confirmSchedulingDialog"-->
+
       <v-card-actions class="justify-center pb-4">
         <v-btn
           color="success"
@@ -127,7 +93,7 @@
     </v-card>
   </v-dialog>
 
-    <!-- 工序資料檢查 Alert -->
+  <!-- 工序資料檢查 Alert -->
   <v-dialog v-model="scheduleAlertDialog" max-width="420" persistent>
     <v-card>
       <v-card-title class="text-h6" style="font-weight:700;">
@@ -183,7 +149,7 @@
     :headers="headers"
     :items="materials_and_assembles"
 
-    :search="search"
+    :search="tableSearch"
     :custom-filter="customFilter"
 
     fixed-header
@@ -268,6 +234,7 @@
               </v-card>
             </v-dialog>
           </div>
+
           <v-row
             class="ma-0 toolbar-row"
             align="center"
@@ -380,51 +347,47 @@
 
             <!--客製化搜尋/barcode輸入框-->
             <v-col cols="auto" class="d-flex justify-end align-center" style="gap:5px;">
-                <v-text-field
-                  v-model="search"
-                  label="資料搜尋"
+              <v-text-field
+                v-model="search"
+                label="資料搜尋"
+                variant="outlined"
+                density="compact"
+                hide-details
+                single-line
+                class="top-input"
+                clearable
+              >
+                <template #prepend-inner>
+                  <v-progress-circular
+                    v-if="isSearchLoading"
+                    indeterminate
+                    size="20"
+                    width="2"
+                  />
+                  <v-icon v-else>
+                    mdi-magnify
+                  </v-icon>
+                </template>
+              </v-text-field>
 
-                  prepend-inner-icon="mdi-magnify"
-                  variant="outlined"
-                  density="compact"
-                  hide-details
-                  single-line
-                  class="top-input"
-                />
+              <v-text-field
+                id="bar_code"
+                v-model="bar_code"
+                label="條碼"
 
-                <v-text-field
-                  id="bar_code"
-                  v-model="bar_code"
-                  label="條碼"
+                prepend-inner-icon="mdi-barcode"
+                :value="bar_code"
+                ref="barcodeInput"
+                @keyup.enter="handleBarCode"
 
-                  prepend-inner-icon="mdi-barcode"
-                  :value="bar_code"
-                  ref="barcodeInput"
-                  @keyup.enter="handleBarCode"
+                @keydown="handleKeyDownForBarCode"
 
-                  @keydown="handleKeyDownForBarCode"
+                hide-details
+                single-line
 
-                  hide-details
-                  single-line
-
-                  variant="outlined"
-                  class="barcode-input top-input"
-                />
-<!--
-<v-text-field
-  id="bar_code"
-  v-model="bar_code"
-  label="條碼"
-  prepend-inner-icon="mdi-barcode"
-  ref="barcodeInput"
-  @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
-  @keyup.enter="handleBarCode"
-  hide-details
-  single-line
-  variant="outlined"
-  class="barcode-input top-input"
-/>
-            -->
+                variant="outlined"
+                class="barcode-input top-input"
+              />
             </v-col>
           </v-row>
         </v-card-title>
@@ -444,7 +407,6 @@
             <!-- 僅在滑鼠移入或者正在排序的情況下顯示圖標 -->
             <v-icon v-if="sortBy.includes('order_num') && isHovering" style="margin-left: 2px;">
               {{ sortDesc[sortBy.indexOf('order_num')] ? 'mdi-arrow-down' : 'mdi-arrow-up' }}
-              <!--{{ sortDesc[0] === null ? 'mdi-minus' : (sortDesc[0] ? 'mdi-arrow-down' : 'mdi-arrow-up') }}-->
             </v-icon>
           </div>
         </div>
@@ -562,11 +524,7 @@
             {{ item.remain_receive_qty ?? item.must_receive_qty }}
           </span>
         </template>
-        <!--
-        <span style="margin-left: 15px;">
-          {{ item.must_receive_qty }}
-        </span>
-        -->
+
       </div>
     </template>
 
@@ -602,49 +560,7 @@
             alt="GIF"
             style="width: 25px; height: 25px;"
           />
-          <!-- 動態顯示表格 -->
-<!--
-          <div
-            v-if="isTableVisible && boms.length > 0 && !isGifDisabled(item)"
-            :style="adjustTablePosition"
-          >
-            <v-table style="width: 190px; overflow: hidden;" class="show_table">
-              <thead>
-                <tr>
-                  <th style="text-align: left;">編號</th>
-                  <th style="text-align: right;">數量</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(bom_item, index) in filteredBoms"
-                  :key="index"
-                  :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
-                  class="custom-row"
-                >
-                  <td style="text-align: left;">{{ bom_item.material_num }}</td>
-                  <td style="text-align: right;">{{ bom_item.qty }}</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="2">
-                    共 {{ filteredBoms.length }} 項
-                  </td>
-                </tr>
-              </tfoot>
-            </v-table>
-          </div>
--->
 
-<!--
-<div
-  v-if="
-    isTableVisible &&
-    activeBomItemId === item.id && getFilteredBoms(item).length > 0 && !isGifDisabled(item)"
-  :style="adjustTablePosition"
->
--->
 <div
   v-if="
     isTableVisible &&
@@ -709,33 +625,6 @@
         工序
       </v-btn>
 
-      <!-- 已設定工序：改成 delete + pencil 兩個 icon 按鍵 -->
-       <!--:disabled="isEditProcessDisabled(item) || item.has_any_running_process"-->
-    <!--
-      <div v-else class="add-process-icon-group">
-        <v-btn
-          size="small"
-          icon
-          class="btn-add-process-icon btn-add-process-icon--delete"
-
-          :disabled="isEditProcessDisabled(item) || isSchedulingDialogLocked(item)"
-          @click.stop="onClickDeleteSchedule(item)"
-        >
-          <v-icon size="20" color="red">mdi-delete</v-icon>
-        </v-btn>
-
-        <v-btn
-          size="small"
-          icon
-          class="btn-add-process-icon btn-add-process-icon--edit"
-
-          :disabled="isEditProcessDisabled(item) || isSchedulingDialogLocked(item)"
-          @click="openSchedulingDialog(item)"
-        >
-          <v-icon size="20" color="blue">mdi-pencil</v-icon>
-        </v-btn>
-      </div>
-    -->
 <!--0714 丁副-->
 <div v-else class="add-process-icon-group">
   <v-btn
@@ -791,7 +680,7 @@
           <span
             v-if="hasOtherUserStarted(item)"
             class="other-user-dot"
-          />
+          ></span>
 
           <v-btn
             size="small"
@@ -841,12 +730,15 @@ import eventBus from '../mixins/enentBus.js';
 import { useRoute } from 'vue-router';
 
 const search = ref('');
+const tableSearch = ref('');
+const isSearchLoading = ref(false);
+
+let searchTimer = null;
 
 import { useRouter } from 'vue-router';
 const router = useRouter();
 
 // +++
-
 const menuOpen = ref(false)
 const today = new Date()
 const menuKey = ref(0)
@@ -898,15 +790,12 @@ const props = defineProps({ showFooter: Boolean });
 // ------------------------------------------------------------
 // 工序選擇後的二次確認 Dialog
 // ------------------------------------------------------------
-//const processConfirmDialog = ref(false)
 
 // 避免確認送出時重複點擊
 const processConfirmLoading = ref(false)
 
 // 本次等待確認的 item
 const pendingProcessItem = ref(null)
-
-//const scheduleItem = ref(null)
 
 // 刪除對話框相關
 const deleteTitle = ref('刪除工單');
@@ -943,7 +832,6 @@ const footerOptions = [
 ];
 
 //            0         1        2          3        4            5           6            7           8            9
-//const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '雷射作業中', 'aa/bb/00', '檢驗作業中', 'aa/bb/cc',]
 const str2=['未備料', '備料中', '備料完成', '未組裝', '組裝作業中', 'aa/00/00', '檢驗作業中', 'aa/bb/cc', '雷射作業中', 'aa/bb/00',]
 
 const headers = [
@@ -1030,55 +918,26 @@ const scheduling_dialog = ref(false);
 const scheduling_target_item = ref(null);
 const scheduling_dialog_loading = ref(false);
 const scheduling_dialog_orde_num = ref('');
-const schedulingSteps = ref([])   // dialog 內顯示的工序清單
-const dragFromIndex = ref(null)   // 記錄拖曳來源 index
+const schedulingSteps = ref([])               // dialog 內顯示的工序清單
+const dragFromIndex = ref(null)               // 記錄拖曳來源 index
 
 const schedulingDialogLockedIds = ref(new Set());
 const schedulingClientId = `${app_user_id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 // ===== 預設工序 =====
-const assemble_steps = ref([
-  /*
-  { id: 1, name: 'a1', checked: true },
-  { id: 2, name: 'a2', checked: true },
-  { id: 3, name: 'a3', checked: false },
-  { id: 4, name: 'a4', checked: false },
-  { id: 5, name: 'a5', checked: false },
-  { id: 6, name: 'a6', checked: false },
-  { id: 7, name: 'a7', checked: false },
-  { id: 8, name: 'a8', checked: false },
-  */
-])
-
-const check_steps = ref([
-  /*
-  { id: 1, name: 't1', checked: true },
-  { id: 2, name: 't2', checked: true },
-  { id: 3, name: 't3', checked: false },
-  { id: 4, name: 't4', checked: false },
-  { id: 5, name: 't5', checked: false },
-  { id: 6, name: 't6', checked: false },
-  { id: 7, name: 't7', checked: true },
-  { id: 8, name: 't8', checked: true },
-  */
-])
-const scheduleMode = ref('assemble')  // 工序模式（assemble / check）
-const scheduleAlertDialog = ref(false)
-const scheduleAlertMessage = ref('')
-const scheduleAlertType = ref('')     // none / all-empty / partial
-const scheduledMaterialIds = ref(new Set())
+const assemble_steps = ref([]);
+const check_steps = ref([]);
+const scheduleMode = ref('assemble');         // 工序模式（assemble / check）
+const scheduleAlertDialog = ref(false);
+const scheduleAlertMessage = ref('');
+const scheduleAlertType = ref('');            // none / all-empty / partial
+const scheduledMaterialIds = ref(new Set());
 
 const refreshing = ref(false);
 
 const timerMap = new Map();
 
 let __disposedAll = false;
-
-//const PROCESS_TYPES = ['21', '22', '23']
-//const countsByType = ref({ '21': {}, '22': {}, '23': {} })
-//const activeMap = reactive({
-//  '21': {}, '22': {}, '23': {}
-//})
 
 const selectedAsmId = ref(null);
 
@@ -1089,6 +948,34 @@ const bomsMap = ref({})
 const activeBomItemId = ref(null)
 
 //=== watch ===
+
+watch(search, (newValue) => {
+  // 使用者持續輸入時，取消前一次尚未執行的搜尋
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+
+  isSearchLoading.value = true;
+
+  // 停止輸入 300ms 後才實際套用搜尋
+  searchTimer = setTimeout(async () => {
+    tableSearch.value = String(newValue || '').trim();
+
+    // 等待 v-data-table 完成篩選與 DOM 更新
+    await nextTick();
+
+    // 再等待瀏覽器完成畫面繪製
+    await new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+
+    isSearchLoading.value = false;
+    searchTimer = null;
+  }, 300);
+});
 
 // 當輸入滿 12 碼，就自動處理條碼
 watch(bar_code, (newVal) => {
@@ -1307,8 +1194,6 @@ onMounted(async () => {
       if ([1, 2, 3].includes(num)) {
         const temp_msg = `物料已經進入第${num}號裝卸站!`;
         console.warn(temp_msg);
-        //activeColor.value='yello';  // 物料進站
-        //showSnackbar(temp_msg, 'yellow lighten-5');
       } else {
         console.error('接收到不合法的裝卸站號碼:', data.message);
       }
@@ -1437,6 +1322,12 @@ onBeforeMount(() => {
 });
 
 onBeforeUnmount(() => {
+  // 清除搜尋延遲計時器
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+
   if (!socket.value) return
 
   socket.value?.off('assemble-started', handleAssembleStarted);
@@ -1545,7 +1436,6 @@ function disposeAllTimersOnce() {
 // 下面這三個轉接器, 可避免在模板裡出現「函式呼叫＋屬性賦值」，VS Code 會比較乾淨
 
 // 取得／設定 isPaused（避免在模板裡對函式呼叫結果賦值）
-//const isPausedOf = (row) => getT(row).isPaused
 const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
 
 const setPausedOf = (row, v) => {
@@ -1582,98 +1472,6 @@ function processTypeOf(row) {
 function idOf(row) {
   return row.id;
 }
-
-/*
-async function restoreAllMyTimers() {
-  const me = safeUserId.value;      // 登入人員代號
-  if (!me) {
-    console.warn('[restoreAllMyTimers] skip: current user not ready');
-    return;
-  }
-
-  const rows = materials_and_assembles.value || []
-  for (const row of rows) {
-    const t = getT(row)
-    console.log("t:", t)
-    if (!t?.restoreProcess) continue
-    try {
-      // 讓後端回傳 elapsed / paused 狀態；restoreOnly=true 不會重寫 begin_time
-      await t.restoreProcess(row.id, processTypeOf(row), me, row.assemble_id)
-      // useProcessTimerBegin.js 內已處理：paused 就 pause；running 就啟動本地 ticker + autoUpdate
-    } catch (e) {
-      console.warn('restore fail for row', row.id, e)
-    }
-  }
-}
-*/
-
-/*
-const shouldRestoreRow = (row) => {
-  const me = safeUserId.value;
-  if (!me || !row) return false;
-
-  const sameUser =
-    String(row.isOpenEmpId ?? '') === me ||
-    String(row.show_name ?? '') === me ||
-    String(row.user_id ?? '') === me ||
-    String(row.process_user_id ?? '') === me;
-
-  const started =
-    row.hasStarted === true ||
-    row.hasStarted === 1 ||
-    row.hasStarted === '1' ||
-    row.startStatus === true ||
-    row.startStatus === 1 ||
-    row.startStatus === '1' ||
-    row.show_timer === true ||
-    row.show_timer === 1 ||
-    row.show_timer === '1';
-
-  const ok = sameUser && started;
-
-  if (ok) {
-    console.log('[shouldRestoreRow] match row=', {
-      id: row.id,
-      assemble_id: row.assemble_id,
-      isOpenEmpId: row.isOpenEmpId,
-      show_name: row.show_name,
-      hasStarted: row.hasStarted,
-      startStatus: row.startStatus,
-      show_timer: row.show_timer,
-    });
-  }
-
-  return ok;
-};
-*/
-
-/*
-const shouldRestoreRow = (row) => {
-  if (!row) return false;
-
-  const hasActiveTimer =
-    row.show_timer === true ||
-    row.show_timer === 1 ||
-    row.show_timer === '1' ||
-    Number(row.my_process_id || 0) > 0 ||
-    Number(row.active_process_id || 0) > 0 ||
-    Array.isArray(row.begin_records) && row.begin_records.length > 0;
-
-  if (hasActiveTimer) {
-    console.log('[shouldRestoreRow] active timer row=', {
-      id: row.id,
-      assemble_id: row.assemble_id,
-      order_num: row.order_num,
-      show_name: row.show_name,
-      my_process_id: row.my_process_id,
-      begin_records: row.begin_records,
-      currentStartTime: row.currentStartTime,
-    });
-  }
-
-  return hasActiveTimer;
-};
-*/
 
 const shouldRestoreRow = (row) => {
   const me = String(safeUserId.value || '').trim();
@@ -1718,100 +1516,6 @@ const shouldRestoreRow = (row) => {
   return hasTimerFlag && timerUserId === me;
 };
 
-/*
-async function restoreActiveTimersOnly() {
-  const me = safeUserId.value;
-  if (!me) {
-    console.warn('[restoreActiveTimersOnly] skip: current user not ready');
-    return;
-  }
-
-  const allRows = materials_and_assembles.value || [];
-
-  console.log('[restore] me =', me);
-  console.log(
-    '[restore] scan =',
-    allRows.slice(0, 20).map(r => ({
-      id: r.id,
-      assemble_id: r.assemble_id,
-      isOpenEmpId: r.isOpenEmpId,
-      show_name: r.show_name,
-      hasStarted: r.hasStarted,
-      startStatus: r.startStatus,
-      show_timer: r.show_timer,
-    }))
-  );
-
-  const rows = allRows.filter(shouldRestoreRow);
-
-  console.log('[restore] rows=', rows.map(r => ({
-    id: r.id,
-    assemble_id: r.assemble_id,
-  })));
-
-  if (!rows.length) return;
-
-  // 先把 timer 掛出來
-  for (const row of rows) {
-    row._showMyTimer = true;
-    //row.show_name = me;
-    //
-    row.show_name =
-    row.show_name ||
-    row.active_user_ids?.[0] ||
-    row.begin_records?.[0]?.user_id ||
-    me;
-    //
-  }
-
-  await nextTick();
-
-  for (const row of rows) {
-    const t = getT(row);
-    if (!t?.restoreProcess) continue;
-
-    const pType = processTypeOf(row)
-
-    if (!pType) {
-      console.warn('[restore] processTypeOf(row) failed:', row)
-      continue
-    }
-
-    try {
-
-      //await t.restoreProcess(
-      //  row.id,
-      //  processTypeOf(row),
-      //  me,
-      //  row.assemble_id
-      //);
-      //
-      const restoreUserId =
-        row.show_name ||
-        row.active_user_ids?.[0] ||
-        row.begin_records?.[0]?.user_id ||
-        me;
-
-      await t.restoreProcess(
-        row.id,
-        processTypeOf(row),
-        restoreUserId,
-        row.assemble_id
-      );
-      //
-
-      row._showMyTimer = true;
-      //row.show_name = me;
-      //
-      row.show_name = restoreUserId;
-      //
-    } catch (e) {
-      console.warn('[restore] fail row=', row.id, e);
-    }
-  }
-}
-*/
-//
 async function restoreActiveTimersOnly() {
   const me = String(safeUserId.value || '').trim();
 
@@ -2041,250 +1745,6 @@ function checkShowTimer(row) {
   return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
 }
 
-/*
-async function onClickBegin(row) {
-  console.log("onClickBegin(), row", row);
-
-  const me = safeUserId.value;
-  if (!me) {
-    showSnackbar("使用者資料尚未載入，請稍後再試!", "red-darken-2");
-    return;
-  }
-
-  if (!row || !row.id) {
-    showSnackbar("資料異常，按鍵無效!", "red-darken-2")
-    return
-  }
-
-  const t = getT(row) // 以 (row.id + step + userId) 當 key
-  if (!t) {
-    showSnackbar("計時器尚未準備好!", "red-darken-2")
-    return
-  }
-
-  console.log("t, t.processId.value, t.hasStarted?.value, t.isPaused.value:", t, t.processId.value, t.hasStarted?.value, t.isPaused.value)
-
-  if (t.processId.value && (t.hasStarted.value || !t.isPaused.value)) {
-    showSnackbar("已經領料生產報工了...", "orange-darken-2")
-    return
-  }
-
-  selectedAsmId.value = row.index;
-
-  // ✅ 先讓畫面立即顯示 timer，不等 refresh / 後端
-  row._showMyTimer = true;
-  row.show_timer = true;
-  row.show_name = me;
-
-  // ✅ 按開始後，立即讓 delete / pencil disable
-  row.hasStarted = true;
-  row.startStatus = true;
-  row.isOpen = true;
-  row.isOpenEmpId = me;
-  //
-
-  await nextTick();
-
-  // 1) 先 start（後端可能只建立/取回流程，仍為暫停狀態）
-  if (!t.processId?.value) {
-    const pid = await t.startProcess(
-      row.id,
-      processTypeOf(row),
-      me,
-      row.assemble_id
-    )
-
-    if (!pid || (typeof pid === 'object' && pid.success === false)) {
-      showSnackbar("開始失敗：使用者或流程資料異常!", "red-darken-2");
-      return;
-    } else {
-
-      // 同訂單 工序 全部 disable
-      markSameOrderProcessLocked(row)
-
-      console.log("emit socket assemble-started")
-      socket.value?.emit('assemble-started', {
-        assemble_id: row.assemble_id,
-        material_id: row.id,
-        order_num: row.order_num,
-        //user_id: currentUser.value?.empID || currentUser.value?.emp_id || '',
-        user_id: me,
-        user_name: currentUser.value?.name || '',
-      })
-
-      console.log("emit socket icon-disable")
-      const materialId = row.material_id || row.id
-      socket.value?.emit('icon-disable', {
-        material_id: materialId,
-        assemble_id: row.assemble_id,
-        order_num: row.order_num,
-        //index: row.index,
-      })
-
-    }
-  }
-
-  console.log("t.isPaused:", t.isPaused.value)
-
-  // 若後端回來是 paused，再切成 running
-  if (t.isPaused.value) {
-    await t.toggleTimer();    // paused -> active（後端寫 begin_time）
-    t.isPaused.value = false;
-  }
-
-  await updateItem(row);
-
-  // 不要整頁 refresh；只更新局部資料/綠點
-  //await nextTick();
-  //await safeRefresh();
-
-  await nextTick();
-  //await restoreAllMyTimers();
-}
-*/
-
-/*
-async function onClickBegin(row) {
-  console.log('onClickBegin(), row', row);
-
-  const me = String(safeUserId.value || '').trim();
-
-  if (!me) {
-    showSnackbar(
-      '使用者資料尚未載入，請稍後再試!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  if (!row?.id || !row?.assemble_id) {
-    showSnackbar(
-      '資料異常，缺少工單或工序資料!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  const t = getT(row);
-
-  if (!t) {
-    showSnackbar(
-      '計時器尚未準備好!',
-      'red-darken-2'
-    );
-    return;
-  }
-
-  // 只判斷目前登入者自己的 timer instance
-  if (
-    t.processId.value &&
-    (
-      t.hasStarted.value ||
-      !t.isPaused.value
-    )
-  ) {
-    showSnackbar(
-      '此工序已經開始計時!',
-      'orange-darken-2'
-    );
-    return;
-  }
-
-  selectedAsmId.value = row.index;
-
-  // 先顯示目前登入者自己的 timer 區塊
-  row._showMyTimer = true;
-  row.show_name = me;
-
-  await nextTick();
-
-  try {
-    if (!t.processId.value) {
-      const result = await t.startProcess(
-        row.id,
-        processTypeOf(row),
-        me,
-        row.assemble_id
-      );
-
-      const processId =
-        typeof result === 'object'
-          ? Number(
-              result?.process_id ??
-              result?.id ??
-              0
-            )
-          : Number(result || 0);
-
-      const success =
-        typeof result === 'object'
-          ? result?.success !== false
-          : processId > 0;
-
-      if (!success || processId <= 0) {
-        row._showMyTimer = false;
-        row.show_name = '';
-
-        showSnackbar(
-          '開始失敗：無法建立個人報工流程!',
-          'red-darken-2'
-        );
-        return;
-      }
-
-      row.my_process_id = processId;
-
-      markSameOrderProcessLocked(row);
-
-      socket.value?.emit('assemble-started', {
-        assemble_id: row.assemble_id,
-        material_id: row.id,
-        order_num: row.order_num,
-        user_id: me,
-        user_name: currentUser.value?.name || '',
-      });
-
-      socket.value?.emit('icon-disable', {
-        material_id: row.material_id || row.id,
-        assemble_id: row.assemble_id,
-        order_num: row.order_num,
-      });
-    }
-
-    // 只啟動目前使用者自己的 process
-    if (t.isPaused.value) {
-      await t.toggleTimer();
-    }
-
-    t.isPaused.value = false;
-
-    // 後端成功後才更新顯示狀態
-    row._showMyTimer = true;
-    row.show_timer = true;
-    row.show_name = me;
-    row.hasStarted = true;
-    row.startStatus = true;
-    row.isOpen = true;
-    row.isOpenEmpId = me;
-
-    // 開始計時後不需要呼叫 updateItem()。
-    // startProcess / toggleTimer 後端已經更新 process 狀態。
-    //await updateItem(row);
-    await nextTick();
-  } catch (error) {
-    console.error('[onClickBegin] start failed:', error);
-
-    row._showMyTimer = false;
-    row.show_timer = false;
-
-    showSnackbar(
-      `開始失敗：${error?.message || '系統錯誤'}`,
-      'red-darken-2'
-    );
-  }
-}
-*/
-//
 async function onClickBegin(row) {
   console.log('onClickBegin(), row', row);
 
@@ -2429,10 +1889,8 @@ async function onClickBegin(row) {
       error
     );
 
-    /*
-     * process 已成功建立時，不要因後續畫面錯誤
-     * 把 timer 隱藏。
-     */
+    //  process 已成功建立時，不要因後續畫面錯誤
+    //  把 timer 隱藏。
     if (
       !processCreated &&
       !Number(t.processId.value || 0)
@@ -2467,10 +1925,9 @@ const safeRefresh = async () => {
   if (refreshing.value) return;
   refreshing.value = true;
   try {
-    //await listMaterialsAndAssembles();
+
     await reloadAssembleData()
-    //await nextTick();
-    //await restoreAllMyTimers();
+
   } finally {
     refreshing.value = false;
   }
@@ -2478,11 +1935,6 @@ const safeRefresh = async () => {
 
 const handleScheduleModeOk = async ()  => {
   console.log("handleScheduleModeOk 被觸發！")
-
-  //await safeRefresh();
-  //await listMaterialsAndAssembles({
-  //  user_id: currentUser.value?.empID
-  //})
 
   await reloadAssembleData();
 }
@@ -2791,43 +2243,6 @@ const isProcessStepEnabled = (item) => {
   )
 }
 
-/*
-const isEditProcessDisabled = (item) => {
-  return (
-    item?.has_any_running_process === true ||
-
-    Number(item?.abnormal_qty || 0) > 0 ||
-    Number(item?.isAssembleFirstAlarm_qty || 0) > 0 ||
-    item?.is_abnormal_process === true
-  )
-}
-*/
-
-/*
-const isEditProcessDisabled = (item) => {
-  const row = item?.raw || item || {}
-
-  return (
-    row?.has_any_running_process === true ||
-    row?.has_any_running_process === 1 ||
-    row?.has_any_running_process === '1' ||
-    row?.has_any_running_process === 'true' ||
-
-    row?.hasStarted === true ||
-    row?.hasStarted === 1 ||
-    row?.hasStarted === '1' ||
-    row?.startStatus === true ||
-    row?.startStatus === 1 ||
-    row?.startStatus === '1' ||
-
-    Number(row?.abnormal_qty || 0) > 0 ||
-    Number(row?.isAssembleFirstAlarm_qty || 0) > 0 ||
-    row?.is_abnormal_process === true
-  )
-}
-*/
-
-
 const isEditProcessDisabled = (item) => {
   const row = item?.raw || item || {}
 
@@ -2954,30 +2369,19 @@ const fetchBomsV2 = async (item) => {
 
     console.log("getBoms payload:", payload);
 
-    //const res = await getBoms(payload);
     await getBoms(payload);
 
-    //bomsMap.value[item.id] = res?.data?.boms || [];
     bomsMap.value[item.id] = currentBoms.value
 
-    //console.log("bomsMap:", item.id, bomsMap.value[item.id]);
     console.log("activeBomItemId:", activeBomItemId.value)
     console.log("bomsMap:", key, bomsMap.value[key])
     console.log("getFilteredBoms:", getFilteredBoms(item))
 
   } catch (e) {
     console.error("fetchBomsV2 failed:", e);
-    //bomsMap.value[item.id] = [];
     bomsMap.value[String(item.id)] = []
   }
 };
-
-/*
-const closeSchedulingDialog = () => {
-  scheduling_dialog.value = false;
-  scheduling_target_item.value = null;
-};
-*/
 
 const closeSchedulingDialog = () => {
   const item = scheduling_target_item.value
@@ -2997,196 +2401,6 @@ const closeSchedulingDialog = () => {
   scheduling_target_item.value = null
 }
 
-/*
-const confirmSchedulingDialog = async () => {
-  if (!scheduling_target_item.value?.id) {
-    closeSchedulingDialog()
-    return
-  }
-
-  // 先保存目前畫面 mode 的勾選狀態
-  saveCurrentSchedulingSteps(scheduleMode.value)
-
-  const hasAssemble = hasCheckedStep(assemble_steps.value)
-  const hasCheck = hasCheckedStep(check_steps.value)
-
-  // 1. 組裝 + 檢驗 都沒選
-  if (!hasAssemble && !hasCheck) {
-    scheduleAlertType.value = 'all-empty'
-    scheduleAlertMessage.value = '在組裝及檢驗還沒有工序資料'
-    scheduleAlertDialog.value = true
-    return
-  }
-
-  // 2. 其中一種沒選
-  if (!hasAssemble || !hasCheck) {
-    scheduleAlertType.value = 'partial'
-
-    if (!hasAssemble) {
-      scheduleAlertMessage.value = '在組裝工序的工序資料不完整'
-    } else {
-      scheduleAlertMessage.value = '在檢驗工序的工序資料不完整'
-    }
-
-    scheduleAlertDialog.value = true
-    return
-  }
-
-  // 3. 兩種都有選，直接走原本程序
-  await doConfirmSchedulingDialog()
-
-  console.log("schedule_mode-ok sock")
-
-  socket.value?.emit('schedule_mode-ok');
-}
-
-const doConfirmSchedulingDialog = async () => {
-  console.log("process_steps, assemble: ", assemble_steps.value)
-  console.log("process_steps, check: ", check_steps.value)
-
-  scheduling_dialog_loading.value = true
-
-  try {
-    const tt = await updateAssembleScheduleRows({
-      id: scheduling_target_item.value.id,
-      process_steps: {
-        assemble: assemble_steps.value,
-        check: check_steps.value
-      }
-    })
-
-    console.log('準備開啟工序, updateAssembleScheduleRows res:', tt.status, tt.msg)
-
-    //
-    if (tt?.status) {
-      console.log("開啟工序...")
-      socket.value?.emit('assemble-batch-released2', {
-        source: 'PickReportForAssembleBegin',
-        reason: 'schedule_rows_updated',
-        material_id: scheduling_target_item.value.id,
-        order_num: scheduling_target_item.value.order_num,
-      })
-
-      socket.value?.emit('assemble-schedule-updated', {
-        source: 'PickReportForAssembleBegin',
-        reason: 'schedule_rows_updated',
-        material_id: scheduling_target_item.value?.id,
-        order_num: scheduling_target_item.value?.order_num,
-      })
-    }
-
-    if (!tt?.status) {
-      //showSnackbar(...)
-      return
-    }
-    //
-
-    const targetId = Number(scheduling_target_item.value.id)
-
-    scheduling_target_item.value.process_step_enable = true
-    scheduledMaterialIds.value.add(targetId)
-
-    materials_and_assembles.value = materials_and_assembles.value.map(row => {
-      if (Number(row.id) === targetId) {
-        return {
-          ...row,
-          process_step_enable: true,
-          process_steps: {
-            assemble: deepClone(assemble_steps.value),
-            check: deepClone(check_steps.value),
-          },
-        }
-      }
-      return row
-    })
-
-    await safeRefresh()
-
-    materials_and_assembles.value = materials_and_assembles.value.map(row => {
-      if (Number(row.id) === targetId) {
-        return {
-          ...row,
-          process_step_enable: true
-        }
-      }
-      return row
-    })
-
-    showSnackbar('已完成工序設定', 'success')
-    closeSchedulingDialog()
-  } catch (error) {
-    console.error('confirmSchedulingDialog error:', error)
-    showSnackbar('工序設定失敗', 'red-darken-2')
-  } finally {
-    scheduling_dialog_loading.value = false
-  }
-}
-*/
-
-/*
-const confirmSchedulingDialog = async () => {
-  if (!scheduling_target_item.value?.id) {
-    closeSchedulingDialog()
-    return
-  }
-
-  // 先保存目前畫面 mode 的勾選狀態
-  saveCurrentSchedulingSteps(scheduleMode.value)
-
-  const hasAssemble = hasCheckedStep(assemble_steps.value)
-  const hasCheck = hasCheckedStep(check_steps.value)
-
-  // 除錯：確認目前開啟的是哪個 material
-  console.log('[testconfirmSchedulingDialog] target=', {
-    material_id: scheduling_target_item.value?.id,
-    order_num: scheduling_target_item.value?.order_num,
-    process_step_enable:
-      scheduling_target_item.value?.process_step_enable,
-    assemble_steps: deepClone(assemble_steps.value),
-    check_steps: deepClone(check_steps.value),
-  })
-
-  // 1. 組裝 + 檢驗都沒選
-  if (!hasAssemble && !hasCheck) {
-    scheduleAlertType.value = 'all-empty'
-    scheduleAlertMessage.value = '在組裝及檢驗還沒有工序資料'
-    scheduleAlertDialog.value = true
-    return
-  }
-
-  // 2. 其中一種沒選
-  //if (!hasAssemble || !hasCheck) {
-  //  scheduleAlertType.value = 'partial'
-  //
-  //  if (!hasAssemble) {
-  //    scheduleAlertMessage.value = '在組裝工序的工序資料不完整'
-  //  } else {
-  //    scheduleAlertMessage.value = '在檢驗工序的工序資料不完整'
-  //  }
-  //
-  //  scheduleAlertDialog.value = true
-  //  return
-  //}
-  //
-  if (!hasAssemble && !hasCheck) {
-    scheduleAlertType.value = 'all-empty'
-    scheduleAlertMessage.value =
-      '組裝及檢驗尚未選擇任何工序'
-    scheduleAlertDialog.value = true
-    return
-  }
-
-await doConfirmSchedulingDialog()
-
-  // 3. 兩種都有選
-  await doConfirmSchedulingDialog()
-
-  console.log('schedule_mode-ok sock')
-
-  socket.value?.emit('schedule_mode-ok')
-}
-*/
-//
 const confirmSchedulingDialog =
   async () => {
     if (
@@ -3201,16 +2415,13 @@ const confirmSchedulingDialog =
       return false
     }
 
-    /*
-     * 這裡不要再呼叫：
-     *
-     * saveCurrentSchedulingSteps(
-     *   scheduleMode.value
-     * )
-     *
-     * 因為第一層按完成時已保存。
-     */
-
+    // 這裡不要再呼叫：
+    //
+    // saveCurrentSchedulingSteps(
+    //   scheduleMode.value
+    // )
+    //
+    // 因為第一層按完成時已保存。
     const hasAssemble =
       hasCheckedStep(
         assemble_steps.value
@@ -3231,13 +2442,11 @@ const confirmSchedulingDialog =
       return false
     }
 
-    /*
-     * 允許：
-     *
-     * 1. 只有組裝
-     * 2. 只有檢驗
-     * 3. 組裝＋檢驗
-     */
+    //  允許：
+    //
+    //  1. 只有組裝
+    //  2. 只有檢驗
+    //  3. 組裝＋檢驗
     const ok =
       await doConfirmSchedulingDialog()
 
@@ -3254,226 +2463,6 @@ const confirmSchedulingDialog =
     return ok
   }
 
-/*
-const doConfirmSchedulingDialog = async () => {
-  const targetItem = scheduling_target_item.value
-
-  if (!targetItem?.id) {
-    showSnackbar('目找不到前設定工序的工單', 'red-darken-2')
-    return
-  }
-
-  // 先固定住此次送出的 material，避免 refresh 或其他動作改掉 ref
-  const targetId = Number(targetItem.id)
-  const targetOrderNum = targetItem.order_num || ''
-
-  // 保留此次設定完成的工序，避免 refresh 被舊資料覆蓋
-  const savedProcessSteps = {
-    assemble: deepClone(assemble_steps.value),
-    check: deepClone(check_steps.value),
-  }
-
-  const payload = {
-    id: targetId,
-    process_steps: deepClone(savedProcessSteps),
-  }
-  //const payload = {
-  //  id: targetId,
-  //  process_steps: {
-  //    assemble: deepClone(assemble_steps.value),
-  //    check: deepClone(check_steps.value),
-  //  },
-  //}
-
-  console.log(
-  '[testconfirmSchedulingDialog] target=',
-  JSON.stringify({
-    material_id: scheduling_target_item.value?.id,
-    order_num: scheduling_target_item.value?.order_num,
-    process_step_enable:
-      scheduling_target_item.value?.process_step_enable,
-    assemble_checked: assemble_steps.value
-      .filter(step => step.checked)
-      .map(step => ({
-        id: step.id,
-        name: step.name,
-      })),
-    check_checked: check_steps.value
-      .filter(step => step.checked)
-      .map(step => ({
-        id: step.id,
-        name: step.name,
-      })),
-  }, null, 2)
-)
-
-  console.log(
-    '[testdoConfirmSchedulingDialog] payload=',
-    deepClone(payload)
-  )
-
-  scheduling_dialog_loading.value = true
-
-  try {
-    const tt = await updateAssembleScheduleRows(payload)
-
-    console.log(
-      '[testupdateAssembleScheduleRows] response=',
-      tt
-    )
-
-    console.log(
-      '準備開啟工序, updateAssembleScheduleRows res:',
-      tt?.status,
-      tt?.msg
-    )
-
-    // API 失敗時，不可以繼續把前端改成已設定
-    if (!tt?.status) {
-      console.error(
-        '[testupdateAssembleScheduleRows] failed',
-        {
-          material_id: targetId,
-          order_num: targetOrderNum,
-          response: tt,
-        }
-      )
-
-      showSnackbar(
-        tt?.msg || '工序設定失敗',
-        'red-darken-2'
-      )
-      return
-    }
-
-    console.log(
-      '[testupdateAssembleScheduleRows] success',
-      {
-        material_id: targetId,
-        order_num: targetOrderNum,
-      }
-    )
-
-    socket.value?.emit('assemble-batch-released2', {
-      source: 'PickReportForAssembleBegin',
-      reason: 'schedule_rows_updated',
-      material_id: targetId,
-      order_num: targetOrderNum,
-    })
-
-    socket.value?.emit('assemble-schedule-updated', {
-      source: 'PickReportForAssembleBegin',
-      reason: 'schedule_rows_updated',
-      material_id: targetId,
-      order_num: targetOrderNum,
-    })
-
-    // 只有後端成功後，才更新前端狀態
-    if (scheduling_target_item.value) {
-      scheduling_target_item.value.process_step_enable = true
-    }
-
-    scheduledMaterialIds.value.add(targetId)
-
-    materials_and_assembles.value =
-    materials_and_assembles.value.map(row => {
-      if (Number(row.id) === targetId) {
-        return {
-          ...row,
-          process_step_enable: true,
-          process_steps: deepClone(savedProcessSteps),
-        }
-      }
-
-      return row
-    })
-
-    //materials_and_assembles.value =
-    //materials_and_assembles.value.map(row => {
-    //  if (Number(row.id) === targetId) {
-    //    return {
-    //      ...row,
-    //      process_step_enable: true,
-    //      process_steps: {
-    //        assemble: deepClone(assemble_steps.value),
-    //        check: deepClone(check_steps.value),
-    //      },
-    //    }
-    //  }
-    //
-    //  return row
-    //})
-
-    console.log(
-      '[before safeRefresh]',
-      {
-        targetId,
-        targetOrderNum,
-      }
-    )
-
-    await safeRefresh()
-
-    console.log(
-      '[after safeRefresh] matching rows=',
-      materials_and_assembles.value
-        .filter(row => Number(row.id) === targetId)
-        .map(row => ({
-          id: row.id,
-          order_num: row.order_num,
-          assemble_id: row.assemble_id,
-          schedule_id: row.schedule_id,
-          process_step_enable:
-            row.process_step_enable,
-          assemble_work: row.assemble_work,
-        }))
-    )
-
-    // refresh 後，再保護一次前端旗標
-    //materials_and_assembles.value =
-    //materials_and_assembles.value.map(row => {
-    //  if (Number(row.id) === targetId) {
-    //    return {
-    //      ...row,
-    //      process_step_enable: true,
-    //    }
-    //  }
-    //
-    //  return row
-    //})
-
-    // refresh 後，再保護此次最新工序
-    materials_and_assembles.value =
-    materials_and_assembles.value.map(row => {
-      if (Number(row.id) === targetId) {
-        return {
-          ...row,
-          process_step_enable: true,
-          process_steps: deepClone(savedProcessSteps),
-        }
-      }
-
-      return row
-    })
-
-    showSnackbar('已完成工序設定', 'success')
-    closeSchedulingDialog()
-  } catch (error) {
-    console.error(
-      '[doConfirmSchedulingDialog] error=',
-      error
-    )
-
-    showSnackbar(
-      '工序設定失敗',
-      'red-darken-2'
-    )
-  } finally {
-    scheduling_dialog_loading.value = false
-  }
-}
-*/
-//
 const doConfirmSchedulingDialog = async () => {
   const targetItem =
     scheduling_target_item.value
@@ -3499,11 +2488,9 @@ const doConfirmSchedulingDialog = async () => {
   scheduling_dialog_loading.value = true
 
   try {
-    /*
-     * 送出前建立固定副本。
-     * 避免 Dialog 關閉或頁籤切換後，
-     * ref 陣列又被其他程式修改。
-     */
+    // 送出前建立固定副本。
+    // 避免 Dialog 關閉或頁籤切換後，
+    // ref 陣列又被其他程式修改。
     const selectedProcessSteps = {
       assemble: deepClone(
         assemble_steps.value
@@ -3525,14 +2512,12 @@ const doConfirmSchedulingDialog = async () => {
       tt
     )
 
-    /*
-     * 相容不同 API wrapper 回傳格式：
-     *
-     * tt.status
-     * tt.return_value
-     * tt.data.status
-     * tt.data.return_value
-     */
+    //  相容不同 API wrapper 回傳格式：
+    //
+    //  tt.status
+    //  tt.return_value
+    //  tt.data.status
+    //  tt.data.return_value
     const apiOk =
       tt?.status === true ||
       tt?.status === 1 ||
@@ -3561,10 +2546,8 @@ const doConfirmSchedulingDialog = async () => {
         'red-darken-2'
       )
 
-      /*
-       * API 失敗時回到第一層，
-       * checkbox 仍保留。
-       */
+      // API 失敗時回到第一層，
+      // checkbox 仍保留。
       scheduling_dialog.value = true
 
       return false
@@ -3573,10 +2556,8 @@ const doConfirmSchedulingDialog = async () => {
     const targetId =
       Number(targetItem.id)
 
-    /*
-     * 先更新前端，避免 safeRefresh 尚未完成時，
-     * 畫面完全沒有工序。
-     */
+    // 先更新前端，避免 safeRefresh 尚未完成時，
+    // 畫面完全沒有工序。
     materials_and_assembles.value =
       materials_and_assembles.value.map(
         row => {
@@ -3637,10 +2618,9 @@ const doConfirmSchedulingDialog = async () => {
       }
     )
 
-    /*
-     * 必須重新向後端取得新增後的
-     * assemble rows。
-     */
+    // 必須重新向後端取得新增後的
+    // assemble rows。
+
     await safeRefresh()
 
     showSnackbar(
@@ -3673,26 +2653,6 @@ const doConfirmSchedulingDialog = async () => {
   }
 }
 
-/*
-const lockExistingSteps = (steps = []) => {
-  return deepClone(steps).map(step => ({
-    ...step,
-    checked: !!step.checked,
-    locked: !!step.checked,   // 已經選過的工序鎖住，不能取消
-  }))
-}
-*/
-//
-/*
-const lockExistingSteps = (steps = []) => {
-  return deepClone(steps).map(step => ({
-    ...step,
-    checked: !!step.checked,
-    locked: !!step.checked,   // 只有 checked=true 才鎖住
-  }))
-}
-*/
-//
 // 0714 丁副版本
 const lockExistingSteps = (steps = []) => {
   return deepClone(Array.isArray(steps) ? steps : [])
@@ -3710,10 +2670,9 @@ const hasUncheckedStep = (steps = []) => {
 }
 
 const isAddProcessButtonDisabled = (item) => {
-  //
   if (String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)
     return true
-  //
+
   const ps = item?.process_steps || {}
 
   const assemble = Array.isArray(ps.assemble) ? ps.assemble : []
@@ -3736,30 +2695,9 @@ const isAddProcessButtonDisabled = (item) => {
   ) {
     return true
   }
-  //
+
   return false
 }
-/*
-const openSchedulingDialog = (item) => {
-  scheduling_target_item.value = item
-
-  const ps = item.process_steps || {}
-
-  assemble_steps.value = lockExistingSteps(ps.assemble || [])
-  check_steps.value = lockExistingSteps(ps.check || [])
-
-  if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-*/
 
 const resetUnscheduledSteps = (steps = []) => {
   return (Array.isArray(steps) ? steps : [])
@@ -3772,128 +2710,6 @@ const resetUnscheduledSteps = (steps = []) => {
     }))
 }
 
-/*
-const openSchedulingDialog = (item) => {
-  if (isSchedulingDialogLocked(item)) {
-    showSnackbar(
-      `此工單正在由 ${item.scheduling_dialog_locked_by || '其他人'} 設定工序`,
-      'red-darken-2'
-    )
-    return
-  }
-
-  scheduling_target_item.value = item
-
-  socket.value?.emit('assemble-scheduling-dialog-lock', {
-    source: 'PickReportForAssembleBegin',
-    material_id: item.id,
-    order_num: item.order_num,
-    user_id: currentUser.value?.empID || '',
-    user_name: currentUser.value?.name || '',
-    client_id: schedulingClientId,
-  })
-
-  const ps = item.process_steps || {}
-
-  assemble_steps.value = lockExistingSteps(ps.assemble || [])
-  check_steps.value = lockExistingSteps(ps.check || [])
-
-  if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-*/
-//
-/*
-const openSchedulingDialog = (item) => {
-  if (isSchedulingDialogLocked(item)) {
-    showSnackbar(
-      `此工單正在由 ${item.scheduling_dialog_locked_by || '其他人'} 設定工序`,
-      'red-darken-2'
-    )
-    return
-  }
-
-  scheduling_target_item.value = item
-
-  socket.value?.emit('assemble-scheduling-dialog-lock', {
-    source: 'PickReportForAssembleBegin',
-    material_id: item.id,
-    order_num: item.order_num,
-    user_id: currentUser.value?.empID || '',
-    user_name: currentUser.value?.name || '',
-    client_id: schedulingClientId,
-  })
-
-  //const ps = item.process_steps || {}
-  const ps = item.process_steps ?? {
-    assemble: [],
-    check: [],
-  }
-
-  const isUnscheduled =
-    Number(item.process_step_enable ?? 0) === 0
-
-  if (isUnscheduled) {
-    // 尚未設定工序：
-    // 每次開啟都全部清空，且 checkbox 可操作
-    assemble_steps.value = (Array.isArray(ps.assemble) ? ps.assemble : [])
-      .filter(step => !step?.deleted)
-      .map(step => ({
-        ...step,
-        checked: false,
-        locked: false,
-        deleted: false,
-      }))
-
-    check_steps.value = (Array.isArray(ps.check) ? ps.check : [])
-      .filter(step => !step?.deleted)
-      .map(step => ({
-        ...step,
-        checked: false,
-        locked: false,
-        deleted: false,
-      }))
-  } else {
-    // 已設定工序：
-    // 保留原本已勾選與 locked 狀態
-    assemble_steps.value = lockExistingSteps(
-      Array.isArray(ps.assemble)
-        ? ps.assemble.filter(step => !step?.deleted)
-        : []
-    )
-
-    check_steps.value = lockExistingSteps(
-      Array.isArray(ps.check)
-        ? ps.check.filter(step => !step?.deleted)
-        : []
-    )
-  }
-
-  // 尚未設定工序時，固定先顯示組裝頁籤
-  if (isUnscheduled) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else if (hasUncheckedStep(assemble_steps.value)) {
-    scheduleMode.value = 'assemble'
-    schedulingSteps.value = deepClone(assemble_steps.value)
-  } else {
-    scheduleMode.value = 'check'
-    schedulingSteps.value = deepClone(check_steps.value)
-  }
-
-  scheduling_dialog_orde_num.value = item.order_num
-  scheduling_dialog.value = true
-}
-*/
-//
 const openSchedulingDialog = (item) => {
   const row = item?.raw || item
 
@@ -4025,29 +2841,6 @@ function getScheduleName(item) {
   return found?.name || ''
 }
 
-/*
-function canBeginBySchedule(item) {
-
-  const row = item?.raw || item || {}
-
-  if (!(Number(row.schedule_id) > 0))
-    return false
-
-  if (row.show_timer)
-    return false
-
-  if (row.has_any_running_process)
-    return false
-
-  if (Number(row.users_for_press_start || 0) > 0)
-    return false
-
-  if ((row.active_user_ids || []).length > 0)
-    return false
-
-  return true
-}
-*/
 function canBeginBySchedule(item) {
   return !isStartButtonDisabled(item)
 }
@@ -4568,21 +3361,6 @@ const handleAssembleScheduleUpdated = async (payload) => {
 // 延遲函數
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-/*
-const isScheduleActionDisabled = (item) => {
-  const row = item?.raw || item || {}
-
-  return (
-    isEditProcessDisabled(row) ||
-    row.has_any_running_process === true ||
-    row.has_any_running_process === 1 ||
-    row.has_any_running_process === '1' ||
-    row.has_any_running_process === 'true' ||
-    hasOtherUserStarted(row) ||
-    row.show_timer === true
-  )
-}
-*/
 const isScheduleActionDisabled = (item) => {
   const row = item?.raw || item || {}
   const orderNum = String(row.order_num || '').trim()
@@ -4653,29 +3431,6 @@ const applyOrderRunningLocks = () => {
   lockedOrderNums.value = runningOrders
 }
 
-/*
-const handleSchedulingDialogLock = (payload) => {
-
-  if (payload?.client_id === schedulingClientId) return
-
-  const materialId = Number(payload?.material_id)
-  if (!materialId) return
-
-  schedulingDialogLockedIds.value.add(materialId)
-
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (Number(row.id) !== materialId) return row
-
-    return {
-      ...row,
-      scheduling_dialog_locked: true,
-      scheduling_dialog_locked_by: payload?.user_name || payload?.user_id || '其他人'
-    }
-  })
-
-}
-*/
-//
 const handleSchedulingDialogLock = (payload) => {
   const myUserId = String(currentUser.value?.empID || '').trim()
   const lockUserId = String(payload?.user_id || '').trim()
@@ -4706,29 +3461,6 @@ const handleSchedulingDialogLock = (payload) => {
     })
 }
 
-/*
-const handleSchedulingDialogUnlock = (payload) => {
-
-  if (payload?.client_id === schedulingClientId) return
-
-  const materialId = Number(payload?.material_id)
-  if (!materialId) return
-
-  schedulingDialogLockedIds.value.delete(materialId)
-
-  materials_and_assembles.value = materials_and_assembles.value.map(row => {
-    if (Number(row.id) !== materialId) return row
-
-    return {
-      ...row,
-      scheduling_dialog_locked: false,
-      scheduling_dialog_locked_by: ''
-    }
-  })
-
-}
-*/
-//
 const handleSchedulingDialogUnlock = (payload) => {
   const myUserId = String(currentUser.value?.empID || '').trim()
   const lockUserId = String(payload?.user_id || '').trim()
@@ -4784,99 +3516,6 @@ const handleSchedulingDialogLocks = (locks) => {
   })
 }
 
-/*
-const isStartButtonDisabled = (item) => {
-  const row = item?.raw || item || {}
-
-  if (
-  row.assemble_id == 4243 ||
-  row.id == 4243
-) {
-  console.log("=====4243=====");
-  console.log(JSON.parse(JSON.stringify(row)));
-}
-
-  if (!row) return true
-
-  // 沒有工序，不可開始
-  if (!(Number(row.schedule_id) > 0)) return true
-
-  // 這筆本身正在計時，才 disable
-  if (
-    row.show_timer === true ||
-    row.show_timer === 1 ||
-    row.show_timer === '1' ||
-    row.is_current_running === true ||
-    row.is_current_running === 1 ||
-    row.is_current_running === '1' ||
-    Number(row.my_process_id || 0) > 0 ||
-    Number(row.active_process_id || 0) > 0
-  ) {
-    return true
-  }
-
-  // 這筆已結束
-  if (row.currentEndTime) return true
-
-  // 只有 show2_ok = 3 可開始
-  if (![3, '3'].includes(row.show2_ok)) return true
-
-  // 這筆本身 input_disable = 1
-  if (
-    row.input_disable === true ||
-    row.input_disable === 1 ||
-    row.input_disable === '1'
-  ) {
-    return true
-  }
-
-  return false
-}
-*/
-
-/*
-const isStartButtonDisabled = (item) => {
-  const row = item?.raw || item || {}
-  if (!row) return true
-
-  if (!(Number(row.schedule_id) > 0)) return true
-
-  if (
-    row.show_timer === true ||
-    row.show_timer === 1 ||
-    row.show_timer === '1' ||
-    row.is_current_running === true ||
-    row.is_current_running === 1 ||
-    row.is_current_running === '1' ||
-    Number(row.my_process_id || 0) > 0 ||
-    Number(row.active_process_id || 0) > 0
-  ) {
-    return true
-  }
-
-  if (row.currentEndTime) return true
-
-  // 注意：後端目前沒有回 show2_ok，所以不能用 undefined 擋開始鍵
-  if (
-    row.show2_ok !== undefined &&
-    row.show2_ok !== null &&
-    row.show2_ok !== '' &&
-    ![3, '3'].includes(row.show2_ok)
-  ) {
-    return true
-  }
-
-  if (
-    row.input_disable === true ||
-    row.input_disable === 1 ||
-    row.input_disable === '1'
-  ) {
-    return true
-  }
-
-  return false
-}
-*/
 const isStartButtonDisabled = (item) => {
   const row = item?.raw || item || {}
   if (!row) return true
@@ -4930,44 +3569,6 @@ const getProcessText = (step, index) => {
   ).trim()
 }
 
-/*
-const selectedAssembleSteps = computed(() => {
-  const rows = Array.isArray(
-    processSteps.value?.assemble
-  )
-    ? processSteps.value.assemble
-    : []
-
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(
-        step,
-        index
-      ),
-    }))
-})
-
-const selectedCheckSteps = computed(() => {
-  const rows = Array.isArray(
-    processSteps.value?.check
-  )
-    ? processSteps.value.check
-    : []
-
-  return rows
-    .filter(isProcessChecked)
-    .map((step, index) => ({
-      ...step,
-      displayText: getProcessText(
-        step,
-        index
-      ),
-    }))
-})
-*/
-//
 const selectedAssembleSteps = computed(() => {
   const rows = Array.isArray(assemble_steps.value)
     ? assemble_steps.value
@@ -5052,9 +3653,8 @@ const onConfirmSelectedProcesses =
       const ok =
         await confirmSchedulingDialog()
 
-      /*
-       * 只有真正成功後才清除。
-       */
+
+      // 只有真正成功後才清除。
       if (ok) {
         pendingProcessItem.value = null
       }
@@ -5120,22 +3720,18 @@ const onClickProcessSettingConfirm = async () => {
     return
   }
 
-  /*
-   * 暫存工單。
-   * 使用物件副本，避免其他刷新動作修改原物件。
-   */
+  // 暫存工單。
+  // 使用物件副本，避免其他刷新動作修改原物件。
   pendingProcessItem.value = {
     ...targetItem,
   }
 
-  /*
-   * 只隱藏第一層 Dialog。
-   * 不可呼叫 closeSchedulingDialog()，
-   * 因為它會：
-   *
-   * scheduling_target_item.value = null
-   * socket unlock
-   */
+  // 只隱藏第一層 Dialog。
+  // 不可呼叫 closeSchedulingDialog()，
+  // 因為它會：
+  //
+  // scheduling_target_item.value = null
+  // socket unlock
   scheduling_dialog.value = false
 
   const confirmed =
@@ -5168,9 +3764,7 @@ const onClickProcessSettingConfirm = async () => {
     })
 
   if (!confirmed) {
-    /*
-     * 返回第一層，不重新初始化 checkbox。
-     */
+    // 返回第一層，不重新初始化 checkbox。
     scheduling_dialog.value = true
     return
   }

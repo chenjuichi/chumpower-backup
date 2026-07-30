@@ -114,8 +114,32 @@ export function useProcessTimer(getTimerRef) {
 		elapsedMs.value = Number(ms) || 0;
 	}
 
+	/*
 	async function restoreProcess(mId, pType, uId, aId = 0) {
 		return startProcess(mId, pType, uId, aId, { restoreOnly: true })
+	}
+	*/
+	// 20260729版
+	async function restoreProcess(mId, pType, uId, aId = 0) {
+		const result = await startProcess(
+			mId,
+			pType,
+			uId,
+			aId,
+			{ restoreOnly: true }
+		);
+
+		console.log(
+			'[restoreProcess result]',
+			{
+			processId: processId.value,
+			elapsedMs: elapsedMs.value,
+			isPaused: isPaused.value,
+			result,
+			}
+		);
+
+		return result;
 	}
 
 	// 進入 dialog：後端建立/還原 + 同步 TimerDisplay
@@ -213,7 +237,9 @@ if (!paused && data?.begin_time) {
 		isPaused.value = paused;
 
 		// 若後端狀態是「暫停」，凍結當下秒數；否則清空
-		_frozenElapsedOnPause = isPaused.value ? (data?.elapsed_time ?? 0) : null;
+		//_frozenElapsedOnPause = isPaused.value ? (data?.elapsed_time ?? 0) : null;
+
+		_frozenElapsedOnPause = isPaused.value ? seconds : null;	// 20260729版
 
 		// 用明確的 resume()/pause() 讓 UI 與本地 ticker 對齊
 		/*
@@ -869,6 +895,27 @@ if (!paused && data?.begin_time) {
 		_stopAutoUpdate();
 	}
 
+	//20260729版, add
+	function applyCurrentStateToTimer() {
+		const td = timer();
+
+		if (!td?.setState) return false;
+
+		const seconds = Math.max(
+			0,
+			Math.floor(
+			Number(elapsedMs.value || 0) / 1000
+			)
+		);
+
+		td.setState(
+			seconds,
+			isPaused.value
+		);
+
+		return true;
+	}
+
 	watch(elapsedSecs, (v) => {
 		if (!isClosed.value) displaySecs.value = v
 	})
@@ -909,5 +956,7 @@ if (!paused && data?.begin_time) {
 		nudgeResume,
 
 		dispose,
+
+		applyCurrentStateToTimer,	//20260729版, add
 	};
 }

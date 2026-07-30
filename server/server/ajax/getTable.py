@@ -1524,7 +1524,7 @@ def close_process():
 
 # -----dialog2~Begin for 前端 PickReportForAssembleBegin.vue 及 PickReportForAssembleEnd.vue -------------------------------------------------------------
 
-
+# 20260728版
 @getTable.route("/dialog2StartProcessBegin", methods=['POST'])
 def start_process_begin():
     print("dialog2StartProcessBegin API....")
@@ -1534,6 +1534,10 @@ def start_process_begin():
     user_id = data["user_id"]
     process_type = data.get("process_type", 1)
     assemble_id = data.get("assemble_id")
+
+    restore_only = bool(
+        data.get("restore_only", False)
+    )
 
     if material_id is None or process_type is None or not user_id:
       return jsonify({
@@ -1578,7 +1582,7 @@ def start_process_begin():
         .first()
     )
 
-
+    '''
     if log:
       # 回傳動態 live elapsed，和你現行邏輯一致
       live = _live_elapsed_seconds(log)
@@ -1600,6 +1604,121 @@ def start_process_begin():
 
         user_id = str(log.user_id or ""),  # 這裡回傳「真正持有該 active 流程的人」
       )
+    '''
+    #
+    if log:
+        live = _live_elapsed_seconds(log)
+
+        return jsonify(
+            success=True,
+            return_value=True,
+
+            process_id=int(log.id),
+            begin_time=log.begin_time,
+            end_time=log.end_time,
+
+            elapsed_time=int(live or 0),
+            elapsedActive_time=int(
+                log.elapsedActive_time or 0
+            ),
+
+            is_paused=bool(log.is_pause),
+            is_pause=bool(log.is_pause),
+
+            pause_time=int(log.pause_time or 0),
+
+            pause_started_at=(
+                log.pause_started_at.isoformat()
+                if getattr(
+                    log,
+                    "pause_started_at",
+                    None
+                )
+                else None
+            ),
+
+            has_started=bool(
+                getattr(log, "has_started", True)
+            ),
+
+            is_owner=(
+                str(log.user_id or "").strip()
+                == str(user_id or "").strip()
+            ),
+
+            isOpen=(
+                getattr(material_record, "isOpen", None)
+                if material_record
+                else None
+            ),
+
+            hasStarted=(
+                getattr(
+                    material_record,
+                    "hasStarted",
+                    None
+                )
+                if material_record
+                else None
+            ),
+
+            startStatus=(
+                getattr(
+                    material_record,
+                    "startStatus",
+                    None
+                )
+                if material_record
+                else None
+            ),
+
+            isOpenEmpId=(
+                getattr(
+                    material_record,
+                    "isOpenEmpId",
+                    None
+                )
+                if material_record
+                else None
+            ),
+
+            user_id=str(log.user_id or ""),
+        ), 200
+
+    # ------------------------------------------------------------
+    # 還原模式只允許讀取既有 Process。
+    #
+    # 找不到時不可新增一筆 0 秒 Process，
+    # 否則重新進入 Begin 會錯誤顯示 00:00:00。
+    # ------------------------------------------------------------
+    if restore_only:
+        s.rollback()
+
+        return jsonify(
+            success=False,
+            return_value=False,
+
+            process_id=0,
+            begin_time=None,
+            end_time=None,
+
+            elapsed_time=0,
+            elapsedActive_time=0,
+
+            is_paused=True,
+            is_pause=True,
+
+            pause_time=0,
+            pause_started_at=None,
+
+            has_started=False,
+
+            message=(
+                "restore_only: "
+                "no active process found"
+            ),
+        ), 200
+    #
 
     # 2) 沒有未結束流程 → 幫當前 user 新建
     new_log = Process(
@@ -1626,6 +1745,7 @@ def start_process_begin():
 
     s.commit()
 
+    '''
     return jsonify(
       success=True,
       process_id=new_log.id,
@@ -1643,6 +1763,67 @@ def start_process_begin():
       user_id=str(new_log.user_id or ""),
       is_owner=True,
     )
+    '''
+    #
+    return jsonify(
+        success=True,
+        return_value=True,
+
+        process_id=int(new_log.id),
+        begin_time=new_log.begin_time,
+        end_time=new_log.end_time,
+
+        elapsed_time=0,
+        elapsedActive_time=0,
+
+        is_paused=True,
+        is_pause=True,
+
+        pause_time=0,
+        pause_started_at=None,
+
+        has_started=False,
+
+        isOpen=(
+            getattr(material_record, "isOpen", None)
+            if material_record
+            else None
+        ),
+
+        hasStarted=(
+            getattr(
+                material_record,
+                "hasStarted",
+                None
+            )
+            if material_record
+            else None
+        ),
+
+        startStatus=(
+            getattr(
+                material_record,
+                "startStatus",
+                None
+            )
+            if material_record
+            else None
+        ),
+
+        isOpenEmpId=(
+            getattr(
+                material_record,
+                "isOpenEmpId",
+                None
+            )
+            if material_record
+            else None
+        ),
+
+        user_id=str(new_log.user_id or ""),
+        is_owner=True,
+    ), 200
+    #
 
 
 @getTable.route("/dialog2UpdateProcessBegin", methods=['POST'])

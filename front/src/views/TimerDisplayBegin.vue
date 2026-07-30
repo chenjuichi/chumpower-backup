@@ -31,7 +31,8 @@ const props = defineProps({
 const emit = defineEmits(['update:time', 'update:isPaused'])
 
 /* ----- 內部狀態 ----- */
-const elapsedMs = ref(0)     // 目前累積的毫秒
+//const elapsedMs = ref(0)     // 目前累積的毫秒
+const elapsedMs = ref(Number(props.initialMs) || 0) //20260729版
 //const elapsedMs = ref(props.initialMs || 0)
 let intervalId = null        // setInterval handler
 
@@ -184,13 +185,16 @@ watch(() => props.displayMs, (v) => {
   }
 })
 
+/* 20260729版, delete
 watch(() => props.initialMs, (ms) => {
   if (props.displayMs === null && typeof ms === 'number') {
     elapsedMs.value = ms
   }
 })
+*/
 
 /* ----- 掛載/卸載行為 ----- */
+/*
 onMounted(() => {
   // 測試timer
   console.log('%c[TD] mounted', 'color:#2962FF')
@@ -202,6 +206,30 @@ onMounted(() => {
     start()
   }
 })
+*/
+// 20260729版
+onMounted(() => {
+  console.log(
+    '%c[TD] mounted',
+    'color:#2962FF',
+    {
+      elapsedMs: elapsedMs.value,
+      initialMs: props.initialMs,
+      isPaused: props.isPaused,
+    }
+  )
+
+  // 不可在 mounted 時重設 elapsedMs。
+  // setState() 可能已經先還原後端時間。
+  if (
+    props.autoStart &&
+    !props.isPaused &&
+    props.show
+  ) {
+    start()
+  }
+})
+//
 
 onBeforeUnmount(() => {
   stop()

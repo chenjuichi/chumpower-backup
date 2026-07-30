@@ -650,6 +650,7 @@
       <div class="begin-cell begin-cell-shift">
         <div class="begin-timer-slot">
           <span v-if="checkShowTimer(item)" class="begin-timer-text">
+            <!--
             <TimerDisplay
               :fontSize="18"
               :autoStart="false"
@@ -661,6 +662,20 @@
               @update:time="ms => onTickOf(item, ms)"
               class="begin-timer"
             />
+          -->
+<!--20260729版-->
+<TimerDisplay
+  :fontSize="18"
+  :autoStart="false"
+  :show="true"
+  :key="`${item.id}:${item.assemble_id}:${processTypeOf(item)}:${safeUserId}`"
+  :ref="el => setTimerEl(item, el)"
+  :isPaused="isPausedOf(item)"
+  :displayMs="isPausedOf(item) ? elapsedMsOf(item) : null"
+  @update:isPaused="val => setPausedOf(item, val)"
+  @update:time="ms => onTickOf(item, ms)"
+  class="begin-timer"
+/>
           </span>
         </div>
         <!-- 綠點：這筆「有人」在開工（不限本人） -->
@@ -947,6 +962,9 @@ const showBatchActions = ref(false)
 const bomsMap = ref({})
 const activeBomItemId = ref(null)
 
+let restoringActiveTimers = false;
+let activeTimersRestored = false;
+
 //=== watch ===
 
 watch(search, (newValue) => {
@@ -1008,6 +1026,7 @@ watch(() => pagination.itemsPerPage, (val) => {
 { immediate: true }
 )
 
+/*
 watch(() => safeUserId.value, async (uid) => {
   if (!uid) return;
 
@@ -1021,6 +1040,23 @@ watch(() => safeUserId.value, async (uid) => {
 },
 
 { immediate: true }
+);
+*/
+// 20260729版
+watch(
+  () => safeUserId.value,
+  (uid) => {
+    if (!uid) return;
+
+    console.log(
+      '[safeUserId watcher] current user ready:',
+      uid
+    );
+
+    // 不在這裡 restore。
+    // 初次還原統一交由 onMounted 資料載入完成後執行。
+  },
+  { immediate: true }
 );
 
 // 畫面控制
@@ -1437,6 +1473,8 @@ function disposeAllTimersOnce() {
 
 // 取得／設定 isPaused（避免在模板裡對函式呼叫結果賦值）
 const isPausedOf  = (row) => getT(row)?.isPaused.value ?? true;
+// 20260729版, add
+const elapsedMsOf = row =>  Number(getT(row)?.elapsedMs?.value || 0);
 
 const setPausedOf = (row, v) => {
   const t = getT(row);
@@ -1516,6 +1554,7 @@ const shouldRestoreRow = (row) => {
   return hasTimerFlag && timerUserId === me;
 };
 
+/*
 async function restoreActiveTimersOnly() {
   const me = String(safeUserId.value || '').trim();
 
@@ -1629,6 +1668,171 @@ async function restoreActiveTimersOnly() {
         }
       );
     }
+  }
+}
+*/
+//20260729版
+async function restoreActiveTimersOnly({
+  force = false
+} = {}) {
+  const me = String(
+    safeUserId.value || ''
+  ).trim();
+
+  if (!me) {
+    console.warn(
+      '[restoreActiveTimersOnly] skip: user not ready'
+    );
+    return;
+  }
+
+  // 正在還原時，不允許第二次同時進入
+  if (restoringActiveTimers) {
+    console.warn(
+      '[restoreActiveTimersOnly] skip: restoring'
+    );
+    return;
+  }
+
+  // 初次還原完成後，不重複執行
+  if (
+    activeTimersRestored &&
+    !force
+  ) {
+    console.log(
+      '[restoreActiveTimersOnly] skip: restored'
+    );
+    return;
+  }
+
+  restoringActiveTimers = true;
+
+  try {
+    const allRows = Array.isArray(
+      materials_and_assembles.value
+    )
+      ? materials_and_assembles.value
+      : [];
+
+    const rows =
+      allRows.filter(shouldRestoreRow);
+
+    console.log(
+      '[restoreActiveTimersOnly]',
+      {
+        me,
+        rows: rows.map(row => ({
+          id: row.id,
+          assemble_id: row.assemble_id,
+          my_process_id:
+            row.my_process_id,
+          show_name:
+            row.show_name,
+        })),
+      }
+    );
+
+    if (!rows.length) {
+      activeTimersRestored = true;
+      return;
+    }
+
+    for (const row of rows) {
+      row._showMyTimer = true;
+      row.show_timer = true;
+      row.show_name = me;
+    }
+
+    await nextTick();
+
+    for (const row of rows) {
+      const t = getT(row);
+
+      if (!t?.restoreProcess) {
+        console.warn(
+          '[restoreActiveTimersOnly] timer not ready',
+          row
+        );
+        continue;
+      }
+
+      const processType =
+        processTypeOf(row);
+
+      if (!processType) {
+        console.warn(
+          '[restoreActiveTimersOnly] process type missing',
+          row
+        );
+        continue;
+      }
+
+      try {
+        const result =
+          await t.restoreProcess(
+            row.id,
+            processType,
+            me,
+            row.assemble_id
+          );
+
+        // 20260729版, add
+        await nextTick();
+
+        if (!t.applyCurrentStateToTimer?.()) {
+          setTimeout(() => {
+            t.applyCurrentStateToTimer?.();
+          }, 0);
+        }
+        //
+
+        const restoredProcessId =
+          Number(
+            t.processId?.value ||
+            row.my_process_id ||
+            (
+              typeof result === 'number'
+                ? result
+                : result?.process_id
+            ) ||
+            0
+          );
+
+        if (restoredProcessId > 0) {
+          row.my_process_id =
+            restoredProcessId;
+
+          row.my_process_user_id =
+            me;
+
+          row.my_has_active_process =
+            true;
+
+          row._showMyTimer = true;
+          row.show_timer = true;
+          row.show_name = me;
+        } else {
+          row._showMyTimer = false;
+          row.show_timer = false;
+          row.show_name = '';
+        }
+      } catch (error) {
+        console.warn(
+          '[restoreActiveTimersOnly] restore failed',
+          {
+            material_id: row.id,
+            assemble_id:
+              row.assemble_id,
+            user_id: me,
+            error,
+          }
+        );
+      }
+    }
+
+    activeTimersRestored = true;
+  } finally {
+    restoringActiveTimers = false;
   }
 }
 

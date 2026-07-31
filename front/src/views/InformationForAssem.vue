@@ -992,7 +992,7 @@
             >
               {{ process_item.normal_type }}
             </span>
-
+          <!--
             <span
               v-if="process_item.abnormal_message"
               style="
@@ -1003,7 +1003,22 @@
             >
               {{ process_item.abnormal_message }}
             </span>
-
+          -->
+<!--20260731版-->
+<span
+  v-if="
+    process_item.abnormal_message
+    && !isTransportProcess(process_item)
+  "
+  style="
+    color:#d32f2f;
+    font-weight:700;
+    margin-left:4px;
+  "
+>
+  {{ process_item.abnormal_message }}
+</span>
+          <!--
             <span
               v-if="
                 process_item.schedule_name
@@ -1019,6 +1034,25 @@
             >
               [{{ process_item.schedule_name }}]
             </span>
+          -->
+<!--20260731版-->
+<span
+  v-if="
+    process_item.schedule_name
+    && !String(
+      process_item.process_type
+    ).includes('成品入庫')
+    && !isTransportProcess(process_item)
+  "
+  style="
+    font-weight:600;
+    font-size:12px;
+    color:black;
+  "
+>
+  [{{ process_item.schedule_name }}]
+</span>
+
           </td>
 
           <td
@@ -2848,6 +2882,22 @@ else if (statusIds.not_prepare.includes(Number(item.id))) {
 const showStatusButton = (type) => {
   return !statusFilter.value || statusFilter.value === type
 }
+
+const isTransportProcess = (item) => {
+  const processType = String(
+    item?.process_type || ''
+  ).trim()
+
+  console.log("processType:", processType)
+
+  return (
+    processType.includes('等待AGV')
+    || processType.includes('AGV運行')
+    || processType.includes('堆高機運行')
+  )
+}
+
+
 
 </script>
 

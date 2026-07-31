@@ -1,19 +1,24 @@
 import os
 import time
 import datetime
-from datetime import datetime as dt
-import shutil
-import pytz
+
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request, current_app
 
 import traceback
 
-from sqlalchemy import inspect, and_
+from sqlalchemy import inspect, and_, or_
 
 from database.tables import Session
 
-from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
+from database.p_tables import (
+  P_Material,
+  P_Assemble,
+  P_Process,
+  P_Product,
+  P_Part,
+)
 
 from .helper import normalize_create_at
 
@@ -26,7 +31,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
-
+# 20260730版
 @updateTableP.route('/updateAssembleProcessStepP', methods=['POST'])
 def update_assemble_process_step_p():
   print("updateAssembleProcessStepP....")
@@ -60,27 +65,93 @@ def update_assemble_process_step_p():
   # 如果同組至少有一筆，判斷是否全部都是 process_step_code=0
   all_process_step_zero = bool(assemble_records) and all(r.process_step_code == 0 for r in assemble_records)
 
-  # 如果條件滿足，更新 material 表
   if all_process_step_zero:
-    print("updateAssembleProcessStepP , all_process_step_zero", all_process_step_zero)
+    print(
+        "updateAssembleProcessStepP, all_process_step_zero",
+        all_process_step_zero
+    )
+
+    now_str = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     material_record.isAssembleStation3TakeOk = True
-    assemble_record.isAssembleStationShow = True
 
-    ## ✅ 完工 → 進倉儲等待入庫
-    #assemble_record.isWarehouseStationShow = True
-    #assemble_record.isStockIn = False   # 尚未入庫（等待入庫清單要看這個）
-    #
-    # 加工結束後，仍留在 ~ProcessEnd.vue
-    # 不可直接進 Ware~.vue
-    assemble_record.isAssembleStationShow = True
-    assemble_record.isWarehouseStationShow = False
+    # 同一批所有已完成的加工工序都轉成待送出
+    for row in assemble_records:
+        row.isAssembleStationShow = True
+        row.isWarehouseStationShow = False
+        row.isStockIn = True
 
-    # 這個表示「需要入庫」，但尚未送到成品區
-    assemble_record.isStockIn = True
+        row.input_end_disable = True
+        row.input_abnormal_disable = True
+
+    # ========================================================
+    # 重要：
+    # 全部加工工序已完成時，關閉同批所有員工仍未結束的計時。
     #
+    # 例如：
+    # A 已按結束，但 B 的 P_Process.end_time 仍是 NULL，
+    # 這裡必須一起關閉。
+    # ========================================================
+    assemble_ids = [
+        int(row.id)
+        for row in assemble_records
+        if row.id is not None
+    ]
+
+    other_active_logs = (
+        s.query(P_Process)
+        .filter(
+            P_Process.material_id ==
+            material_id
+        )
+        .filter(
+            P_Process.assemble_id.in_(
+                assemble_ids
+            )
+        )
+        .filter(
+            P_Process.has_started.is_(True)
+        )
+        .filter(
+            or_(
+                P_Process.end_time.is_(None),
+                P_Process.end_time == ''
+            )
+        )
+        .with_for_update()
+        .all()
+    )
+
+    for log in other_active_logs:
+        # 保留已累計時間，這裡只負責停止殘留計時
+        log.end_time = now_str
+        log.has_started = False
+        log.is_pause = True
+
+        if not log.str_elapsedActive_time:
+            seconds = int(
+                log.elapsedActive_time or 0
+            )
+
+            hours, remain = divmod(
+                seconds,
+                3600
+            )
+            minutes, seconds = divmod(
+                remain,
+                60
+            )
+
+            log.str_elapsedActive_time = (
+                f"{hours:02d}:"
+                f"{minutes:02d}:"
+                f"{seconds:02d}"
+            )
 
     return_value = True
+  #
   else:
     print("updateAssembleProcessStepP , not all_process_step_zero")
 
@@ -182,5 +253,114 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
 
     finally:
         s.close()
+
+
+
+@updateTableP.route("/updateAssembleP", methods=['POST'])
+def update_assemble_p():
+  print("updateAssembleP....")
+
+  request_data = request.get_json()
+
+  _assemble_id = request_data['assemble_id']
+  _record_name = request_data['record_name']
+
+  if 'record_data' not in request_data:
+    return jsonify({
+        'status': False,
+        'message': '缺少 record_data'
+    }), 400
+  _record_data = request_data['record_data']
+
+  #print("_record_name:", _record_name)
+
+  return_value = True  # true: 資料正確, 註冊成功
+  s = Session()
+
+  # 查找對應的記錄
+  assemble_record = s.query(P_Assemble).filter_by(id = _assemble_id).first()
+
+  # 動態設置欄位值
+  '''
+  if hasattr(assemble_record, _record_name):
+    setattr(assemble_record, _record_name, _record_data)
+    s.commit()
+  '''
+  #
+  if not assemble_record:
+    s.close()
+
+    return jsonify({
+        'status': False,
+        'message': '找不到加工工序資料'
+    }), 404
+
+
+  if hasattr(assemble_record,  _record_name):
+      # --------------------------------------------------------
+      # total_ask_qty 是工單實際領取數量，
+      # 不能因多位員工共同開始而重複累加。
+      # --------------------------------------------------------
+      if _record_name == 'total_ask_qty':
+          ask_qty = int(assemble_record.ask_qty or 0)
+
+          incoming = int(
+              _record_data or 0
+          )
+
+          current_total = int(
+              assemble_record.total_ask_qty
+              or 0
+          )
+
+          # 一般加工列，total_ask_qty 不得超過 ask_qty。
+          if ask_qty > 0:
+              _record_data = min(
+                  max(
+                      current_total,
+                      incoming
+                  ),
+                  ask_qty
+              )
+          else:
+              _record_data = max(
+                  current_total,
+                  incoming
+              )
+
+      setattr(
+          assemble_record,
+          _record_name,
+          _record_data
+      )
+
+      # 再做一次資料庫端保險
+      if (
+          int(
+              assemble_record.ask_qty or 0
+          ) > 0
+          and
+          int(
+              assemble_record.total_ask_qty
+              or 0
+          )
+          >
+          int(
+              assemble_record.ask_qty or 0
+          )
+      ):
+          assemble_record.total_ask_qty = (
+              assemble_record.ask_qty
+          )
+
+      s.commit()
+  #
+
+  s.close()
+
+  return jsonify({
+    'status': return_value
+  })
+
 
 

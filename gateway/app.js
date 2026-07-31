@@ -485,39 +485,39 @@ io.on('connection', (socket) => {
   //  socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
   //})
 
-socket.on('assemble-scheduling-dialog-lock', (payload) => {
-  console.log('assemble-scheduling-dialog-lock', payload)
+  socket.on('assemble-scheduling-dialog-lock', (payload) => {
+    console.log('assemble-scheduling-dialog-lock', payload)
 
-  if (payload?.material_id) {
-    schedulingDialogLocks.set(String(payload.material_id), payload)
-  }
+    if (payload?.material_id) {
+      schedulingDialogLocks.set(String(payload.material_id), payload)
+    }
 
-  socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
-})
+    socket.broadcast.emit('assemble-scheduling-dialog-lock', payload)
+  })
 
   //socket.on('assemble-scheduling-dialog-unlock', (payload) => {
   //  console.log('assemble-scheduling-dialog-unlock', payload)
   //  socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
   //})
 
-socket.on('assemble-scheduling-dialog-unlock', (payload) => {
-  console.log('assemble-scheduling-dialog-unlock', payload)
+  socket.on('assemble-scheduling-dialog-unlock', (payload) => {
+    console.log('assemble-scheduling-dialog-unlock', payload)
 
-  if (payload?.material_id) {
-    schedulingDialogLocks.delete(String(payload.material_id))
-  }
+    if (payload?.material_id) {
+      schedulingDialogLocks.delete(String(payload.material_id))
+    }
 
-  socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
-})
+    socket.broadcast.emit('assemble-scheduling-dialog-unlock', payload)
+  })
 
-socket.on('get-assemble-scheduling-dialog-locks', () => {
-  console.log('get-assemble-scheduling-dialog-locks')
+  socket.on('get-assemble-scheduling-dialog-locks', () => {
+    console.log('get-assemble-scheduling-dialog-locks')
 
-  socket.emit(
-    'assemble-scheduling-dialog-locks',
-    Array.from(schedulingDialogLocks.values())
-  )
-})
+    socket.emit(
+      'assemble-scheduling-dialog-locks',
+      Array.from(schedulingDialogLocks.values())
+    )
+  })
 
   // 斷線時也清掉 interval
   //socket.on('disconnect', () => {
@@ -551,6 +551,117 @@ socket.on('get-assemble-scheduling-dialog-locks', () => {
       client.write(eventName);                        //廣播至後端kuka伺服器的訊息(B)
     }
   });
+
+  // 20260730 add
+  function normalizeProcessPayload(payload = {}) {
+    return {
+      line_type:
+        'process',
+
+      material_id:
+        Number(
+          payload.material_id || 0
+        ),
+
+      assemble_id:
+        Number(
+          payload.assemble_id || 0
+        ),
+
+      process_type:
+        Number(
+          payload.process_type || 0
+        ),
+
+      process_id:
+        Number(
+          payload.process_id || 0
+        ),
+
+      order_num:
+        String(
+          payload.order_num || ''
+        ),
+
+      user_id:
+        String(
+          payload.user_id || ''
+        ),
+
+      client_id:
+        String(
+          payload.client_id || ''
+        ),
+
+      has_started:
+        Boolean(
+          payload.has_started
+        ),
+
+      is_pause:
+        Boolean(
+          payload.is_pause
+        ),
+
+      elapsed_time:
+        Number(
+          payload.elapsed_time || 0
+        ),
+
+      sent_at:
+        Date.now(),
+    }
+  }
+
+  function relayProcessEvent(eventName, payload) {
+    const normalized = normalizeProcessPayload(payload)
+
+    if (
+      normalized.material_id <= 0 ||
+      normalized.assemble_id <= 0 ||
+      normalized.process_type <= 0
+    ) {
+      console.warn(`[${eventName}] invalid payload`, normalized)
+      return
+    }
+
+    io.emit(eventName, normalized)
+  }
+
+  socket.on('process-started', payload => {
+      relayProcessEvent('process-started', payload )
+  })
+
+  socket.on('process-paused', payload => {
+      relayProcessEvent('process-paused', payload)
+  })
+
+  socket.on('process-resumed', payload => {
+      relayProcessEvent('process-resumed', payload)
+  })
+
+  socket.on('process-ended', payload => {
+      relayProcessEvent('process-ended', payload)
+  })
+
+  socket.on('process-refresh', payload => {
+      relayProcessEvent('process-refresh', payload)
+  })
+
+  socket.on('process-dialog-lock', payload => {
+      relayProcessEvent('process-dialog-lock', payload)
+  })
+
+  socket.on('process-dialog-unlock', payload => {
+      relayProcessEvent('process-dialog-unlock', payload)
+  })
+
+  socket.on('process-end-completed', payload => {
+      console.log('[socket] process-end-completed', payload)
+
+      socket.broadcast.emit('process-end-completed', payload)
+  })
+  // 20260730 end
 });
 
 // 處理與kuka端溝通 , Socket 事件處理
@@ -667,6 +778,6 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2026-06-24-2\x1b[0m`);
+  console.log(`\x1b[34mBuild 2026-07-30\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
 });

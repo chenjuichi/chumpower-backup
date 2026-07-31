@@ -124,7 +124,7 @@ def active_user_ids_by_material_multi_p(
         result[pt_str][mid_str] = sep.join(ulist) if as_string else ulist
     return result
 
-
+"""
 def build_active_process_query_p(
       s,
       material_ids,
@@ -134,15 +134,15 @@ def build_active_process_query_p(
       has_started=None,               # None=不過濾 / True=只要已開始 / False=只要未開始
       null_as_not_started=True,       # False 時才有用；True=把 NULL 視為「未開始」
   ):
-      """
-      include_paused:
-          True  -> 只要未結束就算（含暫停）
-          False -> 只算正在跑（不含暫停）
-      has_started:
-          None  -> 不過濾
-          True  -> 只要 has_started=True
-          False -> 只要 has_started=False（可選擇是否把 NULL 視為未開始）
-      """
+
+      # include_paused:
+      #     True  -> 只要未結束就算（含暫停）
+      #     False -> 只算正在跑（不含暫停）
+      # has_started:
+      #     None  -> 不過濾
+      #     True  -> 只要 has_started=True
+      #     False -> 只要 has_started=False（可選擇是否把 NULL 視為未開始）
+
       q = (
           s.query(P_Process)
           .filter(P_Process.material_id.in_(material_ids))
@@ -171,7 +171,104 @@ def build_active_process_query_p(
           else:
               q = q.filter(P_Process.has_started.is_(False))
       return q
+"""
+# 20260730版
+def build_active_process_query_p(
+    s,
+    material_ids,
+    process_types,
+    include_paused=True,
+    only_user_id=None,
+    has_started=None,
+    null_as_not_started=True,
+):
 
+    # 加工線 active process 共用查詢。
+    #
+    # 唯一識別基礎：
+    #     material_id
+    #     assemble_id
+    #     process_type
+    #     user_id
+    #
+    # order_num 不參與 active process 判斷。
+
+    material_ids = [
+        int(v)
+        for v in (material_ids or [])
+        if v is not None
+    ]
+
+    process_types = [
+        int(v)
+        for v in (process_types or [])
+        if v is not None
+    ]
+
+    q = s.query(P_Process)
+
+    if not material_ids:
+        return q.filter(false())
+
+    if not process_types:
+        return q.filter(false())
+
+    q = (
+        q
+        .filter(
+            P_Process.material_id.in_(
+                material_ids
+            )
+        )
+        .filter(
+            P_Process.process_type.in_(
+                process_types
+            )
+        )
+        .filter(
+            or_(
+                P_Process.end_time.is_(None),
+                func.trim(
+                    P_Process.end_time
+                ) == ''
+            )
+        )
+    )
+
+    if not include_paused:
+        q = q.filter(
+            or_(
+                P_Process.is_pause.is_(False),
+                P_Process.is_pause.is_(None),
+            )
+        )
+
+    if only_user_id:
+        q = q.filter(
+            P_Process.user_id ==
+            str(only_user_id).strip()
+        )
+
+    if has_started is True:
+        q = q.filter(
+            P_Process.has_started.is_(True)
+        )
+
+    elif has_started is False:
+        if null_as_not_started:
+            q = q.filter(
+                or_(
+                    P_Process.has_started.is_(False),
+                    P_Process.has_started.is_(None),
+                )
+            )
+        else:
+            q = q.filter(
+                P_Process.has_started.is_(False)
+            )
+
+    return q
+#
 
 def end_ok_flag_p(s, material_id: int, process_step_code: int) -> bool:
 
@@ -230,6 +327,7 @@ def need_more_p_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
 # ------------------------------------------------------------------
 
 
+# 20260730版
 @getTableP.route("/getMaterialsAndAssemblesByUserP", methods=['POST'])
 def get_materials_and_assembles_by_user_p():
     print("getMaterialsAndAssemblesByUserP....")
@@ -375,7 +473,7 @@ def get_materials_and_assembles_by_user_p():
 
             if key not in active_process_map or int(p.id) > int(active_process_map[key].id):
                 active_process_map[key] = p
-
+        '''
         finished_process_rows = (
             s.query(P_Process)
             .join(
@@ -413,6 +511,89 @@ def get_materials_and_assembles_by_user_p():
 
             .all()
         )
+        '''
+        #
+        # ------------------------------------------------------------
+        # 已全部完工、仍留在加工區，等待送出的資料
+        #
+        # 注意：
+        # 1. 完工後 P_Process.has_started 會變成 False
+        # 2. 待送出時 isAssembleStationShow 必須是 True
+        # 3. 尚未送至成品區時 isWarehouseStationShow 是 False
+        # 4. 待送出資料不應限制只能看到目前員工自己的紀錄
+        # ------------------------------------------------------------
+        finished_process_rows = (
+            s.query(P_Process)
+            .join(
+                P_Assemble,
+                and_(
+                    P_Assemble.id ==
+                    P_Process.assemble_id,
+
+                    P_Assemble.material_id ==
+                    P_Process.material_id,
+                )
+            )
+            .filter(
+                P_Process.material_id.in_(
+                    material_ids_all
+                )
+            )
+
+            # 完工後 has_started 已經是 False，
+            # 所以這裡不可再限制 has_started=True。
+            .filter(
+                P_Process.end_time.isnot(None)
+            )
+            .filter(
+                P_Process.end_time != ''
+            )
+
+            # 已完成最後一道工序
+            .filter(
+                P_Assemble.process_step_code == 0
+            )
+
+            # 仍留在加工區，等待送出
+            .filter(
+                P_Assemble
+                .isAssembleStationShow
+                .is_(True)
+            )
+
+            # 尚未送到成品區
+            .filter(or_(
+                P_Assemble
+                .isWarehouseStationShow
+                .is_(False),
+
+                P_Assemble
+                .isWarehouseStationShow == 0,
+
+                P_Assemble
+                .isWarehouseStationShow
+                .is_(None),
+            ))
+
+            # 加工完成狀態
+            .filter(
+                P_Assemble.show2_ok == 5
+            )
+
+            # 必須有完成數量
+            .filter(
+                func.coalesce(
+                    P_Assemble.completed_qty,
+                    0
+                ) > 0
+            )
+
+            .order_by(
+                P_Process.id.desc()
+            )
+            .all()
+        )
+        #
 
         finished_process_map = {}
 
@@ -462,6 +643,7 @@ def get_materials_and_assembles_by_user_p():
                 active_log = active_process_map.get(key)
                 finished_log = finished_process_map.get(key)
 
+                '''
                 # 第 5 項：主迴圈再次嚴格排除
                 already_sent_to_warehouse = (
                     to_bool01(assemble_record.isAssembleStationShow)
@@ -470,6 +652,28 @@ def get_materials_and_assembles_by_user_p():
 
                 if already_sent_to_warehouse:
                     continue
+                '''
+                #
+                # ------------------------------------------------------------
+                # 真正已送出加工區的判斷
+                #
+                # 待送出：
+                #   isAssembleStationShow = True
+                #   isWarehouseStationShow = False
+                #
+                # 已送出：
+                #   isWarehouseStationShow = True
+                # ------------------------------------------------------------
+                already_sent_to_warehouse = (
+                    to_bool01(
+                        assemble_record
+                        .isWarehouseStationShow
+                    )
+                )
+
+                if already_sent_to_warehouse:
+                    continue
+                #
 
                 if not active_log and not finished_log:
                     continue
@@ -479,6 +683,7 @@ def get_materials_and_assembles_by_user_p():
                 if not display_log:
                     continue
 
+                '''
                 display_user_id = safe_str(getattr(display_log, "user_id", "")).strip()
 
                 if not display_user_id:
@@ -486,6 +691,55 @@ def get_materials_and_assembles_by_user_p():
 
                 if display_user_id != _user_id and not display_user_id.startswith(f"{_user_id} "):
                     continue
+                '''
+                #
+                display_user_id = safe_str(
+                    getattr(
+                        display_log,
+                        "user_id",
+                        ""
+                    )
+                ).strip()
+
+                is_waiting_send = (
+                    finished_log is not None
+                    and
+                    to_int(
+                        assemble_record
+                        .process_step_code,
+                        0
+                    ) == 0
+                    and
+                    to_bool01(
+                        assemble_record
+                        .isAssembleStationShow
+                    )
+                    and
+                    not to_bool01(
+                        assemble_record
+                        .isWarehouseStationShow
+                    )
+                    and
+                    to_int(
+                        assemble_record.show2_ok,
+                        0
+                    ) == 5
+                )
+
+                # 進行中的資料只顯示目前員工
+                if not is_waiting_send:
+                    if not display_user_id:
+                        continue
+
+                    if (
+                        display_user_id != _user_id
+                        and
+                        not display_user_id.startswith(
+                            f"{_user_id} "
+                        )
+                    ):
+                        continue
+                #
 
                 work_num_clean = (assemble_record.work_num or '').strip()
                 part_info = part_info_map.get(work_num_clean)
@@ -530,9 +784,47 @@ def get_materials_and_assembles_by_user_p():
                     print("need_more_p_process_qty failed:", repr(e))
                     process_total = 0
 
+                '''
                 _end_time = norm_end_time(getattr(display_log, "end_time", None))
 
                 end_report_done = bool(_end_time is not None and not already_sent_to_warehouse)
+                '''
+                #
+                _end_time = norm_end_time(
+                    getattr(
+                        display_log,
+                        "end_time",
+                        None
+                    )
+                )
+
+                is_waiting_send = (
+                    to_int(
+                        assemble_record
+                        .process_step_code,
+                        0
+                    ) == 0
+                    and
+                    to_bool01(
+                        assemble_record
+                        .isAssembleStationShow
+                    )
+                    and
+                    not to_bool01(
+                        assemble_record
+                        .isWarehouseStationShow
+                    )
+                    and
+                    to_int(
+                        assemble_record.show2_ok,
+                        0
+                    ) == 5
+                )
+
+                end_report_done = bool(
+                    is_waiting_send
+                )
+                #
 
                 user_is_show_last_time = _end_time is not None
                 user_last_time = getattr(display_log, "str_elapsedActive_time", "") if user_is_show_last_time else ""
@@ -639,6 +931,7 @@ def get_materials_and_assembles_by_user_p():
             mid = int(r['id'])
             r['material_completed_sum'] = sum_map.get(mid, 0)
 
+        '''
         user_filtered_results = []
 
         for row in _results:
@@ -653,6 +946,67 @@ def get_materials_and_assembles_by_user_p():
             user_filtered_results.append(row)
 
         _results = user_filtered_results
+        '''
+        #
+        user_filtered_results = []
+
+        for row in _results:
+            row_user_id = str(
+                row.get(
+                    "process_user_id"
+                ) or ""
+            ).strip()
+
+            is_waiting_send = (
+                to_int(
+                    row.get(
+                        "process_step_code"
+                    ),
+                    0
+                ) == 0
+                and
+                to_bool01(
+                    row.get(
+                        "isAssembleStationShow"
+                    )
+                )
+                and
+                not to_bool01(
+                    row.get(
+                        "isWarehouseStationShow"
+                    )
+                )
+                and
+                to_int(
+                    row.get(
+                        "assemble_process_num"
+                    ),
+                    0
+                ) == 5
+            )
+
+            # 待送出資料讓所有登入 PEnd 的員工看到
+            if is_waiting_send:
+                user_filtered_results.append(row)
+                continue
+
+            # 加工中的資料仍只顯示目前員工
+            if not row_user_id:
+                continue
+
+            if (
+                row_user_id != _user_id
+                and
+                not row_user_id.startswith(
+                    f"{_user_id} "
+                )
+            ):
+                continue
+
+            user_filtered_results.append(row)
+
+        _results = user_filtered_results
+        #
 
         _results.sort(key=lambda x: x.get('id') or 0)
         _results.sort(key=lambda x: x.get('create_at') or datetime.min, reverse=True)

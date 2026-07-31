@@ -114,10 +114,11 @@ export function useProcessTimer(getTimerRef) {
         elapsedMs.value = Number(ms) || 0;
     }
 
-    async function restoreProcess(mId, pType, uId, aId = 0) {
-        return startProcess(mId, pType, uId, aId, { restoreOnly: true })
-    }
+    //async function restoreProcess(mId, pType, uId, aId = 0) {
+    //    return startProcess(mId, pType, uId, aId, { restoreOnly: true })
+    //}
 
+    /*
     // 進入 dialog：後端建立/還原 + 同步 TimerDisplay
     async function startProcess(mId, pType, uId, aId = 0, opts = {}) {
         console.log("startProcess()...")
@@ -178,19 +179,6 @@ export function useProcessTimer(getTimerRef) {
         // 若後端狀態是「暫停」，凍結當下秒數；否則清空
         _frozenElapsedOnPause = isPaused.value ? (data?.elapsed_time ?? 0) : null;
 
-        // 用明確的 resume()/pause() 讓 UI 與本地 ticker 對齊
-        /*
-        if (paused) {
-            timer()?.pause();
-            _stopLocalTicker();
-            _stopAutoUpdate();
-        } else {
-            await nudgeResume();
-            _startLocalTicker();
-            _startAutoUpdate();
-        }
-        */
-
         // --- 先同步 hook 狀態（讓 props.isPaused 先對） ---
         elapsedMs.value = Math.max(0, seconds * 1000);
         isPaused.value  = paused;
@@ -228,6 +216,7 @@ export function useProcessTimer(getTimerRef) {
 
         return processId.value;
     }
+    */
 
     // 暫停/恢復切換
     async function toggleTimer() {
@@ -654,6 +643,630 @@ export function useProcessTimer(getTimerRef) {
         _stopLocalTicker();
         _stopAutoUpdate();
     }
+// 20260730版 begin
+/*
+async function restoreProcess(
+  materialIdValue,
+  processTypeValue,
+  userIdValue,
+  assembleIdValue = 0
+) {
+  return startProcess(
+    materialIdValue,
+    processTypeValue,
+    userIdValue,
+    assembleIdValue,
+    {
+      restoreOnly: true,
+    }
+  )
+}
+
+async function startProcess(
+  materialIdValue,
+  processTypeValue,
+  userIdValue,
+  assembleIdValue = 0,
+  options = {}
+) {
+  const restoreOnly = options?.restoreOnly === true
+
+  const materialIdNumber = Number(materialIdValue || 0)
+
+  const assembleIdNumber = Number(assembleIdValue || 0)
+
+  const processTypeNumber = Number(processTypeValue || 0)
+
+  const employeeId = String(userIdValue || '').trim()
+
+  if (
+    !materialIdNumber ||
+    !assembleIdNumber ||
+    !processTypeNumber ||
+    !employeeId
+  ) {
+    return {
+      success: false,
+      restored: false,
+      message:
+        'missing material_id / assemble_id / process_type / user_id',
+    }
+  }
+
+  const payload = {
+    material_id: materialIdNumber,
+    assemble_id: assembleIdNumber,
+    process_type: processTypeNumber,
+    user_id: employeeId,
+    restore_only: restoreOnly,
+  }
+
+  materialId.value = materialIdNumber
+
+  assembleId.value = assembleIdNumber
+
+  processType.value = processTypeNumber
+
+  userId.value = employeeId
+
+  const response = await dialog2StartProcess(payload)
+
+  const data = response?.data ?? response
+
+  // ------------------------------------------------------------
+  // API 本身執行失敗
+  // ------------------------------------------------------------
+  if (!data?.success) {
+    if (restoreOnly) {
+        clearTimerState()
+
+        return {
+        success: true,
+        restored: false,
+        reason:
+            data?.reason ||
+            data?.message ||
+            'no-active-process',
+        }
+    }
+
+    return {
+        success: false,
+        restored: false,
+        message:
+        data?.message ||
+        'start process failed',
+    }
+  }
+
+	// ------------------------------------------------------------
+	// 只有 restoreOnly 模式，才判斷 restored === false。
+	//
+	// 一般按開始時：
+	// restored=false 是正常值，代表「不是還原，是一般啟動」。
+	// 不可判定為錯誤。
+	// ------------------------------------------------------------
+	if (
+	restoreOnly &&
+	data?.restored === false
+	) {
+	clearTimerState()
+
+	return {
+			success: true,
+			restored: false,
+			reason:
+			data?.reason ||
+			'no-active-process',
+	}
+	}
+
+	// ------------------------------------------------------------
+	// 不管一般啟動或還原，只要成功就必須有 process_id
+	// ------------------------------------------------------------
+	const returnedProcessId =	Number(data?.process_id || 0)
+
+	if (returnedProcessId <= 0) {
+		if (restoreOnly) {
+				clearTimerState()
+
+				return {
+				success: true,
+				restored: false,
+				reason:
+						'no-process-id',
+				}
+		}
+
+		return {
+				success: false,
+				restored: false,
+				message:
+				'後端未回傳 process_id',
+		}
+	}
+
+  const returnedUserId = String(data?.started_user_id || data?.user_id || employeeId).trim()
+
+  // Restore 必須只還原本人。
+  // 後端若回傳別人的 process，
+  // 前端拒絕套用。
+  if (restoreOnly && returnedUserId !== employeeId) {
+    processId.value = null
+    hasStarted.value = false
+    isPaused.value = true
+    elapsedMs.value = 0
+
+    _stopLocalTicker()
+    _stopAutoUpdate()
+
+    return {
+      success: true,
+      restored: false,
+      reason:
+        'active-process-belongs-to-another-user',
+    }
+  }
+
+  const elapsedSeconds = Math.max(0, Number(data.elapsed_time || 0))
+
+  const paused = Boolean(data.is_paused)
+
+  processId.value = returnedProcessId
+
+  userId.value = returnedUserId
+
+  hasStarted.value = Boolean(data.has_started)
+
+  elapsedMs.value = elapsedSeconds * 1000
+
+  isPaused.value = paused
+
+  pauseTime.value = Math.max(0, Number(data.pause_time || 0))
+
+  pauseCount.value = Math.max(0, Number(data.pause_count || 0))
+
+  _frozenElapsedOnPause = paused ? elapsedSeconds : null
+
+  await nextTick()
+
+  const timerInstance = timer()
+
+  if (timerInstance?.setState) {
+    timerInstance.setState(elapsedSeconds, paused)
+  } else {
+    timerInstance?.setElapsedTime?.(elapsedSeconds * 1000)
+  }
+
+  if (paused) {
+    timerInstance?.pause?.()
+    _stopLocalTicker()
+    _stopAutoUpdate()
+  } else {
+    // restore 時只啟動畫面計時，
+    // 不可重寫 begin_time。
+    timerInstance?.resume?.()
+    _startLocalTicker()
+    _startAutoUpdate()
+  }
+
+  return {
+    success: true,
+    restored: restoreOnly,
+    process_id: returnedProcessId,
+    user_id: returnedUserId,
+  }
+}
+
+function clearTimerState() {
+  processId.value = null
+  hasStarted.value = false
+  isPaused.value = true
+
+  elapsedMs.value = 0
+  pauseTime.value = 0
+  pauseCount.value = 0
+
+  _frozenElapsedOnPause = null
+
+  _stopLocalTicker()
+  _stopAutoUpdate()
+
+  const timerInstance = timer()
+
+  timerInstance?.pause?.()
+  timerInstance?.setState?.(
+    0,
+    true
+  )
+}
+*/
+// ###
+async function restoreProcess(
+  materialIdValue,
+  processTypeValue,
+  userIdValue,
+  assembleIdValue = 0
+) {
+  return startProcess(
+    materialIdValue,
+    processTypeValue,
+    userIdValue,
+    assembleIdValue,
+    {
+      restoreOnly: true,
+    }
+  )
+}
+
+function clearTimerState() {
+  processId.value = null
+  hasStarted.value = false
+  isPaused.value = true
+
+  elapsedMs.value = 0
+  pauseTime.value = 0
+  pauseCount.value = 0
+
+  _frozenElapsedOnPause = null
+
+  _stopLocalTicker()
+  _stopAutoUpdate()
+
+  const timerInstance = timer()
+
+  timerInstance?.pause?.()
+
+  timerInstance?.setState?.(
+    0,
+    true
+  )
+}
+
+async function startProcess(
+  materialIdValue,
+  processTypeValue,
+  userIdValue,
+  assembleIdValue = 0,
+  options = {}
+) {
+  console.log(
+    '[startProcess] begin',
+    {
+      materialIdValue,
+      assembleIdValue,
+      processTypeValue,
+      userIdValue,
+      options,
+    }
+  )
+
+  const restoreOnly =
+    options?.restoreOnly === true
+
+  const materialIdNumber =
+    Number(materialIdValue || 0)
+
+  const assembleIdNumber =
+    Number(assembleIdValue || 0)
+
+  const processTypeNumber =
+    Number(processTypeValue || 0)
+
+  const employeeId =
+    String(userIdValue || '').trim()
+
+  if (
+    materialIdNumber <= 0 ||
+    assembleIdNumber <= 0 ||
+    processTypeNumber <= 0 ||
+    !employeeId
+  ) {
+    console.error(
+      '[startProcess] invalid params',
+      {
+        materialIdNumber,
+        assembleIdNumber,
+        processTypeNumber,
+        employeeId,
+      }
+    )
+
+    return {
+      success: false,
+      restored: false,
+      message:
+        'missing material_id / assemble_id / process_type / user_id',
+    }
+  }
+
+  const payload = {
+    material_id:
+      materialIdNumber,
+
+    assemble_id:
+      assembleIdNumber,
+
+    process_type:
+      processTypeNumber,
+
+    user_id:
+      employeeId,
+
+    restore_only:
+      restoreOnly,
+  }
+
+  materialId.value =
+    materialIdNumber
+
+  assembleId.value =
+    assembleIdNumber
+
+  processType.value =
+    processTypeNumber
+
+  userId.value =
+    employeeId
+
+  let response
+
+  try {
+    response =
+      await dialog2StartProcess(payload)
+  } catch (error) {
+    console.error(
+      '[startProcess] API exception',
+      error
+    )
+
+    if (restoreOnly) {
+      clearTimerState()
+
+      return {
+        success: true,
+        restored: false,
+        reason:
+          'request-failed',
+      }
+    }
+
+    return {
+      success: false,
+      restored: false,
+      message:
+        error?.response?.data?.message ||
+        error?.message ||
+        '建立加工計時流程失敗',
+    }
+  }
+
+  const data =
+    response?.data ?? response
+
+  console.log(
+    '[startProcess] API result',
+    data
+  )
+
+  // ------------------------------------------------------------
+  // 1. API 執行失敗
+  // ------------------------------------------------------------
+  if (!data?.success) {
+    if (restoreOnly) {
+      clearTimerState()
+
+      return {
+        success: true,
+        restored: false,
+        reason:
+          data?.reason ||
+          data?.message ||
+          'no-active-process',
+      }
+    }
+
+    return {
+      success: false,
+      restored: false,
+      message:
+        data?.message ||
+        '建立加工計時流程失敗',
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 2. 只有 restoreOnly 才檢查 restored=false
+  //
+  // 一般開始：
+  // restored=false 是正常值，不可視為錯誤。
+  // ------------------------------------------------------------
+  if (
+    restoreOnly &&
+    data?.restored === false
+  ) {
+    clearTimerState()
+
+    return {
+      success: true,
+      restored: false,
+      reason:
+        data?.reason ||
+        'no-active-process',
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 3. 成功時必須取得 process_id
+  // ------------------------------------------------------------
+  const returnedProcessId =
+    Number(data?.process_id || 0)
+
+  if (returnedProcessId <= 0) {
+    console.error(
+      '[startProcess] missing process_id',
+      data
+    )
+
+    if (restoreOnly) {
+      clearTimerState()
+
+      return {
+        success: true,
+        restored: false,
+        reason:
+          'no-process-id',
+      }
+    }
+
+    return {
+      success: false,
+      restored: false,
+      message:
+        '後端未回傳 process_id',
+    }
+  }
+
+  const returnedUserId =
+    String(
+      data?.started_user_id ||
+      data?.user_id ||
+      employeeId
+    ).trim()
+
+  // ------------------------------------------------------------
+  // 4. restoreOnly 只能還原本人
+  // ------------------------------------------------------------
+  if (
+    restoreOnly &&
+    returnedUserId !== employeeId
+  ) {
+    clearTimerState()
+
+    return {
+      success: true,
+      restored: false,
+      reason:
+        'active-process-belongs-to-another-user',
+    }
+  }
+
+  const elapsedSeconds =
+    Math.max(
+      0,
+      Number(data?.elapsed_time || 0)
+    )
+
+  const paused =
+    Boolean(
+      data?.is_paused
+    )
+
+  // ------------------------------------------------------------
+  // 5. 將後端狀態寫入 hook
+  // ------------------------------------------------------------
+  processId.value =
+    returnedProcessId
+
+  userId.value =
+    returnedUserId
+
+  hasStarted.value =
+    Boolean(
+      data?.has_started
+    )
+
+  elapsedMs.value =
+    elapsedSeconds * 1000
+
+  isPaused.value =
+    paused
+
+  pauseTime.value =
+    Math.max(
+      0,
+      Number(data?.pause_time || 0)
+    )
+
+  pauseCount.value =
+    Math.max(
+      0,
+      Number(data?.pause_count || 0)
+    )
+
+  _frozenElapsedOnPause =
+    paused
+      ? elapsedSeconds
+      : null
+
+  await nextTick()
+
+  const timerInstance =
+    timer()
+
+  if (timerInstance?.setState) {
+    timerInstance.setState(
+      elapsedSeconds,
+      paused
+    )
+  } else {
+    timerInstance?.setElapsedTime?.(
+      elapsedSeconds * 1000
+    )
+  }
+
+  if (paused) {
+    timerInstance?.pause?.()
+
+    _stopLocalTicker()
+    _stopAutoUpdate()
+  } else {
+    timerInstance?.resume?.()
+
+    _startLocalTicker()
+    _startAutoUpdate()
+  }
+
+  console.log(
+    '[startProcess] success',
+    {
+      processId:
+        processId.value,
+      userId:
+        userId.value,
+      hasStarted:
+        hasStarted.value,
+      isPaused:
+        isPaused.value,
+      restoreOnly,
+    }
+  )
+
+  // ------------------------------------------------------------
+  // 統一回傳物件
+  // ------------------------------------------------------------
+  return {
+    success: true,
+    restored:
+      restoreOnly,
+
+    process_id:
+      returnedProcessId,
+
+    user_id:
+      returnedUserId,
+
+    has_started:
+      hasStarted.value,
+
+    is_paused:
+      isPaused.value,
+
+    elapsed_time:
+      elapsedSeconds,
+  }
+}
+// 20260730版 end
 
     watch(elapsedSecs, (v) => {
         if (!isClosed.value) displaySecs.value = v

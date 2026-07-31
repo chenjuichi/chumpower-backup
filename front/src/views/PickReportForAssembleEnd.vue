@@ -4451,8 +4451,10 @@ const reloadEndRowsAndRestoreTimers = async () => {
   }
 }
 
+// 20260731版
 const onClickAbnormal = async (rawItem) => {
   if (abnormalBusy) return
+
   abnormalBusy = true
 
   // 先做快照，避免中途 reactive 變動
@@ -4505,6 +4507,21 @@ const onClickAbnormal = async (rawItem) => {
       setTimeout(() => {
         rawItem.abnormal_tooltipVisible = false
       }, 2000)
+      return
+    }
+
+    // 取得目前按異常鍵的員工工號
+    const current_user_id = String(
+      currentUser.value?.empID || ''
+    ).trim()
+
+    if (!current_user_id) {
+      abnormal_qty_alarm.value = '找不到目前登入員工工號，請重新登入後再試。'
+      rawItem.abnormal_tooltipVisible = true
+
+      setTimeout(() => {
+        rawItem.abnormal_tooltipVisible = false
+      }, 2000)
 
       return
     }
@@ -4546,11 +4563,36 @@ const onClickAbnormal = async (rawItem) => {
     }
 
     // ===== 4) 後端更新（盡量併發）=====
-    // A. 先把 alarm 與 material 狀態落地（你的語意：true=正常、false=異常）
+    // A. 先把 alarm 與 material 狀態落地（你的語意：true=正常、false=異常)
+    /*
     await Promise.all([
       updateAssemble({ assemble_id: current_assemble_id, record_name: 'alarm_enable', record_data: true }),
       updateMaterial({ id: current_material_id, record_name: 'isAssembleAlarm', record_data: false }),
     ])
+    */
+    //
+    await Promise.all([
+      // 異常狀態
+      updateAssemble({
+        assemble_id: current_assemble_id,
+        record_name: 'alarm_enable',
+        record_data: false,
+      }),
+
+      // 記錄按異常鍵的員工工號
+      //updateAssemble({
+      //  assemble_id: current_assemble_id,
+      //  record_name: 'user_id',
+      //  record_data: current_user_id,
+      //}),
+
+      updateMaterial({
+        id: current_material_id,
+        record_name: 'isAssembleAlarm',
+        record_data: false,
+      }),
+    ])
+    //
 
     console.log("after 注意, 注意, newRemain:", newRemain)
 
@@ -4579,12 +4621,25 @@ const onClickAbnormal = async (rawItem) => {
     // 2. 原 B110 input_abnormal_disable = true
     // 3. 原 B110 must_receive_end_qty = newRemain
     // 4. 建立返工 B109 / B110
+    /*
     const res = await copyAssembleForDifference({
       copy_id: current_assemble_id,
       must_receive_qty: abnormalQty,
       pre_must_receive_qty: newRemain,
       copy_mode: 'abnormal_click',   // 異常鍵
     })
+    */
+    //
+    const res = await copyAssembleForDifference({
+      copy_id: current_assemble_id,
+      must_receive_qty: abnormalQty,
+      pre_must_receive_qty: newRemain,
+      copy_mode: 'abnormal_click',
+
+      // 傳入按異常鍵的員工
+      user_id: current_user_id,
+    })
+    //
 
     console.log('copyAssembleForDifference res:', res?.status, res?.message)
 

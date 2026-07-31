@@ -18,8 +18,13 @@ from sqlalchemy import func, or_
 from datetime import datetime, timezone
 
 #import pymysql
-from sqlalchemy import exc
+#from sqlalchemy import exc
 from sqlalchemy import func
+
+from .helper import (
+  sync_b110_remaining_qty
+)
+
 
 createTable = Blueprint('createTable', __name__)
 
@@ -985,6 +990,8 @@ def copy_assemble():
   })
 
 
+"""
+# 20260731版
 @createTable.route("/copyAssembleForDifference", methods=['POST'])
 def copy_assemble_for_difference():
   print("copyAssembleForDifference....")
@@ -995,12 +1002,24 @@ def copy_assemble_for_difference():
   abnormal_qty = data.get('must_receive_qty')
   pre_must_qty = data.get('pre_must_receive_qty')
 
+  # 按下異常鍵的員工工號
+  current_user_id = str(data.get('user_id') or '').strip()
+
   s = Session()
 
   try:
     copy_id = int(copy_id)
     abnormal_qty = int(abnormal_qty or 0)
     pre_must_qty = int(pre_must_qty or 0)
+
+    #
+    if not current_user_id:
+      return jsonify({
+        'status': False,
+        'message': '缺少按異常鍵的員工工號 user_id',
+        'assemble_data': []
+      }), 400
+    #
 
     if abnormal_qty <= 0:
       return jsonify({
@@ -1023,6 +1042,21 @@ def copy_assemble_for_difference():
         'assemble_data': []
       }), 404
 
+    #
+    current_user = (
+      s.query(User)
+      .filter(User.emp_id == current_user_id)
+      .first()
+    )
+
+    if not current_user:
+      return jsonify({
+        'status': False,
+        'message': f'找不到員工工號 {current_user_id}',
+        'assemble_data': []
+      }), 400
+    #
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     #
@@ -1030,7 +1064,19 @@ def copy_assemble_for_difference():
     source.input_abnormal_disable = True
     source.alarm_enable = False
     source.alarm_message = data.get('alarm_message') or source.alarm_message or ''
+
+    # 記錄實際按下異常鍵的點檢人員
+    source.user_id = current_user_id
+
     source.update_time = now_str
+
+    print(
+      "copyAssembleForDifference:",
+      "source_id=", source.id,
+      "user_id=", source.user_id,
+      "user_name=", current_user.emp_name,
+      "abnormal_qty=", abnormal_qty
+    )
 
     rework_alarm_message = (
         data.get('alarm_message')
@@ -1051,20 +1097,37 @@ def copy_assemble_for_difference():
     '''
     #
     # ✅ 原工序扣掉異常數量
-    if pre_must_qty > 0:
-      remain_qty = pre_must_qty
-    else:
-      remain_qty = max(0, int(source.must_receive_qty or 0) - abnormal_qty)
-
-    source.must_receive_qty = remain_qty
-    source.ask_qty = remain_qty
-    source.total_ask_qty = remain_qty
-    source.must_receive_end_qty = remain_qty
+    #if pre_must_qty > 0:
+    #  remain_qty = pre_must_qty
+    #else:
+    #  remain_qty = max(0, int(source.must_receive_qty or 0) - abnormal_qty)
     #
+    # 原工序剩餘數量
+    if pre_must_qty >= 0:
+        remain_qty = pre_must_qty
+    else:
+        remain_qty = max(
+            0,
+            int(source.must_receive_qty or 0) - abnormal_qty
+        )
+
+    #source.must_receive_qty = remain_qty
+    #source.ask_qty = remain_qty
+    #source.total_ask_qty = remain_qty
+    #source.must_receive_end_qty = remain_qty
 
     material_id = source.material_id
-    schedule_id = int(source.schedule_id or 0)
 
+    #
+    sync_b110_remaining_qty(
+        s=s,
+        material_id=material_id,
+        remain_qty=remain_qty,
+        now_str=now_str,
+    )
+    #
+
+    schedule_id = int(source.schedule_id or 0)
 
     material = s.query(Material).filter(Material.id == material_id).first()
 
@@ -1297,6 +1360,692 @@ def copy_assemble_for_difference():
 
   finally:
     s.close()
+"""
+
+
+'''
+重點修正：
+
+先取得 material_id / schedule_id / release_batch_no，再呼叫 helper。
+只有 B110 發生異常時，同步同批正常 b1/b2/b3。
+B109 發生異常時，只修改目前來源 B109，不會誤改 B110。
+使用 release_batch_no，不使用 schedule_id 同步。
+正確處理 pre_must_receive_qty=0。
+保留點檢人員 source.user_id。
+保留你目前的 B109/B110 異常返工父子關係。原始版本可對照你上傳檔案。
+'''
+# 20260731版, past
+# 20260731版
+@createTable.route("/copyAssembleForDifference", methods=['POST'])
+def copy_assemble_for_difference():
+    print("copyAssembleForDifference....")
+
+    data = request.get_json(silent=True) or {}
+
+    copy_id = data.get('copy_id')
+    abnormal_qty_raw = data.get('must_receive_qty')
+    pre_must_qty_raw = data.get('pre_must_receive_qty')
+
+    # 按下異常鍵的員工工號
+    current_user_id = str(
+        data.get('user_id') or ''
+    ).strip()
+
+    s = Session()
+
+    try:
+        # ------------------------------------------------------------
+        # 1. 基本參數轉換與檢查
+        # ------------------------------------------------------------
+        try:
+            copy_id = int(copy_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                'status': False,
+                'message': 'copy_id 格式錯誤',
+                'assemble_data': []
+            }), 400
+
+        try:
+            abnormal_qty = int(abnormal_qty_raw or 0)
+        except (TypeError, ValueError):
+            abnormal_qty = 0
+
+        # pre_must_receive_qty 可能合法為 0，
+        # 因此不能使用 int(value or 0) 判斷是否有傳入。
+        pre_must_qty = None
+
+        if pre_must_qty_raw is not None:
+            try:
+                pre_must_qty = int(pre_must_qty_raw)
+            except (TypeError, ValueError):
+                pre_must_qty = None
+
+        if not current_user_id:
+            return jsonify({
+                'status': False,
+                'message': '缺少按異常鍵的員工工號 user_id',
+                'assemble_data': []
+            }), 400
+
+        if abnormal_qty <= 0:
+            return jsonify({
+                'status': False,
+                'message': '異常數量必須大於 0',
+                'assemble_data': []
+            }), 400
+
+        # ------------------------------------------------------------
+        # 2. 鎖定來源 assemble
+        # ------------------------------------------------------------
+        source = (
+            s.query(Assemble)
+            .filter(Assemble.id == copy_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not source:
+            return jsonify({
+                'status': False,
+                'message': f'找不到來源 assemble_id={copy_id}',
+                'assemble_data': []
+            }), 404
+
+        source_work_num = (
+            source.work_num or ''
+        ).strip()
+
+        if source_work_num not in ('B109', 'B110'):
+            return jsonify({
+                'status': False,
+                'message': (
+                    '目前只支援 B109/B110 異常返工，'
+                    f'來源 work_num={source_work_num}'
+                ),
+                'assemble_data': []
+            }), 400
+
+        # ------------------------------------------------------------
+        # 3. 檢查按異常鍵的人員
+        # ------------------------------------------------------------
+        current_user = (
+            s.query(User)
+            .filter(User.emp_id == current_user_id)
+            .first()
+        )
+
+        if not current_user:
+            return jsonify({
+                'status': False,
+                'message': f'找不到員工工號 {current_user_id}',
+                'assemble_data': []
+            }), 400
+
+        now_str = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        # ------------------------------------------------------------
+        # 4. 先取得來源識別資料
+        #
+        # 必須放在 sync_b110_remaining_qty() 前面。
+        # ------------------------------------------------------------
+        material_id = int(source.material_id)
+        schedule_id = int(
+            source.schedule_id or 0
+        )
+        release_batch_no = int(
+            getattr(
+                source,
+                'release_batch_no',
+                0
+            ) or 0
+        )
+
+        material = (
+            s.query(Material)
+            .filter(Material.id == material_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not material:
+            return jsonify({
+                'status': False,
+                'message': (
+                    f'找不到 material_id={material_id}'
+                ),
+                'assemble_data': []
+            }), 404
+
+        # ------------------------------------------------------------
+        # 5. 記錄來源工序異常狀態
+        # ------------------------------------------------------------
+        source.abnormal_qty = abnormal_qty
+        source.input_abnormal_disable = True
+        source.alarm_enable = False
+
+        source.alarm_message = (
+            data.get('alarm_message')
+            or source.alarm_message
+            or ''
+        )
+
+        # 實際按下異常鍵的點檢人員
+        source.user_id = current_user_id
+        source.update_time = now_str
+
+        print(
+            "copyAssembleForDifference:",
+            "source_id=", source.id,
+            "material_id=", material_id,
+            "schedule_id=", schedule_id,
+            "release_batch_no=", release_batch_no,
+            "work_num=", source_work_num,
+            "user_id=", source.user_id,
+            "user_name=", current_user.emp_name,
+            "abnormal_qty=", abnormal_qty
+        )
+
+        rework_alarm_message = (
+            data.get('alarm_message')
+            or source.alarm_message
+            or source.Incoming1_Abnormal
+            or source.confirm_comment
+            or ''
+        )
+
+        # B109 異常時，Error.vue 目前讀取此欄位
+        if source_work_num == 'B109':
+            source.isAssembleFirstAlarm = False
+            source.isAssembleFirstAlarm_qty = (
+                abnormal_qty
+            )
+
+        # ------------------------------------------------------------
+        # 6. 計算正常工序剩餘數量
+        #
+        # 前端若有傳 pre_must_receive_qty：
+        #   直接視為扣除異常後剩餘量。
+        #
+        # 前端若沒有傳：
+        #   由來源目前應完成量 - abnormal_qty 計算。
+        # ------------------------------------------------------------
+        source_current_qty = max(
+            int(source.must_receive_qty or 0),
+            int(source.ask_qty or 0),
+            int(source.must_receive_end_qty or 0),
+            0
+        )
+
+        if pre_must_qty is not None:
+            remain_qty = max(
+                min(
+                    int(pre_must_qty),
+                    source_current_qty
+                ),
+                0
+            )
+        else:
+            remain_qty = max(
+                source_current_qty - abnormal_qty,
+                0
+            )
+
+        # 防止異常數量超過目前正常數量
+        if abnormal_qty > source_current_qty:
+            return jsonify({
+                'status': False,
+                'message': (
+                    f'異常數量 {abnormal_qty} '
+                    f'不可大於目前應完成數量 '
+                    f'{source_current_qty}'
+                ),
+                'assemble_data': []
+            }), 400
+
+        # ------------------------------------------------------------
+        # 7. 更新來源正常工序的剩餘量
+        # ------------------------------------------------------------
+        source.must_receive_qty = remain_qty
+        source.ask_qty = remain_qty
+        source.total_ask_qty = remain_qty
+        source.must_receive_end_qty = remain_qty
+
+        updated_b110_rows = []
+
+        # ------------------------------------------------------------
+        # 8. 只有 B110 發生異常時，才同步同一批正常 B110
+        #
+        # 例如：
+        #   b1/b2/b3 = 72
+        #   b1 異常 10
+        #
+        # 結果：
+        #   b1/b2/b3 = 62
+        #
+        # B109 異常不可在此同步 B110。
+        # ------------------------------------------------------------
+        if source_work_num == 'B110':
+            updated_b110_rows = (
+                sync_b110_remaining_qty(
+                    s=s,
+                    material_id=material_id,
+                    release_batch_no=release_batch_no,
+                    remain_qty=remain_qty,
+                    now_str=now_str
+                )
+            )
+
+        print(
+            "[SYNC NORMAL REMAINING QTY]",
+            {
+                "source_id": source.id,
+                "source_work_num": source_work_num,
+                "material_id": material_id,
+                "schedule_id": schedule_id,
+                "release_batch_no": release_batch_no,
+                "source_current_qty": source_current_qty,
+                "abnormal_qty": abnormal_qty,
+                "remain_qty": remain_qty,
+                "updated_b110_rows": [
+                    {
+                        "id": row.id,
+                        "schedule_id": row.schedule_id,
+                        "release_batch_no": (
+                            getattr(
+                                row,
+                                'release_batch_no',
+                                0
+                            )
+                        ),
+                        "qty": row.must_receive_qty
+                    }
+                    for row in updated_b110_rows
+                ]
+            }
+        )
+
+        # ------------------------------------------------------------
+        # 9. 若來源沒有 schedule_id，尋找可用 schedule_id
+        # ------------------------------------------------------------
+        if schedule_id <= 0:
+            schedule_id = (
+                s.query(Assemble.schedule_id)
+                .filter(
+                    Assemble.material_id
+                    == material_id
+                )
+                .filter(
+                    Assemble.schedule_id.isnot(None)
+                )
+                .filter(
+                    Assemble.schedule_id > 0
+                )
+                .order_by(
+                    Assemble.id.desc()
+                )
+                .scalar()
+            ) or 0
+
+        # ------------------------------------------------------------
+        # 10. 防止同一來源、同一異常量重複建立返工列
+        # ------------------------------------------------------------
+        existed = (
+            s.query(Assemble)
+            .filter(
+                Assemble.material_id == material_id
+            )
+            .filter(
+                Assemble.is_copied_from_id
+                == source.id
+            )
+            .filter(
+                Assemble.must_receive_qty
+                == abnormal_qty
+            )
+            .filter(
+                Assemble.work_num.in_([
+                    'B109',
+                    'B110'
+                ])
+            )
+            .filter(
+                Assemble.reason == '異常返工'
+            )
+            .order_by(
+                Assemble.id.asc()
+            )
+            .all()
+        )
+
+        if existed:
+            s.commit()
+
+            return jsonify({
+                'status': True,
+                'message': '返工列已存在，不重複建立',
+                'assemble_data': [
+                    row.id for row in existed
+                ],
+                'remain_qty': remain_qty
+            }), 200
+
+        # ------------------------------------------------------------
+        # 11. 建立異常返工列共用函式
+        # ------------------------------------------------------------
+        def make_rework_row(
+            work_num,
+            step_code,
+            show_code,
+            show_in_begin=True,
+            target_schedule_id=None,
+            parent_id=None
+        ):
+            new_row = Assemble(
+                material_id=source.material_id,
+                material_num=source.material_num,
+                material_comment=(
+                    source.material_comment
+                ),
+                seq_num=source.seq_num,
+
+                work_num=work_num,
+                process_step_code=step_code,
+
+                Incoming1_Abnormal=(
+                    rework_alarm_message
+                ),
+
+                schedule_id=(
+                    target_schedule_id
+                    if target_schedule_id is not None
+                    else schedule_id
+                ),
+
+                must_receive_qty=abnormal_qty,
+                must_receive_end_qty=abnormal_qty,
+                ask_qty=abnormal_qty,
+                total_ask_qty=abnormal_qty,
+                total_ask_qty_end=0,
+
+                abnormal_qty=0,
+
+                completed_qty=0,
+                total_completed_qty=0,
+                allOk_qty=0,
+
+                # 返工列尚未開始，未來操作員可能不同
+                user_id='',
+                writer_id=None,
+                write_date=None,
+
+                good_qty=0,
+                total_good_qty=0,
+                non_good_qty=0,
+                meinh_qty=0,
+
+                reason='異常返工',
+                confirm_comment=(
+                    rework_alarm_message
+                ),
+                is_assemble_ok=False,
+
+                currentStartTime=None,
+                currentEndTime=None,
+
+                input_disable=False,
+                input_end_disable=False,
+                input_allOk_disable=False,
+                input_abnormal_disable=False,
+
+                isAssembleStationShow=(
+                    show_in_begin
+                ),
+                isWarehouseStationShow=False,
+
+                # 返工列本身不是 Error.vue 原始異常來源
+                alarm_enable=True,
+                alarm_message=(
+                    rework_alarm_message
+                ),
+
+                isAssembleFirstAlarm=False,
+                isAssembleFirstAlarm_message='',
+                isAssembleFirstAlarm_qty=0,
+
+                whichStation=1,
+
+                show1_ok=1,
+                show2_ok=show_code,
+                show3_ok=show_code,
+
+                update_time=now_str,
+                create_at=now_str,
+
+                is_copied_from_id=(
+                    parent_id
+                    if parent_id is not None
+                    else source.id
+                ),
+
+                # 異常返工列獨立處理，不加入正常 release batch
+                release_batch_no=0
+            )
+
+            s.add(new_row)
+            s.flush()
+
+            return new_row
+
+        new_rows = []
+
+        # ------------------------------------------------------------
+        # 12. 解析 material.process_steps
+        # ------------------------------------------------------------
+        raw_steps = material.process_steps
+
+        try:
+            if isinstance(raw_steps, str):
+                process_steps = json.loads(
+                    raw_steps or "{}"
+                )
+
+            elif isinstance(raw_steps, dict):
+                process_steps = raw_steps
+
+            else:
+                process_steps = (
+                    default_process_steps()
+                )
+
+        except Exception:
+            process_steps = (
+                default_process_steps()
+            )
+
+        assemble_checked_ids = [
+            int(step.get("id"))
+            for step in (
+                process_steps.get("assemble")
+                or []
+            )
+            if step.get("checked")
+            and not step.get("deleted", False)
+            and step.get("id") is not None
+        ]
+
+        check_checked_ids = [
+            int(step.get("id"))
+            for step in (
+                process_steps.get("check")
+                or []
+            )
+            if step.get("checked")
+            and not step.get("deleted", False)
+            and step.get("id") is not None
+        ]
+
+        has_assemble_selected = (
+            len(assemble_checked_ids) > 0
+        )
+
+        # ------------------------------------------------------------
+        # 13. B109 異常
+        #
+        # 組裝異常：
+        # 只建立一筆新的 B109 異常返工列。
+        # ------------------------------------------------------------
+        if source_work_num == 'B109':
+            new_rows.append(
+                make_rework_row(
+                    work_num='B109',
+                    step_code=3,
+                    show_code=3,
+                    show_in_begin=True,
+                    target_schedule_id=schedule_id,
+                    parent_id=source.id
+                )
+            )
+
+        # ------------------------------------------------------------
+        # 14. B110 異常
+        # ------------------------------------------------------------
+        elif source_work_num == 'B110':
+            if has_assemble_selected:
+                # ----------------------------------------------------
+                # 有組裝工序：
+                #
+                # b1 發生異常
+                #   ↓
+                # 建立 a1-異常，立即顯示
+                #   ↓
+                # 建立 b1-異常，先隱藏
+                #   ↓
+                # a1-異常完成後再開啟 b1-異常
+                # ----------------------------------------------------
+                first_assemble_schedule_id = min(
+                    assemble_checked_ids
+                )
+
+                new_b109 = make_rework_row(
+                    work_num='B109',
+                    step_code=3,
+                    show_code=3,
+                    show_in_begin=True,
+                    target_schedule_id=(
+                        first_assemble_schedule_id
+                    ),
+                    parent_id=source.id
+                )
+
+                new_rows.append(new_b109)
+
+                new_b110 = make_rework_row(
+                    work_num='B110',
+                    step_code=2,
+                    show_code=5,
+                    show_in_begin=False,
+                    target_schedule_id=schedule_id,
+
+                    # B110 異常返工列指向 B109 異常返工列
+                    parent_id=new_b109.id
+                )
+
+                new_rows.append(new_b110)
+
+            else:
+                # ----------------------------------------------------
+                # 工單只有檢驗工序：
+                # 直接建立原檢驗工序的異常返工列。
+                # ----------------------------------------------------
+                new_rows.append(
+                    make_rework_row(
+                        work_num='B110',
+                        step_code=2,
+                        show_code=5,
+                        show_in_begin=True,
+                        target_schedule_id=schedule_id,
+                        parent_id=source.id
+                    )
+                )
+
+        # ------------------------------------------------------------
+        # 15. Material 回到 Begin 可操作狀態
+        # ------------------------------------------------------------
+        material.process_step_enable = True
+        material.hasStarted = False
+        material.startStatus = False
+
+        material.isOpen = False
+        material.isOpenEmpId = ''
+
+        material.isAssembleStationShow = True
+        material.isAssembleStation3TakeOk = False
+        material.whichStation = 2
+
+        if source_work_num == 'B109':
+            material.show1_ok = 1
+            material.show2_ok = 3
+            material.show3_ok = 3
+
+        else:
+            # B110 異常後回 B109 異常返工
+            if has_assemble_selected:
+                material.show1_ok = 1
+                material.show2_ok = 3
+                material.show3_ok = 3
+            else:
+                material.show1_ok = 1
+                material.show2_ok = 5
+                material.show3_ok = 5
+
+        # ------------------------------------------------------------
+        # 16. 寫入資料庫
+        # ------------------------------------------------------------
+        s.commit()
+
+        return jsonify({
+            'status': True,
+            'message': '異常返工流程已建立',
+
+            'source_id': source.id,
+            'source_work_num': source_work_num,
+
+            'material_id': material_id,
+            'schedule_id': schedule_id,
+            'release_batch_no': release_batch_no,
+
+            'abnormal_qty': abnormal_qty,
+            'remain_qty': remain_qty,
+
+            'synced_b110_ids': [
+                row.id
+                for row in updated_b110_rows
+            ],
+
+            'assemble_data': [
+                row.id for row in new_rows
+            ]
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+
+        print(
+            "copyAssembleForDifference ERROR:",
+            repr(e)
+        )
+
+        return jsonify({
+            'status': False,
+            'message': str(e),
+            'assemble_data': []
+        }), 500
+
+    finally:
+        s.close()
 
 
 # copy assemble data table

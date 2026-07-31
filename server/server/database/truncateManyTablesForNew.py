@@ -22,7 +22,7 @@ truncate_table('process')
 
 truncate_table('association_material_abnormal')
 truncate_table('material')
-truncate_table('abnormal_cause')
+#truncate_table('abnormal_cause')
 
 # 加工線正式表
 truncate_table('p_bom')

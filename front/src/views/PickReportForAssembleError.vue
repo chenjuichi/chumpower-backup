@@ -81,7 +81,9 @@
           </v-row>
 
           <v-row class="mt-0 mb-0 row-hidden" style="min-height: 48px; height: 48px; flex-wrap: nowrap;">
+
             <!--日期範圍-->
+            <!--
             <v-col cols="4" class="d-flex justify-end align-center pt-0">
               <Transition name="slide">
                 <div v-if="showFields">
@@ -127,8 +129,10 @@
                 </div>
               </Transition>
             </v-col>
+            -->
 
             <!--工單範圍-->
+            <!--
             <v-col cols="4" class="d-flex justify-start align-center pt-0">
               <Transition name="slide">
               <v-text-field
@@ -146,8 +150,10 @@
               />
               </Transition>
             </v-col>
+            -->
 
             <!--Excel按鍵-->
+            <!--
             <v-col cols="4" class="d-flex justify-center align-center pb-12">
               <div class="flip_btn">
                 <v-btn
@@ -172,6 +178,8 @@
                 </div>
               </div>
             </v-col>
+            -->
+
           </v-row>
         </v-card-title>
       </v-card>
@@ -320,7 +328,8 @@
     <!-- 自訂 '點檢人員' 欄位 -->
     <template v-slot:item.user="{ item }">
         <div>
-          {{item.work}}-{{ item.user }}
+          <!--{{item.work}}-{{ item.user }}-->
+          {{ item.user ? `${item.work}-${item.user}` : item.user }}
         </div>
     </template>
 
@@ -467,6 +476,7 @@
               {{ abnormal_alarm }}
             </span>
           </div>
+        <!--
           <v-combobox
             v-model="causeDlg.form.err_msg"
             :items="abnormal_causes_msg"
@@ -475,6 +485,28 @@
             class="cause_dlg_combo"
             style="min-width:0; position: relative; left: 15px;"
           />
+        -->
+<!--20260731版-->
+<v-combobox
+  v-model="causeDlg.form.err_msg"
+  :items="abnormal_causes_msg"
+  label="選擇異常原因"
+  placeholder="請選擇異常原因"
+  variant="outlined"
+  density="comfortable"
+  clearable
+  hide-details
+  :menu-props="{
+    maxHeight: 320
+  }"
+  class="cause_dlg_combo"
+  style="
+    min-width: 0;
+    position: relative;
+    left: 15px;
+  "
+/>
+
         </div>
 
         <div>
@@ -526,11 +558,8 @@ dayjs.extend(isSameOrBefore);   //啟用 plugin
 
 import { useRoute } from 'vue-router';
 
-//import { useLocale } from 'vuetify';
 
 import { myMixin } from '../mixins/common.js';
-
-//import { useSocketio } from '../mixins/SocketioService.js';
 
 import { snackbar, snackbar_info, snackbar_color } from '../mixins/crud.js';
 
@@ -541,7 +570,6 @@ import { apiOperation }  from '../mixins/crud.js';
 import { apiOperationB } from '../mixins/crudB.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-//const listInformationsForAssembleError = apiOperation('get', '/listInformationsForAssembleError');
 const listAbnormalCauses = apiOperation('get', '/listAbnormalCauses');
 
 const updateAssemble = apiOperation('post', '/updateAssemble');
@@ -793,6 +821,7 @@ const containerStyle = computed(() => ({
 
 const routeName = computed(() => route.name);
 
+/*
 const abnormal_causes_msg = computed(() => {
 
   if (!searchText.value)
@@ -805,6 +834,56 @@ const abnormal_causes_msg = computed(() => {
     )
     .map(cause => `${cause.message}(${cause.number})`);
 });
+*/
+//20260731版
+const abnormal_causes_msg = computed(() => {
+  const rows = Array.isArray(abnormal_causes.value)
+    ? abnormal_causes.value
+    : []
+
+  const keyword = String(
+    searchText.value || ''
+  )
+    .trim()
+    .toLowerCase()
+
+  return rows
+    .filter(cause => {
+      if (!keyword) {
+        return true
+      }
+
+      const message = String(
+        cause?.message || ''
+      ).toLowerCase()
+
+      const number = String(
+        cause?.number || ''
+      ).toLowerCase()
+
+      return (
+        message.includes(keyword) ||
+        number.includes(keyword)
+      )
+    })
+    .map(cause => {
+      const message = String(
+        cause?.message || ''
+      ).trim()
+
+      const number = String(
+        cause?.number || ''
+      ).trim()
+
+      if (message && number) {
+        return `${message}(${number})`
+      }
+
+      return message || number
+    })
+    .filter(Boolean)
+})
+//
 
 const isAssembleErrorEmpty = computed(() => {
   return informations_for_assemble_error.value.length === 0;
@@ -968,114 +1047,50 @@ function toStr(v) {
   return String(v)
 }
 
-/*
-function appendPreviewToMsg () {
-  const addRaw = toStr(composedMsg.value).trim()
-  if (!addRaw) return
+// 20260731版
+async function editCauseMessage(item) {
+  console.log('editCauseMessage(), item:', item)
 
-  const isQtyWithReason = (s) => /^\d+\s*x.+$/.test(s)
-  if (!isQtyWithReason(addRaw)) return
-
-  const curRaw = toStr(causeDlg.form.msg || '').trim()
-
-  if (!curRaw || stripQtyPrefix(curRaw) === stripQtyPrefix(addRaw)) {
-    causeDlg.form.msg = addRaw
-    return
-  }
-
-  causeDlg.form.msg = `${curRaw}、${addRaw}`
-}
-*/
-
-/*
-function appendPreviewToMsg () {
-  const addRaw = toStr(composedMsg.value).trim()
-  if (!addRaw) return
-
-  // 🔸 「只有數量 x」，例如：1x、2x
-  const isQtyOnly = (s) => /^\d+\s*x$/.test(s)
-
-  // 🔸 「數量 x 後面還有內容」，例如：1xabc、2x異常
-  const isQtyWithReason = (s) => /^\d+\s*x.+$/.test(s)
-
-  // ⭐ 如果這次的 composedMsg 不是「數量 + x + 原因」，就直接忽略
-  //    → 1x 會被擋掉
-  //    → abc 也會被擋掉
-  if (!isQtyWithReason(addRaw)) {
-    return
-  }
-
-  const curRaw = toStr(causeDlg.form.msg || '').trim()
-
-  console.log("composedMsg , causeDlg.form.msg:", composedMsg.value, causeDlg.form.msg)
-
-  // 清掉兩邊多餘的頓號
-  const clean = s => s.replace(/^、+|、+$/g, '')
-
-  const pieces = []
-
-  // 🔸 舊的 msg：如果是「只有 1x 這種」，就不要保留
-  if (curRaw) {
-    const curClean = clean(curRaw)
-    if (!isQtyOnly(curClean)) {
-      pieces.push(curClean)
-    }
-  }
-
-  // 🔸 addRaw 在這裡一定是「數量 + x + 原因」了
-  const addClean = clean(addRaw)
-  if (addClean) {
-    pieces.push(addClean)
-  }
-
-  causeDlg.form.msg = pieces.join('、')
-}
-*/
-
-/*
-function appendPreviewToMsg () {
-  const add = toStr(composedMsg.value).trim()
-  //const add = (composedMsg.value || '').trim()
-  if (!add) return
-
-  const cur = toStr(causeDlg.form.msg || '').trim()
-
-  console.log("composedMsg , causeDlg.form.msg:", composedMsg.value, causeDlg.form.msg)
-
-  // 清掉兩邊多餘的頓號
-  const clean = s => s.replace(/^、+|、+$/g, '')
-
-  // 判斷「只有數量x」的情況，例如 1x、2x、  3 x
-  const isQtyOnly = s => /^\d+\s*x\s*$/i.test(s)
-
-  // 目前已經有的內容，如果不是純「1x」才保留
-  const pieces = []
-  if (cur && !isQtyOnly(cur))
-    pieces.push(clean(cur))
-
-  // 新增的 composedMsg，如果不是純「1x」才加入
-  if (add && !isQtyOnly(add))
-    pieces.push(clean(add))
-
-  causeDlg.form.msg = pieces.join('、')
-}
-*/
-
-function editCauseMessage (item) {
-  console.log("editCauseMessage(), item:", item);
-
-  editedIndex.value = filteredInformations.value.findIndex(kk => kk.index === item.index);
-  console.log("editedIndex:", editedIndex.value);
+  editedIndex.value =
+    filteredInformations.value.findIndex(
+      row => row.index === item.index
+    )
 
   causeDlg.target = item
-  causeDlg.open = true
 
-  // 初始值：
-  causeDlg.form.msg = item.cause_message;
-  causeDlg.form.qty = null;
-  causeDlg.form.max_qty=item.alarm_qty;
-  causeDlg.form.err_msg = '';
+  causeDlg.form.msg =
+    Array.isArray(item.cause_message)
+      ? item.cause_message.join('、')
+      : String(item.cause_message || '')
+
+  causeDlg.form.qty = null
+  causeDlg.form.max_qty =
+    Number(item.alarm_qty || 0)
+
+  // v-combobox 是單選字串
+  causeDlg.form.err_msg = ''
+
+  // 清單不存在時重新取得
+  if (
+    !Array.isArray(abnormal_causes.value) ||
+    abnormal_causes.value.length === 0
+  ) {
+    await loadAbnormalCauses()
+  }
+
+  console.log(
+    '[editCauseMessage] causes:',
+    abnormal_causes.value
+  )
+
+  console.log(
+    '[editCauseMessage] items:',
+    abnormal_causes_msg.value
+  )
+
+  causeDlg.open = true
 }
+//
 
 function clearMsg () {
   causeDlg.form.msg = ''
@@ -1137,26 +1152,6 @@ const handleKeyDown = (event) => {
     //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
   }
 };
-/*
-const checkReceiveQty = () => {
-  console.log("checkReceiveQty()...");
-
-  const total = Number(causeDlg.form.qty) || 0;
-  const temp = Number(causeDlg.form.max_qty) || 0;
-  console.log("total, temp:",total, temp)
-  if (total > temp) {
-    abnormal_alarm.value = '數量錯誤!';
-    abnormal_tooltipVisible.value = true;     // 顯示 Tooltip
-    setTimeout(() => {
-      abnormal_tooltipVisible.value = false;  // 2秒後隱藏 Tooltip
-      abnormal_alarm.value = '';              // 清空輸入欄位
-    }, 2000);
-    console.error('數量錯誤!');
-  } else {
-    abnormal_tooltipVisible.value = false;
-  }
-};
-*/
 
 const checkTextEditField = (focused, item) => {
   if (!focused) { // 當失去焦點時
@@ -1175,27 +1170,75 @@ const checkTextEditField = (focused, item) => {
   }
 };
 
+
+// 20260731版
+const loadAbnormalCauses = async () => {
+  try {
+    await listAbnormalCauses()
+
+     // apiOperation() 沒有 return response，
+     // 但會在內部更新 crud.js 匯出的 abnormal_causes。
+     //
+     // 因此這裡不要再依 response 判斷，
+     // 也不要把 abnormal_causes.value 清空。
+    console.log(
+      '[loadAbnormalCauses] abnormal_causes:',
+      abnormal_causes.value
+    )
+
+    console.log(
+      '[loadAbnormalCauses] count:',
+      Array.isArray(abnormal_causes.value)
+        ? abnormal_causes.value.length
+        : 0
+    )
+
+    console.log(
+      '[loadAbnormalCauses] combobox items:',
+      abnormal_causes_msg.value
+    )
+
+    return abnormal_causes.value
+
+  } catch (error) {
+    console.error(
+      '[loadAbnormalCauses] error:',
+      error
+    )
+
+    showSnackbar(
+      '異常原因清單載入失敗！',
+      'red accent-2'
+    )
+
+    return []
+  }
+}
+
 const initialize = async () => {
-  console.log("PickReportForAssembleError, initialize()...");
+  console.log(
+    'PickReportForAssembleError, initialize()...'
+  )
+
+  await loadAbnormalCauses()
 
   try {
-    await listAbnormalCauses();
+    await getInformationsForAssembleErrorByHistoryFun()
   } catch (error) {
-    console.error("Initialize Error in listAbnormalCauses():", error);
+    console.error(
+      'InitializeError in ' +
+      'getInformationsForAssembleErrorByHistoryFun():',
+      error
+    )
   }
+}
+//
 
-  try {
-    await getInformationsForAssembleErrorByHistoryFun();
-  } catch (error) {
-    console.error("InitializeError in getInformationsForAssembleErrorByHistoryFun():", error);
-  }
-};
-
-const setComboboxRef = (el, orderNum) => {
-  if (el) {
-    comboboxRefs.value[orderNum] = el;
-  }
-};
+//const setComboboxRef = (el, orderNum) => {
+//  if (el) {
+//    comboboxRefs.value[orderNum] = el;
+//  }
+//};
 
 const handleBarCode = () => {
   if (bar_code.value.length !== 12) {
@@ -1495,6 +1538,7 @@ const onSearchUpdate = (search) => {
   searchText.value = search;
 };
 
+/* 20260731 delete
 // 當v-combobox選單開啟或關閉時觸發
 const onMenuUpdate = (isOpen, item) => {
   console.log("onMenuUpdate, 選單狀態:", isOpen ? "開啟" : "關閉");
@@ -1514,6 +1558,7 @@ const onMenuUpdate = (isOpen, item) => {
   }
 
 };
+*/
 
 const onValueUpdate = async (item) => {
   console.log("onValueUpdate(),錯誤訊息陣列", item);

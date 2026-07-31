@@ -1674,3 +1674,71 @@ def pick_user_list(bucket, pt: str, mid: str):
         return [u.strip() for u in val.split(',') if u.strip()]
     return list(val)
 
+
+# 20260731版 add
+def sync_b110_remaining_qty(
+    s,
+    material_id,
+    release_batch_no,
+    remain_qty,
+    now_str=None,
+):
+
+    #同步同一 material、同一 release_batch_no 內，
+    #所有正常 B110 工序的剩餘應完成數量。
+    #
+    #例如：
+    #    b1 / b2 / b3 原本都是 72
+    #    b1 異常 10
+    #    同批正常 b1 / b2 / b3 都更新為 62
+    #
+    #不更新：
+    #    - 異常返工列
+    #    - 其他批次
+    #    - 已送 Warehouse 的列
+
+    material_id = int(material_id)
+    release_batch_no = int(release_batch_no or 0)
+    remain_qty = max(int(remain_qty or 0), 0)
+
+    rows = (
+        s.query(Assemble)
+        .filter(Assemble.material_id == material_id)
+        .filter(Assemble.work_num == 'B110')
+        .filter(
+            func.coalesce(
+                Assemble.release_batch_no,
+                0
+            ) == release_batch_no
+        )
+        .filter(
+            or_(
+                Assemble.reason.is_(None),
+                Assemble.reason == '',
+                Assemble.reason.notin_([
+                    '異常返工',
+                    'B110_DONE_COPY',
+                ]),
+            )
+        )
+        .filter(
+            or_(
+                Assemble.isWarehouseStationShow.is_(False),
+                Assemble.isWarehouseStationShow.is_(None),
+            )
+        )
+        .with_for_update()
+        .all()
+    )
+
+    for row in rows:
+        row.must_receive_qty = remain_qty
+        row.ask_qty = remain_qty
+        row.total_ask_qty = remain_qty
+        row.must_receive_end_qty = remain_qty
+
+        if now_str:
+            row.update_time = now_str
+
+    return rows
+

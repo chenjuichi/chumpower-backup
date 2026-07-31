@@ -1,5 +1,5 @@
-import math
-import random
+#import math
+#import random
 import re
 from datetime import datetime, date, timedelta
 
@@ -11,11 +11,10 @@ import time
 from flask import Blueprint, jsonify, request, current_app
 
 from database.tables import User, Session
-from database.p_tables import P_Material, P_Assemble,  P_AbnormalCause, P_Process, P_Product, P_Part
+from database.p_tables import P_Material, P_Assemble,  P_Process, P_Product, P_Part
 
-from dotenv import dotenv_values
-
-from collections import defaultdict
+#from dotenv import dotenv_values
+#from collections import defaultdict
 
 from sqlalchemy import func, or_, cast, Integer
 from sqlalchemy.orm import selectinload, load_only
@@ -76,11 +75,16 @@ def list_materials_and_assembles_p():
                     P_Assemble.isWarehouseStationShow,
                     P_Assemble.show2_ok,
                 ),
+                # 20260730版
                 selectinload(P_Material._process).load_only(
                     P_Process.id,
                     P_Process.material_id,
                     P_Process.assemble_id,
                     P_Process.process_type,
+
+                    # 必須載入，後面會用來判斷是否真正開始
+                    P_Process.has_started,
+
                     P_Process.begin_time,
                     P_Process.end_time,
                     P_Process.process_work_time_qty,
@@ -89,6 +93,7 @@ def list_materials_and_assembles_p():
                     P_Process.elapsedActive_time,
                     P_Process.str_elapsedActive_time,
                 ),
+                #
             )
             .all()
         )
@@ -101,8 +106,7 @@ def list_materials_and_assembles_p():
             })
 
         part_info_map = {}
-        part_rows = (
-            s.query(
+        part_rows = (s.query(
                 P_Part.part_code,
                 P_Part.part_comment,
                 P_Part.process_step_code
@@ -125,10 +129,10 @@ def list_materials_and_assembles_p():
             assemble_records = list(material_record._assemble or [])
             process_records = list(material_record._process or [])
 
-            total_records = sum(
-                1 for p in process_records
-                if p.material_id == material_record.id and int(p.assemble_id or 0) != 0
-            )
+            #total_records = sum(
+            #    1 for p in process_records
+            #    if p.material_id == material_record.id and int(p.assemble_id or 0) != 0
+            #)
 
             keep_assemble_id = None
             keep_seq = None
@@ -145,56 +149,109 @@ def list_materials_and_assembles_p():
                 if keep_assemble_id is None or seq < keep_seq:
                     keep_assemble_id = int(a.id)
                     keep_seq = seq
+            # end for loop
 
             proc_stat_map = {}
 
+            # 20260730版
             for p in process_records:
-                if p.material_id != material_record.id:
-                    continue
+                material_id = int(p.material_id or 0)
+                assemble_id = int(p.assemble_id or 0)
+                process_type = int(p.process_type or 0)
 
-                aid = int(p.assemble_id or 0)
-                ptype = int(p.process_type or 0)
-
-                if aid == 0 or ptype == 0:
-                    continue
-
-                # begin_time 有值，而且 end_time 是 NULL 或空字串，才算進行中/暫停中
                 if (
-                    not p.begin_time
-                    or not str(p.begin_time).strip()
-                    or (p.end_time is not None and str(p.end_time).strip() != '')
+                    material_id <= 0
+                    or assemble_id <= 0
+                    or process_type <= 0
                 ):
                     continue
 
-                key = (aid, ptype)
+                # 必須真正開始過
+                if not bool(p.has_started):
+                    continue
+
+                # begin_time 必須有值
+                if (
+                    p.begin_time is None
+                    or not str(
+                        p.begin_time
+                    ).strip()
+                ):
+                    continue
+
+                # end_time 有內容表示已結束
+                if (
+                    p.end_time is not None
+                    and str(
+                        p.end_time
+                    ).strip() != ''
+                ):
+                    continue
+
+                key = (
+                    material_id,
+                    assemble_id,
+                    process_type,
+                )
+
                 if key not in proc_stat_map:
                     proc_stat_map[key] = {
                         'count': 0,
-                        'qty_sum': 0,
+                        'active_user_ids': set(),
                         'last_proc_id': 0,
                         'last_user_id': '',
-                        'is_pause': False,
+                        'is_pause': True,
                         'elapsedActive_time': 0,
-                        'str_elapsedActive_time': '00:00:00',
+                        'str_elapsedActive_time':
+                            '00:00:00',
                     }
 
-                proc_stat_map[key]['count'] += 1
-                proc_stat_map[key]['qty_sum'] += int(p.process_work_time_qty or 0)
+                stat = proc_stat_map[key]
 
-                pid = int(p.id or 0)
-                if pid >= proc_stat_map[key]['last_proc_id']:
-                    proc_stat_map[key]['last_proc_id'] = pid
-                    proc_stat_map[key]['last_user_id'] = p.user_id or ''
-                    proc_stat_map[key]['is_pause'] = bool(p.is_pause)
-                    proc_stat_map[key]['elapsedActive_time'] = int(p.elapsedActive_time or 0)
-                    proc_stat_map[key]['str_elapsedActive_time'] = (
-                        p.str_elapsedActive_time or '00:00:00'
+                stat['count'] += 1
+
+                if p.user_id:
+                    stat[
+                        'active_user_ids'
+                    ].add(
+                        str(p.user_id).strip()
                     )
+
+                process_id = int(
+                    p.id or 0
+                )
+
+                if (
+                    process_id >=
+                    stat['last_proc_id']
+                ):
+                    stat['last_proc_id'] = process_id
+
+                    stat['last_user_id'] = (
+                        p.user_id or ''
+                    )
+
+                    stat['is_pause'] = bool(
+                        p.is_pause
+                    )
+
+                    stat[
+                        'elapsedActive_time'
+                    ] = int(
+                        p.elapsedActive_time or 0
+                    )
+
+                    stat[
+                        'str_elapsedActive_time'
+                    ] = (
+                        p.str_elapsedActive_time
+                        or '00:00:00'
+                    )
+            # end for loop
 
             cleaned_comment = safe_str(material_record.material_comment).strip()
 
             for assemble_record in assemble_records:
-
                 # 已送倉庫的不顯示
                 if bool(assemble_record.isWarehouseStationShow):
                     continue
@@ -221,29 +278,52 @@ def list_materials_and_assembles_p():
                 show_comment = part_info.get('comment', '')
                 show_code = int(part_info.get('process_step_code', 0) or 0)
 
-                stat = proc_stat_map.get((int(assemble_record.id), show_code), {
+                # 20260730版
+                # ============================================================
+                # 加工計時狀態唯一 Key：
+                #
+                # material_id
+                # assemble_id
+                # process_type
+                # ============================================================
+                process_type = int(assemble_record.process_step_code or 0)
+
+                stat_key = (
+                    int(material_record.id or 0),
+                    int(assemble_record.id or 0),
+                    process_type,
+                )
+
+                process_stat = proc_stat_map.get(stat_key, {
                     'count': 0,
-                    'qty_sum': 0,
+                    'active_user_ids': set(),
+                    'last_proc_id': 0,
                     'last_user_id': '',
-                    'is_pause': False,
+                    'is_pause': True,
                     'elapsedActive_time': 0,
                     'str_elapsedActive_time': '00:00:00',
                 })
 
-                matched_count = int(stat.get('count') or 0)
-                total_work_qty = int(stat.get('qty_sum') or 0)
+                # 所有正在這筆工序執行的人員
+                active_user_ids = sorted(
+                    str(user_id).strip()
+                    for user_id in process_stat.get('active_user_ids', set())
+                    if str(user_id or '').strip()
+                )
 
-                show_timer = matched_count > 0
-                show_name = stat.get('last_user_id', '') if show_timer else ''
+                active_user_count = len(active_user_ids)
 
-                a_statement = (
-                    show_code != 0
-                    and total_records != 0
-                    and matched_count > 0
-                    and total_work_qty >= int(material_record.delivery_qty or 0)
+                # 只要有真正開始且尚未結束的 P_Process，
+                # 就代表這列有人執行
+                show_timer = (active_user_count > 0)
+
+                show_name = (
+                    str(process_stat.get('last_user_id', '') or '').strip()
+                    if show_timer else ''
                 )
 
                 index += 1
+                #
 
                 _object = {
                     'index': index,
@@ -280,12 +360,6 @@ def list_materials_and_assembles_p():
                     'is_copied_from_id': getattr(assemble_record, 'is_copied_from_id', None),
                     'create_at': assemble_record.create_at,
 
-                    'show_timer': show_timer,
-                    'show_name': show_name,
-                    'is_pause': bool(stat.get('is_pause', False)),
-                    'elapsedActive_time': int(stat.get('elapsedActive_time') or 0),
-                    'str_elapsedActive_time': stat.get('str_elapsedActive_time') or '00:00:00',
-
                     'isShowBomGif': assemble_record.isShowBomGif,
                     'process_step_code': assemble_record.process_step_code,
 
@@ -294,10 +368,66 @@ def list_materials_and_assembles_p():
                     'isWarehouseStationShow': bool(assemble_record.isWarehouseStationShow),
 
                     'assemble_process_num': int(assemble_record.show2_ok or 0),
+
+                    # 20260730 add
+                    'row_key': (
+                        f"{material_record.id}_"
+                        f"{assemble_record.id}_"
+                        f"{process_type}"
+                    ),
+
+                    'id': int(material_record.id),
+
+                    'assemble_id': int(assemble_record.id),
+
+                    'process_step_code': process_type,
+
+                    'is_running_row': bool(show_timer),
+
+                    #
+                    'show_timer': bool(show_timer),
+
+                    'show_name': show_name,
+
+                    'is_pause': bool(process_stat.get('is_pause', True)),
+
+                    'elapsedActive_time':
+                        int(
+                            process_stat.get(
+                                'elapsedActive_time',
+                                0
+                            ) or 0
+                        ),
+
+                    'str_elapsedActive_time':
+                        (
+                            process_stat.get(
+                                'str_elapsedActive_time'
+                            )
+                            or '00:00:00'
+                        ),
+
+                    'active_user_count': active_user_count,
+
+                    'active_user_ids': active_user_ids,
+
+                    'started_user_id': show_name,
+
+                    'active_process_id':
+                        int(
+                            process_stat.get(
+                                'last_proc_id',
+                                0
+                            ) or 0
+                        ),
+
+                    'active_is_pause':
+                        bool(process_stat.get('is_pause', True)),
+                    #
                 }
 
                 _results.append(_object)
-
+            # en for loop
         _results.sort(
             key=lambda x: (
                 0 if x.get('is_running_row') else 1,
@@ -392,7 +522,6 @@ def list_informations_p():
         )
 
     total = q.count()  # ✅ 總筆數（給前端算總頁數）
-    #q = q.order_by(P_Material.order_num).limit(limit).offset(offset)
 
     _objects = q.all()
 
@@ -529,8 +658,6 @@ def list_informations_p():
         'whichStation': record.whichStation,
         'req_qty': record.material_qty,                 #需求數量
         'delivery_date':record.material_delivery_date,  #交期
-        #'delivery_qty':record.delivery_qty,             #現況數量
-        #'delivery_qty': int(stockin_total) if int(stockin_total) > 0 else record.delivery_qty,
         'delivery_qty': delivery_qty,
         'comment': cleaned_comment,                     #說明
         'show1_ok' : str1[int(record.show1_ok) - 1],    #現況進度(上面文字說明)
@@ -546,19 +673,12 @@ def list_informations_p():
 
     if not _objects:
         print("⚠️ 沒有資料")
-        #s.close()
         return jsonify({'status': False, 'informations': []})
 
     temp_len = len(_results)
-    #print("listInformations, 資料: ", _results)
-    print("listInformationsP, 總數: ", temp_len)
-    #if (temp_len == 0):
-    #  return_value = False
-    #else:
-    # 根據 'order_num' 排序
-    #_results = sorted(_results, key=lambda x: x['order_num'])
 
-    # total_process_records != 0 的資料 → 排在前面, 其餘再依 order_num 排序
+    print("listInformationsP, 總數: ", temp_len)
+
     _results = sorted(
       _results,
       key=lambda x: (x.get('total_process_records', 0) == 0, x['order_num'])
@@ -569,7 +689,6 @@ def list_informations_p():
       'total': total,
       'informations': _results
     })
-
 
 
 @listTableP.route("/listInformationsPFiltered", methods=["POST"])
@@ -765,6 +884,4 @@ def list_informations_p_filtered():
 
     finally:
         s.close()
-
-
 

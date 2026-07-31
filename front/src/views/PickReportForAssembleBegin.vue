@@ -1955,38 +1955,26 @@ async function onClickBegin(row) {
   const me = String(safeUserId.value || '').trim();
 
   if (!me) {
-    showSnackbar(
-      '使用者資料尚未載入，請稍後再試!',
-      'red-darken-2'
-    );
+    showSnackbar('使用者資料尚未載入，請稍後再試!', 'red-darken-2');
     return;
   }
 
   if (!row?.id || !row?.assemble_id) {
-    showSnackbar(
-      '資料異常，缺少工單或工序資料!',
-      'red-darken-2'
-    );
+    showSnackbar('資料異常，缺少工單或工序資料!', 'red-darken-2');
     return;
   }
 
   const t = getT(row);
 
   if (!t) {
-    showSnackbar(
-      '計時器尚未準備好!',
-      'red-darken-2'
-    );
+    showSnackbar('計時器尚未準備好!', 'red-darken-2');
     return;
   }
 
   const processType = processTypeOf(row);
 
   if (!processType) {
-    showSnackbar(
-      '無法判斷製程類型!',
-      'red-darken-2'
-    );
+    showSnackbar('無法判斷製程類型!', 'red-darken-2');
     return;
   }
 
@@ -2010,10 +1998,7 @@ async function onClickBegin(row) {
         row.assemble_id
       );
 
-      console.log(
-        '[onClickBegin] startProcess result:',
-        result
-      );
+      console.log('[onClickBegin] startProcess result:', result);
 
       const processId =
         typeof result === 'object'
@@ -2035,10 +2020,7 @@ async function onClickBegin(row) {
           : processId > 0;
 
       if (!success || processId <= 0) {
-        throw new Error(
-          result?.message ||
-          '無法建立個人報工流程'
-        );
+        throw new Error(result?.message || '無法建立個人報工流程');
       }
 
       t.processId.value = processId;

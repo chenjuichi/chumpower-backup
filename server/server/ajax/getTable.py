@@ -2565,6 +2565,7 @@ def close_process_mp():
 # -----dialog2~Process for 前端 PickReportForProcessBegin.vue 及 PickReportForProcessEnd.vue -------------------------------------------------------------
 
 
+"""
 @getTable.route("/dialog2StartProcessProcess", methods=['POST'])
 def start_process_process():
     print("dialog2StartProcessProcess API....")
@@ -2654,7 +2655,310 @@ def start_process_process():
       startStatus=getattr(material_record, "startStatus", None) if material_record else None,
       isOpenEmpId=getattr(material_record, "isOpenEmpId", None) if material_record else None,
     )
+"""
+# 20260730版
+@getTable.route("/dialog2StartProcessProcess", methods=["POST"])
+def start_process_process():
+    print("dialog2StartProcessProcess API...")
 
+    data = request.get_json(silent=True) or {}
+
+    try:
+        material_id = int(
+            data.get("material_id") or 0
+        )
+        assemble_id = int(
+            data.get("assemble_id") or 0
+        )
+        process_type = int(
+            data.get("process_type") or 0
+        )
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "success": False,
+            "message":
+                "invalid material_id / assemble_id / process_type",
+        }), 200
+
+    user_id = str(
+        data.get("user_id") or ""
+    ).strip()
+
+    restore_only = bool(
+        data.get("restore_only", False)
+    )
+
+    if (
+        material_id <= 0
+        or assemble_id <= 0
+        or process_type <= 0
+        or not user_id
+    ):
+        return jsonify({
+            "success": False,
+            "restored": False,
+            "message":
+                "missing material_id / assemble_id / process_type / user_id",
+        }), 200
+
+    s = Session()
+
+    try:
+        material_record = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id ==
+                material_id
+            )
+            .one_or_none()
+        )
+
+        if material_record is None:
+            return jsonify({
+                "success": False,
+                "restored": False,
+                "message":
+                    "找不到加工線工單",
+            }), 200
+
+        assemble_record = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.id ==
+                assemble_id,
+                P_Assemble.material_id ==
+                material_id,
+            )
+            .one_or_none()
+        )
+
+        if assemble_record is None:
+            return jsonify({
+                "success": False,
+                "restored": False,
+                "message":
+                    "找不到加工線工序",
+            }), 200
+
+        #
+        # --------------------------------------------------------
+        # 只找「目前員工」在此實際工序上的 active process。
+        #
+        # 不可用 order_num。
+        # --------------------------------------------------------
+        log = (
+            s.query(P_Process)
+            .filter(
+                P_Process.material_id ==
+                material_id,
+                P_Process.assemble_id ==
+                assemble_id,
+                P_Process.process_type ==
+                process_type,
+                P_Process.user_id ==
+                user_id,
+                P_Process.has_started.is_(True),
+                P_Process.begin_time.isnot(None),
+                func.trim(
+                    P_Process.begin_time
+                ) != '',
+                or_(
+                    P_Process.end_time.is_(None),
+                    func.trim(
+                        P_Process.end_time
+                    ) == '',
+                ),
+            )
+            .order_by(
+                P_Process.id.desc()
+            )
+            .first()
+        )
+
+        if log is not None:
+            live_elapsed = int(
+                _live_elapsed_seconds(log)
+            )
+
+            return jsonify({
+                "success": True,
+                "restored":
+                    restore_only,
+                "process_id":
+                    int(log.id),
+                "material_id":
+                    int(log.material_id),
+                "assemble_id":
+                    int(log.assemble_id or 0),
+                "process_type":
+                    int(log.process_type or 0),
+                "user_id":
+                    log.user_id or "",
+                "started_user_id":
+                    log.user_id or "",
+                "begin_time":
+                    log.begin_time,
+                "elapsed_time":
+                    live_elapsed,
+                "is_paused":
+                    bool(log.is_pause),
+                "pause_time":
+                    int(log.pause_time or 0),
+                "has_started":
+                    bool(log.has_started),
+            }), 200
+
+        # --------------------------------------------------------
+        # restore_only 找不到 active process：
+        # 必須直接返回，不可建立空白 P_Process。
+        # --------------------------------------------------------
+        if restore_only:
+            return jsonify({
+                "success": True,
+                "restored": False,
+                "reason":
+                    "no-active-process",
+                "process_id": None,
+                "material_id":
+                    material_id,
+                "assemble_id":
+                    assemble_id,
+                "process_type":
+                    process_type,
+                "user_id":
+                    user_id,
+                "started_user_id": "",
+                "elapsed_time": 0,
+                "is_paused": True,
+                "pause_time": 0,
+                "has_started": False,
+            }), 200
+
+        # --------------------------------------------------------
+        # 一般模式：
+        # 可以建立「尚未按真正開始」的 process。
+        #
+        # 但同一使用者、同一實際工序只允許一筆空白紀錄。
+        # --------------------------------------------------------
+        pending_log = (
+            s.query(P_Process)
+            .filter(
+                P_Process.material_id ==
+                    material_id,
+                P_Process.assemble_id ==
+                    assemble_id,
+                P_Process.process_type ==
+                    process_type,
+                P_Process.user_id ==
+                    user_id,
+                P_Process.has_started.is_(False),
+                or_(
+                    P_Process.begin_time.is_(None),
+                    func.trim(
+                        P_Process.begin_time
+                    ) == '',
+                ),
+                or_(
+                    P_Process.end_time.is_(None),
+                    func.trim(
+                        P_Process.end_time
+                    ) == '',
+                ),
+            )
+            .order_by(
+                P_Process.id.desc()
+            )
+            .first()
+        )
+
+        if pending_log is None:
+            pending_log = P_Process(
+                material_id=
+                    material_id,
+                assemble_id=
+                    assemble_id,
+                process_type=
+                    process_type,
+                user_id=
+                    user_id,
+                user_delegate_id='',
+                has_started=False,
+                begin_time=None,
+                end_time=None,
+                period_time=None,
+                pause_time=0,
+                pause_started_at=None,
+                elapsedActive_time=0,
+                str_elapsedActive_time=
+                    '00:00:00',
+                is_pause=True,
+                process_work_time_qty=0,
+                must_allOk_qty=0,
+                allOk_qty=0,
+                isAllOk=False,
+                normal_work_time=1,
+            )
+
+            s.add(pending_log)
+            s.flush()
+
+        s.commit()
+
+        return jsonify({
+            "success": True,
+            "restored": False,
+            "process_id":
+                int(pending_log.id),
+            "material_id":
+                material_id,
+            "assemble_id":
+                assemble_id,
+            "process_type":
+                process_type,
+            "user_id":
+                user_id,
+            "started_user_id":
+                user_id,
+            "begin_time":
+                pending_log.begin_time,
+            "elapsed_time":
+                int(
+                    pending_log.elapsedActive_time
+                    or 0
+                ),
+            "is_paused":
+                bool(pending_log.is_pause),
+            "pause_time":
+                int(
+                    pending_log.pause_time
+                    or 0
+                ),
+            "has_started":
+                bool(
+                    pending_log.has_started
+                ),
+        }), 200
+
+    except Exception as error:
+        s.rollback()
+
+        logger.exception(
+            "dialog2StartProcessProcess failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "restored": False,
+            "message": str(error),
+        }), 200
+
+    finally:
+        s.close()
+        #
+#
 
 @getTable.route("/dialog2UpdateProcessProcess", methods=['POST'])
 def update_process_process():
@@ -4993,6 +5297,7 @@ def get_processes_by_order_num():
                         )
                     )
 
+                '''
                 append_alarm_msg = ""
 
                 if (
@@ -5036,6 +5341,68 @@ def get_processes_by_order_num():
                             or ""
                         ).strip()
                     )
+                '''
+                #
+                # ----------------------------------------------------
+                # 異常返工顯示
+                #
+                # 只有實際生產工序才顯示：
+                #   - 異常
+                #   異常原因
+                #
+                # 搬運、等待 AGV、入庫不可顯示異常文字。
+                # ----------------------------------------------------
+                rework_display_process_types = {
+                    21,  # 組裝
+                    22,  # 檢驗
+                    23,  # 雷射
+                }
+
+                append_alarm_msg = ""
+
+                if (
+                    is_rework_process
+                    and record_process_type
+                    in rework_display_process_types
+                ):
+                    append_alarm_msg = " - 異常"
+
+
+                abnormal_message_text = ""
+
+                if (
+                    is_rework_process
+                    and record_process_type
+                    in rework_display_process_types
+                    and assemble_record is not None
+                ):
+                    abnormal_message_text = (
+                        str(
+                            getattr(
+                                assemble_record,
+                                "alarm_message",
+                                "",
+                            )
+                            or ""
+                        ).strip()
+                        or str(
+                            getattr(
+                                assemble_record,
+                                "Incoming1_Abnormal",
+                                "",
+                            )
+                            or ""
+                        ).strip()
+                        or str(
+                            getattr(
+                                assemble_record,
+                                "confirm_comment",
+                                "",
+                            )
+                            or ""
+                        ).strip()
+                    )
+                #
 
                 # ----------------------------------------------------
                 # Information 顯示數量
@@ -6193,6 +6560,7 @@ def get_Warehouse_For_assemble_by_history():
         s.close()
 
 
+# 20260730版
 # 取得訂單「組裝異常」相關的歷史資訊清單
 @getTable.route("/getInformationsForAssembleErrorByHistory", methods=['POST'])
 def get_informations_for_assemble_error_by_history():
@@ -6216,11 +6584,9 @@ def get_informations_for_assemble_error_by_history():
 
     str1=['備料站', '組裝站', '成品站']
     #       0        1         2                3              4             5           6             7            8             9           10                 11           12            13          14                15            16          17
-    #str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '雷射進行中', '00/00/00',  '檢驗進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
     str2=['未備料', '備料中',  '備料完成',       '等待組裝作業', '組裝進行中', '00/00/00',  '檢驗進行中', '00/00/00',  '雷射進行中',  '00/00/00', '等待入庫作業',     '入庫進行中',  '入庫完成']
 
     #       0        1         2(agv_begin)      3(agv_end)     4(開始鍵)     5(結束鍵)     6(開始鍵)     7(結束鍵)    8(開始鍵)     9(結束鍵)    10(agv_begin)     11(agv_end)    12(開始鍵)    13(結束鍵)   14(agv_begin)    15(agv_end)    16(agv_start)
-    #str3=['',      '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '雷射進行中', '雷射已結束', '檢驗進行中', '檢驗已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業',  'agv Start']
     str3=['',       '等待agv', 'agv移至組裝區中', '等待組裝作業', '組裝進行中', '組裝已結束', '檢驗進行中', '檢驗已結束', '雷射進行中', '雷射已結束', 'agv移至成品區中', '等待入庫作業', '入庫進行中', '入庫完成',  'agv移至備料區中', '等待備料作業',  'agv Start']
 
     _alarm_objects = s.query(AbnormalCause).all()  # 取得所有 AbnormalCause 物件
@@ -6238,8 +6604,14 @@ def get_informations_for_assemble_error_by_history():
     print("_alarm_objects_dict: ", _alarm_objects_dict)
 
     currentUser = s.query(User).filter_by(emp_id=_userId).first()
-
-    perm = True if currentUser.perm_id >=2 and currentUser.perm_id <=4 else False
+    #
+    #perm = True if currentUser.perm_id >=2 and currentUser.perm_id <=4 else False
+    #
+    perm = bool(
+        currentUser
+        and currentUser.perm_id is not None
+        and 2 <= int(currentUser.perm_id) <= 4
+    )
 
     _objects = s.query(Material).all()  # 取得所有 Material 物件
 
@@ -6260,8 +6632,17 @@ def get_informations_for_assemble_error_by_history():
       temp_show2_ok = int(material_record.show2_ok)
 
       for assemble_record in material_record._assemble:   # for loop b
-        if assemble_record.abnormal_qty == 0:
-           continue
+        #if assemble_record.abnormal_qty == 0:
+        #   continue
+        #
+        has_abnormal = (
+            int(assemble_record.abnormal_qty or 0) > 0
+            or bool((assemble_record.alarm_message or "").strip())
+        )
+
+        if not has_abnormal:
+            continue
+        #
 
         if assemble_record.user_id != _userId and not perm:
           continue
@@ -6272,6 +6653,7 @@ def get_informations_for_assemble_error_by_history():
 
         assemble_ok = True
 
+        '''
         #user_id = assemble_record.user_id.lstrip('0')       # 去除前導的 0
         user = s.query(User).filter_by(emp_id=assemble_record.user_id).first()
         #writer_id = assemble_record.writer_id.lstrip('0') if assemble_record.writer_id else ''
@@ -6280,6 +6662,63 @@ def get_informations_for_assemble_error_by_history():
           writerName = writer.emp_name
         else:
           writerName = ''
+        '''
+        #
+        # ------------------------------------------------------------
+        # 異常處理人員
+        #
+        # 舊資料的 user_id 可能為：
+        # 1. 空字串或 None
+        # 2. 已離職／已刪除員工
+        # 3. 複合字串，例如「工號 姓名」
+        #
+        # 查不到 User 時不能讓整支 API 500。
+        # ------------------------------------------------------------
+        assemble_user_id = str(
+            assemble_record.user_id or ''
+        ).strip()
+
+        user = None
+
+        if assemble_user_id:
+            user = (
+                s.query(User)
+                .filter(User.emp_id == assemble_user_id)
+                .first()
+            )
+
+        # 查得到就顯示姓名；查不到則保留原工號
+        if user:
+            userName = user.emp_name
+        elif assemble_user_id:
+            userName = assemble_user_id
+        else:
+            userName = ''
+
+        # ------------------------------------------------------------
+        # 異常填寫人員
+        # ------------------------------------------------------------
+        writer_id = str(
+            assemble_record.writer_id or ''
+        ).strip()
+
+        writer = None
+
+        if writer_id:
+            writer = (
+                s.query(User)
+                .filter(User.emp_id == writer_id)
+                .first()
+            )
+
+        # 查得到顯示姓名；查不到保留 writer_id
+        if writer:
+            writerName = writer.emp_name
+        elif writer_id:
+            writerName = writer_id
+        else:
+            writerName = ''
+        #
 
         #從 assemble_record 中取得 alarm_message 欄位，這個欄位是以逗號與空白分隔的字串（例如 "異常1, 異常2, 異常3"）。
         temp_alarm_message = assemble_record.alarm_message
@@ -6358,7 +6797,8 @@ def get_informations_for_assemble_error_by_history():
           'show2_ok' : temp_temp_show2_ok_str,                      #現況進度(途程)
           'show3_ok': str3[int(material_record.show3_ok)],          # 現況備註
           'cause_user': writerName,   #填寫人員
-          'user': user.emp_name,      #檢點人員
+          #'user': user.emp_name,      #檢點人員
+          'user': userName,
           #'work_num'
           #'user': user_id,
           'work': work,

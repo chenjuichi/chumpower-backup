@@ -4529,42 +4529,6 @@ def update_assemble():
   })
 
 
-@updateTable.route("/updateAssembleP", methods=['POST'])
-def update_assemble_p():
-  print("updateAssembleP....")
-
-  request_data = request.get_json()
-
-  _assemble_id = request_data['assemble_id']
-  _record_name = request_data['record_name']
-
-  if 'record_data' not in request_data:
-    return jsonify({
-        'status': False,
-        'message': '缺少 record_data'
-    }), 400
-  _record_data = request_data['record_data']
-
-  #print("_record_name:", _record_name)
-
-  return_value = True  # true: 資料正確, 註冊成功
-  s = Session()
-
-  # 查找對應的記錄
-  assemble_record = s.query(P_Assemble).filter_by(id = _assemble_id).first()
-
-  # 動態設置欄位值
-  if hasattr(assemble_record, _record_name):
-    setattr(assemble_record, _record_name, _record_data)
-    s.commit()
-
-  s.close()
-
-  return jsonify({
-    'status': return_value
-  })
-
-
 @updateTable.route("/updateProcessData", methods=['POST'])
 def update_process_data():
   print("updateProcessData....")

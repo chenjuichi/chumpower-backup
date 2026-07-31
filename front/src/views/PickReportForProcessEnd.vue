@@ -992,6 +992,13 @@ onMounted(async () => {
   console.log('等待socket連線...');
   try {
     await setupSocketConnection();
+
+    // 20260730 add
+    // 避免重新進入頁面或 Socket 重連時重複註冊
+    socket.value.off('process-end-completed', handleProcessEndCompleted)
+
+    socket.value.on('process-end-completed', handleProcessEndCompleted)
+
     socket.value.on('station2_error', async () => {
       console.log("receive station2_error socket...");
       activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
@@ -1214,6 +1221,42 @@ onBeforeUnmount(() => {
     resizeObserver = null
   }
   // ###
+})
+
+onBeforeUnmount(() => {
+  console.log('PickReportForProcessEnd, onBeforeUnmount()')
+
+  // 移除 storage 事件
+  window.removeEventListener('storage', onStorageSync)
+
+  // ###
+  if (resizeObserver && tableWrapRef.value) {
+    resizeObserver.unobserve(tableWrapRef.value)
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  // ###
+
+  if (socket.value) {
+    socket.value.off(
+      'process-end-completed',
+      handleProcessEndCompleted
+    )
+  }
+  /*
+  // 保留你原本其他清理程式
+  for (const timer of timerMap.values()) {
+    timer?.dispose?.()
+  }
+
+  timerMap.clear()
+  timerElMap.clear()
+  timerRefMap.clear()
+  restoredKeys.clear()
+  frozenMsMap.clear()
+  pausedMap.clear()
+  lastTickMsMap.clear()
+  */
 })
 
 
@@ -2252,9 +2295,10 @@ const updateItem2 = async (item) => {
   }
 };
 
+/*
 const onClickEnd = async (item) => {
   console.log("PickReportForAssembleEnd, onClickEnd(), 按結束鍵", item);
-  //** */
+
   const remain = Number(item.must_receive_end_qty) || 0
   if (remain <= 0) {
     abnormal_qty_alarm.value = '目前無可扣減的完成數量。'
@@ -2263,7 +2307,6 @@ const onClickEnd = async (item) => {
     return
   }
 
-  //** */
   item.receive_qty = Number(item.receive_qty || 0);
 
   // 檢查完成數量欄位是否為空白或輸入了0
@@ -2377,21 +2420,6 @@ const onClickEnd = async (item) => {
     debugRows('after fetch')
   }
 
-  /*
-  // 紀錄當前已結束完成數量顯示順序(組裝/檢驗/雷射)
-  let temp_qty=1  //組裝
-  if (item.process_step_code == 2 )
-    temp_qty=2    //檢驗
-  if (item.process_step_code == 1 )
-    temp_qty=3    //雷射
-  payload = {
-    assemble_id: current_assemble_id,
-    record_name: 'total_ask_qty_end',
-    record_data: temp_qty,
-  };
-  await updateAssemble(payload);
-  */
-
   // 2.取得組裝區目前途程的show2_ok/show3_ok訊息類型(結束)
   //checkInputStr(item.assemble_work);
 
@@ -2448,14 +2476,6 @@ const onClickEnd = async (item) => {
   //await updateAssemble(payload);
 
   if (targetIndex !== -1) {
-    // 用 Vue 的方式確保觸發響應式更新
-    /*
-    materials_and_assembles_by_user.value[targetIndex] = {
-      ...materials_and_assembles_by_user.value[targetIndex],
-      input_end_disable: true,
-      input_abnormal_disable: true,
-    };
-    */
     materials_and_assembles_by_user.value[targetIndex] = {
       ...materials_and_assembles_by_user.value[targetIndex],
       receive_qty: current_completed_qty,
@@ -2547,10 +2567,498 @@ const onClickEnd = async (item) => {
     await updateProcessData(payload);
   }
 
+  // 20260730 add
+  // ============================================================
+  // 無論部分完成或全部完成，都重新取得 PEnd 資料。
+  // 全部完成時，後端應回傳空陣列，PEnd 必須立即移除該列。
+  // ============================================================
+  await reloadEndRowsAndRestoreTimers()
+
+  // 通知其他已開啟 PBegin／PEnd 的使用者刷新
+  socket.value?.emit(
+    'process-end-completed',
+    {
+      material_id:
+        Number(current_material_id),
+
+      assemble_id:
+        Number(current_assemble_id),
+
+      process_type:
+        Number(
+          item.process_type ||
+          item.process_step_code ||
+          0
+        ),
+
+      order_num:
+        item.order_num,
+
+      completed_by:
+        currentUser.value?.empID || ''
+    }
+)
+
   //待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
+*/
+// 20260730版
+const onClickEnd = async (item) => {
+  console.log(
+    "PickReportForProcessEnd, onClickEnd()",
+    item
+  )
 
+  const completedQty = Number(
+    item.receive_qty || 0
+  )
+
+  if (
+    !Number.isFinite(completedQty) ||
+    completedQty <= 0
+  ) {
+    receive_qty_alarm.value =
+      "完成數量不可為空白或0!"
+
+    item.tooltipVisible = true
+
+    setTimeout(() => {
+      item.tooltipVisible = false
+      item.receive_qty = ""
+    }, 2000)
+
+    return
+  }
+
+  const mustReceiveQty = Number(
+    item.must_receive_end_qty || 0
+  )
+
+  const abnormalQty = Number(
+    item.abnormal_qty || 0
+  )
+
+  if (
+    completedQty + abnormalQty >
+    mustReceiveQty
+  ) {
+    receive_qty_alarm.value =
+      "完成數量與廢料數量不可超過應完成數量!"
+
+    item.tooltipVisible = true
+
+    setTimeout(() => {
+      item.tooltipVisible = false
+    }, 2000)
+
+    return
+  }
+
+  // 必須在 process_step_code 改成 0 前保存
+  const completedProcessType = Number(
+    item.process_type ||
+    item.process_step_code ||
+    0
+  )
+
+  if (completedProcessType <= 0) {
+    console.error(
+      "[onClickEnd] 找不到原始 process_type",
+      item
+    )
+
+    showSnackbar(
+      "製程資料不完整，請重新整理後再試!",
+      "red accent-2"
+    )
+
+    return
+  }
+
+  const confirmed =
+    await confirmRef.value?.open({
+      title: endTitle.value,
+      message: endMessage.value,
+      okText: "確定",
+      cancelText: "取消",
+    })
+
+  if (!confirmed) return
+
+  const materialId = Number(
+    item.material_id ||
+    item.id ||
+    0
+  )
+
+  const assembleId = Number(
+    item.assemble_id || 0
+  )
+
+  if (
+    materialId <= 0 ||
+    assembleId <= 0
+  ) {
+    showSnackbar(
+      "資料不完整，缺少工單或製程編號!",
+      "red accent-2"
+    )
+
+    return
+  }
+
+  // 防止重複按結束
+  if (item.__ending) return
+  item.__ending = true
+
+  let timerController = null
+  let processId = Number(
+    item.process_id || 0
+  )
+
+  try {
+    // ======================================================
+    // 1. 凍結目前畫面計時
+    // ======================================================
+    const timerKey = makeKey(item)
+
+    const elapsedMs =
+      lastTickMsMap.get(timerKey) ??
+      getInitialMs(item) ??
+      0
+
+    frozenMsMap.set(
+      timerKey,
+      elapsedMs
+    )
+
+    // ======================================================
+    // 2. 確保 Process 存在，並關閉目前員工的 Process
+    // ======================================================
+    timerController =
+      await ensureStarted(item)
+
+    processId = Number(
+      timerController?.processId?.value ||
+      processId ||
+      0
+    )
+
+    await timerController.closeProcess({
+      receive_qty:
+        completedQty,
+
+      alarm_enable:
+        item.alarm_enable,
+
+      isAssembleFirstAlarm:
+        item.isAssembleFirstAlarm,
+
+      alarm_message:
+        item.alarm_message || "",
+
+      assemble_id:
+        assembleId,
+
+      elapsed_ms:
+        elapsedMs,
+    })
+
+    timerController.dispose?.()
+
+    // ======================================================
+    // 3. 更新完成數量
+    // ======================================================
+    const previousTotal = Number(
+      item.total_completed_qty_num ||
+      0
+    )
+
+    const newTotal =
+      previousTotal + completedQty
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "completed_qty",
+
+      record_data:
+        completedQty,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "total_completed_qty",
+
+      record_data:
+        newTotal,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "abnormal_qty",
+
+      record_data:
+        abnormalQty,
+    })
+
+    // ======================================================
+    // 4. 計算是否還有剩餘數量
+    // ======================================================
+    const difference =
+      mustReceiveQty -
+      completedQty -
+      abnormalQty
+
+    if (difference < 0) {
+      throw new Error(
+        "完成數量加廢料數量超過應完成數量"
+      )
+    }
+
+    // 部分完成時，保留剩餘數量
+    if (difference > 0) {
+      await copyAssembleForDifference({
+        copy_id:
+          assembleId,
+
+        pre_must_receive_qty:
+          completedQty,
+
+        must_receive_qty:
+          difference,
+
+        d1:
+          completedQty,
+      })
+    }
+
+    // ======================================================
+    // 5. 更新 Material / Assemble 狀態
+    // ======================================================
+    await updateMaterial({
+      id:
+        materialId,
+
+      record_name:
+        "show2_ok",
+
+      record_data:
+        difference === 0
+          ? 5
+          : 4,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "show2_ok",
+
+      record_data:
+        5,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "input_end_disable",
+
+      record_data:
+        true,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "input_abnormal_disable",
+
+      record_data:
+        true,
+    })
+
+    const formattedEndTime =
+      formatDateTime(
+        new Date()
+      )
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "currentEndTime",
+
+      record_data:
+        formattedEndTime,
+    })
+
+    // 最後才將目前工序改為 0
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "process_step_code",
+
+      record_data:
+        0,
+    })
+
+    // ======================================================
+    // 6. 後端判斷是否所有加工工序均完成
+    //
+    // 後端全部完成時也會：
+    // - 將資料改為待送出
+    // - 關閉其他員工殘留的 P_Process
+    // ======================================================
+    const stepResult =
+      await updateAssembleProcessStep({
+        id:
+          materialId,
+
+        assemble_id:
+          assembleId,
+      })
+
+    console.log(
+      "[onClickEnd] updateAssembleProcessStepP:",
+      stepResult
+    )
+
+    const allStepsCompleted =
+      stepResult?.status === true ||
+      stepResult === true ||
+      Number(item.assemble_count) === 1
+
+    // ======================================================
+    // 7. 更新正常工時類型
+    // ======================================================
+    if (processId > 0) {
+      await updateProcessData({
+        process_id:
+          processId,
+
+        record_name:
+          "normal_work_time",
+
+        record_data:
+          allStepsCompleted
+            ? 3
+            : 1,
+      })
+    }
+
+    // ======================================================
+    // 8. 先重新讀取後端資料
+    //
+    // Socket 發送失敗，不應影響真正的完工結果。
+    // ======================================================
+    await reloadEndRowsAndRestoreTimers()
+
+    showSnackbar(
+      allStepsCompleted
+        ? "加工完成，已轉為待送出!"
+        : "本工序已完成!",
+      "green"
+    )
+
+    // ======================================================
+    // 9. 最後才送 Socket
+    //
+    // 使用 socket.value.id，不使用未宣告的 socketClientId。
+    // Socket 即使失敗，也不顯示「完成失敗」。
+    // ======================================================
+    try {
+      socket.value?.emit(
+        "process-end-completed",
+        {
+          material_id:
+            materialId,
+
+          assemble_id:
+            assembleId,
+
+          process_type:
+            completedProcessType,
+
+          process_id:
+            processId,
+
+          order_num:
+            String(
+              item.order_num || ""
+            ),
+
+          user_id:
+            String(
+              currentUser.value?.empID ||
+              ""
+            ),
+
+          completed_by:
+            String(
+              currentUser.value?.empID ||
+              ""
+            ),
+
+          client_id:
+            String(
+              socket.value?.id || ""
+            ),
+        }
+      )
+    } catch (socketError) {
+      // Socket 同步失敗不能推翻資料庫已完成的結果
+      console.error(
+        "[onClickEnd] Socket emit 失敗",
+        socketError
+      )
+    }
+  } catch (error) {
+    console.error(
+      "[onClickEnd] 完成加工失敗:",
+      error
+    )
+
+    showSnackbar(
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      "完成失敗!",
+      "red accent-2"
+    )
+
+    // 發生錯誤後重新讀取資料庫，
+    // 避免畫面停在半更新狀態
+    try {
+      await reloadEndRowsAndRestoreTimers()
+    } catch (reloadError) {
+      console.error(
+        "[onClickEnd] 錯誤後重新載入失敗",
+        reloadError
+      )
+    }
+  } finally {
+    item.__ending = false
+  }
+}
+
+/*
 const reloadEndRowsAndRestoreTimers = async () => {
   await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID })
 
@@ -2582,6 +3090,71 @@ const reloadEndRowsAndRestoreTimers = async () => {
     //}
   }
 }
+*/
+//
+const reloadEndRowsAndRestoreTimers = async () => {
+  const result =
+    await getMaterialsAndAssemblesByUser({
+      user_id:
+        currentUser.value?.empID || ''
+    })
+
+  const rows =
+    result?.materials_and_assembles_by_user
+
+  // API 回傳空資料時，不能保留上一次畫面資料
+  if (Array.isArray(rows)) {
+    materials_and_assembles_by_user.value =
+      rows
+  } else if (
+    result?.status === false
+  ) {
+    materials_and_assembles_by_user.value =
+      []
+  }
+
+  // 移除不存在列的 Timer 狀態
+  const validKeys = new Set(
+    (
+      materials_and_assembles_by_user.value ||
+      []
+    ).map(row => makeKey(row))
+  )
+
+  for (
+    const [key, timer]
+    of timerMap.entries()
+  ) {
+    if (!validKeys.has(key)) {
+      timer?.dispose?.()
+      timerMap.delete(key)
+      timerElMap.delete(key)
+      timerRefMap.delete(key)
+      restoredKeys.delete(key)
+      frozenMsMap.delete(key)
+      pausedMap.delete(key)
+      lastTickMsMap.delete(key)
+    }
+  }
+
+  await getCountMaterialsAndAssemblesByUser({
+    user_id:
+      currentUser.value?.empID || ''
+  })
+
+  await nextTick()
+
+  for (
+    const row
+    of (
+      materials_and_assembles_by_user.value ||
+      []
+    )
+  ) {
+    await ensureRestored(row)
+  }
+}
+//
 
 const onClickAbnormal = async (rawItem) => {
   if (abnormalBusy) return
@@ -2910,6 +3483,66 @@ const isProcessEndDone = (item) => {
   return Number(item.process_step_code || 0) === 0 && item.end_report_done === true;
 
 };
+
+// 20260730 add
+const handleProcessEndCompleted = async (
+  payload
+) => {
+  console.log(
+    '[PEnd] process-end-completed',
+    payload
+  )
+
+  const materialId = Number(
+    payload?.material_id || 0
+  )
+
+  if (!materialId) {
+    console.warn(
+      '[PEnd] process-end-completed 缺少 material_id',
+      payload
+    )
+
+    return
+  }
+
+  try {
+    // 找出目前畫面中，同一 material 的所有列
+    const affectedRows = (
+      materials_and_assembles_by_user.value ||
+      []
+    ).filter(
+      row =>
+        Number(row.id) === materialId
+    )
+
+    // 停止並清除該工單目前殘留的 Timer
+    for (const row of affectedRows) {
+      const key = makeKey(row)
+      const timer = timerMap.get(key)
+
+      timer?.dispose?.()
+
+      timerMap.delete(key)
+      timerElMap.delete(key)
+      timerRefMap.delete(key)
+      restoredKeys.delete(key)
+      frozenMsMap.delete(key)
+      pausedMap.delete(key)
+      lastTickMsMap.delete(key)
+    }
+
+    // 重新取得後端資料
+    // 若已轉成待送出，該工單會從 PEnd 移除
+    await reloadEndRowsAndRestoreTimers()
+  } catch (error) {
+    console.error(
+      '[PEnd] 處理 process-end-completed 失敗',
+      error
+    )
+  }
+}
+
 </script>
 
 <style lang="scss" scoped>

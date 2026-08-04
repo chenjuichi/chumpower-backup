@@ -25,7 +25,6 @@ from .helper import (
   sync_b110_remaining_qty
 )
 
-
 createTable = Blueprint('createTable', __name__)
 
 from log_util import setup_logger
@@ -200,11 +199,13 @@ def create_delegate():
     return jsonify(success=True, id=ud.id)
 
 
-# 20260722版
+# 20260804版
 # createProcess：
-# 1. type=6 空白堆高機紀錄防重複
-# 2. 使用 material row lock，避免多人同時 INSERT
-# 3. 保留 type=2/3/5 與 21/22/23 原有流程
+# 1. type=2/5/19 短時間重複呼叫防護
+# 2. type=3/6 搬運紀錄防重複
+# 3. 使用 material row lock，避免多人同時 INSERT
+# 4. type=2/5 確認非重複後才釋放到 Begin
+# 5. 保留 type=21/22/23 工序計時防重複
 @createTable.route("/createProcess", methods=['POST'])
 def create_process():
     print("createProcess....")
@@ -419,6 +420,7 @@ def create_process():
 
         print("[createProcess] material locked:", material.id)
 
+        '''
         # --------------------------------------------------------
         # type=2 / 5 / 19
         # 同一開始時間只建立一次
@@ -451,6 +453,183 @@ def create_process():
                         "duplicate": True,
                         "message": "相同搬運開始時間已存在，不重複新增"
                     }), 200
+        '''
+        #
+        # --------------------------------------------------------
+        # type=2 / 5 / 19 搬運紀錄防重複
+        #
+        # 2  = AGV 備料區 -> 組裝區
+        # 5  = 堆高機 備料區 -> 組裝區
+        # 19 = 等待 AGV（備料區）
+        #
+        # 防止：
+        # 1. 使用者重複點擊
+        # 2. Socket 重送
+        # 3. 前端短時間內重複呼叫 API
+        #
+        # 注意：
+        # 不可單純用 end_time IS NULL 判斷，
+        # 因為舊批次若漏補 end_time，會把後續正常批次也擋住。
+        #
+        # 判斷規則：
+        # 同 material + 同 type + 同 user，
+        # 且 begin_time 相差 30 秒以內，視為同一次重送。
+        # --------------------------------------------------------
+        if process_type_int in {2, 5, 19}:
+
+            def parse_transport_datetime(value):
+                """
+                將前端或資料庫的時間轉成 datetime。
+
+                支援：
+                - datetime
+                - YYYY-MM-DD HH:MM:SS
+                - YYYY-MM-DDTHH:MM:SS
+                - 含微秒格式
+                """
+
+                if value in (None, "", "None"):
+                    return None
+
+                if isinstance(value, datetime):
+                    return value
+
+                text = str(value).strip()
+
+                if text.endswith("Z"):
+                    text = text[:-1]
+
+                text = text.replace("T", " ")
+
+                try:
+                    return datetime.fromisoformat(text)
+                except (TypeError, ValueError):
+                    pass
+
+                for fmt in (
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f",
+                ):
+                    try:
+                        return datetime.strptime(text, fmt)
+                    except (TypeError, ValueError):
+                        continue
+
+                return None
+
+            incoming_begin_dt = parse_transport_datetime(_begin_time)
+
+            # ----------------------------------------------------
+            # 1. 先檢查完全相同的 begin_time
+            # ----------------------------------------------------
+            exact_duplicate = None
+
+            if incoming_begin_dt is not None:
+                exact_duplicate = (
+                    s.query(Process)
+                    .filter(
+                        Process.material_id == material_id_int,
+                        Process.process_type == process_type_int,
+                        Process.begin_time == _begin_time,
+                    )
+                    .order_by(Process.id.asc())
+                    .first()
+                )
+
+            if exact_duplicate:
+                s.commit()
+
+                print(
+                    "[createProcess] exact duplicate transport skipped:",
+                    {
+                        "material_id": material_id_int,
+                        "process_type": process_type_int,
+                        "process_id": exact_duplicate.id,
+                        "begin_time": _begin_time,
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id": exact_duplicate.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message": "相同搬運紀錄已存在，不重複新增",
+                }), 200
+
+            # ----------------------------------------------------
+            # 2. 找相同 material / type / user 最近一筆
+            #
+            # 只找同一位操作人員，避免不同人員在真正不同批次
+            # 進行搬運時被錯誤攔截。
+            # ----------------------------------------------------
+            latest_transport = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == process_type_int,
+                    Process.user_id == _user_id,
+                )
+                .order_by(
+                    Process.begin_time.desc(),
+                    Process.id.desc(),
+                )
+                .first()
+            )
+
+            if latest_transport and incoming_begin_dt is not None:
+
+                latest_begin_dt = parse_transport_datetime(
+                    latest_transport.begin_time
+                )
+
+                if latest_begin_dt is not None:
+                    diff_seconds = abs(
+                        (
+                            incoming_begin_dt
+                            - latest_begin_dt
+                        ).total_seconds()
+                    )
+
+                    # --------------------------------------------
+                    # 30 秒內視為重複送出
+                    # --------------------------------------------
+                    if diff_seconds <= 30:
+                        s.commit()
+
+                        print(
+                            "[createProcess] near duplicate "
+                            "transport skipped:",
+                            {
+                                "material_id": material_id_int,
+                                "process_type": process_type_int,
+                                "user_id": _user_id,
+                                "existing_process_id":
+                                    latest_transport.id,
+                                "existing_begin_time":
+                                    str(latest_transport.begin_time),
+                                "incoming_begin_time":
+                                    str(_begin_time),
+                                "diff_seconds":
+                                    diff_seconds,
+                            }
+                        )
+
+                        return jsonify({
+                            "status": True,
+                            "created": False,
+                            "process_id":
+                                latest_transport.id,
+                            "skipped": True,
+                            "duplicate": True,
+                            "message":
+                                "短時間內已有相同搬運紀錄，"
+                                "本次重複呼叫已忽略",
+                            "diff_seconds":
+                                diff_seconds,
+                        }), 200
+        # end if process_type_int in {2, 5, 19}:
 
         # --------------------------------------------------------
         # process_type=6：

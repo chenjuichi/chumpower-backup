@@ -1,14 +1,14 @@
 import os
 import datetime
-import pathlib
-import csv
+#import pathlib
+#import csv
 import time
 import shutil
 import psutil
 import glob
-import math
+#import math
 
-import pymysql
+#import pymysql
 from sqlalchemy import and_, or_, func, exists
 from sqlalchemy.orm import selectinload
 
@@ -61,20 +61,18 @@ def pick_order_col(df, candidates=("訂單", "單號", "工單", "單據")):
 
 
 def read_all_excel_process_code_p():
-    """
-    從 _server_dir 目錄裡的 Excel 檔案（只處理 .xlsx/.xlsm），
-    讀取工作表「配件工作中心資料表-0922 (2)」中
-    欄位「製程代號 \n(標準內文碼)」的內容，
-
-    若該欄位共有 m 筆有效資料：
-      第 1 列 -> m
-      第 2 列 -> m-1
-      ...
-      第 m 列 -> 1
-
-    產生並回傳 code_to_assembleStep = { '100-01': m, '100-02': m-1, ... }
-    （注意：這裡會把前面的 'B' 去掉，因為後面你有 code = workNum[1:]）
-    """
+    # 從 _server_dir 目錄裡的 Excel 檔案（只處理 .xlsx/.xlsm），
+    # 讀取工作表「配件工作中心資料表-0922 (2)」中
+    # 欄位「製程代號 \n(標準內文碼)」的內容，
+    #
+    # 若該欄位共有 m 筆有效資料：
+    #   第 1 列 -> m
+    #   第 2 列 -> m-1
+    #   ...
+    #   第 m 列 -> 1
+    #
+    # 產生並回傳 code_to_assembleStep = { '100-01': m, '100-02': m-1, ... }
+    # （注意：這裡會把前面的 'B' 去掉，因為後面你有 code = workNum[1:]）
 
     _base_dir = current_app.config['baseDir']
     _server_dir = _base_dir.replace("excel_in", "server")
@@ -246,7 +244,7 @@ def pad_zeros(str):
 
 
 def clean_nan(value):
-    """清理單一值的 NaN / NaT，轉為 None"""
+    # 清理單一值的 NaN / NaT，轉為 None
     if pd.isna(value) or str(value).lower() == 'nan':
         return None
     return value
@@ -291,6 +289,264 @@ def fetch_global_var():
   return jsonify({'value': global_var})
 
 
+# 內部：套用 BOM 差異(原 apply_bom_diffs 的核心；不對外成 route)
+def _apply_bom_diffs_tx(s, material: Material, ops: list):
+    # 直接把差異（add/update/remove）套用到 DB。回傳(結果摘要, material 的最新 BOM 列表)。
+    #
+    # 先抓現有 BOM，建立索引
+    existing = s.query(Bom).filter(Bom.material_id == material.id).all()
+    by_key, by_mnum = {}, {}
+    for b in existing:
+        k = (str(b.seq_num).strip(), str(b.material_num).strip())
+        by_key[k] = b
+        by_mnum.setdefault(str(b.material_num).strip(), []).append(b)
+
+    def _to_int(x, default=0):
+        try:
+            if x is None or (isinstance(x, str) and x.strip() == ""):
+                return default
+            return int(float(x))
+        except Exception:
+            return default
+
+    def _recompute_non_qty(b: Bom):
+        req = _to_int(b.req_qty, 0)
+        picked = _to_int(b.pick_qty, 0)
+        b.non_qty = max(req - picked, 0)
+
+    results = {"added": [], "updated": [], "removed": []}
+
+    for op in ops:
+        action = (op.get("action") or "").strip().lower()
+        seq_num = str(op.get("seq_num") or "").strip()
+        mnum = str(op.get("material_num") or "").strip()
+        if not mnum:
+            continue
+
+        target = by_key.get((seq_num, mnum))
+        if not target and seq_num == "" and mnum in by_mnum and len(by_mnum[mnum]) == 1:
+            target = by_mnum[mnum][0]
+
+        if action == "add":
+            comment = op.get("mtl_comment", op.get("material_comment", ""))
+            qty = op.get("qty", op.get("req_qty", 0))
+            start_date = op.get("start_date") or material.material_delivery_date
+            receive = op.get("receive", True)
+
+            new_bom = Bom(
+                material_id=material.id,
+                seq_num=seq_num or op.get("id") or "0",
+                material_num=mnum,
+                material_comment=str(comment or ""),
+                req_qty=_to_int(qty, 0),
+                pick_qty=0,
+                lack_qty=0,
+                non_qty=0,
+                receive=bool(receive),
+                start_date=str(start_date or ""),
+            )
+            _recompute_non_qty(new_bom)
+            s.add(new_bom)
+            s.flush()
+            by_key[(str(new_bom.seq_num), mnum)] = new_bom
+            by_mnum.setdefault(mnum, []).append(new_bom)
+            results["added"].append(new_bom.get_dict())
+
+        elif action == "update":
+            if not target:
+                results["updated"].append({"material_num": mnum, "seq_num": seq_num, "skipped": "not_found"})
+                continue
+            new_comment = op.get("mtl_comment_new", op.get("material_comment"))
+            new_qty = op.get("qty_new", op.get("req_qty"))
+            new_seq = op.get("seq_num_new")
+            changed = False
+            if new_comment is not None and str(target.material_comment) != str(new_comment):
+                target.material_comment = str(new_comment); changed = True
+            if new_qty is not None:
+                v = _to_int(new_qty, target.req_qty or 0)
+                if v != (target.req_qty or 0):
+                    target.req_qty = v
+                    _recompute_non_qty(target)
+                    changed = True
+            if new_seq is not None:
+                ns = str(new_seq).strip()
+                if ns and ns != str(target.seq_num):
+                    old_key = (str(target.seq_num), mnum)
+                    target.seq_num = ns
+                    by_key.pop(old_key, None)
+                    by_key[(ns, mnum)] = target
+                    changed = True
+            if changed:
+                results["updated"].append(target.get_dict())
+            else:
+                results["updated"].append({"material_num": mnum, "seq_num": seq_num, "noop": True})
+
+        elif action == "remove":
+            if not target:
+                candidates = by_mnum.get(mnum, [])
+                if not candidates:
+                    results["removed"].append({"material_num": mnum, "seq_num": seq_num, "skipped": "not_found"})
+                    continue
+                for b in list(candidates):
+                    s.delete(b)
+                    results["removed"].append({"id": b.id, "material_num": b.material_num, "seq_num": b.seq_num})
+                    by_key.pop((str(b.seq_num), mnum), None)
+                by_mnum.pop(mnum, None)
+            else:
+                s.delete(target)
+                results["removed"].append({"id": target.id, "material_num": target.material_num, "seq_num": target.seq_num})
+                by_key.pop((str(target.seq_num), mnum), None)
+                if mnum in by_mnum:
+                    by_mnum[mnum] = [b for b in by_mnum[mnum] if b.id != target.id]
+                    if not by_mnum[mnum]:
+                        by_mnum.pop(mnum, None)
+
+    # 取回最新 BOM
+    latest = s.query(Bom).filter(Bom.material_id == material.id).all()
+    return results, [b.get_dict() for b in latest]
+
+
+# 封裝：從 excel_modify 讀檔 → 產生差異清單(沿用 read_all_excel_files 的清洗規則)
+def _collect_bom_diffs_from_modify_dir(s, material: Material):
+    base_in = os.path.abspath(current_app.config['baseDir'])            # e.g. ...\excel_in
+    modify_dir = base_in.replace("_in", "_modify")                      # ...\excel_modify
+    out_dir = base_in.replace("_in", "_out")                            # ...\excel_out
+    sheet_bom = current_app.config.get('excel_bom_sheet') or 1          # 系統指定索引 1 = BOM
+
+    os.makedirs(modify_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+
+    order_num = normalize_order_number(material.order_num)
+    files = [f for f in os.listdir(modify_dir)
+        if os.path.isfile(os.path.join(modify_dir, f)) and f.endswith(('.xlsx', '.xls'))]
+
+    modify_ops = []
+    would_process_files = []
+
+    # 先抓現有 BOM → map
+    existing_bom = s.query(Bom).filter(Bom.material_id == material.id).all()
+    existing_map = {str(b.material_num).strip(): b for b in existing_bom}
+
+    for fname in files:
+        path = os.path.join(modify_dir, fname)
+        base_no_copy = re.sub(r'_copy_\d+', '', fname)  # 與 read_all_excel_files 同邏輯防重複
+
+        already = s.query(exists().where(ProcessedFile.file_name == base_no_copy)).scalar()
+        if already:
+            print(f"[excelModifyTable] 檔案已處理，略過：{fname}")
+            continue
+
+        # 讀 BOM sheet（同 read_all_excel_files 的清洗）
+        try:
+            #bom_df = pd.read_excel(path, sheet_name=sheet_bom).fillna('')
+            #
+            bom_df = pd.read_excel(path, sheet_name=sheet_bom)
+            # 文本欄位可補空字串
+            for col in ['物料', '物料說明']:
+              if col in bom_df.columns:
+                bom_df[col] = bom_df[col].fillna('')
+            # 數值欄位轉數字
+            for col in ['物料短缺', '需求數量', '預留項目']:
+              if col in bom_df.columns:
+                bom_df[col] = pd.to_numeric(bom_df[col], errors='coerce').fillna(0).astype(int)
+            #
+        except Exception:
+            # 某些舊檔用 openpyxl 先驗 sheet 存在
+            with open(path, 'rb') as f:
+                wb = openpyxl.load_workbook(filename=f, read_only=True)
+                if isinstance(sheet_bom, str):
+                    if sheet_bom not in wb.sheetnames:
+                        print(f"[excelModifyTable] 缺少工作表：{sheet_bom}，略過 {fname}")
+                        continue
+                else:
+                    # 如果用索引，這支分支不做；直接 raise
+                    raise
+            bom_df = pd.read_excel(path, sheet_name=sheet_bom).fillna('')
+
+        if '訂單' not in bom_df.columns:
+            print(f"[excelModifyTable] 缺少『訂單』欄，略過 {fname}")
+            continue
+
+        # 訂單欄正規化（比照 read_all_excel_files）
+        bom_df.iloc[:, 0] = (
+            bom_df.iloc[:, 0]
+            .apply(normalize_order_number)
+            .replace('nan', '')
+            .astype(str)
+        )
+
+        rows = bom_df[bom_df['訂單'] == order_num]
+        if rows.empty:
+            print(f"[excelModifyTable] 檔案 {fname} 無此單號 {order_num}，略過")
+            continue
+
+        # Excel(新) → map
+        incoming_map = {}
+        for _, r in rows.iterrows():
+            mnum = str(clean_nan(r.get('物料')) or '').strip()
+            if not mnum:
+                continue
+            incoming_map[mnum] = {
+                'seq_num':          clean_nan(r.get('預留項目')),
+                'material_comment': clean_nan(r.get('物料說明')) or '',
+                'req_qty':          clean_nan(r.get('需求數量')) or 0,
+            }
+
+        # remove
+        for mnum, old in existing_map.items():
+            if mnum not in incoming_map:
+                modify_ops.append({
+                    'action':      'remove',
+                    'material_id': material.id,
+                    'seq_num':     old.seq_num,
+                    'material_num': mnum,
+                })
+
+        # add / update
+        for mnum, new in incoming_map.items():
+            old = existing_map.get(mnum)
+            if not old:
+                modify_ops.append({
+                    'action':      'add',
+                    'material_id': material.id,
+                    'seq_num':     new['seq_num'],
+                    'material_num': mnum,
+                    'mtl_comment': new['material_comment'],
+                    'qty':         new['req_qty'],
+                    'start_date':  material.material_delivery_date,
+                })
+            else:
+                changed = False
+                old_c = str(old.material_comment or '')
+                new_c = str(new['material_comment'] or '')
+                if old_c != new_c:
+                    changed = True
+                try:
+                    old_q = float(old.req_qty or 0)
+                    new_q = float(new['req_qty'] or 0)
+                    if old_q != new_q:
+                        changed = True
+                except Exception:
+                    changed = True
+
+                if changed:
+                    modify_ops.append({
+                        'action':          'update',
+                        'material_id':     material.id,
+                        'seq_num':         new['seq_num'] if new['seq_num'] is not None else old.seq_num,
+                        'material_num':    mnum,
+                        'mtl_comment_new': new['material_comment'],
+                        'qty_new':         new['req_qty'],
+                    })
+
+        would_process_files.append((fname, path, base_no_copy, out_dir))
+
+    return modify_ops, would_process_files
+
+
+# --- API ---------------------------------------------------------------
+
+
 @excelTable.route("/countExcelFilesP", methods=['GET'])
 def count_excel_files_p():
     print("countExcelFilesP....")
@@ -333,6 +589,7 @@ def count_excel_files():
     })
 
 
+# 20260804版
 @excelTable.route("/readAllExcelFilesP", methods=['GET'])
 def read_all_excel_files_p():
   print("readAllExcelFilesP....")
@@ -728,6 +985,7 @@ def read_all_excel_files_p():
             #else:
             #  must_receive_qty=0
 
+            '''
             assemble = P_Assemble(
                 material_id=material.id,
                 material_num=clean_nan(assemble_row.get('物料')),
@@ -744,459 +1002,305 @@ def read_all_excel_files_p():
                 isShowBomGif = material_isBom,
                 show2_ok = '3' if temp_bom_empty else '0',
             )
-            s.add(assemble)
+            '''
 
-          # end loop_assemble
-          s.commit()
-
-          # commit 後再查一次看這個 material_id 到底有幾筆
-          cnt = s.query(P_Assemble).filter_by(material_id = material.id).count()
-          print(f"  [P_Assemble] material_id={material.id} 在 P_Assemble 目前總共有 {cnt} 筆")
-
-    # 移動處理完成的檔案
-    try:
-      unique_filename = get_unique_filename(_target_dir, _file_name, "copy")
-      unique_target_path = os.path.join(_target_dir, unique_filename)
-      print("unique_target_path:", unique_target_path)
-      shutil.move(_path, unique_target_path)
-      print(f"檔案 {_path} 已成功移動到 {unique_target_path}")
-    except Exception as e:
-      print(f"移動檔案時發生錯誤: {e}")
-
-    continue
-
-  #end for loop_1
-  s.close()
-
-  return jsonify({
-    'status': return_value,
-    'message': return_message1,
-  })
-
-
-"""
-@excelTable.route("/readAllExcelFilesP", methods=['GET'])
-def read_all_excel_files_p():
-  print("readAllExcelFilesP....")
-
-  global global_var_p
-
-  return_value = False
-  return_message1 = '錯誤, 沒有工單檔案!'
-  file_count_total = 0  #檔案總數
-
-  _base_dir = current_app.config['baseDir']
-  _target_dir = _base_dir.replace("_in", "_out")
-  _base_dir = _base_dir.replace("_in", "_in_p")
-  #print("read excel files, 目錄: ", _base_dir)
-  #print("move excel files to, 目錄: ", _target_dir)
-
-  # 讀取指定目錄下的所有指定檔案名稱
-  files = [
-     f for f in os.listdir(_base_dir)
-     if os.path.isfile(os.path.join(_base_dir, f))
-     and f.endswith('.xlsx')
-  ]
-
-  if not files:
-    return jsonify({'status': False, 'message': '錯誤, 沒有工單檔案!'})
-
-  sheet_names_to_check = [
-    current_app.config['p_excel_product_sheet'],
-    current_app.config['excel_bom_sheet'],
-    current_app.config['excel_work_time_sheet']
-  ]
-
-  s = Session()
-
-  part_info_map = {}
-  for p in s.query(P_Part).all():
-      part_code = str(p.part_code or '').strip().upper()
-      step_code_raw = str(p.process_step_code or '').strip().upper()
-
-      info = {
-          'comment': str(p.part_comment or '').strip(),
-          'process_step_code': p.process_step_code if p.process_step_code is not None else 0
-      }
-
-      if part_code:
-          part_info_map[part_code] = info
-          if part_code.startswith('B'):
-              part_info_map[part_code[1:]] = info
-
-      if step_code_raw:
-          part_info_map[step_code_raw] = info
-          if step_code_raw.startswith('B'):
-              part_info_map[step_code_raw[1:]] = info
-
-  for _file_name in files:  #檔案讀取, for loop_1
-    file_count_total +=1
-    file_name_base = re.sub(r'_copy_\d+', '', _file_name)   # 從檔名中移除像 _copy_1、_copy_2 這樣的字串，取得原始檔案名稱
-
-    # 檢查是否已處理過
-    already_processed = s.query(
-      exists().where(ProcessedFile.file_name == file_name_base)
-    ).scalar()
-
-    if already_processed:
-      return_message1 = f"檔案 {_file_name} 已處理過， 請再重整瀏覽器!"
-      print(return_message1)
-      _path = os.path.join(_base_dir, _file_name)
-      file_count_total -=1
-    else:
-      _path = _base_dir + '\\' + _file_name
-      global_var = _path + ' 檔案讀取中...'
-
-      with open(_path, 'rb') as file:   # with loop_1_a
-        workbook = openpyxl.load_workbook(filename=file, read_only=True)
-        return_value = True
-        return_message1 = ''
-
-        print("workbook.sheetnames:", workbook.sheetnames)
-
-        missing_sheets = [
-          sheet for sheet in sheet_names_to_check if sheet not in workbook.sheetnames
-        ]
-
-        if missing_sheets:
-          return jsonify({'status': False, 'message': '錯誤, 工單檔案內沒有相關工作表!'})
-
-        print(sheet_names_to_check[0] + ' sheet exists, data reading...')
-
-        material_df = pd.read_excel(_path, sheet_name=0)  # First sheet for Material
-        material_df.rename(columns={c: norm_col(c) for c in material_df.columns}, inplace=True)
-        material_df.columns = dedupe_columns(material_df.columns)
-
-        # ---------- 防止加工表單號重複 ----------
-        order_col = pick_order_col(material_df, ("單號", "訂單", "工單"))
-
-        if order_col:
-            before_count = len(material_df)
-
-            material_df = material_df.drop_duplicates(
-                subset=[order_col],
-                keep="first"
-            )
-
-            after_count = len(material_df)
-
-            if before_count != after_count:
-                print(f"[加工表] 單號重複已過濾: {before_count} -> {after_count}")
-
-        dups = material_df[material_df.duplicated(subset=[order_col], keep=False)]
-        if not dups.empty:
-            print("⚠ 發現重複單號:")
-            print(dups[[order_col]])
-        # ---------------------------------------
-
-        bom_df = pd.read_excel(_path, sheet_name=1).fillna('')
-
-        assemble_df = pd.read_excel(_path, sheet_name=2).fillna('')
-
-        print("columns: material_df")
-        print(list(material_df.columns))
-        print("columns: bom_df")
-        print(list(bom_df.columns))
-        print("columns: assemble_df")
-        print(list(assemble_df.columns))
-
-        # 處理 BOM 和 Assemble 的 訂單欄位
-        if '訂單' in bom_df.columns:
-          bom_df.iloc[:, 0] = (
-            bom_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-          )
-          bom_df = bom_df.astype({bom_df.columns[0]: object})   # 把 dtype 設成 object
-        else:
-          # 如果沒資料，建立一個空的 DataFrame，或直接跳過
-          bom_df = pd.DataFrame(columns=["訂單"])  # 預設空結構
-          print("⚠️ bom_df 沒有資料或缺少 '訂單' 欄位，已建立空 DataFrame")
-        # end if
-
-        print("bom_df:", bom_df, len(bom_df) )
-
-        if '訂單' in assemble_df.columns:
-          assemble_df['訂單'] = (
-            assemble_df['訂單']
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-          )
-          assemble_df = assemble_df.astype({'訂單': object})
-        else:
-          # 如果沒有訂單欄位，就印出警告，後面就一定抓不到資料
-          print("⚠️ assemble_df 缺少 '訂單' 欄位，無法依訂單過濾工序資料! columns =", list(assemble_df.columns))
-
-        # 先記錄整個 BOM sheet 是否完全沒資料
-        ##bom_df_is_empty = bom_df.empty
-
-        # 同工單合併流程
-
-        # 單號欄位
-        material_df["單號"] = material_df["單號"].apply(normalize_order_number)
-
-        time_cols = [
-            "B100加工(一)工時(分)", "B100加工(一)工時(分).1",
-            "B102KL加工綜合工時(分)", "B102KL加工綜合工時(分).1",
-            "B103KT加工工時(分)",     "B103KT加工工時(分).1",
-            "B107震動研磨工時(分)",    "B107震動研磨工時(分).1",
-            "B108綜合加工工時(分)",    "B108綜合加工工時(分).1",
-        ]
-
-        # 只留下真的存在的欄位
-        time_cols = [c for c in time_cols if c in material_df.columns]
-
-        for c in time_cols:
-          material_df[c] = pd.to_numeric(material_df[c], errors="coerce").fillna(0)
-
-        agg = {c: "sum" for c in time_cols}
-        #agg = {c: "max" for c in time_cols}
-
-        # 其他欄位保留第一筆即可
-        for c in material_df.columns:
-            if c not in agg:
-                agg[c] = "first"
-
-        material_df = (
-            material_df
-            .groupby("單號", as_index=False)
-            .agg(agg)
-        )
-
-        # （除錯用）
-        print("after groupby rows:", len(material_df))
-
-        # 記錄已處理過的單號，避免重複產生 P_Material / P_Product / P_Bom / P_Assemble
-        #seen_order_nums = set()
-
-        # 處理 Material
-        for _, row in material_df.iterrows(): # for loop_material
-          #order_num = normalize_order_number(row.get('單號'))
-          order_num = row.get('單號')
-          if not order_num:
-            print(f"[警告] 單號為空，跳過該筆資料: {row.to_dict()}")
-            continue
-
-          # 🔹若這個單號之前處理過，就略過
-          #if order_num in seen_order_nums:
-          #  print(f"[略過] 單號 {order_num} 已在前面處理過，略過重複的 Material/BOM/Assemble")
-          #  continue
-
-          #seen_order_nums.add(order_num)
-
-          # 先檢查 BOM 是否有資料
-          if bom_df.empty:
-              # 整個 BOM sheet 是空的情況：
-              # 👉 不要略過，後面會幫這個單號建立一筆「預設」的 P_Bom
-              #bom_entries = None
-              bom_entries = pd.DataFrame()
-              print(f"[預設] 整體 BOM 為空，單號 {order_num} 仍建立 Material / Product / Assemble，並建 1 筆預設 P_Bom。")
-          else:
-            bom_entries = bom_df[bom_df['訂單'] == order_num]
-            #bom_df_is_empty = False
-            if bom_entries.empty:
-                print(f"[略過] 單號 {order_num} 沒有 BOM 資料，不建立 Material")
-                #bom_df_is_empty =True
-                ###continue   # 直接跳過，不建 Material / Product / Assemble
-
-          # data
-          # --------- 有 BOM 才建立 Material ----------
-          tempQty = clean_nan(row.get('數量')) or 0
-          temp_sd_time_B100 = float(clean_nan(row.get('B100加工(一)工時(分)')) or 0)
-          temp_sd_time_B102 = float(clean_nan(row.get('B102KL加工綜合工時(分)')) or 0)
-          temp_sd_time_B103 = float(clean_nan(row.get('B103KT加工工時(分)')) or 0)
-          temp_sd_time_B107 = float(clean_nan(row.get('B107震動研磨工時(分)')) or 0)
-          temp_sd_time_B108 = float(clean_nan(row.get('B108綜合加工工時(分)')) or 0)
-
-          print("temp_sd_time_B100: ", "{:.2f}".format(float(temp_sd_time_B100)))
-          print("temp_sd_time_B102: ", "{:.2f}".format(float(temp_sd_time_B102)))
-          print("temp_sd_time_B103: ", "{:.2f}".format(float(temp_sd_time_B103)))
-          print("temp_sd_time_B107: ", "{:.2f}".format(float(temp_sd_time_B107)))
-          print("temp_sd_time_B108: ", "{:.2f}".format(float(temp_sd_time_B108)))
-
-          print("order_num: ", order_num)
-          print("bom_df.empty: ",bom_df.empty)
-          print("bom_entries.empty: ",bom_entries.empty)
-          temp_bom_empty = True if bom_df.empty or bom_entries.empty else False
-
-          material_isBom = temp_bom_empty
-          material_isTakeOk = temp_bom_empty
-          material_isShow = temp_bom_empty
-
-          material = P_Material(
-            order_num=order_num,
-            material_num=clean_nan(row.get('料號')) or '',
-            material_comment=clean_nan(row.get('說明')) or '',
-            material_qty=tempQty,
-            material_date=convert_date(row.get('立單日')),
-            material_delivery_date=convert_date(row.get('交期')),
-            total_delivery_qty=tempQty,
-            sd_time_B100="{:.2f}".format(float(temp_sd_time_B100)),
-            sd_time_B102="{:.2f}".format(float(temp_sd_time_B102)),
-            sd_time_B103="{:.2f}".format(float(temp_sd_time_B103)),
-            sd_time_B107="{:.2f}".format(float(temp_sd_time_B107)),
-            sd_time_B108="{:.2f}".format(float(temp_sd_time_B108)),
-            move_by_automatic_or_manual = False,
-            move_by_process_type = 4,
-            isBom = material_isBom,
-            isTakeOk = material_isTakeOk,
-            isShow = material_isShow,
-            show1_ok = '2' if material_isBom else '1',
-            show2_ok = '3' if material_isBom else '0',
-            delivery_qty = tempQty if material_isBom else 0,
-          )
-          s.add(material)
-          s.flush()  # 確保 material.id 可用
-
-          # Product
-          product = P_Product(material_id=material.id)
-          s.add(product)
-          s.commit()
-
-          # BOM
-          if not temp_bom_empty: # bom_df_is_empty if block
-            # 一般情況：有 BOM 資料，就按原本邏輯依據訂單編號建立多筆 P_Bom
-            bom_entries = bom_df[bom_df['訂單'] == order_num]
-            print(f"bom_entries 中的資料筆數: {len(bom_entries)}")
-
-            for _, bom_row in bom_entries.iterrows():  # for loop_bom
-                shortage = to_int0(bom_row.get('物料短缺'))
-                bom = P_Bom(
-                    material_id=material.id,
-                    seq_num=clean_nan(bom_row.get('預留項目')),
-                    material_num=clean_nan(bom_row.get('物料')),
-                    material_comment=clean_nan(bom_row.get('物料說明')),
-                    req_qty=clean_nan(bom_row.get('需求數量')),
-                    start_date=convert_date(row.get('交期')),
-                    lack_bom_qty=shortage,
-                    receive=(shortage == 0),
+            '''
+            # ------------------------------------------------------------
+            # 加工工序應加工數量
+            #
+            # Excel 的「作業數量 (MEINH)」可能為空白、NaN 或 0。
+            # 此時必須退回使用工單數量，不能建立
+            # show2_ok=3 但 must_receive_qty=0 的資料。
+            # ------------------------------------------------------------
+            raw_process_qty = clean_nan(
+                assemble_row.get(
+                    '作業數量 (MEINH)'
                 )
-                s.add(bom)
-            # end for loop_bom
-          else:
-            # ⚠️ 特例：整個 BOM sheet 是空的 (bom_df: Empty DataFrame)
-            # 為每一個 Material 建立一筆「預設」的 P_Bom
-            print(f"[預設 BOM] 單號 {order_num} BOM 為空，建立 1 筆預設 P_Bom")
-            bom = P_Bom(
-                material_id=material.id,
-                seq_num='',
-                material_num='',
-                material_comment='預設BOM (原始Excel無BOM資料)',
-                req_qty=0,   # 這裡如果你希望等於 tempQty 也可以改成 tempQty
-                start_date=convert_date(row.get('交期')),
-                lack_bom_qty=0,
-                receive=True,
-            )
-            s.add(bom)
-          # end bom_df_is_empty if block
-
-          s.commit()
-
-          # Assemble
-          if '訂單' not in assemble_df.columns:
-            print(f"⚠️ assemble_df 沒有 '訂單' 欄位，無法產生該工單的 P_Assemble，order_num={order_num}")
-            assemble_entries = assemble_df.iloc[0:0]  # 空的 DataFrame
-          else:
-            assemble_entries = assemble_df[assemble_df['訂單'] == order_num]
-
-          print(f"assemble_entries 中的資料筆數: {len(assemble_entries)}")
-
-          # 只拿「訂單 + 物料」都跟這個 material 相同的工序
-          material_num = material.material_num
-          group_df = assemble_entries[assemble_entries['物料'] == material_num].reset_index(drop=True)
-          n = len(group_df)
-
-          # 預設全部 isSimultaneously = False
-          simultaneously_flags = [False] * n
-
-          # 先掃一次：找出「作業有值但標準內文碼為空」的列，標記它的前一筆 / 下一筆
-          for i in range(n):
-            seq_val = clean_nan(group_df.loc[i, '作業'])
-            seq_str = str(seq_val).strip() if seq_val is not None else ''
-
-            code_val = clean_nan(group_df.loc[i, '標準內文碼'])
-            code_str = str(code_val).strip() if code_val is not None else ''
-
-            # 符合「有作業、沒標準內文碼」的條件
-            if seq_str and not code_str:
-              # 上一筆
-              if i - 1 >= 0:
-                # 同一個物料，才算同組（其實 group_df 已經是同物料了）
-                simultaneously_flags[i - 1] = True
-              # 下一筆
-              if i + 1 < n:
-                simultaneously_flags[i + 1] = True
-
-          processed_work_nums = set()
-
-          # 再掃一次：真正建立 P_Assemble
-          for i in range(n):
-            assemble_row = group_df.loc[i]
-
-            workNum = clean_nan(assemble_row.get('標準內文碼'))
-
-            if not workNum:
-              print("    ⚠️ workNum 為空，略過這筆工序。")
-              continue
-
-            workNum = str(workNum).strip().upper()
-
-            if workNum in processed_work_nums:
-              print(f"    ⚠️ workNum {workNum} 重複，已處理過，略過。")
-              continue
-            processed_work_nums.add(workNum)
-
-            seq_num = clean_nan(assemble_row.get('作業'))
-
-            part_info = (
-                part_info_map.get(workNum)
-                or part_info_map.get(workNum[1:] if workNum.startswith('B') else f'B{workNum}')
             )
 
-            if part_info is None:
-              print(
-                  f"    ⚠️ 找不到對應的 P_Part："
-                  f"order_num={order_num}, material_num={material_num}, workNum={workNum}"
-              )
-              step_code = 0
-            else:
-              step_code = part_info.get('process_step_code', 0) or 0
+            try:
+                process_qty = int(
+                    float(raw_process_qty or 0)
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                process_qty = 0
 
-            print(f"    ▶ workNum: {workNum}, step_code: {step_code}")
 
-            abnormal_field = False
+            # Excel 工序數量沒有值時，依序使用：
+            # 1. 本批送料數量
+            # 2. 工單交貨數量
+            # 3. 工單需求數量
+            if process_qty <= 0:
+                process_qty = int(
+                    getattr(
+                        material,
+                        'total_delivery_qty',
+                        0
+                    )
+                    or getattr(
+                        material,
+                        'delivery_qty',
+                        0
+                    )
+                    or getattr(
+                        material,
+                        'material_qty',
+                        0
+                    )
+                    or 0
+                )
 
-            # 讀取作業短文，判斷是否以 'Z' 開頭 → isStockIn
-            op_short = clean_nan(assemble_row.get('作業短文')) or ''
-            op_short_str = str(op_short).strip()
-            is_stock_in = op_short_str.startswith('Z')
 
-            # 這一列的 isSimultaneously
-            is_simultaneously = simultaneously_flags[i]
+            if process_qty <= 0:
+                raise ValueError(
+                    f"工單 {material.order_num} "
+                    f"工序 {workNum} 的加工數量為 0，"
+                    f"不可匯入"
+                )
 
-            #if bom_df_is_empty:
-            #  must_receive_qty=clean_nan(row.get('數量')) or 0
-            #else:
-            #  must_receive_qty=0
 
             assemble = P_Assemble(
                 material_id=material.id,
-                material_num=clean_nan(assemble_row.get('物料')),
-                material_comment=clean_nan(assemble_row.get('物料說明')),
+
+                material_num=clean_nan(
+                    assemble_row.get('物料')
+                ),
+
+                material_comment=clean_nan(
+                    assemble_row.get('物料說明')
+                ),
+
                 seq_num=seq_num,
                 work_num=workNum,
                 process_step_code=step_code,
-                input_abnormal_disable=abnormal_field,
+
+                input_abnormal_disable=
+                    abnormal_field,
+
                 user_id='',
+
                 isStockIn=is_stock_in,
-                isSimultaneously=is_simultaneously,
-                #must_receive_qty=must_receive_qty,
-                must_receive_qty=clean_nan(assemble_row.get('作業數量 (MEINH)')),
-                isShowBomGif = material_isBom,
-                show2_ok = '3' if temp_bom_empty else '0',
+
+                isSimultaneously=
+                    is_simultaneously,
+
+                # 關鍵修正
+                must_receive_qty=
+                    process_qty,
+
+                # PEnd 後續直接使用
+                must_receive_end_qty=
+                    process_qty,
+
+                isShowBomGif=
+                    material_isBom,
+
+                show2_ok=
+                    '3'
+                    if temp_bom_empty
+                    else '0',
             )
+            '''
+            #
+            # ------------------------------------------------------------
+            # 1. 工單領取數量
+            #
+            # 這是整張工單送入加工線的數量，例如 2080。
+            # ------------------------------------------------------------
+            material_receive_qty = int(
+                getattr(
+                    material,
+                    'total_delivery_qty',
+                    0
+                )
+                or getattr(
+                    material,
+                    'delivery_qty',
+                    0
+                )
+                or getattr(
+                    material,
+                    'material_qty',
+                    0
+                )
+                or 0
+            )
+
+            if material_receive_qty <= 0:
+                raise ValueError(
+                    f"工單 {material.order_num} "
+                    f"領取數量不正確："
+                    f"{material_receive_qty}"
+                )
+
+
+            # ------------------------------------------------------------
+            # 2. Excel 工序應完成數量
+            #
+            # 這是該工序的作業數量，例如 384。
+            #
+            # 不可在讀不到時退回工單數量 2080，
+            # 否則 must_receive_end_qty 就會錯誤。
+            # ------------------------------------------------------------
+            process_qty_columns = [
+                '作業數量 (MEINH)',
+                '作業數量(MEINH)',
+                '作業數量',
+                '作業數量 ',
+            ]
+
+            raw_process_qty = None
+            matched_process_qty_column = None
+
+            for column_name in process_qty_columns:
+                if column_name not in assemble_row.index:
+                    continue
+
+                candidate = clean_nan(
+                    assemble_row.get(
+                        column_name
+                    )
+                )
+
+                try:
+                    candidate_qty = int(
+                        float(
+                            candidate or 0
+                        )
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    candidate_qty = 0
+
+                if candidate_qty > 0:
+                    raw_process_qty = candidate
+                    matched_process_qty_column = (
+                        column_name
+                    )
+                    break
+
+
+            try:
+                process_qty = int(
+                    float(
+                        raw_process_qty or 0
+                    )
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                process_qty = 0
+
+
+            print(
+                '[Excel加工數量]',
+                {
+                    'order_num':
+                        material.order_num,
+
+                    'work_num':
+                        workNum,
+
+                    'matched_column':
+                        matched_process_qty_column,
+
+                    'raw_process_qty':
+                        raw_process_qty,
+
+                    'process_qty':
+                        process_qty,
+
+                    'material_receive_qty':
+                        material_receive_qty,
+
+                    'available_columns':
+                        list(
+                            assemble_row.index
+                        ),
+                }
+            )
+
+
+            # 工序數量讀不到時必須停止匯入，
+            # 不可改用工單數量。
+            if process_qty <= 0:
+                raise ValueError(
+                    f"工單 {material.order_num}，"
+                    f"工序 {workNum} "
+                    f"找不到有效的 Excel 作業數量。"
+                    f"可用欄位："
+                    f"{list(assemble_row.index)}"
+                )
+
+
+            # ------------------------------------------------------------
+            # 3. 建立 P_Assemble
+            #
+            # must_receive_qty     = 工單領取量 2080
+            # must_receive_end_qty = 工序作業量 384
+            # ------------------------------------------------------------
+            assemble = P_Assemble(
+                material_id=
+                    material.id,
+
+                material_num=
+                    clean_nan(
+                        assemble_row.get(
+                            '物料'
+                        )
+                    ),
+
+                material_comment=
+                    clean_nan(
+                        assemble_row.get(
+                            '物料說明'
+                        )
+                    ),
+
+                seq_num=
+                    seq_num,
+
+                work_num=
+                    workNum,
+
+                process_step_code=
+                    step_code,
+
+                input_abnormal_disable=
+                    abnormal_field,
+
+                user_id=
+                    '',
+
+                isStockIn=
+                    is_stock_in,
+
+                isSimultaneously=
+                    is_simultaneously,
+
+                # 整張工單進入加工線的領取數量
+                must_receive_qty=
+                    material_receive_qty,
+
+                # Excel 此工序的作業數量
+                must_receive_end_qty=
+                    process_qty,
+
+                isShowBomGif=
+                    material_isBom,
+
+                show2_ok=
+                    '3'
+                    if temp_bom_empty
+                    else '0',
+            )
+                        #
             s.add(assemble)
 
           # end loop_assemble
@@ -1225,7 +1329,7 @@ def read_all_excel_files_p():
     'status': return_value,
     'message': return_message1,
   })
-"""
+
 
 @excelTable.route("/readAllExcelFiles", methods=['GET'])
 def read_all_excel_files():
@@ -3175,273 +3279,19 @@ def download_bat_file():
         as_attachment=True
     )
 
-# 內部：套用 BOM 差異(原 apply_bom_diffs 的核心；不對外成 route)
-def _apply_bom_diffs_tx(s, material: Material, ops: list):
-    """
-    直接把差異（add/update/remove）套用到 DB。回傳(結果摘要, material 的最新 BOM 列表)。
-    """
-    # 先抓現有 BOM，建立索引
-    existing = s.query(Bom).filter(Bom.material_id == material.id).all()
-    by_key, by_mnum = {}, {}
-    for b in existing:
-        k = (str(b.seq_num).strip(), str(b.material_num).strip())
-        by_key[k] = b
-        by_mnum.setdefault(str(b.material_num).strip(), []).append(b)
-
-    def _to_int(x, default=0):
-        try:
-            if x is None or (isinstance(x, str) and x.strip() == ""):
-                return default
-            return int(float(x))
-        except Exception:
-            return default
-
-    def _recompute_non_qty(b: Bom):
-        req = _to_int(b.req_qty, 0)
-        picked = _to_int(b.pick_qty, 0)
-        b.non_qty = max(req - picked, 0)
-
-    results = {"added": [], "updated": [], "removed": []}
-
-    for op in ops:
-        action = (op.get("action") or "").strip().lower()
-        seq_num = str(op.get("seq_num") or "").strip()
-        mnum = str(op.get("material_num") or "").strip()
-        if not mnum:
-            continue
-
-        target = by_key.get((seq_num, mnum))
-        if not target and seq_num == "" and mnum in by_mnum and len(by_mnum[mnum]) == 1:
-            target = by_mnum[mnum][0]
-
-        if action == "add":
-            comment = op.get("mtl_comment", op.get("material_comment", ""))
-            qty = op.get("qty", op.get("req_qty", 0))
-            start_date = op.get("start_date") or material.material_delivery_date
-            receive = op.get("receive", True)
-
-            new_bom = Bom(
-                material_id=material.id,
-                seq_num=seq_num or op.get("id") or "0",
-                material_num=mnum,
-                material_comment=str(comment or ""),
-                req_qty=_to_int(qty, 0),
-                pick_qty=0,
-                lack_qty=0,
-                non_qty=0,
-                receive=bool(receive),
-                start_date=str(start_date or ""),
-            )
-            _recompute_non_qty(new_bom)
-            s.add(new_bom)
-            s.flush()
-            by_key[(str(new_bom.seq_num), mnum)] = new_bom
-            by_mnum.setdefault(mnum, []).append(new_bom)
-            results["added"].append(new_bom.get_dict())
-
-        elif action == "update":
-            if not target:
-                results["updated"].append({"material_num": mnum, "seq_num": seq_num, "skipped": "not_found"})
-                continue
-            new_comment = op.get("mtl_comment_new", op.get("material_comment"))
-            new_qty = op.get("qty_new", op.get("req_qty"))
-            new_seq = op.get("seq_num_new")
-            changed = False
-            if new_comment is not None and str(target.material_comment) != str(new_comment):
-                target.material_comment = str(new_comment); changed = True
-            if new_qty is not None:
-                v = _to_int(new_qty, target.req_qty or 0)
-                if v != (target.req_qty or 0):
-                    target.req_qty = v
-                    _recompute_non_qty(target)
-                    changed = True
-            if new_seq is not None:
-                ns = str(new_seq).strip()
-                if ns and ns != str(target.seq_num):
-                    old_key = (str(target.seq_num), mnum)
-                    target.seq_num = ns
-                    by_key.pop(old_key, None)
-                    by_key[(ns, mnum)] = target
-                    changed = True
-            if changed:
-                results["updated"].append(target.get_dict())
-            else:
-                results["updated"].append({"material_num": mnum, "seq_num": seq_num, "noop": True})
-
-        elif action == "remove":
-            if not target:
-                candidates = by_mnum.get(mnum, [])
-                if not candidates:
-                    results["removed"].append({"material_num": mnum, "seq_num": seq_num, "skipped": "not_found"})
-                    continue
-                for b in list(candidates):
-                    s.delete(b)
-                    results["removed"].append({"id": b.id, "material_num": b.material_num, "seq_num": b.seq_num})
-                    by_key.pop((str(b.seq_num), mnum), None)
-                by_mnum.pop(mnum, None)
-            else:
-                s.delete(target)
-                results["removed"].append({"id": target.id, "material_num": target.material_num, "seq_num": target.seq_num})
-                by_key.pop((str(target.seq_num), mnum), None)
-                if mnum in by_mnum:
-                    by_mnum[mnum] = [b for b in by_mnum[mnum] if b.id != target.id]
-                    if not by_mnum[mnum]:
-                        by_mnum.pop(mnum, None)
-
-    # 取回最新 BOM
-    latest = s.query(Bom).filter(Bom.material_id == material.id).all()
-    return results, [b.get_dict() for b in latest]
-
-# 封裝：從 excel_modify 讀檔 → 產生差異清單(沿用 read_all_excel_files 的清洗規則)
-def _collect_bom_diffs_from_modify_dir(s, material: Material):
-    base_in = os.path.abspath(current_app.config['baseDir'])            # e.g. ...\excel_in
-    modify_dir = base_in.replace("_in", "_modify")                      # ...\excel_modify
-    out_dir = base_in.replace("_in", "_out")                            # ...\excel_out
-    sheet_bom = current_app.config.get('excel_bom_sheet') or 1          # 系統指定索引 1 = BOM
-
-    os.makedirs(modify_dir, exist_ok=True)
-    os.makedirs(out_dir, exist_ok=True)
-
-    order_num = normalize_order_number(material.order_num)
-    files = [f for f in os.listdir(modify_dir)
-        if os.path.isfile(os.path.join(modify_dir, f)) and f.endswith(('.xlsx', '.xls'))]
-
-    modify_ops = []
-    would_process_files = []
-
-    # 先抓現有 BOM → map
-    existing_bom = s.query(Bom).filter(Bom.material_id == material.id).all()
-    existing_map = {str(b.material_num).strip(): b for b in existing_bom}
-
-    for fname in files:
-        path = os.path.join(modify_dir, fname)
-        base_no_copy = re.sub(r'_copy_\d+', '', fname)  # 與 read_all_excel_files 同邏輯防重複
-
-        already = s.query(exists().where(ProcessedFile.file_name == base_no_copy)).scalar()
-        if already:
-            print(f"[excelModifyTable] 檔案已處理，略過：{fname}")
-            continue
-
-        # 讀 BOM sheet（同 read_all_excel_files 的清洗）
-        try:
-            #bom_df = pd.read_excel(path, sheet_name=sheet_bom).fillna('')
-            #
-            bom_df = pd.read_excel(path, sheet_name=sheet_bom)
-            # 文本欄位可補空字串
-            for col in ['物料', '物料說明']:
-              if col in bom_df.columns:
-                bom_df[col] = bom_df[col].fillna('')
-            # 數值欄位轉數字
-            for col in ['物料短缺', '需求數量', '預留項目']:
-              if col in bom_df.columns:
-                bom_df[col] = pd.to_numeric(bom_df[col], errors='coerce').fillna(0).astype(int)
-            #
-        except Exception:
-            # 某些舊檔用 openpyxl 先驗 sheet 存在
-            with open(path, 'rb') as f:
-                wb = openpyxl.load_workbook(filename=f, read_only=True)
-                if isinstance(sheet_bom, str):
-                    if sheet_bom not in wb.sheetnames:
-                        print(f"[excelModifyTable] 缺少工作表：{sheet_bom}，略過 {fname}")
-                        continue
-                else:
-                    # 如果用索引，這支分支不做；直接 raise
-                    raise
-            bom_df = pd.read_excel(path, sheet_name=sheet_bom).fillna('')
-
-        if '訂單' not in bom_df.columns:
-            print(f"[excelModifyTable] 缺少『訂單』欄，略過 {fname}")
-            continue
-
-        # 訂單欄正規化（比照 read_all_excel_files）
-        bom_df.iloc[:, 0] = (
-            bom_df.iloc[:, 0]
-            .apply(normalize_order_number)
-            .replace('nan', '')
-            .astype(str)
-        )
-
-        rows = bom_df[bom_df['訂單'] == order_num]
-        if rows.empty:
-            print(f"[excelModifyTable] 檔案 {fname} 無此單號 {order_num}，略過")
-            continue
-
-        # Excel(新) → map
-        incoming_map = {}
-        for _, r in rows.iterrows():
-            mnum = str(clean_nan(r.get('物料')) or '').strip()
-            if not mnum:
-                continue
-            incoming_map[mnum] = {
-                'seq_num':          clean_nan(r.get('預留項目')),
-                'material_comment': clean_nan(r.get('物料說明')) or '',
-                'req_qty':          clean_nan(r.get('需求數量')) or 0,
-            }
-
-        # remove
-        for mnum, old in existing_map.items():
-            if mnum not in incoming_map:
-                modify_ops.append({
-                    'action':      'remove',
-                    'material_id': material.id,
-                    'seq_num':     old.seq_num,
-                    'material_num': mnum,
-                })
-
-        # add / update
-        for mnum, new in incoming_map.items():
-            old = existing_map.get(mnum)
-            if not old:
-                modify_ops.append({
-                    'action':      'add',
-                    'material_id': material.id,
-                    'seq_num':     new['seq_num'],
-                    'material_num': mnum,
-                    'mtl_comment': new['material_comment'],
-                    'qty':         new['req_qty'],
-                    'start_date':  material.material_delivery_date,
-                })
-            else:
-                changed = False
-                old_c = str(old.material_comment or '')
-                new_c = str(new['material_comment'] or '')
-                if old_c != new_c:
-                    changed = True
-                try:
-                    old_q = float(old.req_qty or 0)
-                    new_q = float(new['req_qty'] or 0)
-                    if old_q != new_q:
-                        changed = True
-                except Exception:
-                    changed = True
-
-                if changed:
-                    modify_ops.append({
-                        'action':          'update',
-                        'material_id':     material.id,
-                        'seq_num':         new['seq_num'] if new['seq_num'] is not None else old.seq_num,
-                        'material_num':    mnum,
-                        'mtl_comment_new': new['material_comment'],
-                        'qty_new':         new['req_qty'],
-                    })
-
-        would_process_files.append((fname, path, base_no_copy, out_dir))
-
-    return modify_ops, would_process_files
-
 
 @excelTable.route('/modifyExcelFiles', methods=['POST'])
 def modify_excel_files():
     print("modifyExcelFiles...")
 
-    """
-    讀取 excel_modify 內的 Excel → 產生 BOM 差異 → （預設）直接寫入 DB → 移檔到 excel_out。
-    參數：
-      id / material_id: 工單編號
-      dry_run: true 則只比對不寫庫、不移檔（預設 False）
-    回傳：
-      status, message, results(added/updated/removed), bom(最新), processedFiles(實際移檔清單)
-    """
+
+    # 讀取 excel_modify 內的 Excel → 產生 BOM 差異 → （預設）直接寫入 DB → 移檔到 excel_out。
+    # 參數：
+    #   id / material_id: 工單編號
+    #   dry_run: true 則只比對不寫庫、不移檔（預設 False）
+    # 回傳：
+    #   status, message, results(added/updated/removed), bom(最新), processedFiles(實際移檔清單)
+
     payload = request.get_json(silent=True) or {}
     material_id = payload.get("material_id") or payload.get("id")
     #id = payload.get("id")

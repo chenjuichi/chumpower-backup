@@ -1,5 +1,5 @@
 import re
-import random
+#import random
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
 from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, UserDelegate, Setting, Session
@@ -390,54 +390,6 @@ def build_active_process_query(
               q = q.filter(or_(Process.has_started.is_(False), Process.has_started.is_(None)))
           else:
               q = q.filter(Process.has_started.is_(False))
-      return q
-
-
-def build_active_process_query_p(
-      s,
-      material_ids,
-      process_types,
-      include_paused=True,
-      only_user_id=None,              # 可選的使用者過濾
-      has_started=None,               # None=不過濾 / True=只要已開始 / False=只要未開始
-      null_as_not_started=True,       # False 時才有用；True=把 NULL 視為「未開始」
-  ):
-      #
-      # include_paused:
-      #     True  -> 只要未結束就算（含暫停）
-      #     False -> 只算正在跑（不含暫停）
-      # has_started:
-      #     None  -> 不過濾
-      #     True  -> 只要 has_started=True
-      #     False -> 只要 has_started=False（可選擇是否把 NULL 視為未開始）
-
-      q = (
-          s.query(P_Process)
-          .filter(P_Process.material_id.in_(material_ids))
-          .filter(P_Process.process_type.in_(process_types))
-          #.filter(P_Process.end_time.is_(None))   # 只算未結束
-          .filter(
-              or_(
-                  Process.end_time.is_(None),
-                  Process.end_time == ''
-              )
-          )
-      )
-
-      if not include_paused:
-          q = q.filter(or_(P_Process.is_pause.is_(False), P_Process.is_pause.is_(None)))
-
-      if only_user_id:
-          q = q.filter(P_Process.user_id == only_user_id)
-
-      # 處理 has_started 過濾
-      if has_started is True:
-          q = q.filter(P_Process.has_started.is_(True))
-      elif has_started is False:
-          if null_as_not_started:
-              q = q.filter(or_(P_Process.has_started.is_(False), P_Process.has_started.is_(None)))
-          else:
-              q = q.filter(P_Process.has_started.is_(False))
       return q
 
 
@@ -1524,6 +1476,7 @@ def close_process():
 
 # -----dialog2~Begin for 前端 PickReportForAssembleBegin.vue 及 PickReportForAssembleEnd.vue -------------------------------------------------------------
 
+
 # 20260728版
 @getTable.route("/dialog2StartProcessBegin", methods=['POST'])
 def start_process_begin():
@@ -2164,8 +2117,8 @@ def start_process_mp():
         #.filter(P_Process.end_time.is_(None))
         .filter(
             or_(
-                Process.end_time.is_(None),
-                Process.end_time == ''
+                P_Process.end_time.is_(None),
+                P_Process.end_time == ''
             )
         )
         #.order_by(P_Process.id.desc())
@@ -2960,6 +2913,7 @@ def start_process_process():
         #
 #
 
+
 @getTable.route("/dialog2UpdateProcessProcess", methods=['POST'])
 def update_process_process():
   print("dialog2UpdateProcessProcess API....")
@@ -3271,6 +3225,7 @@ def close_process_process():
         #print("$$close_process_begin step10..")
         # 依你的實際欄位名調整：
         # 假設：must_receive_end_qty = 應完成數量、total_ask_qty_end = 已完成總數
+        '''
         must_qty = int(asm.must_receive_end_qty or 0)
         cur_total = int(asm.total_ask_qty_end or 0)
         new_total = cur_total + rq
@@ -3278,8 +3233,54 @@ def close_process_process():
         asm.total_ask_qty_end = new_total
         total_completed = new_total
         is_completed = (must_qty > 0 and new_total >= must_qty)
+        '''
+        #
+        must_qty = int(
+            asm.must_receive_end_qty or 0
+        )
+
+        # ------------------------------------------------------------
+        # 加工線已完成總量統一使用 total_completed_qty。
+        #
+        # 相容舊資料：
+        # 若 total_completed_qty 還是 0，
+        # 才退回讀 total_ask_qty_end。
+        # ------------------------------------------------------------
+        current_total_completed = int(
+            asm.total_completed_qty
+            or asm.total_ask_qty_end
+            or 0
+        )
+
+        new_total_completed = (
+            current_total_completed + rq
+        )
+
+        # 本次完成數量
+        asm.completed_qty = rq
+
+        # 正式累計完成數量
+        asm.total_completed_qty = (
+            new_total_completed
+        )
+
+        # 舊欄位暫時同步，避免其他舊頁面仍在使用
+        asm.total_ask_qty_end = (
+            new_total_completed
+        )
+
+        total_completed = (
+            new_total_completed
+        )
+
+        is_completed = (
+            must_qty > 0
+            and
+            new_total_completed >= must_qty
+        )
 
         s.add(asm)
+        #
 
     #print("$$close_process_begin step11..")
     s.add(log)
@@ -3479,120 +3480,6 @@ def get_users_deps_processes():
         })
     finally:
         s.close()
-
-
-@getTable.route("/getUsersDepsProcessesP", methods=['POST'])
-def get_users_deps_processes_p():
-    print("getUsersDepsProcessesP....")
-
-    _user_results = []
-    return_value = True
-    raw_select = 0
-    """
-    if request.method == 'GET':
-        # 從 query 取
-        raw_select = request.args.get('select', 0)
-    else:
-    """
-        # 從 JSON 取
-    #data = request.get_json(silent=True) or {}
-    data = request.get_json()
-
-    raw_select = data.get('select', 0)
-
-    try:
-        # 取得 select 參數（0, 1, 3, 7），預設 0
-        raw_select = request.args.get('select', '0')
-        try:
-            select_days = int(raw_select)
-        except ValueError:
-            select_days = 0
-
-        # 只允許 0,1,3,7，其它當 0
-        if select_days not in (0, 1, 3, 7):
-            select_days = 0
-
-        today = dt.now().date()
-
-        if select_days <= 0:
-            # select = 0 → 只算今天
-            start_day = today
-            end_day = today
-        else:
-            # select = 1/3/7 → 算「前 N 天」，不含今天
-            # 例如 select=3：今天 11/23，範圍是 11/20 ~ 11/22
-            start_day = today - timedelta(days=select_days)
-            end_day = today - timedelta(days=1)
-
-        start_str = f"{start_day.strftime('%Y-%m-%d')} 00:00:00"
-        end_str   = f"{end_day.strftime('%Y-%m-%d')} 23:59:59"
-        #print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
-
-        s = Session()
-
-        _objects = s.query(User).all()
-        users = [u.__dict__ for u in _objects]
-        index=0
-        for user in users:
-          # 依你原本邏輯：只留下 isRemoved == True 的使用者
-          if user['isRemoved'] == False:
-              continue
-
-          emp_id = user['emp_id']
-
-          # 計算這段日期內的 elapsedActive_time 總和
-          total_elapsed = (
-              s.query(func.coalesce(func.sum(P_Process.elapsedActive_time), 0))
-              .filter(
-                  P_Process.user_id == emp_id,
-                  P_Process.begin_time != '',
-                  P_Process.end_time != '',
-                  P_Process.begin_time >= start_str,
-                  P_Process.begin_time <= end_str,
-                  P_Process.end_time >= start_str,
-                  P_Process.end_time <= end_str,
-              )
-              .scalar()
-          ) or 0
-
-          total_elapsed = int(total_elapsed)
-          #print("total_elapsed:", total_elapsed)
-          # 轉成 hh:mm:ss 文字
-          h = total_elapsed // 3600
-          m = (total_elapsed % 3600) // 60
-          sec = total_elapsed % 60
-          total_str = f"{h:02d}:{m:02d}:{sec:02d}"
-          index = index + 1
-          _user_object = {
-            'id': index,
-            'emp_id': emp_id,
-            'emp_name': user['emp_name'],
-            'dep_name': user['dep_name'].split('-', 1)[1],
-
-            'workHours': total_str,
-            'online': random.randint(0, 2),
-          }
-
-          _user_results.append(_user_object)
-        # end for_loop
-
-        temp_len = len(_user_results)
-        print("getUsersDepsProcessesP, 總數: ", temp_len)
-
-        return jsonify({
-          'status': return_value,
-          'users_and_deps_and_process': _user_results,
-        })
-
-    except Exception as e:
-      s.rollback()
-      print("list_users_deps_processes_p error:", e)
-      return jsonify({
-        'status': False,
-        'error': str(e),
-      })
-    finally:
-      s.close()
 
 
 """
@@ -7690,7 +7577,8 @@ def get_materials_and_assembles_by_user():
             .filter(Process.begin_time.isnot(None))
             .filter(Process.begin_time != '')
             .filter(
-                or_(Process.end_time.is_(None), Process.end_time == '')
+                or_(Process.end_time.is_(None),
+                Process.end_time == '')
             )
             .group_by(
                 Process.material_id,

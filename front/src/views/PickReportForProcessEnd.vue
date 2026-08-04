@@ -2770,14 +2770,14 @@ const onClickEnd = async (item) => {
     // ======================================================
     // 3. 更新完成數量
     // ======================================================
-    const previousTotal = Number(
-      item.total_completed_qty_num ||
-      0
-    )
-
-    const newTotal =
-      previousTotal + completedQty
-
+    //const previousTotal = Number(
+    //  item.total_completed_qty_num ||
+    //  0
+    //)
+    //
+    //const newTotal =
+    //  previousTotal + completedQty
+    /*
     await updateAssemble({
       assemble_id:
         assembleId,
@@ -2799,7 +2799,7 @@ const onClickEnd = async (item) => {
       record_data:
         newTotal,
     })
-
+    */
     await updateAssemble({
       assemble_id:
         assembleId,

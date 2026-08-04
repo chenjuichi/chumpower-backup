@@ -1,4 +1,4 @@
-import math
+#import math
 
 import json
 
@@ -12,17 +12,12 @@ from database.p_tables import P_Material, P_Assemble, P_Process, P_Product, P_Pa
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.inspection import inspect
-#from werkzeug.security import generate_password_hash
+
 from sqlalchemy import func, or_
 
 from datetime import datetime, timezone
 
-#import pymysql
-#from sqlalchemy import exc
-#from sqlalchemy import func
-
 createTableP = Blueprint('createTableP', __name__)
-
 
 from log_util import setup_logger
 logger = setup_logger(__name__)  # 每個模組用自己的名稱
@@ -31,6 +26,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+"""
 def _int_or_error(value, name):
   try:
     iv = int(value)
@@ -39,6 +35,7 @@ def _int_or_error(value, name):
     return iv
   except Exception:
     raise ValueError(f"{name} 必須是非負整數")
+"""
 
 
 def _normalize_int(value, default=0):
@@ -103,6 +100,7 @@ def read_all_p_part_process_code_p():
 # ------------------------------------------------------------------
 
 
+"""
 @createTableP.route("/createProcessP", methods=['POST'])
 def create_process_p():
   print("createProcessP....")
@@ -180,6 +178,417 @@ def create_process_p():
     'status': True,
     'process_id': new_process_id
   })
+"""
+
+
+# 20260804版
+# createProcessP：
+# 1. 使用 P_Material row lock，避免多人同時新增
+# 2. type=2/5/19：30 秒內相同搬運防重複
+# 3. type=3：同 material 只建立一次
+# 4. type=6：空白搬運通知防重複
+# 5. type=21/22/23：相同員工、工序的 active process 防重複
+# 6. type=5 保留 begin_time / end_time / period_time
+@createTableP.route("/createProcessP", methods=["POST"])
+def create_process_p():
+    print("createProcessP....")
+
+    request_data = request.get_json(silent=True) or {}
+
+    begin_time = request_data.get("begin_time")
+    end_time = request_data.get("end_time")
+    period_time1 = request_data.get("periodTime")
+    period_time2 = request_data.get("periodTime2")
+
+    normal_work_time = request_data.get("normal_work_time")
+    process_work_time_qty = request_data.get(
+        "process_work_time_qty",
+        0
+    )
+
+    assemble_id_raw = request_data.get("assemble_id")
+    has_started = bool(request_data.get("has_started"))
+
+    user_id = str(request_data.get("user_id") or "").strip()
+    material_id_raw = request_data.get("id")
+    process_type_raw = request_data.get("process_type")
+
+    # ------------------------------------------------------------
+    # 參數檢查
+    # ------------------------------------------------------------
+    if (
+        not user_id
+        or material_id_raw is None
+        or process_type_raw is None
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "missing params: user_id / id / process_type"
+        }), 400
+
+    try:
+        material_id = int(material_id_raw)
+        process_type = int(process_type_raw)
+        assemble_id = int(assemble_id_raw or 0)
+        work_qty = int(process_work_time_qty or 0)
+    except (TypeError, ValueError):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid params: id / process_type / "
+                "assemble_id / process_work_time_qty"
+        }), 400
+
+    def parse_datetime(value):
+        if value in (None, "", "None"):
+            return None
+
+        if isinstance(value, datetime):
+            return value
+
+        text = str(value).strip()
+
+        if text.endswith("Z"):
+            text = text[:-1]
+
+        text = text.replace("T", " ")
+
+        try:
+            return datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            pass
+
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S.%f",
+        ):
+            try:
+                return datetime.strptime(text, fmt)
+            except (TypeError, ValueError):
+                continue
+
+        return None
+
+    session = Session()
+
+    try:
+        # --------------------------------------------------------
+        # 鎖定加工線 material
+        # --------------------------------------------------------
+        material = (
+            session.query(P_Material)
+            .filter(P_Material.id == material_id)
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not material:
+            session.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    f"p_material id={material_id} 不存在"
+            }), 400
+
+        print(
+            "[createProcessP] material locked:",
+            material.id
+        )
+
+        # --------------------------------------------------------
+        # type=2 / 5 / 19：
+        # 同 material、type、user，30 秒內視為重送
+        # --------------------------------------------------------
+        if process_type in {2, 5, 19}:
+            incoming_begin_dt = parse_datetime(begin_time)
+
+            latest_transport = (
+                session.query(P_Process)
+                .filter(
+                    P_Process.material_id == material_id,
+                    P_Process.process_type == process_type,
+                    P_Process.user_id == user_id,
+                )
+                .order_by(
+                    P_Process.id.desc()
+                )
+                .first()
+            )
+
+            if latest_transport and incoming_begin_dt:
+                latest_begin_dt = parse_datetime(
+                    latest_transport.begin_time
+                )
+
+                if latest_begin_dt:
+                    diff_seconds = abs(
+                        (
+                            incoming_begin_dt
+                            - latest_begin_dt
+                        ).total_seconds()
+                    )
+
+                    if diff_seconds <= 30:
+                        session.commit()
+
+                        print(
+                            "[createProcessP] duplicate "
+                            "transport skipped:",
+                            {
+                                "material_id": material_id,
+                                "process_type": process_type,
+                                "existing_process_id":
+                                    latest_transport.id,
+                                "diff_seconds":
+                                    diff_seconds,
+                            }
+                        )
+
+                        return jsonify({
+                            "status": True,
+                            "created": False,
+                            "process_id":
+                                latest_transport.id,
+                            "skipped": True,
+                            "duplicate": True,
+                            "message":
+                                "短時間內已有相同搬運紀錄，"
+                                "本次重複呼叫已忽略",
+                        }), 200
+
+        # --------------------------------------------------------
+        # type=3：
+        # AGV 加工區 -> 成品區，同 material 防重複
+        # --------------------------------------------------------
+        if process_type == 3:
+            existed_type3 = (
+                session.query(P_Process)
+                .filter(
+                    P_Process.material_id == material_id,
+                    P_Process.process_type == 3,
+                )
+                .order_by(P_Process.id.asc())
+                .first()
+            )
+
+            if existed_type3:
+                session.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id": existed_type3.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message":
+                        "此加工工單已有 AGV 搬運紀錄，"
+                        "不重複新增",
+                }), 200
+
+        # --------------------------------------------------------
+        # type=6：
+        # 空白堆高機通知防重複
+        # --------------------------------------------------------
+        if process_type == 6:
+            existed_type6 = (
+                session.query(P_Process)
+                .filter(
+                    P_Process.material_id == material_id,
+                    P_Process.process_type == 6,
+                    or_(
+                        P_Process.begin_time.is_(None),
+                        P_Process.begin_time == "",
+                    ),
+                    or_(
+                        P_Process.end_time.is_(None),
+                        P_Process.end_time == "",
+                    ),
+                    func.coalesce(
+                        P_Process.elapsedActive_time,
+                        0
+                    ) == 0,
+                    or_(
+                        P_Process.has_started.is_(False),
+                        P_Process.has_started.is_(None),
+                    ),
+                )
+                .order_by(P_Process.id.asc())
+                .first()
+            )
+
+            if existed_type6:
+                session.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id": existed_type6.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message":
+                        "已有未執行的堆高機搬運紀錄，"
+                        "不重複新增",
+                }), 200
+
+        # --------------------------------------------------------
+        # type=21 / 22 / 23：
+        # 同員工、同 assemble、同製程 active 防重複
+        # --------------------------------------------------------
+        if (
+            process_type in {21, 22, 23}
+            and has_started
+        ):
+            existed_active = (
+                session.query(P_Process)
+                .filter(
+                    P_Process.material_id == material_id,
+                    P_Process.assemble_id == assemble_id,
+                    P_Process.process_type == process_type,
+                    P_Process.user_id == user_id,
+                    P_Process.has_started.is_(True),
+                    or_(
+                        P_Process.end_time.is_(None),
+                        P_Process.end_time == "",
+                    ),
+                )
+                .order_by(P_Process.id.asc())
+                .first()
+            )
+
+            if existed_active:
+                session.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "process_id": existed_active.id,
+                    "skipped": True,
+                    "duplicate": True,
+                    "message":
+                        "此員工此加工工序已開始，"
+                        "不重複新增",
+                }), 200
+
+        # --------------------------------------------------------
+        # 計算 period_time
+        # type=6 為空白通知，不計算
+        # type=5 現在保留搬運時間
+        # --------------------------------------------------------
+        period_time = ""
+
+        if process_type != 6:
+            if period_time2:
+                period_time = str(period_time2)
+
+            elif period_time1:
+                period_time = str(period_time1)
+
+            elif begin_time and end_time:
+                begin_dt = parse_datetime(begin_time)
+                end_dt = parse_datetime(end_time)
+
+                if begin_dt and end_dt:
+                    period_time = str(
+                        end_dt - begin_dt
+                    ).split(".")[0]
+
+        # --------------------------------------------------------
+        # 新增 P_Process
+        # --------------------------------------------------------
+        completed_transport = (
+            process_type in {2, 3, 5}
+            and bool(end_time)
+        )
+
+        new_process = P_Process(
+            material_id=material_id,
+            assemble_id=assemble_id,
+
+            has_started=(
+                False
+                if completed_transport
+                else has_started
+            ),
+
+            user_id=user_id,
+            process_type=process_type,
+            normal_work_time=normal_work_time,
+
+            begin_time=(
+                begin_time
+                if process_type != 6
+                else None
+            ),
+
+            end_time=(
+                end_time
+                if process_type != 6
+                else None
+            ),
+
+            period_time=(
+                period_time
+                if process_type != 6
+                else ""
+            ),
+
+            process_work_time_qty=(
+                work_qty
+                if process_type != 6
+                else 0
+            ),
+
+            is_pause=(
+                True
+                if completed_transport
+                else False
+            ),
+
+            pause_started_at=None,
+        )
+
+        session.add(new_process)
+        session.flush()
+
+        new_process_id = new_process.id
+
+        session.commit()
+
+        print(
+            "[createProcessP] created:",
+            {
+                "process_id": new_process_id,
+                "material_id": material_id,
+                "assemble_id": assemble_id,
+                "process_type": process_type,
+            }
+        )
+
+        return jsonify({
+            "status": True,
+            "created": True,
+            "process_id": new_process_id,
+            "skipped": False,
+            "duplicate": False,
+        }), 200
+
+    except Exception as exc:
+        session.rollback()
+
+        print(
+            "createProcessP ERROR:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "status": False,
+            "message": str(exc),
+        }), 500
+
+    finally:
+        session.close()
 
 
 @createTableP.route("/copyAssembleForDifferenceP", methods=['POST'])

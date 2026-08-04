@@ -255,7 +255,6 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
         s.close()
 
 
-
 @updateTableP.route("/updateAssembleP", methods=['POST'])
 def update_assemble_p():
   print("updateAssembleP....")
@@ -363,4 +362,63 @@ def update_assemble_p():
   })
 
 
+@updateTableP.route("/updateProcessDataByMaterialIDP", methods=['POST'])
+def update_process_data_by_material_id_p():
+  print("updateProcessDataByMaterialIDP....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _seq = request_data.get('seq')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  #print("material_id, seq, record_name1, record_data1:", _material_id, _seq, _record_name1, _record_data1)
+
+  s = Session()
+
+  try:
+      material = s.query(P_Material).get(_material_id)
+      #print("step1")
+      if not material:
+        return jsonify({'status': False, 'msg': 'Material not found'})
+      #print("step2")
+
+      target_process = (s.query(P_Process).filter(
+                P_Process.material_id == _material_id,
+                P_Process.assemble_id == 0,
+                P_Process.has_started == True,
+                P_Process.begin_time != '',
+                P_Process.end_time != '',)
+                .first())
+
+      # 確保 _seq 不超過範圍
+      #temp_len = len(material._process)
+      #if _seq < 0 or _seq > temp_len:
+      if not target_process:
+        #print("step2-0 ")
+        return jsonify({'status': False, 'msg': 'seq out of range'})
+
+      #print("step3")
+
+      # 取出對應的 Process
+      #target_process = material._process[_seq-1]
+      print("target_process:", target_process)
+      # 更新欄位
+      if _record_name1 and _record_data1 is not None:
+        setattr(target_process, _record_name1, _record_data1)
+      #print("step4")
+
+      s.commit()
+
+      print("target_process:", target_process)
+      print(f"更新成功!")
+      return_value = True
+  except Exception as e:
+      s.rollback()
+      print("更新失敗:", str(e))
+      return_value = False
+
+  return jsonify({
+    'status': return_value
+  })
 

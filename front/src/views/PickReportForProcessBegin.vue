@@ -1468,6 +1468,7 @@ const updateItem = async (item) => {
   //
 
   // 3. 第一次開始時，補完工應領數量
+  /*
   const mustReceiveEndQty = Number(
     item.must_receive_end_qty ?? 0
   );
@@ -1484,6 +1485,21 @@ const updateItem = async (item) => {
       record_data: receiveQty,
     });
   }
+  */
+  //
+  const mustReceiveEndQty = Number(
+    item.must_receive_end_qty ?? 0
+  )
+
+  // 加工線的 must_receive_end_qty 應由 Excel 工序
+  // 「作業數量 (MEINH)」決定，不能使用領取數量補寫。
+  if (mustReceiveEndQty <= 0) {
+    throw new Error(
+      `工單 ${item.order_num} 的工序應完成數量不存在，` +
+      `請檢查 Excel 作業數量 (MEINH)`
+    )
+  }
+  //
 
   // 4. 記錄累計領取數量
   await updateAssemble({

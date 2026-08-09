@@ -31,6 +31,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+"""
 # 20260730版
 @updateTableP.route('/updateAssembleProcessStepP', methods=['POST'])
 def update_assemble_process_step_p():
@@ -179,6 +180,567 @@ def update_assemble_process_step_p():
   return jsonify({
     'status': return_value
   })
+"""
+
+
+# 20260805版
+@updateTableP.route('/updateAssembleProcessStepP', methods=['POST'])
+def update_assemble_process_step_p():
+    print("updateAssembleProcessStepP....")
+
+    data = (
+        request.get_json(silent=True)
+        or {}
+    )
+
+    try:
+        material_id = int(
+            data.get('id') or 0
+        )
+
+        assemble_id = int(
+            data.get('assemble_id') or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            'status': False,
+            'message':
+                'id / assemble_id 格式錯誤',
+        }), 400
+
+    if (
+        material_id <= 0
+        or assemble_id <= 0
+    ):
+        return jsonify({
+            'status': False,
+            'message':
+                '缺少 id / assemble_id',
+        }), 400
+
+    s = Session()
+
+    try:
+        material_record = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id ==
+                material_id
+            )
+            .with_for_update()
+            .first()
+        )
+
+        if not material_record:
+            return jsonify({
+                'status': False,
+                'message':
+                    f'找不到 P_Material：{material_id}',
+            }), 404
+
+        assemble_record = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.id ==
+                assemble_id,
+
+                P_Assemble.material_id ==
+                material_id,
+            )
+            .with_for_update()
+            .first()
+        )
+
+        if not assemble_record:
+            return jsonify({
+                'status': False,
+                'message':
+                    f'找不到 P_Assemble：{assemble_id}',
+            }), 404
+
+        target_create_at = normalize_create_at(
+            assemble_record.create_at
+        )
+
+        assemble_records = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id ==
+                material_id,
+
+                P_Assemble.create_at ==
+                target_create_at,
+            )
+            .with_for_update()
+            .all()
+        )
+
+        if not assemble_records:
+            return jsonify({
+                'status': False,
+                'message':
+                    '同批加工工序不存在',
+            }), 404
+
+        # ----------------------------------------------------
+        # 排序時將 seq_num 安全轉成整數
+        # ----------------------------------------------------
+        def seq_value(row):
+            try:
+                return int(
+                    str(
+                        row.seq_num or 0
+                    ).strip()
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                return 999999
+
+        sorted_records = sorted(
+            assemble_records,
+            key=lambda row: (
+                seq_value(row),
+                int(row.id or 0),
+            )
+        )
+
+        # ----------------------------------------------------
+        # 尚未完成的工序：
+        # process_step_code > 0
+        # ----------------------------------------------------
+        unfinished_records = [
+            row
+            for row in sorted_records
+            if int(
+                row.process_step_code or 0
+            ) > 0
+        ]
+
+        all_process_step_zero = (
+            len(unfinished_records) == 0
+        )
+
+        print(
+            '[updateAssembleProcessStepP]',
+            {
+                'material_id':
+                    material_id,
+
+                'assemble_id':
+                    assemble_id,
+
+                'all_completed':
+                    all_process_step_zero,
+
+                'unfinished_ids': [
+                    int(row.id)
+                    for row
+                    in unfinished_records
+                ],
+            }
+        )
+
+        '''
+        if all_process_step_zero:
+            # =================================================
+            # 全部工序完成，進入待送出
+            # =================================================
+            now_str = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            material_record.show2_ok = 5
+
+            material_record\
+                .isAssembleStation3TakeOk = True
+
+            material_record.isOpen = False
+            material_record.isOpenEmpId = ''
+            material_record.hasStarted = False
+
+            for row in assemble_records:
+                row.show2_ok = 5
+
+                row.isAssembleStationShow = True
+                row.isWarehouseStationShow = False
+                row.isStockIn = True
+
+                row.input_disable = True
+                row.input_end_disable = True
+                row.input_abnormal_disable = True
+
+            assemble_ids = [
+                int(row.id)
+                for row in assemble_records
+                if row.id is not None
+            ]
+
+            other_active_logs = (
+                s.query(P_Process)
+                .filter(
+                    P_Process.material_id ==
+                    material_id
+                )
+                .filter(
+                    P_Process.assemble_id.in_(
+                        assemble_ids
+                    )
+                )
+                .filter(
+                    P_Process.has_started
+                    .is_(True)
+                )
+                .filter(
+                    or_(
+                        P_Process.end_time
+                        .is_(None),
+
+                        P_Process.end_time ==
+                        '',
+                    )
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for log in other_active_logs:
+                log.end_time = now_str
+                log.has_started = False
+                log.is_pause = True
+
+                if not log.str_elapsedActive_time:
+                    seconds = int(
+                        log.elapsedActive_time
+                        or 0
+                    )
+
+                    hours, remain = divmod(
+                        seconds,
+                        3600
+                    )
+
+                    minutes, seconds = divmod(
+                        remain,
+                        60
+                    )
+
+                    log.str_elapsedActive_time = (
+                        f"{hours:02d}:"
+                        f"{minutes:02d}:"
+                        f"{seconds:02d}"
+                    )
+
+            next_assemble_id = 0
+        '''
+        #
+        if all_process_step_zero:
+            print("updateAssembleProcessStepP, "
+                "all_process_step_zero:",
+                all_process_step_zero
+            )
+
+            now_str = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            # ========================================================
+            # 同批全部工序都已完成
+            #
+            # 只保留「最後一道工序」作為待送出代表列。
+            # 前面已完成的加工工序全部隱藏。
+            # ========================================================
+            def seq_value(row):
+                try:
+                    return int(
+                        str(row.seq_num or 0).strip()
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    return 0
+
+            sorted_records = sorted(
+                assemble_records,
+                key=lambda row: (
+                    seq_value(row),
+                    int(row.id or 0),
+                )
+            )
+
+            # 最後一道工序，例如：
+            # B108-12 噴砂+磁震+鈍化
+            waiting_send_row = (
+                sorted_records[-1]
+                if sorted_records
+                else assemble_record
+            )
+
+            waiting_send_id = int(
+                waiting_send_row.id or 0
+            )
+
+            print(
+                "[updateAssembleProcessStepP] "
+                "waiting_send_row:",
+                {
+                    "id":
+                        waiting_send_row.id,
+
+                    "seq_num":
+                        waiting_send_row.seq_num,
+
+                    "work_num":
+                        waiting_send_row.work_num,
+                }
+            )
+
+            # Material 進入待送出
+            material_record.show2_ok = 5
+
+            material_record\
+                .isAssembleStation3TakeOk = True
+
+            material_record.isOpen = False
+            material_record.isOpenEmpId = ''
+            material_record.hasStarted = False
+
+            # --------------------------------------------------------
+            # 整張工單的完成數量統一顯示在最後一道工序
+            #
+            # 依你目前流程，每道工序完成量都是同一批應完成量，
+            # 不可把兩道工序的 completed_qty 相加，
+            # 否則 1020 + 1020 會變成 2040。
+            # --------------------------------------------------------
+            final_completed_qty = int(
+                waiting_send_row.completed_qty
+                or waiting_send_row.total_completed_qty
+                or waiting_send_row.total_ask_qty_end
+                or 0
+            )
+
+            final_total_completed_qty = int(
+                waiting_send_row.total_completed_qty
+                or waiting_send_row.total_ask_qty_end
+                or waiting_send_row.completed_qty
+                or 0
+            )
+
+            for row in assemble_records:
+                is_waiting_send_row = (
+                    int(row.id or 0) ==
+                    waiting_send_id
+                )
+
+                # 所有工序都已完成
+                row.process_step_code = 0
+                row.show2_ok = 5
+
+                row.input_disable = True
+                row.input_end_disable = True
+                row.input_abnormal_disable = True
+
+                row.isWarehouseStationShow = False
+
+                if is_waiting_send_row:
+                    # 唯一待送出代表列
+                    row.isAssembleStationShow = True
+                    row.isStockIn = True
+
+                    row.completed_qty = (
+                        final_completed_qty
+                    )
+
+                    row.total_completed_qty = (
+                        final_total_completed_qty
+                    )
+
+                    row.total_ask_qty_end = (
+                        final_total_completed_qty
+                    )
+                else:
+                    # 前面完成工序只保留歷史，不再顯示於 PEnd
+                    row.isAssembleStationShow = False
+                    row.isStockIn = False
+
+            # ========================================================
+            # 關閉同批所有員工殘留計時
+            # ========================================================
+            assemble_ids = [
+                int(row.id)
+                for row in assemble_records
+                if row.id is not None
+            ]
+
+            other_active_logs = (
+                s.query(P_Process)
+                .filter(
+                    P_Process.material_id ==
+                    material_id
+                )
+                .filter(
+                    P_Process.assemble_id.in_(
+                        assemble_ids
+                    )
+                )
+                .filter(
+                    P_Process.has_started.is_(True)
+                )
+                .filter(
+                    or_(
+                        P_Process.end_time.is_(None),
+                        P_Process.end_time == ''
+                    )
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for log in other_active_logs:
+                log.end_time = now_str
+                log.has_started = False
+                log.is_pause = True
+
+                if not log.str_elapsedActive_time:
+                    seconds = int(
+                        log.elapsedActive_time or 0
+                    )
+
+                    hours, remain = divmod(
+                        seconds,
+                        3600
+                    )
+
+                    minutes, seconds = divmod(
+                        remain,
+                        60
+                    )
+
+                    log.str_elapsedActive_time = (
+                        f"{hours:02d}:"
+                        f"{minutes:02d}:"
+                        f"{seconds:02d}"
+                    )
+
+            return_value = True
+            next_assemble_id = 0
+        #
+        else:
+            # =================================================
+            # 尚有下一道工序
+            # =================================================
+            material_record.show2_ok = 3
+
+            material_record\
+                .isAssembleStation3TakeOk = False
+
+            material_record.isOpen = False
+            material_record.isOpenEmpId = ''
+            material_record.hasStarted = False
+
+            # 目前已完成工序不可再出現在 Begin / End
+            assemble_record.show2_ok = 5
+            assemble_record.isAssembleStationShow = False
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+
+            # 第一筆尚未完成的，就是下一道工序
+            next_record = unfinished_records[0]
+
+            next_record.show2_ok = 3
+
+            next_record.isAssembleStationShow = False
+            next_record.isWarehouseStationShow = False
+
+            next_record.input_disable = False
+            next_record.input_end_disable = False
+            next_record.input_abnormal_disable = False
+
+            # 下一道尚未開始，完成量維持 0
+            next_record.completed_qty = 0
+            next_record.total_completed_qty = (
+                int(
+                    next_record
+                    .total_completed_qty
+                    or 0
+                )
+            )
+
+            next_assemble_id = int(
+                next_record.id
+            )
+
+            print(
+                "下一道加工工序：",
+                {
+                    'assemble_id':
+                        next_record.id,
+
+                    'work_num':
+                        next_record.work_num,
+
+                    'process_step_code':
+                        next_record
+                        .process_step_code,
+
+                    'seq_num':
+                        next_record.seq_num,
+                }
+            )
+
+        s.commit()
+
+        return jsonify({
+            'status':
+                all_process_step_zero,
+
+            'all_steps_completed':
+                all_process_step_zero,
+
+            'material_id':
+                material_id,
+
+            'completed_assemble_id':
+                assemble_id,
+
+            'next_assemble_id':
+                next_assemble_id,
+
+            'waiting_send_assemble_id':
+                (
+                    waiting_send_id
+                    if all_process_step_zero
+                    else 0
+                ),
+
+            'material_show2_ok':
+                int(material_record.show2_ok or 0),
+        }), 200
+
+    except Exception as error:
+        s.rollback()
+
+        logger.exception(
+            "updateAssembleProcessStepP failed"
+        )
+
+        return jsonify({
+            'status': False,
+            'message': str(error),
+        }), 500
+
+    finally:
+        s.close()
+#
 
 
 @updateTableP.route("/updateAssembleMustReceiveQtyByMaterialIDP", methods=['POST'])
@@ -421,4 +983,151 @@ def update_process_data_by_material_id_p():
   return jsonify({
     'status': return_value
   })
+
+
+@updateTableP.route("/previewProcessAbnormalQtyP",  methods=["POST"])
+def preview_process_abnormal_qty_p():
+    print("previewProcessAbnormalQtyP....")
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        material_id = int(data.get("material_id") or 0)
+        assemble_id = int(data.get("assemble_id") or 0)
+        abnormal_qty = int(data.get("abnormal_qty") or 0)
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "status": False,
+            "message": "數量格式不正確"
+        }), 400
+
+    if material_id <= 0:
+        return jsonify({
+            "status": False,
+            "message": "material_id 不正確"
+        }), 400
+
+    if assemble_id <= 0:
+        return jsonify({
+            "status": False,
+            "message": "assemble_id 不正確"
+        }), 400
+
+    if abnormal_qty < 0:
+        return jsonify({
+            "status": False,
+            "message": "廢品數量不可小於 0"
+        }), 400
+
+    s = Session()
+
+    try:
+        row = (s.query(P_Assemble)
+            .filter(
+                P_Assemble.id ==
+                assemble_id,
+
+                P_Assemble.material_id ==
+                material_id,
+            )
+            .first()
+        )
+
+        if not row:
+            return jsonify({
+                "status": False,
+                "message": "找不到加工工序資料"
+            }), 404
+
+        original_qty = int(
+            getattr(
+                row,
+                "original_must_receive_end_qty",
+                0
+            )
+            or row.must_receive_end_qty
+            or 0
+        )
+
+        completed_qty = int(
+            row.total_completed_qty
+            or row.total_ask_qty_end
+            or 0
+        )
+
+        if original_qty <= 0:
+            return jsonify({
+                "status": False,
+                "message": "原始應完成數量不正確"
+            }), 400
+
+        if (
+            completed_qty +
+            abnormal_qty >
+            original_qty
+        ):
+            return jsonify({
+                "status": False,
+                "message":
+                    "已完成數量與廢品數量不可超過原始應完成數量",
+
+                "original_qty":
+                    original_qty,
+
+                "completed_qty":
+                    completed_qty,
+
+                "abnormal_qty":
+                    abnormal_qty,
+            }), 400
+
+        preview_remaining_qty = max(
+            original_qty -
+            completed_qty -
+            abnormal_qty,
+            0
+        )
+
+        return jsonify({
+            "status":
+                True,
+
+            "material_id":
+                material_id,
+
+            "assemble_id":
+                assemble_id,
+
+            "original_must_receive_end_qty":
+                original_qty,
+
+            "completed_qty":
+                completed_qty,
+
+            "abnormal_qty":
+                abnormal_qty,
+
+            "preview_remaining_qty":
+                preview_remaining_qty,
+        }), 200
+
+    except Exception as error:
+        s.rollback()
+
+        logger.exception(
+            "previewProcessAbnormalQtyP failed"
+        )
+
+        return jsonify({
+            "status": False,
+            "message": str(error)
+        }), 500
+
+    finally:
+        s.close()
+
+
 

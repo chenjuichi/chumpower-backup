@@ -360,6 +360,10 @@ export const p_apiOperation = (operation, path, payload) => {
             return res.data;
           }
 
+          if (path =='/previewProcessAbnormalQtyP') {
+            return res;
+          }
+
           if (path == '/login' || path == '/reLogin' || path == '/listDirectory' ||
               path == '/exportToExcelForError' ||
               path == '/exportToExcelForProcessInformation' ||

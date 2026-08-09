@@ -121,21 +121,21 @@
                 />
               </div>
 
-              <!--客製化 備料送出按鍵-->
+              <!--客製化 備料送出按鍵, 20260806版-->
               <v-btn
-                :disabled="c_isBlinking"
+                :disabled="c_isBlinking || isCallForklift"
+                @click="onClickTrans"
+                ref="sendButton"
                 color="primary"
                 variant="outlined"
-
                 style="
                   position:relative;
                   left:50px;
                   top:0px;
                   font-weight:700;
                   padding-left:8px;
-                  padding-right:8px;"
-                @click="onClickTrans"
-                ref="sendButton"
+                  padding-right:8px;
+                "
               >
                 <template v-slot:prepend>
                   <v-icon color="blue">mdi-account-arrow-right-outline</v-icon>
@@ -352,6 +352,7 @@
         <!-- 自訂 '廢品數量' 輸入欄位 -->
         <template v-slot:item.abnormal_qty = "{ item }">
           <div style="position: relative; display: inline-block;">
+            <!--
             <v-text-field
               v-model="item.abnormal_qty"
               dense
@@ -362,6 +363,25 @@
 
               @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
               @update:focused="(focused) => checkAbnormalField(focused, item)"
+
+              :disabled="item.input_abnormal_disable"
+            />
+            -->
+            <!--20260805版-->
+            <v-text-field
+              v-model="item.abnormal_qty"
+              dense
+              hide-details
+              style="max-width: 60px; text-align: center; z-index: 1;"
+              :id="`abnormalQtyID-${item.assemble_id}`"
+
+              @keydown="handleKeyDown"
+
+              @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
+
+              @update:focused="(focused) => checkAbnormalField(focused, item)"
+
+              @keyup.enter="commitAbnormalQtyPreview(item)"
 
               :disabled="item.input_abnormal_disable"
             />
@@ -589,6 +609,7 @@ const updateMaterialRecord = p_apiOperation('post', '/updateMaterialRecordP');
 const updateAssmbleDataByMaterialID = p_apiOperation('post', '/updateAssmbleDataByMaterialIDP');
 const updateProcessData = p_apiOperation('post', '/updateProcessDataP');
 const updateAssembleProcessStep  = p_apiOperation('post', '/updateAssembleProcessStepP');
+const previewProcessAbnormalQty = p_apiOperation('post', '/previewProcessAbnormalQtyP');
 
 //=== component name ==
 defineComponent({
@@ -1030,8 +1051,10 @@ onMounted(async () => {
         }
         console.log('targetItem:', rec);
 
-        const current_material_id = rec.id;
-        const current_assemble_id = rec.assemble_id;
+        const current_material_id = Number(rec.id || 0)
+        const current_assemble_id = Number(rec.assemble_id || 0)
+        //const current_material_id = rec.id;
+        //const current_assemble_id = rec.assemble_id;
 
         try {
           // Material：成品站/等待入庫/等待組裝中/目標途程=成品站
@@ -1210,6 +1233,7 @@ onMounted(async () => {
   }
 });
 
+/*
 onBeforeUnmount(() => {
   // 移除 storage 事件
   window.removeEventListener('storage', onStorageSync)
@@ -1222,7 +1246,7 @@ onBeforeUnmount(() => {
   }
   // ###
 })
-
+*/
 onBeforeUnmount(() => {
   console.log('PickReportForProcessEnd, onBeforeUnmount()')
 
@@ -1257,6 +1281,8 @@ onBeforeUnmount(() => {
   pausedMap.clear()
   lastTickMsMap.clear()
   */
+
+  originalMustReceiveEndQtyMap.clear()
 })
 
 
@@ -1919,6 +1945,7 @@ const checkReceiveQty = (item) => {
   }
 };
 
+/*
 const onAbnormalQtyUpdate = (item, value) => {
   item.abnormal_qty = value;
 
@@ -1930,7 +1957,25 @@ const onAbnormalQtyUpdate = (item, value) => {
   // 保留原本的檢查邏輯
   checkAbnormalQty(item);
 };
+*/
+// 20260805版
+const onAbnormalQtyUpdate = (
+  item,
+  value
+) => {
+  item.abnormal_qty = value
 
+  if (item.code === '109') {
+    item.isAssembleFirstAlarm_qty =
+      value
+  }
+
+  // 輸入過程只驗證，不在每次輸入時扣數量
+  checkAbnormalQty(item)
+}
+//
+
+/*
 const checkAbnormalQty = (item) => {
   console.log("checkAbnormalQty(),", item);
 
@@ -1952,6 +1997,60 @@ const checkAbnormalQty = (item) => {
     item.abnormal_tooltipVisible = false;
   }
 };
+*/
+// 20260805版
+const checkAbnormalQty = (
+  item
+) => {
+  if (!item) return
+
+  console.log(
+    'checkAbnormalQty()',
+    item
+  )
+
+  const abnormalQty = Number(
+    item.abnormal_qty || 0
+  )
+
+  const originalMustQty =
+    getOriginalMustReceiveEndQty(item)
+
+  const completedQty = Number(
+    item.receive_qty || 0
+  )
+
+  const availableQty = Math.max(
+    originalMustQty -
+      completedQty,
+    0
+  )
+
+  if (
+    !Number.isFinite(abnormalQty) ||
+    abnormalQty < 0 ||
+    abnormalQty > availableQty
+  ) {
+    abnormal_qty_alarm.value =
+      '廢品數量錯誤!'
+
+    item.abnormal_tooltipVisible =
+      true
+
+    setTimeout(() => {
+      item.abnormal_tooltipVisible =
+        false
+
+      item.abnormal_qty = ''
+    }, 2000)
+
+    return
+  }
+
+  item.abnormal_tooltipVisible =
+    false
+}
+//
 
 const handleKeyDown = (event) => {
   const inputChar = event.key;
@@ -2098,18 +2197,20 @@ const toggleSelect = (item) => {
   }
 };
 
+// 20260806版
 const onClickTrans = async () => {
   await nextTick()      // 確保 DOM 是最新位置
   calcTransportRange()
 
   //if (toggle_exclusive.value == 1) {
-    callForklift();
+  await  callForklift();
   //} else {
   //  callAGV();
   //}
 };
 
 const callForklift = async () => {
+  /*
   console.log("callForklift()...");
 
   const selectedIdx = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
@@ -2126,8 +2227,121 @@ const callForklift = async () => {
     showSnackbar('請先選擇領料送出的員工!', 'red accent-2');
     return;
   }
+  */
+  //
+    console.log(
+    'callForklift()...',
+    {
+      isCallForklift:
+        isCallForklift.value,
 
+      selectedEmployee:
+        selectedEmployee.value,
+
+      selectedItems:
+        [...selectedItems.value],
+    }
+  )
+
+  // --------------------------------------------------------
+  // 1. 真正執行中才阻擋
+  // --------------------------------------------------------
+  if (isCallForklift.value) {
+    showSnackbar(
+      '送料作業執行中，請勿重複按鍵!',
+      'orange-darken-2'
+    )
+
+    return
+  }
+
+  // --------------------------------------------------------
+  // 2. 先檢查送料員工
+  // --------------------------------------------------------
+  const employeeId = String(
+    selectedEmployee.value || ''
+  ).trim()
+
+  if (!employeeId) {
+    showSnackbar(
+      '請先選擇送料的員工!',
+      'red accent-2'
+    )
+
+    return
+  }
+
+  // --------------------------------------------------------
+  // 3. 等待 checkbox 狀態完成同步
+  // --------------------------------------------------------
+  await nextTick()
+
+  const selectedIdx = Array.isArray(
+    selectedItems.value
+  )
+    ? [
+        ...new Set(
+          selectedItems.value
+            .map(value => Number(value))
+            .filter(
+              value =>
+                Number.isFinite(value)
+            )
+        ),
+      ]
+    : []
+
+  if (selectedIdx.length === 0) {
+    showSnackbar(
+      '請選擇送料的工單!',
+      'red accent-2'
+    )
+
+    return
+  }
+
+  // --------------------------------------------------------
+  // 4. 驗證選取 index 確實找得到資料
+  // --------------------------------------------------------
+  const selectedRows =
+    materials_and_assembles_by_user.value
+      .filter(row =>
+        selectedIdx.includes(
+          Number(row.index)
+        )
+      )
+
+  if (selectedRows.length === 0) {
+    console.error(
+      '[callForklift] 選取 index 找不到資料',
+      {
+        selectedIdx,
+        rows:
+          materials_and_assembles_by_user
+            .value
+            .map(row => ({
+              index: row.index,
+              id: row.id,
+              assemble_id:
+                row.assemble_id,
+            })),
+      }
+    )
+
+    showSnackbar(
+      '選取資料已更新，請重新勾選工單!',
+      'red accent-2'
+    )
+
+    selectedItems.value = []
+
+    return
+  }
+  //
+
+  // 所有前置驗證通過後才鎖定
   isCallForklift.value = true;
+
   try {
     console.log('trans_end 處理步驟1...');
 
@@ -2138,8 +2352,10 @@ const callForklift = async () => {
         console.warn('找不到資料，index =', idx);
         continue;
       }
-      const mid = rec.id;
-      const current_assemble_id = rec.assemble_id;
+      //const mid = rec.id;
+      //const current_assemble_id = rec.assemble_id;
+      const mid = Number(rec.id || 0)
+      const current_assemble_id = Number(rec.assemble_id || 0)
 
       await updateMaterialRecord({
         id: mid,
@@ -2202,7 +2418,8 @@ const callForklift = async () => {
       await createProcess({
         //user_id: currentUser.value?.empID ?? '',
         user_id: selectedEmployee.value,
-        id: rec.id,
+        //id: rec.id,
+        id: Number(rec.id || 0),
         process_type: 6 // 在成品區（堆高機）
       });
       console.log('步驟2-1...');
@@ -2230,21 +2447,50 @@ const callForklift = async () => {
       console.log('步驟2-4...');
     } // end for_loop_b
 
-    // 插入延遲 3 秒
-    await delay(3000);
+    //// 插入延遲 3 秒
+    //await delay(3000);
 
-    // 清理選取
+    // 20260806版
+    // ✅ 送出成功後，前端立即移除已送出的列
+    const selectedSet = new Set(selectedIdx)
+    //const selectedSet = new Set(
+    //  selectedRows.map(
+    //    row => Number(row.index)
+    //  )
+    //)
+
+    materials_and_assembles_by_user.value =
+      materials_and_assembles_by_user.value.filter(
+        row => !selectedSet.has(row.index)
+      )
+
     selectedItems.value = [];
     selectedEmployee.value = null;   // 清空選擇員工
+
     if (localStorage.getItem('selectedItems')) {
       localStorage.removeItem('selectedItems');
     }
+
+    // ✅ 再重新撈一次後端資料
+    await getMaterialsAndAssemblesByUser({
+      user_id: currentUser.value.empID
+    });
+
+    await nextTick();
+    //
+
+    // 清理選取
+    //selectedItems.value = [];
+    //selectedEmployee.value = null;   // 清空選擇員工
+    //if (localStorage.getItem('selectedItems')) {
+    //  localStorage.removeItem('selectedItems');
+    //}
   } catch (err) {
     console.error('堆高機流程例外：', err);
     showSnackbar('堆高機流程執行失敗，請稍後再試', 'red accent-2');
   } finally {
-    // 一定要解鎖，避免按鈕被鎖死
-    await delay(3000);
+    //// 一定要解鎖，避免按鈕被鎖死
+    //await delay(3000);
 
     isCallForklift.value = false;
   } // end try_catch_finally
@@ -2252,6 +2498,8 @@ const callForklift = async () => {
   ////待待
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
   //
+  // 20260806 搬移至try {}最後
+  /*
   // ✅ 送出成功後，前端立即移除已送出的列
   const selectedSet = new Set(selectedIdx)
 
@@ -2266,6 +2514,7 @@ const callForklift = async () => {
   // ✅ 再重新撈一次後端資料
   await getMaterialsAndAssemblesByUser({ user_id: currentUser.value.empID });
   await nextTick();
+  */
   //
   //##
 };
@@ -2603,7 +2852,7 @@ const onClickEnd = async (item) => {
   //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
 };
 */
-// 20260730版
+// 20260805版
 const onClickEnd = async (item) => {
   console.log(
     "PickReportForProcessEnd, onClickEnd()",
@@ -2845,6 +3094,7 @@ const onClickEnd = async (item) => {
     // ======================================================
     // 5. 更新 Material / Assemble 狀態
     // ======================================================
+    /*
     await updateMaterial({
       id:
         materialId,
@@ -2857,7 +3107,7 @@ const onClickEnd = async (item) => {
           ? 5
           : 4,
     })
-
+    */
     await updateAssemble({
       assemble_id:
         assembleId,
@@ -2867,6 +3117,17 @@ const onClickEnd = async (item) => {
 
       record_data:
         5,
+    })
+
+    await updateAssemble({
+      assemble_id:
+        assembleId,
+
+      record_name:
+        "input_disable",
+
+      record_data:
+        true,
     })
 
     await updateAssemble({
@@ -2940,10 +3201,50 @@ const onClickEnd = async (item) => {
       stepResult
     )
 
+    //const allStepsCompleted =
+    //  stepResult?.status === true ||
+    //  stepResult === true ||
+    //  Number(item.assemble_count) === 1
+    //
+    const stepData =
+      stepResult?.data ??
+      stepResult ??
+      {}
+
     const allStepsCompleted =
-      stepResult?.status === true ||
-      stepResult === true ||
-      Number(item.assemble_count) === 1
+      //stepData?.status === true
+      stepData?.all_steps_completed === true ||
+      (
+        stepData?.all_steps_completed ===
+          undefined &&
+        stepData?.status === true
+      )
+
+    console.log(
+      '[onClickEnd] stepData',
+      stepData
+    )
+
+    //
+    // ======================================================
+    // 依後端判斷整張加工單是否全部完成
+    //
+    // 全部完成：show2_ok = 5，進入待送出
+    // 尚有下一工序：show2_ok = 3，回到 PBegin 等待開始
+    // ======================================================
+    await updateMaterial({
+      id:
+        materialId,
+
+      record_name:
+        "show2_ok",
+
+      record_data:
+        allStepsCompleted
+          ? 5
+          : 3,
+    })
+    //
 
     // ======================================================
     // 7. 更新正常工時類型
@@ -2970,10 +3271,18 @@ const onClickEnd = async (item) => {
     // ======================================================
     await reloadEndRowsAndRestoreTimers()
 
-    showSnackbar(
-      allStepsCompleted
+    //showSnackbar(
+    //  allStepsCompleted
+    //    ? "加工完成，已轉為待送出!"
+    //    : "本工序已完成!",
+    //  "green"
+    //)
+
+    showSnackbar(allStepsCompleted
         ? "加工完成，已轉為待送出!"
-        : "本工序已完成!",
+        : stepData?.next_assemble_id
+          ? "本工序完成，下一道工序已開放!"
+          : "本工序已完成!",
       "green"
     )
 
@@ -3095,23 +3404,51 @@ const reloadEndRowsAndRestoreTimers = async () => {
 const reloadEndRowsAndRestoreTimers = async () => {
   const result =
     await getMaterialsAndAssemblesByUser({
-      user_id:
-        currentUser.value?.empID || ''
+      user_id: currentUser.value?.empID || ''
     })
 
-  const rows =
-    result?.materials_and_assembles_by_user
+  const rows = result?.materials_and_assembles_by_user
 
   // API 回傳空資料時，不能保留上一次畫面資料
+  /*
   if (Array.isArray(rows)) {
-    materials_and_assembles_by_user.value =
-      rows
+    materials_and_assembles_by_user.value = rows
   } else if (
     result?.status === false
   ) {
-    materials_and_assembles_by_user.value =
-      []
+    materials_and_assembles_by_user.value = []
   }
+  */
+  //
+  if (Array.isArray(rows)) {
+
+    // ==========================================================
+    // 保存每一列第一次載入時的原始應完成數量
+    // 後續預覽只能讀這裡，不能讀畫面已修改的 must_receive_end_qty
+    // ==========================================================
+    for (const row of rows) {
+
+      const key = makeMustQtyKey(row)
+
+      if (!originalMustReceiveEndQtyMap.has(key)) {
+
+        const originalQty = Number(
+          row.must_receive_end_qty || 0
+        )
+
+        if (originalQty > 0) {
+          originalMustReceiveEndQtyMap.set(
+            key,
+            originalQty
+          )
+        }
+      }
+    }
+
+    materials_and_assembles_by_user.value =
+      rows
+  }
+  //
 
   // 移除不存在列的 Timer 狀態
   const validKeys = new Set(
@@ -3139,14 +3476,12 @@ const reloadEndRowsAndRestoreTimers = async () => {
 
   await getCountMaterialsAndAssemblesByUser({
     user_id:
-      currentUser.value?.empID || ''
+    currentUser.value?.empID || ''
   })
 
   await nextTick()
 
-  for (
-    const row
-    of (
+  for (const row of (
       materials_and_assembles_by_user.value ||
       []
     )
@@ -3229,7 +3564,23 @@ const onClickAbnormal = async (rawItem) => {
     */
 
     // ===== 2) 夾限 & 計算新值 =====
-    const remain = Number(item.must_receive_end_qty) || 0
+    //const remain = Number(item.must_receive_end_qty) || 0
+    //
+    // 使用預覽前保存的原始應完成數量。
+    // 不可使用已預覽扣減後的 item.must_receive_end_qty。
+    //const originalMustQty = Number(
+    //  item.__originalMustReceiveEndQty ??
+    //  item.must_receive_end_qty ??
+    //  0
+    //)
+    const originalMustQty =
+    getOriginalMustReceiveEndQty(
+      rawItem
+    )
+
+    const remain = originalMustQty
+    //
+
     if (remain <= 0) {
       abnormal_qty_alarm.value = '目前無可扣減的完成數量。'
       rawItem.abnormal_tooltipVisible = true
@@ -3237,8 +3588,13 @@ const onClickAbnormal = async (rawItem) => {
       return
     }
 
-    const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
-    const newRemain = Math.max(0, remain - abnormalQty)
+    //const abnormalQty = Math.min(parsedQty, remain) // 不超過剩餘
+    //const newRemain = Math.max(0, remain - abnormalQty)
+    //
+    const abnormalQty = Number(rawItem.abnormal_qty || 0)
+    const newRemain = Math.max(originalMustQty - abnormalQty, 0)
+    //
+
     console.log("注意, 注意, newRemain:", newRemain)
     if (abnormalQty !== parsedQty) {
       abnormal_qty_alarm.value = `異常數量自動調整為 ${abnormalQty}（不可超過剩餘 ${remain}）。`
@@ -3278,11 +3634,22 @@ const onClickAbnormal = async (rawItem) => {
     ])
 
     // C. 產生異常返工/補料單位的「新組裝」應領取數
+    //await copyNewAssemble({
+    //  copy_id: current_assemble_id,
+    //  must_receive_qty: abnormalQty,
+    //  must_receive_end_qty: newRemain,
+    //})
+    //
     await copyNewAssemble({
       copy_id: current_assemble_id,
+
+      // 返工領取量
       must_receive_qty: abnormalQty,
-      must_receive_end_qty: newRemain,
+
+      // 返工應完成量也應是異常量
+      must_receive_end_qty: abnormalQty,
     })
+    //
 
     //// ===== 5) 重新拉資料（避免與後端飄移）=====
     //await Promise.all([
@@ -3429,6 +3796,7 @@ const checkTextEditField = (focused, item) => {
   }
 };
 
+/*
 const checkAbnormalField = (focused, item) => {
   if (!focused) { // 當失去焦點時
     console.log("checkAbnormalField()...");
@@ -3445,6 +3813,76 @@ const checkAbnormalField = (focused, item) => {
     }
   }
 };
+*/
+// 20260805版
+/*
+const checkAbnormalField = (
+  focused,
+  item
+) => {
+  if (!item) return
+
+  if (focused) {
+    console.log(
+      'checkAbnormalField(): 進入 focus'
+    )
+
+    // 只在 Map 尚未保存時，保存目前資料庫原始值。
+    getOriginalMustReceiveEndQty(item)
+
+    if (
+      item.abnormal_qty === 0 ||
+      item.abnormal_qty === '0'
+    ) {
+      item.abnormal_qty = ''
+    }
+
+    return
+  }
+
+  console.log(
+    'checkAbnormalField(): 離開 focus'
+  )
+
+  if (
+    item.abnormal_qty === '' ||
+    item.abnormal_qty === null ||
+    item.abnormal_qty === undefined
+  ) {
+    item.abnormal_qty = 0
+  }
+
+  commitAbnormalQtyPreview(item)
+}
+*/
+const checkAbnormalField = async (
+  focused,
+  item
+) => {
+  if (!item) return
+
+  if (focused) {
+    if (
+      item.abnormal_qty === 0 ||
+      item.abnormal_qty === '0'
+    ) {
+      item.abnormal_qty = ''
+    }
+
+    return
+  }
+
+  if (
+    item.abnormal_qty === '' ||
+    item.abnormal_qty === null ||
+    item.abnormal_qty === undefined
+  ) {
+    item.abnormal_qty = 0
+  }
+
+  await commitAbnormalQtyPreview(item)
+}
+//
 
 const toggleSort = (key) => {
   let nn = sortBy.value.indexOf(key)
@@ -3542,6 +3980,129 @@ const handleProcessEndCompleted = async (
     )
   }
 }
+
+// 20260805 add
+const commitAbnormalQtyPreview = async (item) => {
+  if (!item) return
+
+  const abnormalQty = Number(item.abnormal_qty || 0)
+
+  if (
+    !Number.isFinite(abnormalQty) ||
+    abnormalQty < 0
+  ) {
+    abnormal_qty_alarm.value = '廢品數量格式不正確!'
+
+    item.abnormal_tooltipVisible = true
+
+    return
+  }
+
+  try {
+    const response = await previewProcessAbnormalQty({
+        material_id: Number(
+            item.material_id ??
+            item.id ??
+            0
+          ),
+
+        assemble_id: Number(
+            item.assemble_id || 0
+          ),
+
+        abnormal_qty: abnormalQty,
+      })
+
+    const data = response?.data ?? response ?? {}
+
+    if (data?.status !== true) {
+      throw new Error(
+        data?.message ||
+        '廢品數量預覽失敗'
+      )
+    }
+
+    // 後端計算的剩餘應完成量
+    item.must_receive_end_qty = Number(
+      data.preview_remaining_qty ||
+      0
+    )
+
+    // 後端固定原始值
+    item.original_must_receive_end_qty = Number(
+      data.original_must_receive_end_qty ||
+      0
+    )
+
+    item.abnormal_tooltipVisible = false
+
+  } catch (error) {
+    abnormal_qty_alarm.value =
+      error?.response?.data?.message ||
+      error?.message ||
+      '廢品數量預覽失敗'
+
+    item.abnormal_tooltipVisible = true
+  }
+}
+//
+
+// ------------------------------------------------------------
+// 保存每一筆加工工序「資料庫原始應完成數量」。
+//
+// key：material_id + assemble_id
+// value：第一次取得的 must_receive_end_qty，例如 384
+//
+// 預覽時只改畫面，不改這個 Map。
+// ------------------------------------------------------------
+const originalMustReceiveEndQtyMap = new Map()
+
+const makeMustQtyKey = (item) => {
+  const materialId = Number(
+    item?.material_id ??
+    item?.id ??
+    0
+  )
+
+  const assembleId = Number(
+    item?.assemble_id ??
+    0
+  )
+
+  return `${materialId}:${assembleId}`
+}
+
+const getOriginalMustReceiveEndQty = (
+  item
+) => {
+  if (!item) return 0
+
+  const key = makeMustQtyKey(item)
+
+  if (
+    originalMustReceiveEndQtyMap.has(key)
+  ) {
+    return Number(
+      originalMustReceiveEndQtyMap.get(
+        key
+      ) || 0
+    )
+  }
+
+  const currentQty = Number(
+    item.must_receive_end_qty || 0
+  )
+
+  if (currentQty > 0) {
+    originalMustReceiveEndQtyMap.set(
+      key,
+      currentQty
+    )
+  }
+
+  return currentQty
+}
+//
 
 </script>
 

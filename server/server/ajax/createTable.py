@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 
 from .helper import (
-  sync_b110_remaining_qty
+  sync_b110_remaining_qty,
+  _normalize_bool
 )
 
 createTable = Blueprint('createTable', __name__)
@@ -199,8 +200,7 @@ def create_delegate():
     return jsonify(success=True, id=ud.id)
 
 
-# 20260804版
-# createProcess：
+# 20260807版
 # 1. type=2/5/19 短時間重複呼叫防護
 # 2. type=3/6 搬運紀錄防重複
 # 3. 使用 material row lock，避免多人同時 INSERT
@@ -234,7 +234,102 @@ def create_process():
     #print("has_started:", _has_started)
     #print("begin_time:", _begin_time)
     #print("end_time:", _end_time)
+    '''
+    def get_or_create_prepare_to_assemble_transport(
+        session,
+        material_id,
+        user_id,
+        transport_type,
+        now,
+    ):
 
+        # 建立「備料區 -> 組裝區」搬運紀錄。
+        #
+        # transport_type:
+        #     2 = AGV 備料區 -> 組裝區
+        #     5 = 堆高機備料區 -> 組裝區
+        #
+        # 同一個 material 只能存在一筆 2 或 5，
+        # 避免 AGV / 堆高機重複建立。
+
+        if transport_type not in (2, 5):
+            raise ValueError(
+                "transport_type 必須為 2 或 5"
+            )
+
+        # --------------------------------------------------------
+        # 1. 鎖定 material。
+        #
+        # 第二個同時進來的 request 必須等待第一個 transaction
+        # commit，之後才會繼續執行。
+        # --------------------------------------------------------
+        material = (
+            session.query(Material)
+            .filter(Material.id == material_id)
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if material is None:
+            raise ValueError(
+                f"找不到 material_id={material_id}"
+            )
+
+        # --------------------------------------------------------
+        # 2. 同一 material 的「備料區 -> 組裝區」只能有一筆。
+        #
+        # 這裡同時檢查 type 2 與 type 5，
+        # 避免先建立 AGV，之後又建立堆高機。
+        # --------------------------------------------------------
+        existing = (
+            session.query(Process)
+            .filter(
+                Process.material_id == material_id,
+                Process.process_type.in_([2, 5]),
+            )
+            .order_by(
+                Process.create_at.asc(),
+                Process.id.asc(),
+            )
+            .first()
+        )
+
+        if existing is not None:
+            return existing, False
+
+        # --------------------------------------------------------
+        # 3. 確定不存在後才建立。
+        # --------------------------------------------------------
+        process = Process(
+            material_id=material_id,
+            assemble_id=0,
+            has_started=False,
+            user_id=str(user_id or "").strip(),
+            user_delegate_id="",
+            begin_time=now,
+            end_time=None,
+            period_time="",
+            pause_time=0,
+            pause_started_at=None,
+            elapsedActive_time=0,
+            str_elapsedActive_time=None,
+            is_pause=False,
+            process_type=transport_type,
+            process_work_time_qty=0,
+            must_allOk_qty=0,
+            allOk_qty=0,
+            isAllOk=False,
+            normal_work_time=1,
+            abnormal_cause_message="",
+            create_at=now,
+        )
+
+        session.add(process)
+        session.flush()
+
+        return process, True
+        #
+    '''
     # ------------------------------------------------------------
     # AGV / 堆高機送達組裝區後，釋放到 Begin
     # ------------------------------------------------------------
@@ -454,6 +549,8 @@ def create_process():
                         "message": "相同搬運開始時間已存在，不重複新增"
                     }), 200
         '''
+
+        '''
         #
         # --------------------------------------------------------
         # type=2 / 5 / 19 搬運紀錄防重複
@@ -630,6 +727,146 @@ def create_process():
                                 diff_seconds,
                         }), 200
         # end if process_type_int in {2, 5, 19}:
+        '''
+        #
+        # --------------------------------------------------------
+        # type=2 / 5：
+        # 備料區 -> 組裝區，只允許一種搬運方式、一筆紀錄
+        #
+        # 2 = AGV
+        # 5 = 堆高機
+        #
+        # material 已在前面 with_for_update() 鎖定，
+        # 因此兩個 request 同時進入時：
+        #
+        # request A：取得鎖並新增
+        # request B：等待 A commit，之後查到既有資料並略過
+        # --------------------------------------------------------
+        if process_type_int in (2, 5):
+
+            existed_inbound_transport = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+
+                    # AGV 與堆高機互斥
+                    Process.process_type.in_([2, 5])
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_inbound_transport is not None:
+                s.commit()
+
+                print(
+                    "[createProcess] inbound transport "
+                    "duplicate skipped:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "incoming_process_type":
+                            process_type_int,
+
+                        "existing_process_id":
+                            existed_inbound_transport.id,
+
+                        "existing_process_type":
+                            existed_inbound_transport.process_type,
+
+                        "existing_begin_time":
+                            str(
+                                existed_inbound_transport.begin_time
+                            ),
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_inbound_transport.id,
+
+                    "process_type":
+                        existed_inbound_transport.process_type,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此批工單已有備料區到組裝區搬運紀錄，"
+                        "不重複新增"
+                }), 200
+
+        # --------------------------------------------------------
+        # type=19：
+        # 等待 AGV（備料區）
+        #
+        # 同一 material 只保留一筆等待 AGV。
+        # 不能和 type 2 / 5 共用同一判斷，
+        # 因為正常流程可能是：
+        #
+        # type 19 等待 AGV
+        #       ↓
+        # type 2 AGV 運行
+        # --------------------------------------------------------
+        if process_type_int == 19:
+
+            existed_waiting_agv = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 19
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_waiting_agv is not None:
+                s.commit()
+
+                print(
+                    "[createProcess] waiting AGV "
+                    "duplicate skipped:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "existing_process_id":
+                            existed_waiting_agv.id,
+
+                        "existing_begin_time":
+                            str(
+                                existed_waiting_agv.begin_time
+                            ),
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_waiting_agv.id,
+
+                    "process_type": 19,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此批工單已有等待 AGV 紀錄，"
+                        "不重複新增"
+                }), 200
+        #
 
         # --------------------------------------------------------
         # process_type=6：
@@ -934,8 +1171,21 @@ def create_process():
         #
         new_process = Process(
             material_id=material_id_int,
-            assemble_id=assemble_id_int,
-
+            #assemble_id=assemble_id_int,
+            # 20260807版
+            assemble_id=(
+                0
+                if process_type_int in (
+                    1,   # 備料
+                    2,   # AGV 備料 -> 組裝
+                    5,   # 堆高機 備料 -> 組裝
+                    19,  # 等待 AGV 備料區
+                    29,  # 等待 AGV 組裝區
+                    31,  # 入庫
+                )
+                else assemble_id_int
+            ),
+            #
             has_started=(
                 False
                 if process_type_int in (2, 3, 5)
@@ -2365,6 +2615,8 @@ def copy_material_and_bom():
   _show2_ok = request_data['show2_ok']
   _shortage_note = request_data['shortage_note']
 
+  _merge_enabled = request_data['merge_enabled']
+
   s = Session()
 
   try:
@@ -2390,6 +2642,14 @@ def copy_material_and_bom():
       shortage_note = _shortage_note,
 
       update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+
+      # 新資料繼承主資料的併單設定, 20260806版 add
+      #merge_enabled=bool(existing_material.merge_enabled),
+      #merge_enabled=_normalize_bool(
+      #    existing_material.merge_enabled,
+      #    default=True,
+      #),
+
       is_copied_from_id=existing_material.id,  # ✅ 設定來源
     )
 
@@ -2466,6 +2726,7 @@ def copy_material_and_bom():
     s.close()
 
 
+"""
 # copy material data table
 @createTable.route("/copyMaterial", methods=['POST'])
 def copy_material():
@@ -2589,7 +2850,482 @@ def copy_material():
     #'status': return_value,
     'material_data': _object,
   })
+"""
 
+
+# 20260806版
+# copy material data table
+@createTable.route(
+    "/copyMaterial",
+    methods=["POST"]
+)
+def copy_material():
+    print("copyMaterial....")
+
+    request_data = (
+        request.get_json(silent=True)
+        or {}
+    )
+
+    print(
+        "request_data:",
+        request_data
+    )
+
+    try:
+        _copy_id = int(
+            request_data.get(
+                "copy_id"
+            )
+            or 0
+        )
+
+        _delivery_qty = int(
+            request_data.get(
+                "delivery_qty"
+            )
+            or 0
+        )
+
+        raw_total_delivery_qty = (
+            request_data.get(
+                "total_delivery_qty"
+            )
+        )
+
+        _total_delivery_qty = (
+            int(
+                raw_total_delivery_qty
+                or 0
+            )
+            if raw_total_delivery_qty
+            is not None
+            else None
+        )
+
+        raw_all_ok_qty = (
+            request_data.get(
+                "allOk_qty"
+            )
+        )
+
+        _allOk_qty = (
+            int(
+                raw_all_ok_qty
+                or 0
+            )
+            if raw_all_ok_qty
+            is not None
+            else None
+        )
+
+        _show2_ok = int(
+            request_data.get(
+                "show2_ok"
+            )
+            or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "copy_id / 數量格式錯誤",
+        }), 400
+
+    _shortage_note = str(
+        request_data.get(
+            "shortage_note"
+        )
+        or ""
+    )
+
+    if _copy_id <= 0:
+        return jsonify({
+            "status": False,
+            "message":
+                "copy_id 不正確",
+        }), 400
+
+    return_value = True
+    s = Session()
+
+    try:
+        # ----------------------------------------------------
+        # 1. 鎖定來源 Material
+        #
+        # 避免 A、B 電腦或雙擊同時建立子批次。
+        # ----------------------------------------------------
+        existing_material = (
+            s.query(Material)
+            .filter(
+                Material.id ==
+                _copy_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not existing_material:
+            return jsonify({
+                "status": False,
+                "message":
+                    f"找不到 material_id={_copy_id}",
+            }), 404
+
+        # ----------------------------------------------------
+        # 2. 剩餘批次模式
+        #
+        # 前端傳入：
+        # delivery_qty       = 本批已送數量
+        # total_delivery_qty = 剩餘數量
+        #
+        # 剩餘量 <= 0 時，禁止建立 copy。
+        # ----------------------------------------------------
+        is_remaining_batch = (
+            _total_delivery_qty
+            is not None
+            and
+            _allOk_qty is None
+        )
+
+        if (
+            is_remaining_batch
+            and
+            _total_delivery_qty <= 0
+        ):
+            existing_material.show2_ok = 3
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "created": False,
+                "duplicate": False,
+                "material_data": {
+                    "id":
+                        existing_material.id,
+                },
+                "remaining_qty": 0,
+                "message":
+                    "剩餘數量為0，不建立新批次",
+            }), 200
+
+        # ----------------------------------------------------
+        # 3. 防止同一來源重複建立子批次
+        #
+        # 只針對剩餘批次模式判斷。
+        # 異常、返工等其他 copy 用途不受影響。
+        # ----------------------------------------------------
+        if is_remaining_batch:
+            existing_child = (
+                s.query(Material)
+                .filter(
+                    Material
+                    .is_copied_from_id ==
+                    existing_material.id
+                )
+                .filter(
+                    Material.isAllOk
+                    .isnot(True)
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+            if existing_child:
+                s.commit()
+
+                print(
+                    "[copyMaterial] "
+                    "duplicate child skipped:",
+                    {
+                        "source_id":
+                            existing_material.id,
+                        "existing_child_id":
+                            existing_child.id,
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "duplicate": True,
+                    "material_data": {
+                        "id":
+                            existing_child.id,
+                    },
+                    "remaining_qty":
+                        int(
+                            existing_child
+                            .total_delivery_qty
+                            or 0
+                        ),
+                    "message":
+                        "此來源工單已建立剩餘批次",
+                }), 200
+
+        # ----------------------------------------------------
+        # 4. 決定新批次數量
+        # ----------------------------------------------------
+        if is_remaining_batch:
+            new_batch_qty = int(
+                _total_delivery_qty
+                or 0
+            )
+        elif _allOk_qty is not None:
+            new_batch_qty = int(
+                _allOk_qty
+                or 0
+            )
+        else:
+            new_batch_qty = int(
+                existing_material
+                .material_qty
+                or 0
+            )
+
+        if new_batch_qty <= 0:
+            return jsonify({
+                "status": False,
+                "message":
+                    "新批次數量不可小於等於0",
+            }), 400
+
+        # ----------------------------------------------------
+        # 5. 建立新 Material
+        # ----------------------------------------------------
+        new_material = Material(
+            abnormal_cause_id=
+                existing_material
+                .abnormal_cause_id,
+
+            order_num=
+                existing_material
+                .order_num,
+
+            material_num=
+                existing_material
+                .material_num,
+
+            material_comment=
+                existing_material
+                .material_comment,
+
+            # 關鍵修正：
+            # 剩餘批次不可照抄原始完整數量。
+            material_qty=
+                new_batch_qty,
+
+            # 建議一併填入，避免新批次 delivery_qty
+            # 仍為 NULL 或沿用錯誤值。
+            delivery_qty=
+                new_batch_qty,
+
+            material_date=
+                existing_material
+                .material_date,
+
+            material_delivery_date=
+                existing_material
+                .material_delivery_date,
+
+            isTakeOk=True,
+
+            show2_ok=
+                _show2_ok,
+
+            total_delivery_qty=(
+                _total_delivery_qty
+                if is_remaining_batch
+                else
+                existing_material
+                .total_delivery_qty
+            ),
+
+            assemble_qty=(
+                _allOk_qty
+                if (
+                    _allOk_qty
+                    is not None
+                    and
+                    _total_delivery_qty
+                    is None
+                )
+                else 0
+            ),
+
+            shortage_note=
+                _shortage_note,
+
+            update_time=
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+
+            is_copied_from_id=
+                existing_material.id,
+        )
+
+        s.add(new_material)
+        s.flush()
+
+        print(
+            "Duplicated material:",
+            {
+                "new_id":
+                    new_material.id,
+                "source_id":
+                    existing_material.id,
+                "new_batch_qty":
+                    new_batch_qty,
+            }
+        )
+
+        # ----------------------------------------------------
+        # 6. 複製 BOM
+        # ----------------------------------------------------
+        for bom in (
+            existing_material._bom
+            or []
+        ):
+            new_bom = Bom(
+                material_id=
+                    new_material.id,
+
+                seq_num=
+                    bom.seq_num,
+
+                material_num=
+                    bom.material_num,
+
+                material_comment=
+                    bom.material_comment,
+
+                req_qty=
+                    bom.req_qty,
+
+                pick_qty=
+                    bom.pick_qty,
+
+                non_qty=
+                    bom.non_qty,
+
+                lack_qty=
+                    bom.lack_qty,
+
+                receive=
+                    bom.receive,
+
+                lack=
+                    bom.lack,
+
+                isPickOK=
+                    bom.isPickOK,
+
+                start_date=
+                    bom.start_date,
+            )
+
+            s.add(new_bom)
+
+        # ----------------------------------------------------
+        # 7. 複製 Assemble
+        # ----------------------------------------------------
+        for asm in (
+            existing_material._assemble
+            or []
+        ):
+            new_asm = Assemble(
+                material_id=
+                    new_material.id,
+
+                material_num=
+                    asm.material_num,
+
+                material_comment=
+                    asm.material_comment,
+
+                seq_num=
+                    asm.seq_num,
+
+                work_num=
+                    asm.work_num,
+
+                process_step_code=
+                    asm.process_step_code,
+
+                # 關鍵修正：
+                # 新批次應領量使用新批次數量。
+                must_receive_qty=
+                    new_batch_qty,
+
+                user_id="",
+            )
+
+            s.add(new_asm)
+
+            # 原資料改成本批實際送料數量
+            if (
+                asm.must_receive_qty
+                is not None
+            ):
+                asm.must_receive_qty = (
+                    _delivery_qty
+                )
+
+        s.commit()
+
+        print(
+            "Material copy successfully."
+        )
+
+        return jsonify({
+            "status": True,
+            "created": True,
+            "duplicate": False,
+            "material_data": {
+                "id":
+                    new_material.id,
+            },
+            "remaining_qty":
+                new_batch_qty,
+        }), 200
+
+    except Exception as error:
+        s.rollback()
+
+        print(
+            "copyMaterial Error:",
+            repr(error)
+        )
+
+        return_value = False
+
+        return jsonify({
+            "status":
+                return_value,
+
+            "created":
+                False,
+
+            "duplicate":
+                False,
+
+            "message":
+                "錯誤! 資料新增複製沒有成功...",
+
+            "detail":
+                str(error),
+        }), 500
+
+    finally:
+        s.close()
 
 # 20260722版
 @createTable.route("/createProduct", methods=["POST"])

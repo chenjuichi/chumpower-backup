@@ -26,6 +26,7 @@ listTableP = Blueprint('listTableP', __name__)
 # ------------------------------------------------------------------
 
 
+# 20260805版
 @listTableP.route("/listMaterialsAndAssemblesP", methods=['GET'])
 def list_materials_and_assembles_p():
     print("listMaterialsAndAssemblesP....")
@@ -66,6 +67,13 @@ def list_materials_and_assembles_p():
                     P_Assemble.isSimultaneously,
                     P_Assemble.seq_num,
                     P_Assemble.currentStartTime,
+
+                    #
+                    P_Assemble.input_end_disable,
+                    P_Assemble.input_abnormal_disable,
+                    P_Assemble.isAssembleStationShow,
+                    #
+
                     P_Assemble.input_disable,
                     P_Assemble.Incoming1_Abnormal,
                     P_Assemble.is_copied_from_id,

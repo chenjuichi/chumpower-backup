@@ -241,7 +241,8 @@
                 top:0px;
                 font-weight:700;
                 padding-left:8px;
-                padding-right:8px;"
+                padding-right:8px;
+              "
               @click="onClickTrans"
               ref="sendButton"
             >
@@ -2731,11 +2732,12 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
+// 20260806版
 const onClickTrans = async () => {
   await nextTick()      // 確保 DOM 是最新位置
-  calcTransportRange()
+  await calcTransportRange()
 
-  callForklift();
+  await callForklift();
 };
 
 const callForklift = async () => {

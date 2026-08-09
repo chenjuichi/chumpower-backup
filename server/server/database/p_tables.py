@@ -210,6 +210,9 @@ class P_Assemble(BASE):
     must_receive_end_qty = Column(Integer, default=0)
     abnormal_qty = Column(Integer, default=0)
 
+    # Excel 匯入時的原始工序數量，後續不可變更, 20260805 add
+    original_must_receive_end_qty = Column(Integer, nullable=False, default=0)
+
     user_id = Column(String(8))
     writer_id = Column(String(8))
     write_date = Column(String(18))

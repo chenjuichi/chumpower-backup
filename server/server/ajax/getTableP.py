@@ -330,7 +330,7 @@ def need_more_p_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
 # ------------------------------------------------------------------
 
 
-# 20260730版
+# 20260805版
 @getTableP.route("/getMaterialsAndAssemblesByUserP", methods=['POST'])
 def get_materials_and_assembles_by_user_p():
     print("getMaterialsAndAssemblesByUserP....")
@@ -821,6 +821,16 @@ def get_materials_and_assembles_by_user_p():
                     #'abnormal_qty': assemble_record.abnormal_qty,
                     #'total_completed_qty': f"({assemble_record.total_completed_qty})",
                     #'total_completed_qty_num': process_total,
+
+                    'original_must_receive_end_qty':
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'original_must_receive_end_qty',
+                            0
+                        ),
+                        0
+                    ),
 
                     #
                     # 本次完成數量
@@ -1490,7 +1500,4 @@ def get_users_deps_processes_p():
       })
     finally:
       s.close()
-
-
-
 

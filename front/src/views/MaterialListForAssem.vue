@@ -408,20 +408,49 @@
             </v-btn-toggle>
           </div>
 
-          <!--客製化 備料送出按鍵-->
+          <!--客製化 備料送出按鍵, 20260807版-->
           <v-btn
-            :disabled="c_isBlinking"
+            :disabled="c_isBlinking || isTransportSubmitting || isCallForklift || isCallAGV"
+            :loading="isTransportSubmitting"
             color="primary"
             variant="outlined"
-            style="position:relative; right:130px; top:0px; font-weight:700; padding-left:8px;
-                   padding-right:8px;"
+            style="
+              position:relative;
+              right:130px;
+              top:0px;
+              font-weight:700;
+              padding-left:8px;
+              padding-right:8px;
+            "
             @click="onClickTrans"
             ref="sendButton"
           >
             <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
-            <span>{{ transport_message }}</span>
+            <!--<span>{{ transport_message }}</span>-->
+            <span>{{ isTransportSubmitting ? '備料資料送出中...' : transport_message }}</span>
           </v-btn>
-
+<!--20260807版 建議-->
+<!--
+<v-btn
+  :disabled="c_isBlinking || isTransportSubmitting || isCallForklift || isCallAGV"
+  :loading="isTransportSubmitting"
+  color="primary"
+  variant="outlined"
+  style="
+    position:relative;
+    right:130px;
+    top:0px;
+    font-weight:700;
+    padding-left:8px;
+    padding-right:8px;
+  "
+  @click.once="onClickTrans"
+  ref="sendButton"
+>
+  <v-icon left color="blue">mdi-account-arrow-right-outline</v-icon>
+  <span>{{ isTransportSubmitting ? '資料送出中...' : transport_message }}</span>
+</v-btn>
+-->
           <div style="display: flex; flex-direction: column; align-items: center;">
             <span
               style="position:relative; top:30px; right:180px;"
@@ -995,10 +1024,17 @@ const editDialogBtnDisable = ref(true);
 //let intervalIdForLed = null;
 
 const background = ref('#ffff00');
-const isCallAGV = ref(false);                 // 確認是否已經呼叫了callAGV(), true:已經按鍵了, 不能重複按鍵
 const showMenu = ref(false);                  // 控制員工選單顯示
 
+const isCallAGV = ref(false);                 // 確認是否已經呼叫了callAGV(), true:已經按鍵了, 不能重複按鍵
 const isCallForklift = ref(false);            // 確認是否已經呼叫了CallForklift(), true:已經按鍵了, 不能重複按鍵
+// 整個送料按鍵的同步鎖。
+// 避免 onClickTrans 在極短時間內被執行兩次。
+const isTransportSubmitting = ref(false)      // 20260807 add
+
+// 記錄目前正在送出 createProcess 的 material_id。
+// 避免同一頁面的不同事件，同時替相同 material 建立搬運紀錄。
+const creatingTransportMaterialIds = ref(new Set())         // 20260807 add
 
 const fromDateMenu = ref(false);              // 日期menu 打開/關閉
 
@@ -1160,17 +1196,28 @@ const bomDraftCache = reactive({})  // { [materialId]: BomRow[] }
 
 const isFetching = ref(false);
 
+const isInitializingMergeRadio = ref(false);
+
 //=== watch ===
 //setupGetBomsWatcher();
 
+//watch(group1, async (newVal, oldVal) => {
+//  if (newVal === oldVal) return
+//
+//  const mergeEnabled = newVal === 'blue'
+//  console.log("hello mergeEnabled:", mergeEnabled)
+//
+//  await updateMergeEnabled(mergeEnabled)
+//})
+// 20260806版
 watch(group1, async (newVal, oldVal) => {
-  if (newVal === oldVal) return
+  if (isInitializingMergeRadio.value) return;
+  if (newVal === oldVal) return;
+  if (!editedRecord.value?.id) return;
 
-  const mergeEnabled = newVal === 'blue'
-  console.log("hello mergeEnabled:", mergeEnabled)
-
-  await updateMergeEnabled(mergeEnabled)
-})
+  const mergeEnabled = newVal === 'blue';
+  await updateMergeEnabled(mergeEnabled);
+});
 
 // help menu每次打開都回到第 1 頁
 watch(show_dropdown, (open) => {
@@ -2598,7 +2645,14 @@ const editOrderNum = async (item) => {
 
   editedRecord.value = item;
 
-  group1.value = item.merge_enabled ? 'blue' : 'red';
+  isInitializingMergeRadio.value = true;    // 20260806 add
+
+  group1.value = Boolean(item.merge_enabled) ? 'blue' : 'red';
+
+  await nextTick();                         // 20260806 add
+
+  isInitializingMergeRadio.value = false;   // 20260806 add
+
   group1_radio_btn_disable.value = !item.merge_radio_disable && !item.isTakeOk;
 
   selectedId.value = item.id;
@@ -3102,13 +3156,28 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
 
   // 4. 若缺料，建立拆單的新資料
   if (!take_out) {
+    // 主資料目前的併單設定
+    const sourceMergeEnabled = Boolean(
+      editedRecord.value.merge_enabled
+    );
+
     payload = {
       copy_id: editedRecord.value.id,
       delivery_qty: editedRecord.value.delivery_qty,
       show2_ok: 2,
       shortage_note: '',
+      // 缺料產生的新資料必須繼承主資料設定, 20260806 add
+      merge_enabled: sourceMergeEnabled,
     };
     await copyMaterialAndBom(payload);
+
+    const newMaterialId = Number(
+      material_copy.value?.id || 0
+    );
+
+    if (newMaterialId <= 0) {
+      throw new Error('copyMaterialAndBom 未回傳新 material id');
+    }
 
     payload = {
       id: material_copy.value.id,
@@ -3116,9 +3185,24 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       record_data: 0,
     };
     await updateMaterial(payload);
+
     material_copy.value.isLackMaterial = 0;
 
+    // 20260806版, add
+    // 再明確同步一次 merge_enabled，
+    // 避免後端 copyMaterialAndBom 未複製該欄位
+    await updateMaterial({
+      id: newMaterialId,
+      record_name: 'merge_enabled',
+      record_data: sourceMergeEnabled,
+    });
+    material_copy.value.merge_enabled = sourceMergeEnabled;
+
     materials.value.push(material_copy.value);
+    //materials.value.push({
+    //  ...material_copy.value,
+    //  merge_enabled: sourceMergeEnabled,
+    //});
 
     materials.value.sort((a, b) => {
       if (a.order_num === b.order_num) {
@@ -3158,13 +3242,43 @@ const formatDateTime = (date) => {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 };
 
-const onClickTrans = () => {
+/*
+// 20260806版
+const onClickTrans = async () => {
   if (toggle_exclusive.value == 1) {
-    callForklift();
+    await callForklift();
   } else {
-    callAGV();
+    await callAGV();
   }
 };
+*/
+// 20260807版
+const onClickTrans = async () => {
+  // 第一时间取得總鎖。
+  // 必須放在任何 await 前面。
+  if (isTransportSubmitting.value) {
+    showSnackbar('備料資料正在送出，請勿重複操作!', 'red accent-2')
+    return
+  }
+
+  isTransportSubmitting.value = true;
+
+  try {
+    if (Number(toggle_exclusive.value) === 1) {
+      await callForklift()
+    } else if (Number(toggle_exclusive.value) === 2) {
+      await callAGV()
+    } else {
+      showSnackbar('請先選擇手動推車或 AGV送料!', 'red accent-2')
+    }
+  } catch (err) {
+    console.error('[onClickTrans] 送料流程失敗:', err)
+
+    showSnackbar('備料流程執行失敗，請稍後再試', 'red accent-2')
+  } finally {
+    isTransportSubmitting.value = false;
+  }
+}
 
 const callForklift = async () => {
   console.log("callForklift()...");
@@ -3176,7 +3290,7 @@ const callForklift = async () => {
     return;
   }
   if (isCallForklift.value) {
-    showSnackbar('請不要重複按鍵!', 'red accent-2');
+    showSnackbar('堆高機送料正在處理，請不要重複按鍵!', 'red accent-2');
     return;
   }
 
@@ -3186,6 +3300,9 @@ const callForklift = async () => {
   }
 
   isCallForklift.value = true;
+
+  let completed = false;
+
   try {
     // 本次手動搬運開始時間
     forklift2StartTime.value = new Date();
@@ -3194,16 +3311,13 @@ const callForklift = async () => {
       forklift2StartTime.value
     );
 
-    console.log(
-      '[callForklift] formattedStartTime:',
-      formattedStartTime
-    );
+    console.log('[callForklift] formattedStartTime:', formattedStartTime);
 
     console.log('trans_end 處理步驟1...');
 
     // 步驟 1：更新 material/assemble 顯示狀態 + 紀錄搬運方式
     for (const id of selectedIds) {
-      const m = materials.value.find(x => x.id == id);
+      const m = materials.value.find(x => Number(x.id) == id);
       if (!m) {
         console.warn('找不到 material，id =', id);
         continue;
@@ -3326,14 +3440,14 @@ const callForklift = async () => {
     console.error('trans_end 發生例外：', err);
     showSnackbar('堆高機流程執行失敗，請稍後再試', 'red accent-2');
   } finally {
-    // 無論成功或失敗都解鎖，避免卡住無法再按
-    await delay(3000);
+    //// 無論成功或失敗都解鎖，避免卡住無法再按
+    //await delay(3000);
 
     isCallForklift.value = false;
   }
 
-  // 插入延遲 3 秒
-  await delay(3000);
+  //// 插入延遲 3 秒
+  //await delay(3000);
 
   selectedItems.value = [];
   selectedEmployee.value = null;   // 清空選擇員工
@@ -3689,6 +3803,34 @@ const onMaterialDeliveredCallAGV = async (payload = {}) => {
     console.error('[onMaterialDeliveredCallAGV] refresh failed:', err)
   }
 }
+
+// 20260807 add
+const hasCreatingTransport = (materialId) => {
+  return creatingTransportMaterialIds.value.has(
+    Number(materialId)
+  )
+}
+
+const lockCreatingTransport = (materialId) => {
+  const next = new Set(
+    creatingTransportMaterialIds.value
+  )
+
+  next.add(Number(materialId))
+
+  creatingTransportMaterialIds.value = next
+}
+
+const unlockCreatingTransport = (materialId) => {
+  const next = new Set(
+    creatingTransportMaterialIds.value
+  )
+
+  next.delete(Number(materialId))
+
+  creatingTransportMaterialIds.value = next
+}
+//
 
 </script>
 

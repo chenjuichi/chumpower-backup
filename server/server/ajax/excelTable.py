@@ -1292,6 +1292,10 @@ def read_all_excel_files_p():
                 must_receive_end_qty=
                     process_qty,
 
+                # # 原始工序應完成量, 20260805 add
+                original_must_receive_end_qty=
+                    process_qty,
+
                 isShowBomGif=
                     material_isBom,
 

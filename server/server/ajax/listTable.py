@@ -23,6 +23,11 @@ from sqlalchemy import func, or_, cast, Integer
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import selectinload, load_only
 
+from .helper import (
+  _normalize_bool
+)
+
+
 listTable = Blueprint('listTable', __name__)
 #
 #from log_util import setup_logger
@@ -62,10 +67,9 @@ def normalize_routing_priv(raw, total_count=27):
 
 
 def order_has_lack(session, order_num: str) -> bool:
-    """
-    訂單層級缺料判斷：
-    - Bom.receive == False 或 Bom.receive is NULL 都算缺料
-    """
+    # 訂單層級缺料判斷：
+    # - Bom.receive == False 或 Bom.receive is NULL 都算缺料
+
     if not order_num:
         return False
 
@@ -80,10 +84,9 @@ def order_has_lack(session, order_num: str) -> bool:
 
 
 def order_has_lack_by_id(session, id: int) -> bool:
-    """
-    訂單層級缺料判斷：
-    - Bom.receive == False 或 Bom.receive is NULL 都算缺料
-    """
+    # 訂單層級缺料判斷：
+    # - Bom.receive == False 或 Bom.receive is NULL 都算缺料
+
     if not id:
         return False
 
@@ -103,6 +106,7 @@ def shortage_note_by_order(session, order_num: str) -> str:
 
 def shortage_note_by_order_id(session, id: int) -> str:
     return "(缺料)" if order_has_lack_by_id(session, id) else ""
+
 
 def calc_shortage_note_by_material(session, material_id: int) -> str:
     has_lack = (
@@ -881,7 +885,11 @@ def list_materials():
 
                 'is_copied': bool(row.is_copied_from_id and row.is_copied_from_id > 0),
                 'same_order_num_cnts': merge_cnts,
-                'merge_enabled': row.merge_enabled,
+                #'merge_enabled': bool(row.merge_enabled),
+                'merge_enabled': _normalize_bool(
+                    row.merge_enabled,
+                    default=True,
+                ),
 
                 'merge_radio_disable': row.is_copied_from_id is None,
             }
@@ -2792,8 +2800,12 @@ def list_materials_and_assembles():
 
                     "isLackMaterial": material_record.isLackMaterial,
                     "shortage_note": shortage_note,
-                    "merge_enabled": bool(getattr(material_record, "merge_enabled", True)),
-
+                    #"merge_enabled": bool(getattr(material_record, "merge_enabled", True)),
+                    # 20260806版
+                    'merge_enabled': _normalize_bool(
+                        material_record.merge_enabled,
+                        default=True,
+                    ),
                     "process_step_code": step,
                     "top_work_rank": step,
                     "is_current_group": True,
@@ -2867,8 +2879,12 @@ def list_materials_and_assembles():
         for row in _results:
             row["has_any_running_process"] = row.get("order_num") in started_order_nums
 
-            merge_enabled = row.get("merge_enabled") in (1, True, "1", "true", "True")
-
+            #merge_enabled = row.get("merge_enabled") in (1, True, "1", "true", "True")
+            # 20260806版
+            merge_enabled = _normalize_bool(
+                row.get("merge_enabled"),
+                default=True,
+            )
             #
             release_batch_no = int(row.get("release_batch_no") or 0)
 

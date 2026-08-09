@@ -1742,3 +1742,52 @@ def sync_b110_remaining_qty(
 
     return rows
 
+
+# 20260806版 add
+def _normalize_bool(value, default=False):
+    # 將資料庫、JSON、字串值安全轉成 bool。
+    #
+    # False:
+    #     False, 0, '0', 'false', 'False',
+    #     'no', 'off', '', None
+    #
+    # True:
+    #     True, 1, '1', 'true', 'True',
+    #     'yes', 'on'
+
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        return value != 0
+
+    text = str(value).strip().lower()
+
+    if text in {
+        '1',
+        'true',
+        'yes',
+        'y',
+        'on',
+    }:
+        return True
+
+    if text in {
+        '0',
+        'false',
+        'no',
+        'n',
+        'off',
+        '',
+        'none',
+        'null',
+    }:
+        return False
+
+    return default
+
+
+

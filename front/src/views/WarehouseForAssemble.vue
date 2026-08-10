@@ -94,81 +94,52 @@
               </v-btn>
             </v-col>
             <v-col cols="12" md="2"></v-col>
-<!--
 
+            <!--客製化搜尋/barcode輸入框-->
+            <v-col cols="auto" class="d-flex justify-end align-center" style="gap:5px;">
+                <v-text-field
+                  v-model="search"
+                  label="資料搜尋"
 
-            <v-col cols="12" md="4" class="d-flex justify-end align-center" style="gap:5px;">
-              <v-text-field
-                v-model="search"
-                label="資料搜尋"
-                prepend-inner-icon="mdi-magnify"
-                variant="outlined"
-                hide-details
-                single-line
+                  prepend-inner-icon="mdi-magnify"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  single-line
+                  class="top-input"
+                />
+            <!--
+                <v-text-field
+                  id="bar_code"
+                  v-model="bar_code"
+                  label="條碼"
 
-                class="warehouse-top-input"
-              />
-              <v-text-field
-                v-model="bar_code"
-                label="條碼"
-                prepend-inner-icon="mdi-barcode"
-                variant="outlined"
-                hide-details
-                single-line
-                ref="barcodeInput"
-                @keyup.enter="handleBarCode"
+                  prepend-inner-icon="mdi-barcode"
+                  :value="bar_code"
+                  ref="barcodeInput"
+                  @keyup.enter="handleBarCode"
+                  hide-details
+                  single-line
 
-                class="warehouse-top-input warehouse-barcode-field"
-              />
+                  variant="outlined"
+                  class="barcode-input top-input"
+                />
+            -->
+          <v-text-field
+            id="bar_code"
+            v-model="bar_code"
+            label="條碼"
+            prepend-inner-icon="mdi-barcode"
+            ref="barcodeInput"
+            @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
+            @keyup.enter="handleBarCode"
+            hide-details
+            single-line
+            variant="outlined"
+            class="barcode-input top-input"
+          />
+
             </v-col>
--->
-
-  <!--客製化搜尋/barcode輸入框-->
-  <v-col cols="auto" class="d-flex justify-end align-center" style="gap:5px;">
-      <v-text-field
-        v-model="search"
-        label="資料搜尋"
-
-        prepend-inner-icon="mdi-magnify"
-        variant="outlined"
-        density="compact"
-        hide-details
-        single-line
-        class="top-input"
-      />
-  <!--
-      <v-text-field
-        id="bar_code"
-        v-model="bar_code"
-        label="條碼"
-
-        prepend-inner-icon="mdi-barcode"
-        :value="bar_code"
-        ref="barcodeInput"
-        @keyup.enter="handleBarCode"
-        hide-details
-        single-line
-
-        variant="outlined"
-        class="barcode-input top-input"
-      />
-  -->
-<v-text-field
-  id="bar_code"
-  v-model="bar_code"
-  label="條碼"
-  prepend-inner-icon="mdi-barcode"
-  ref="barcodeInput"
-  @update:modelValue="bar_code = ($event || '').replace(/\D/g, '')"
-  @keyup.enter="handleBarCode"
-  hide-details
-  single-line
-  variant="outlined"
-  class="barcode-input top-input"
-/>
-
-  </v-col>
-
           </v-row>
 
           <!-- 第二行 -->
@@ -176,22 +147,6 @@
             <v-col cols="12" md="2" class="d-flex justify-start"></v-col>
             <!-- 入庫登記 -->
             <v-col cols="12" md="4" class="d-flex justify-start">
-            <!--
-              <v-btn
-                :disabled="c_isBlinking"
-                ref="warehouseBtn"
-                color="primary"
-                variant="outlined"
-                class="warehouse-top-btn"
-                style="padding-left:5px; padding-right:5px;"
-                @click="onClickWarehouseIn"
-              >
-                <v-icon start color="blue">
-                  mdi-cart-plus
-                </v-icon>
-                <span>入庫登記</span>
-              </v-btn>
-            -->
               <AddToCartButton
                 text="入庫登記"
                 :disabled="c_isBlinking"
@@ -218,7 +173,7 @@
               </v-btn>
             </v-col>
             <!-- 動畫-->
-          <!--
+            <!--
             <v-col cols="12" md="6" class="warehouse-animation-col">
               <Transition name="warehouse-fade">
                 <div
@@ -235,13 +190,13 @@
                 </div>
               </Transition>
             </v-col>
-          -->
+            -->
 
-          <!--測試用
+            <!--測試用
             <v-col cols="12" md="6" class="d-flex justify-start">
               <AddToCartButton text="入庫登記0" @added="addCart" style="position:relative; top:-2px;" />
             </v-col>
-          -->
+            -->
           </v-row>
         </v-card-title>
       </v-card>
@@ -302,26 +257,6 @@
       </span>
     </template>
 
-    <!-- 自訂 '訂單編號' 欄位 -->
-  <!--
-    <template v-slot:item.order_num="{ item }">
-      <div style="display: flex; align-items: center;">
-  -->
-        <!--入庫數輸入完成-->
-  <!--
-        <div style="color: blue; margin-right: 20px;" v-if="item.input_allOk_disable">
-          {{ item.order_num }}
-        </div>
-  -->
-        <!--入庫數輸入尚未完成-->
-  <!--
-        <div style="margin-right: 20px;" v-else>
-          {{ item.order_num }}
-        </div>
-      </div>
-    </template>
-  -->
-
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
         <div
@@ -369,21 +304,7 @@
     <!-- 自訂 應入庫數量 欄位資料欄位 -->
     <template v-slot:item.must_allOk_qty="{ item }">
       <div style="display:flex; align-items:center; left:25px; position:relative;">
-      <!--
-        <v-icon
-          v-if="!history"
-          style="transition: opacity 0.3s ease, visibility 0.3s ease;  margin-left: -10px;"
-          :style="{ opacity: (currentUser.perm == 1 || currentUser.perm == 2)  ? 1 : 0, visibility: (currentUser.perm == 1 || currentUser.perm == 2) ? 'visible' : 'hidden' }"
-          @click="addAbnormalInMaterial(item)"
-          size="16"
-          class="mr-2"
-          :color="item.Incoming2_Abnormal ? 'light-blue lighten-3':'red lighten-4'"
-        >
-          mdi-bell-plus
-        </v-icon>
-      -->
         <span style="margin-left: 15px;">
-          <!--{{ item.must_allOk_qty }}-->
           {{ getRemainQty(item) }}
         </span>
       </div>
@@ -422,7 +343,8 @@
             color:red;
             text-align: left;
             font-weight: 700;
-            font-size: 12px;"
+            font-size: 12px;
+          "
         >
           {{ over_qty_alarm }}
         </span>
@@ -879,9 +801,9 @@ import { setupGetBomsWatcher }  from '../mixins/crud.js';
 import { apiOperation }  from '../mixins/crud.js';
 
 // 使用 apiOperation 函式來建立 API 請求
-const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
-const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
-const countExcelFiles = apiOperation('get', '/countExcelFiles');
+//const readAllExcelFiles = apiOperation('get', '/readAllExcelFiles');
+//const deleteAssemblesWithNegativeGoodQty = apiOperation('get', '/deleteAssemblesWithNegativeGoodQty');
+//const countExcelFiles = apiOperation('get', '/countExcelFiles');
 
 const listUsers2 = apiOperation('get', '/listUsers2');
 const listProducts = apiOperation('get', '/listProducts');
@@ -973,11 +895,11 @@ const headers = [
   { title: '訂單編號', sortable: true, key: 'order_num', width:150 },
   { title: '物料編號', sortable: true, key: 'material_num', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:80 },
-  { title: '說明', align: 'start', sortable: false, key: 'comment', width:320 },
+  { title: '說明', align: 'start', sortable: false, key: 'comment', width:330 },
   { title: '交期', align: 'center', sortable: false, key: 'date', width:120 },
   { title: '到庫數量', sortable: false, key: 'delivery_qty', width:80 },
-  { title: '應入庫總數量', align: 'center', sortable: false, key: 'must_allOk_qty', width:90 },
-  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width:90 },
+  { title: '應入庫總數量', align: 'center', sortable: false, key: 'must_allOk_qty', width:85 },
+  { title: '已入庫總數量', sortable: false, key: 'total_allOk_qty', width:85 },
 
   { title: '入庫數量', sortable: false, key: 'allOk_qty', width:80 },
 ];
@@ -1842,6 +1764,15 @@ const onClickWarehouseIn = async () => {
       const updateMat   = pick(current_line, updateMaterial, updateMaterialP);
       const createProd  = (current_line === 'process') ? createProductP : createProduct;
 
+      // 20260810版
+      const isMergedShortageRow =
+        current_line === 'assemble'
+        && row.is_lack_batch_order === true
+        && row.is_order_merged === true
+        && Array.isArray(row.stockin_targets)
+        && row.stockin_targets.length > 1;
+      //
+
       let d2 = 0;
 
       if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
@@ -1862,6 +1793,150 @@ const onClickWarehouseIn = async () => {
 
       console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
 
+      // 20260810版 add
+      // ============================================================
+      // 缺料分批已全部到 Warehouse，畫面已合併成 1 筆
+      //
+      // 例如：
+      //   78  -> 10
+      //   85  -> 10
+      //   111 -> 10
+      //
+      // 畫面：
+      //   121100020598 -> 30
+      //
+      // createProduct 不可送：
+      //   material_id=85, allOk_qty=30
+      //
+      // 必須拆成 items：
+      //   78/10、85/10、111/10
+      // ============================================================
+      if (isMergedShortageRow) {
+
+        const targets = row.stockin_targets
+          .map(target => ({
+            material_id:
+              Number(target.material_id || 0),
+
+            assemble_id:
+              Number(target.assemble_id || 0),
+
+            // Warehouse process_id 通常可能是 3/6，
+            // 不拿來當入庫 process 31。
+            // 讓 createProduct 自己建立 process_type=31。
+            process_id: 0,
+
+            user_id:
+              currentUser.value?.empID ?? '',
+
+            line_difference: 0,
+
+            allOk_qty:
+              Number(target.allOk_qty || 0),
+
+            good_qty:
+              Number(target.allOk_qty || 0),
+
+            non_good_qty: 0,
+
+            delivery_qty:
+              Number(
+                target.delivery_qty
+                || target.allOk_qty
+                || 0
+              ),
+
+            assemble_qty:
+              Number(target.allOk_qty || 0),
+
+            reason: '',
+
+            confirm_comment:
+              `缺料分批合併入庫：${row.order_num}`,
+          }))
+          .filter(target =>
+            target.material_id > 0
+            && target.allOk_qty > 0
+          );
+
+
+        if (targets.length === 0) {
+          throw new Error(
+            `工單 ${row.order_num} 缺少分批入庫明細`
+          );
+        }
+
+
+        // ==========================================================
+        // 驗證畫面輸入 30 是否等於三批實際待入庫量
+        // ==========================================================
+        const targetTotalQty = targets.reduce(
+          (sum, target) =>
+            sum + Number(target.allOk_qty || 0),
+          0
+        );
+
+
+        if (d2 !== targetTotalQty) {
+          throw new Error(
+            `工單 ${row.order_num} 合併入庫數量不符；`
+            + `應入庫 ${targetTotalQty}，目前輸入 ${d2}`
+          );
+        }
+
+
+        console.log(
+          '[Warehouse][merged shortage] createProduct payload:',
+          {
+            order_num: row.order_num,
+            total_qty: targetTotalQty,
+            targets,
+          }
+        );
+
+
+        // ==========================================================
+        // createProduct 本身已支援 items 批次，
+        // 三筆任何一筆失敗 → 後端整個 transaction rollback。
+        // ==========================================================
+        const resp = await createProduct({
+          items: targets,
+        });
+
+
+        if (!resp?.status) {
+          throw new Error(
+            resp?.error
+            || `工單 ${row.order_num} 合併入庫失敗`
+          );
+        }
+
+
+        console.log(
+          '[Warehouse][merged shortage] stock-in success:',
+          resp
+        );
+
+
+        successCount++;
+
+        // ==========================================================
+        // 很重要：
+        //
+        // 合併列不可再往下面執行：
+        //   updateAssem(current_assemble_id)
+        //   updateMat(current_material_id)
+        //
+        // 因為 current_material_id / current_assemble_id
+        // 只代表 78/85/111 其中一筆。
+        //
+        // createProduct 已經逐筆更新三個 material。
+        // ==========================================================
+        continue;
+      }
+      //
+
+      /*
       const productPayload = {
         material_id: current_material_id,
         assemble_id: current_assemble_id,
@@ -1874,6 +1949,57 @@ const onClickWarehouseIn = async () => {
         delivery_qty: Number(row.delivery_qty) || 0,
         assemble_qty: 0,
       };
+      */
+      // 20260809版
+      const productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
+
+        // Warehouse 上的 process_id 可能是 3/6，
+        // createProduct() 本身會判斷，不是 31 就自己建立 31
+        process_id: current_process_id,
+
+        user_id:
+          currentUser.value?.empID ?? '',
+
+        line_difference:
+          (current_line === 'process')
+            ? 1
+            : 0,
+
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+
+        delivery_qty:
+          Number(row.delivery_qty) || 0,
+
+        assemble_qty: 0,
+
+        // ----------------------------------------------------------
+        // 20260809
+        // 缺料、不併單、多批合併入庫
+        // ----------------------------------------------------------
+        /* 20260810 remove
+        is_merged_shortage_order:
+          row.is_merged_shortage_order === true,
+
+        group_material_ids:
+          Array.isArray(row.group_material_ids)
+            ? row.group_material_ids
+            : [current_material_id],
+
+        group_assemble_ids:
+          Array.isArray(row.group_assemble_ids)
+            ? row.group_assemble_ids
+            : (
+                current_assemble_id
+                  ? [current_assemble_id]
+                  : []
+              ),
+        */
+      };
+      //
 
       const resp = await createProd(productPayload);
       if (!resp?.status) {

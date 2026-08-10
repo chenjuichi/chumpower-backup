@@ -50,6 +50,7 @@
 
         <!-- 自定義每行的選擇框 -->
         <template v-slot:item.data-table-select="{ internalItem }">
+<!--
           <v-checkbox-btn
             :model-value="isSelected(internalItem)"
             :disabled="
@@ -68,6 +69,71 @@
               'blue-text': internalItem.raw.waiting_send
             }"
           />
+          -->
+          <!--20260809版-->
+<!--
+<v-checkbox-btn
+  :model-value="isSelected(internalItem)"
+
+  :disabled="
+    internalItem.raw.checkbox_disable === true
+    ||
+    (
+      (
+        !internalItem.raw.waiting_send
+        || Number(internalItem.raw.receive_qty || 0) === 0
+      )
+      && warehouse_in_all_pass == '待完工'
+    )
+  "
+
+  color="primary"
+
+  @update:model-value="
+    value => toggleSelect(
+      internalItem,
+      value
+    )
+  "
+
+  :class="{
+    'blue-text':
+      internalItem.raw.waiting_send
+  }"
+/>
+-->
+<!--20260810版-->
+<v-checkbox-btn
+  :model-value="isSelected(internalItem)"
+
+  :disabled="
+    internalItem.raw.can_send_to_warehouse !== true
+    ||
+    internalItem.raw.checkbox_disable === true
+    ||
+    (
+      (
+        !internalItem.raw.waiting_send
+        || Number(internalItem.raw.receive_qty || 0) === 0
+      )
+      && warehouse_in_all_pass == '待完工'
+    )
+  "
+
+  color="primary"
+
+  @update:model-value="
+    value => toggleSelect(
+      internalItem,
+      value
+    )
+  "
+
+  :class="{
+    'blue-text':
+      internalItem.raw.waiting_send
+  }"
+/>
         </template>
 
         <!-- 客製化 top 區域 -->
@@ -323,6 +389,7 @@
             <!-- ====================================================== -->
             <!-- 1. 待送出（缺料） -->
             <!-- ====================================================== -->
+          <!--
             <div
               v-if="
                 item.waiting_send &&
@@ -336,6 +403,22 @@
                 position: relative;
               "
             >
+          -->
+<!--20260810版-->
+<div
+  v-if="
+    item.waiting_send &&
+    item.input_end_disable &&
+    item.is_lack_batch_order === true
+  "
+  style="
+    color: blue;
+    margin-right: 2px;
+    right: 50px;
+    position: relative;
+  "
+>
+
               <!-- 訂單編號 + 缺料 -->
               <div>
                 {{ item.order_num }}&nbsp;&nbsp;
@@ -344,7 +427,7 @@
                   style="
                     color: red;
                     font-weight: 700;
-                    font-size: 16px;
+                    font-size: 12px;
                   "
                 >
                   缺料
@@ -386,6 +469,7 @@
             <!-- ====================================================== -->
             <!-- 2. 待送出 -->
             <!-- ====================================================== -->
+          <!--
             <div
               v-else-if="
                 item.waiting_send &&
@@ -399,6 +483,21 @@
                 position: relative;
               "
             >
+          -->
+<!--20260810版-->
+<div
+  v-else-if="
+    item.waiting_send &&
+    item.input_end_disable
+  "
+  style="
+    color: blue;
+    margin-right: 20px;
+    right: 50px;
+    position: relative;
+  "
+>
+
               <!-- 訂單編號 -->
               <div>
                 {{ item.order_num }}
@@ -1129,6 +1228,7 @@ const hasSelectedSendableRows = computed(() => {
 const normalizeRowIndex = value =>
   String(value ?? '').trim()
 
+/*
 // 20260725版
 const hasSelectedSendableRows = computed(() => {
   const selectedIdx = Array.isArray(
@@ -1161,6 +1261,65 @@ const hasSelectedSendableRows = computed(() => {
     return isEndWaitingSend(row)
   })
 })
+*/
+// 20260809版
+const hasSelectedSendableRows = computed(() => {
+  const selectedIdx = Array.isArray(
+    selectedItems.value
+  )
+    ? selectedItems.value
+        .map(normalizeRowIndex)
+        .filter(Boolean)
+    : []
+
+  if (selectedIdx.length === 0) {
+    return false
+  }
+
+  const selectedRows = selectedIdx
+    .map(idx => {
+      return (
+        materials_and_assembles_by_user.value
+          .find(
+            item =>
+              normalizeRowIndex(
+                item.index
+              )
+              === normalizeRowIndex(idx)
+          )
+      )
+    })
+    .filter(Boolean)
+
+  if (selectedRows.length === 0) {
+    return false
+  }
+
+  // ==========================================================
+  // 重要：
+  // 選中的任何一筆只要後端標示 send_disable，
+  // 整個送出按鈕都不可使用。
+  // ==========================================================
+  const hasDisabledRow =
+    selectedRows.some(row => {
+      return (
+        row.can_send_to_warehouse !== true
+        || row.send_disable === true
+        || row.checkbox_disable === true
+        || row.select_disable === true
+      )
+    })
+
+  if (hasDisabledRow) {
+    return false
+  }
+
+  // 至少要有一筆是 End 待送出資料
+  return selectedRows.some(row =>
+    isEndWaitingSend(row)
+  )
+})
+//
 
 const todayStr = computed(() => {
   const today = new Date()
@@ -2129,6 +2288,7 @@ onMounted(async () => {
       .map(normalizeRowIndex)
       .filter(Boolean)
 
+      /*
       // 只取第一筆建立 AGV 等待流程，避免同 material 多筆 B110 造成重複 29
       const firstRec =
         materials_and_assembles_by_user.value.find(i =>
@@ -2160,6 +2320,190 @@ onMounted(async () => {
       } catch (e) {
         console.error('createProcess 失敗, material_id =', firstRec.id, e);
       }
+      */
+      // 20260810版
+      // ============================================================
+      // 每個被勾選的 material 都要建立一筆
+      // 「等待 AGV（組裝區）」Process。
+      //
+      // 注意：
+      // 同一 material 可能有多個 B110 row，
+      // 所以必須先依 material_id 去重。
+      // ============================================================
+
+      const selectedRows =
+        materials_and_assembles_by_user.value
+          .filter(row =>
+            normalizedSelectedIdx.includes(
+              normalizeRowIndex(
+                row.index
+              )
+            )
+          )
+
+      if (selectedRows.length === 0) {
+        console.warn(
+          '找不到可建立 AGV 等待流程的資料'
+        )
+
+        return
+      }
+
+
+      // ============================================================
+      // 依 material_id 去重
+      // ============================================================
+
+      const materialMap = new Map()
+
+      for (const row of selectedRows) {
+
+        const materialId = Number(
+          row.id || 0
+        )
+
+        if (materialId <= 0) {
+          continue
+        }
+
+        if (!materialMap.has(materialId)) {
+          materialMap.set(
+            materialId,
+            row
+          )
+        }
+      }
+
+      const selectedMaterials = [
+        ...materialMap.values()
+      ]
+
+
+      console.log(
+        '[station2_agv_ready] 建立 type=29:',
+        selectedMaterials.map(row => ({
+          material_id:
+            row.id,
+
+          order_num:
+            row.order_num,
+        }))
+      )
+
+
+      let successCount = 0
+
+
+      // ============================================================
+      // 每一個 material 建立一筆 type=29
+      // ============================================================
+
+      for (const rec of selectedMaterials) {
+
+        try {
+
+          const processResult =
+            await createProcess({
+
+              begin_time:
+                formattedStartTime,
+
+              end_time:
+                formattedEndTime,
+
+              periodTime:
+                agv1PeriodTime,
+
+              user_id:
+                'AGV2-1',
+
+              order_num:
+                rec.order_num,
+
+              id:
+                Number(rec.id),
+
+              // material 層級，不需要 assemble_id
+              assemble_id:
+                0,
+
+              process_type:
+                29,
+
+              normal_work_time:
+                true,
+            })
+
+
+          console.log(
+            '[station2_agv_ready] '
+            + 'createProcess type=29 成功:',
+            {
+              material_id:
+                rec.id,
+
+              order_num:
+                rec.order_num,
+
+              result:
+                processResult,
+            }
+          )
+
+
+          successCount++
+
+        } catch (e) {
+
+          console.error(
+            '[station2_agv_ready] '
+            + 'createProcess type=29 失敗:',
+            {
+              material_id:
+                rec.id,
+
+              order_num:
+                rec.order_num,
+
+              error:
+                e,
+            }
+          )
+        }
+      }
+
+
+      // ============================================================
+      // 至少一個 Process 建立成功才更新 AGV / UI
+      // ============================================================
+
+      if (successCount > 0) {
+
+        await updateAGV({
+          id: 1,
+
+          status: 0,
+
+          station: 2,
+        })
+
+
+        background.value =
+          '#ffff00'
+
+        isFlashLed.value =
+          true
+
+        activeColor.value =
+          'blue'
+
+      } else {
+
+        console.warn(
+          '沒有任何等待 AGV Process 建立成功'
+        )
+      }
+      //
 
       // 成功才更新 AGV 狀態與 UI
       if (successCount > 0) {
@@ -3246,6 +3590,8 @@ const toggleSelect = (item) => {
   }
 };
 */
+
+/*
 // 20260725版
 const toggleSelect = (item) => {
   if (isCallAGV.value) {
@@ -3291,6 +3637,74 @@ const toggleSelect = (item) => {
     selectedItems.value
   )
 }
+*/
+// 20260809版
+const toggleSelect = (item) => {
+  const row = item?.raw
+
+  // ==========================================================
+  // 缺料分批尚未全部在 End 結束
+  // 後端已標示此列不可選取
+  // ==========================================================
+  if (
+    row?.can_send_to_warehouse !== true
+    || row?.checkbox_disable === true
+    || row?.select_disable === true
+  ) {
+    showSnackbar(row?.waiting_message || '缺料分批尚未全部完成，不可勾選送料', 'red accent-2')
+
+    return
+  }
+
+  // ==========================================================
+  // 已呼叫 AGV，不可改選取
+  // ==========================================================
+  if (isCallAGV.value) {
+    showSnackbar(
+      '已呼叫 AGV，工單不能改變！',
+      'red accent-2'
+    )
+    return
+  }
+
+  const rowIndex = normalizeRowIndex(
+    item?.columns?.index
+  )
+
+  if (!rowIndex) {
+    console.warn(
+      '[toggleSelect] row index 無效:',
+      item
+    )
+    return
+  }
+
+  const alreadySelected =
+    selectedItems.value
+      .map(normalizeRowIndex)
+      .includes(rowIndex)
+
+  if (alreadySelected) {
+    selectedItems.value =
+      selectedItems.value.filter(
+        value =>
+          normalizeRowIndex(value)
+          !== rowIndex
+      )
+  } else {
+    selectedItems.value = [
+      ...selectedItems.value,
+      rowIndex,
+    ]
+  }
+
+  console.log(
+    '[toggleSelect] selectedItems:',
+    selectedItems.value
+  )
+}
+//
+
 /*
 const onClickTrans = async () => {
   if (toggle_exclusive.value == 1) {
@@ -3303,6 +3717,8 @@ const onClickTrans = async () => {
   }
 };
 */
+
+/*
 // 20260725版
 const onClickTrans = async () => {
   console.log(
@@ -3313,6 +3729,66 @@ const onClickTrans = async () => {
   if (Number(toggle_exclusive.value) === 1) {
     await nextTick()
     calcTransportRange()
+    await callForklift()
+  } else {
+    await callAGV()
+  }
+}
+*/
+// 20260809版
+const onClickTrans = async () => {
+  console.log('[onClickTrans] toggle_exclusive:', toggle_exclusive.value)
+
+  const selectedIdx = Array.isArray(selectedItems.value)
+    ? selectedItems.value
+        .map(normalizeRowIndex)
+        .filter(Boolean)
+    : []
+
+  const selectedRows = selectedIdx
+    .map(idx =>
+      materials_and_assembles_by_user.value
+        .find(
+          row =>
+            normalizeRowIndex(
+              row.index
+            )
+            === normalizeRowIndex(idx)
+        )
+    )
+    .filter(Boolean)
+
+  // ==========================================================
+  // 缺料分批未全部 End 完成
+  // ==========================================================
+  const lockedRow =
+    selectedRows.find(row =>
+      row.can_send_to_warehouse !== true
+      || row.send_disable === true
+      || row.checkbox_disable === true
+      || row.select_disable === true
+    )
+
+  if (lockedRow) {
+    showSnackbar(
+      lockedRow.waiting_message
+        || '同訂單尚有備料資料未送至組裝區，不可送出',
+      'red accent-2'
+    )
+
+    return
+  }
+
+  if (selectedRows.length === 0) {
+    showSnackbar('請選擇送料的工單!', 'red accent-2')
+    return
+  }
+
+  if (Number(toggle_exclusive.value) === 1) {
+    await nextTick()
+
+    calcTransportRange()
+
     await callForklift()
   } else {
     await callAGV()
@@ -5003,6 +5479,19 @@ const handleKeyDownForBarCode = (event) => {
   //  //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
   //}
 };
+
+const isWarehouseSendDisabled = row => {
+  if (!row) {
+    return true
+  }
+
+  return (
+    row.can_send_to_warehouse !== true
+    || row.send_disable === true
+    || row.checkbox_disable === true
+    || row.select_disable === true
+  )
+}
 
 </script>
 

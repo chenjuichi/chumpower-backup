@@ -448,6 +448,7 @@
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div>
+<!--
         <div
           style="color:black; font-size:12px; margin-right:2px;"
           v-if="(String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)"
@@ -469,7 +470,109 @@
           {{ item.order_num }}&nbsp;
           <span style="color:blue; font-weight:700; font-size:12px;">缺料不併單</span>
         </div>
+      -->
+<!--20260809版-->
+<!-- 缺料 + 不併單 -->
+<!--
+<div
+  style="color:black; font-size:12px; margin-right:2px;"
+  v-if="
+    String(item.shortage_note || '').includes('缺料') &&
+    item.isLackMaterial != 99 &&
+    !item.merge_enabled
+  "
+>
+      -->
+<!--20260810版-->
+<div
+  style="color:black; font-size:12px; margin-right:2px;"
+  v-if="
+    String(item.shortage_note || '').includes('缺料') &&
+    !item.merge_enabled
+  "
+>
+  <v-icon
+    style="color: green;"
+    @click.stop="onDelete(item)"
+    small
+  >
+    mdi-trash-can-outline
+  </v-icon>
 
+  {{ item.order_num }}&nbsp;
+
+  <span
+    style="
+      color:blue;
+      font-weight:700;
+      font-size:12px;
+    "
+  >
+    缺料不併單
+  </span>
+</div>
+
+<!-- 缺料 + 併單 -->
+<!--
+<div
+  style="color:black; font-size:12px; margin-right:2px;"
+  v-else-if="
+    String(item.shortage_note || '').includes('缺料') &&
+    item.isLackMaterial != 99
+  "
+>
+-->
+<!--20260810版-->
+<div
+  style="color:black; font-size:12px; margin-right:2px;"
+  v-else-if="
+    String(item.shortage_note || '').includes('缺料') &&
+    item.merge_enabled
+  "
+>
+
+  <v-icon
+    style="color: green;"
+    @click.stop="onDelete(item)"
+    small
+  >
+    mdi-trash-can-outline
+  </v-icon>
+
+  {{ item.order_num }}&nbsp;
+
+  <span
+    style="
+      color:red;
+      font-weight:700;
+      font-size:12px;
+    "
+  >
+    缺料
+  </span>
+</div>
+
+<!-- 一般工單 -->
+<div
+  style="
+    color:black;
+    font-size:12px;
+    margin-right:20px;
+    margin-left:-15px;
+  "
+  v-else
+>
+  <v-icon
+    style="color: green;"
+    @click.stop="onDelete(item)"
+    small
+  >
+    mdi-trash-can-outline
+  </v-icon>
+
+  {{ item.order_num }}
+</div>
+<!--
         <div
           style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;"
           v-else
@@ -479,7 +582,7 @@
           </v-icon>
           {{ item.order_num }}
         </div>
-
+      -->
         <div style="color: #a6a6a6; font-size:12px; margin-right: 10px;">
           {{ item.assemble_work }}
           <span v-if="getScheduleName(item)" style="font-weight:600; font-size:12px; color:black;">
@@ -609,6 +712,7 @@
     <!-- 自訂 '+工序' 按鍵欄位 -->
     <template #item.add_process="{ item }">
       <!-- 尚未設定工序：維持原本 + 工序按鍵 -->
+<!--
       <v-btn
         v-if="!isProcessStepEnabled(item)"
         size="small"
@@ -624,6 +728,28 @@
         <v-icon start size="18">mdi-plus</v-icon>
         工序
       </v-btn>
+    -->
+<!--20260810版-->
+<v-btn
+  v-if="!isProcessStepEnabled(item)"
+  size="small"
+  class="btn-add-process"
+
+  :class="{
+    'btn-add-process--disabled': isAddProcessButtonDisabled(item),
+    'btn-add-process--locked': isSchedulingDialogLocked(item)
+  }"
+
+  :disabled="
+    isAddProcessButtonDisabled(item) ||
+    isSchedulingDialogLocked(item)
+  "
+
+  @click="onClickOpenSchedulingDialog(item)"
+>
+  <v-icon start size="18">mdi-plus</v-icon>
+  工序
+</v-btn>
 
 <!--0714 丁副-->
 <div v-else class="add-process-icon-group">
@@ -2046,7 +2172,9 @@ async function onClickBegin(row) {
     row.isOpen = true;
     row.isOpenEmpId = me;
 
-    markSameOrderProcessLocked(row);
+    //markSameOrderProcessLocked(row);
+    // 20260809版
+    markSameMaterialProcessLocked(row)
 
     socket.value?.emit('assemble-started', {
       assemble_id: row.assemble_id,
@@ -2125,6 +2253,7 @@ const handleScheduleModeOk = async ()  => {
   await reloadAssembleData();
 }
 
+/*
 const handleIconDisable = (data) => {
   console.log("handleIconDisable 被觸發！", data)
 
@@ -2142,6 +2271,38 @@ const handleIconDisable = (data) => {
     }
   })
 }
+*/
+// 20260809版
+const handleIconDisable = (data) => {
+  console.log(
+    "handleIconDisable 被觸發！",
+    data
+  )
+
+  const materialId = Number(
+    data?.material_id || 0
+  )
+
+  if (!materialId) return
+
+  materials_and_assembles.value =
+    materials_and_assembles.value.map(row => {
+
+      const rowMaterialId = Number(
+        row.material_id || row.id || 0
+      )
+
+      if (rowMaterialId !== materialId) {
+        return row
+      }
+
+      return {
+        ...row,
+        has_any_running_process: true
+      }
+    })
+}
+//
 
 const handleAssembleBatchReleased = async (payload) => {
   console.log('Begin 收到工序變更通知:', payload)
@@ -2455,6 +2616,7 @@ const isEditProcessDisabled = (item) => {
   )
 }
 
+/*
 const markSameOrderProcessLocked = (item) => {
   const orderNum = item?.order_num
   if (!orderNum) return
@@ -2470,6 +2632,35 @@ const markSameOrderProcessLocked = (item) => {
     }
   })
 }
+*/
+// 20260809版
+const markSameMaterialProcessLocked = (item) => {
+  const row = item?.raw || item || {}
+
+  const materialId = Number(
+    row.material_id || row.id || 0
+  )
+
+  if (!materialId) return
+
+  materials_and_assembles.value =
+    materials_and_assembles.value.map(r => {
+
+      const rowMaterialId = Number(
+        r.material_id || r.id || 0
+      )
+
+      if (rowMaterialId !== materialId) {
+        return r
+      }
+
+      return {
+        ...r,
+        has_any_running_process: true
+      }
+    })
+}
+//
 
 const saveCurrentSchedulingSteps = (mode) => {
   console.log("test...saveCurrentSchedulingSteps...", mode)
@@ -2855,6 +3046,7 @@ const hasUncheckedStep = (steps = []) => {
   return (steps || []).some(step => !step.checked)
 }
 
+/*
 const isAddProcessButtonDisabled = (item) => {
   if (String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)
     return true
@@ -2884,6 +3076,175 @@ const isAddProcessButtonDisabled = (item) => {
 
   return false
 }
+*/
+
+/*
+// 20260809版
+const isAddProcessButtonDisabled = (item) => {
+  const row = item?.raw || item || {}
+
+  const hasShortage =
+    String(row.shortage_note || '').includes('缺料') &&
+    Number(row.isLackMaterial ?? 0) !== 99
+
+  const mergeEnabled =
+    row.merge_enabled === true ||
+    row.merge_enabled === 1 ||
+    row.merge_enabled === '1'
+
+  // ------------------------------------------------------------
+  // 1. 缺料 + 要併單
+  //    → 不允許設定工序
+  //
+  // 2. 缺料 + 不併單
+  //    → 允許設定工序
+  // ------------------------------------------------------------
+  if (hasShortage && mergeEnabled) {
+    return true
+  }
+
+  const ps = row?.process_steps || {}
+
+  const assemble =
+    Array.isArray(ps.assemble) ? ps.assemble : []
+
+  const check =
+    Array.isArray(ps.check) ? ps.check : []
+
+  // ------------------------------------------------------------
+  // 組裝與檢驗全部都已經勾完，才不能再新增
+  // ------------------------------------------------------------
+  const noMoreAssemble = !hasUncheckedStep(assemble)
+  const noMoreCheck = !hasUncheckedStep(check)
+
+  if (noMoreAssemble && noMoreCheck) {
+    return true
+  }
+
+  // ------------------------------------------------------------
+  // 不是目前最高工序群組
+  // ------------------------------------------------------------
+  if (
+    Number(row.top_work_rank || 0) !==
+    Number(row.process_step_code || 0)
+  ) {
+    return true
+  }
+
+  // ------------------------------------------------------------
+  // 尚未按 +工序的 B109 樣板：
+  // must_receive_qty 可以是 0
+  //
+  // 特別注意：
+  // 「缺料不併單」也必須允許設定工序，
+  // 不可再被 delivery_qty != must_receive_qty 擋住。
+  // ------------------------------------------------------------
+  const isShortageNoMerge =
+    hasShortage && !mergeEnabled
+
+  if (
+    !row.is_unscheduled_template &&
+    !isShortageNoMerge &&
+    Number(row.delivery_qty || 0) !==
+      Number(row.must_receive_qty || 0)
+  ) {
+    return true
+  }
+
+  return false
+}
+//
+*/
+// 20260810版
+const isAddProcessButtonDisabled = (item) => {
+  const row = item?.raw || item || {}
+
+  // 20260810版 add
+  // ------------------------------------------------------------
+  // 併單尚未完成：
+  // parent 已進 Begin，但仍有 child 留在備料流程
+  // → +工序一定 disabled
+  // ------------------------------------------------------------
+  if (row.order_merge_pending === true) {
+    return true
+  }
+
+  // ------------------------------------------------------------
+  // shortage_note 現在由後端以 order_num 層級判斷：
+  //
+  // 同 order_num 任一 parent / child
+  // BOM.receive = false / null
+  // → shortage_note = "(缺料)"
+  //
+  // 不要再混用 isLackMaterial != 99，
+  // 否則 parent 本身已備完、child 還缺料時會誤判。
+  // ------------------------------------------------------------
+  const hasShortage =
+    String(row.shortage_note || '').includes('缺料')
+
+  const mergeEnabled =
+    row.merge_enabled === true ||
+    row.merge_enabled === 1 ||
+    row.merge_enabled === '1'
+
+  // ------------------------------------------------------------
+  // 缺料 + 併單
+  // → 所有缺料必須到齊才能設定工序
+  // ------------------------------------------------------------
+  if (hasShortage && mergeEnabled) {
+    return true
+  }
+
+  const ps = row?.process_steps || {}
+
+  const assemble =
+    Array.isArray(ps.assemble)
+      ? ps.assemble
+      : []
+
+  const check =
+    Array.isArray(ps.check)
+      ? ps.check
+      : []
+
+  const noMoreAssemble =
+    !hasUncheckedStep(assemble)
+
+  const noMoreCheck =
+    !hasUncheckedStep(check)
+
+  if (
+    noMoreAssemble &&
+    noMoreCheck
+  ) {
+    return true
+  }
+
+  if (
+    Number(row.top_work_rank || 0) !==
+    Number(row.process_step_code || 0)
+  ) {
+    return true
+  }
+
+  // 缺料 + 不併單：
+  // 已到料的這一批可以個別設定工序
+  const isShortageNoMerge =
+    hasShortage &&
+    !mergeEnabled
+
+  if (
+    !row.is_unscheduled_template &&
+    !isShortageNoMerge &&
+    Number(row.delivery_qty || 0) !==
+      Number(row.must_receive_qty || 0)
+  ) {
+    return true
+  }
+
+  return false
+}
+//
 
 const resetUnscheduledSteps = (steps = []) => {
   return (Array.isArray(steps) ? steps : [])
@@ -2896,6 +3257,7 @@ const resetUnscheduledSteps = (steps = []) => {
     }))
 }
 
+/*
 const openSchedulingDialog = (item) => {
   const row = item?.raw || item
 
@@ -2956,6 +3318,203 @@ const openSchedulingDialog = (item) => {
   schedulingSteps.value = deepClone(assemble_steps.value)
 
   scheduling_dialog_orde_num.value = row.order_num || ''
+  scheduling_dialog.value = true
+}
+*/
+// 20260809版
+const openSchedulingDialog = (item) => {
+  const row = item?.raw || item || {}
+
+  if (!row?.id) {
+    showSnackbar(
+      '找不到工單資料',
+      'red-darken-2'
+    )
+    return
+  }
+
+  // ------------------------------------------------------------
+  // DEBUG：確認為什麼 Dialog 被擋
+  // ------------------------------------------------------------
+  console.log(
+    '[openSchedulingDialog DEBUG]',
+    {
+      id: row.id,
+      //material_id: row.material_id,
+      material_id: row.material_id || row.id,
+      order_num: row.order_num,
+
+      assemble_id: row.assemble_id,
+      schedule_id: row.schedule_id,
+
+      process_step_enable:
+        row.process_step_enable,
+
+      is_unscheduled_template:
+        row.is_unscheduled_template,
+
+      hasStarted:
+        row.hasStarted,
+
+      has_any_running_process:
+        row.has_any_running_process,
+
+      active_user_ids:
+        row.active_user_ids,
+
+      users_for_press_start:
+        row.users_for_press_start,
+
+      active_count:
+        row.active_count,
+
+      show_timer:
+        row.show_timer,
+
+      editDisabled:
+        isEditProcessDisabled(row),
+
+      addDialogBlocked:
+        isAddProcessDialogBlocked(row),
+    }
+  )
+
+  // ------------------------------------------------------------
+  // 1. 有其他人正在開工序設定 Dialog
+  // ------------------------------------------------------------
+  if (isSchedulingDialogLocked(row)) {
+    showSnackbar(
+      `此工單正在由 ${
+        row.scheduling_dialog_locked_by || '其他人'
+      } 設定工序`,
+      'red-darken-2'
+    )
+    return
+  }
+
+  // ------------------------------------------------------------
+  // 2. 判斷現在是「+工序」還是「編輯工序」
+  //
+  // 尚未設定：
+  //   process_step_enable = false
+  //   schedule_id = 0
+  //
+  // 缺料、不併單、多次備料時，
+  // 新批次不可因其他批次的 material.hasStarted 被擋住。
+  // ------------------------------------------------------------
+  const isUnscheduledTemplate =
+    row.is_unscheduled_template === true ||
+    (
+      !isProcessStepEnabled(row) &&
+      Number(row.schedule_id || 0) === 0
+    )
+
+  // ------------------------------------------------------------
+  // 3A. 「+工序」
+  //
+  // 只看這批 material 是否真的有 active process。
+  // 不使用 material.hasStarted。
+  // ------------------------------------------------------------
+  if (isUnscheduledTemplate) {
+    if (isAddProcessDialogBlocked(row)) {
+      showSnackbar(
+        '此批工單已有工序開工，不能設定工序',
+        'red-darken-2'
+      )
+      return
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 3B. Pencil / 已經設定過工序
+  //
+  // 已設定的工序一旦開工，就禁止修改。
+  // ------------------------------------------------------------
+  else {
+    if (isEditProcessDisabled(row)) {
+      showSnackbar(
+        '此批工單已有工序開工，不能再修改工序',
+        'red-darken-2'
+      )
+      return
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 4. 正常開啟 Dialog
+  // ------------------------------------------------------------
+  scheduling_target_item.value = row
+
+  // ------------------------------------------------------------
+  // 5. 通知其他使用者：
+  //    目前這個 material 正在設定工序
+  // ------------------------------------------------------------
+  socket.value?.emit(
+    'assemble-scheduling-dialog-lock',
+    {
+      source:
+        'PickReportForAssembleBegin',
+
+      material_id:
+        row.material_id || row.id,
+
+      order_num:
+        row.order_num,
+
+      user_id:
+        currentUser.value?.empID || '',
+
+      user_name:
+        currentUser.value?.name || '',
+
+      client_id:
+        schedulingClientId,
+    }
+  )
+
+  // ------------------------------------------------------------
+  // 6. 取得目前工序設定
+  // ------------------------------------------------------------
+  const processSteps =
+    row.process_steps || {
+      assemble: [],
+      check: [],
+    }
+
+  // ------------------------------------------------------------
+  // 7. 保留目前 checked 結果，
+  //    但開 Dialog 後 checkbox 都可以修改
+  // ------------------------------------------------------------
+  assemble_steps.value =
+    lockExistingSteps(
+      Array.isArray(processSteps.assemble)
+        ? processSteps.assemble
+        : []
+    )
+
+  check_steps.value =
+    lockExistingSteps(
+      Array.isArray(processSteps.check)
+        ? processSteps.check
+        : []
+    )
+
+  // ------------------------------------------------------------
+  // 8. 每次打開固定先顯示組裝工序
+  // ------------------------------------------------------------
+  scheduleMode.value = 'assemble'
+
+  schedulingSteps.value =
+    deepClone(
+      assemble_steps.value
+    )
+
+  scheduling_dialog_orde_num.value =
+    row.order_num || ''
+
+  // ------------------------------------------------------------
+  // 9. 正式開 Dialog
+  // ------------------------------------------------------------
   scheduling_dialog.value = true
 }
 //
@@ -3451,6 +4010,7 @@ const hasOtherUserStarted = (row) => {
   return count > 0 && String(r.user_id || '').trim() !== me
 }
 
+/*
 const handleAssembleStarted = async (payload) => {
   const assembleId = Number(payload?.assemble_id)
   const userId = String(payload?.user_id || '').trim()
@@ -3497,6 +4057,56 @@ const handleAssembleStarted = async (payload) => {
   await delay(300)
   await safeRefresh()
 }
+*/
+// 20260809版
+const handleAssembleStarted = async (payload) => {
+  const assembleId = Number(payload?.assemble_id)
+  const materialId = Number(payload?.material_id || 0)
+  const userId = String(payload?.user_id || '').trim()
+
+  if (!assembleId || !userId) return
+
+  const key = String(assembleId)
+
+  const oldList = Array.isArray(startedUsersByAssembleId.value[key])
+    ? [...startedUsersByAssembleId.value[key]]
+    : []
+
+  if (!oldList.includes(userId)) {
+    oldList.push(userId)
+  }
+
+  startedUsersByAssembleId.value[key] = oldList
+
+  materials_and_assembles.value =
+    materials_and_assembles.value.map(row => {
+
+      const rowMaterialId = Number(
+        row.material_id || row.id || 0
+      )
+
+      const sameAssemble =
+        Number(row.assemble_id) === assembleId
+
+      return {
+        ...row,
+
+        has_any_running_process:
+          rowMaterialId === materialId
+            ? true
+            : row.has_any_running_process,
+
+        active_user_ids:
+          sameAssemble
+            ? oldList
+            : row.active_user_ids
+      }
+    })
+
+  await delay(300)
+  await safeRefresh()
+}
+//
 
 const reloadAssembleData = async () => {
   await listMaterialsAndAssembles({
@@ -3528,7 +4138,9 @@ const reloadAssembleData = async () => {
       }))
   )
 
-  applyOrderRunningLocks()
+  //applyOrderRunningLocks()
+  // 20260809版
+  applyMaterialRunningLocks()
 }
 
 const handleAssembleFeedReleased = async (payload) => {
@@ -3547,6 +4159,7 @@ const handleAssembleScheduleUpdated = async (payload) => {
 // 延遲函數
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+/*
 const isScheduleActionDisabled = (item) => {
   const row = item?.raw || item || {}
   const orderNum = String(row.order_num || '').trim()
@@ -3569,8 +4182,34 @@ const isScheduleActionDisabled = (item) => {
     row.show_timer === true
   )
 }
+*/
+// 20260809版
+const isScheduleActionDisabled = (item) => {
+  const row = item?.raw || item || {}
 
-const lockedOrderNums = ref(new Set());
+  const materialId = Number(
+    row.material_id || row.id || 0
+  )
+
+  return (
+    lockedMaterialIds.value.has(materialId) ||
+
+    isEditProcessDisabled(row) ||
+
+    row.has_any_running_process === true ||
+    row.has_any_running_process === 1 ||
+    row.has_any_running_process === '1' ||
+    row.has_any_running_process === 'true' ||
+
+    hasOtherUserStarted(row) ||
+    row.show_timer === true
+  )
+}
+//
+
+//const lockedOrderNums = ref(new Set());
+// 20260809版
+const lockedMaterialIds = ref(new Set())
 
 const startedUsersByAssembleId = ref({});
 
@@ -3587,6 +4226,7 @@ const rowHasRunningProcess = (row) => {
   )
 }
 
+/*
 const applyOrderRunningLocks = () => {
   const runningOrders = new Set([...lockedOrderNums.value])
 
@@ -3616,6 +4256,69 @@ const applyOrderRunningLocks = () => {
 
   lockedOrderNums.value = runningOrders
 }
+*/
+// 20260809版
+const applyMaterialRunningLocks = () => {
+  const runningMaterialIds =
+    new Set([...lockedMaterialIds.value])
+
+  // ------------------------------------------------------------
+  // 找真正有 Process 正在跑的 material
+  // ------------------------------------------------------------
+  materials_and_assembles.value.forEach(row => {
+
+    const materialId = Number(
+      row.material_id || row.id || 0
+    )
+
+    if (
+      materialId &&
+      rowHasRunningProcess(row)
+    ) {
+      runningMaterialIds.add(materialId)
+    }
+  })
+
+  // ------------------------------------------------------------
+  // 同 material 的 a1/a2/a3、b1/b2...
+  // 全部禁止修改工序。
+  //
+  // 但不同 material，即使 order_num 相同，
+  // 不互相影響。
+  // ------------------------------------------------------------
+  materials_and_assembles.value =
+    materials_and_assembles.value.map(row => {
+
+      const materialId = Number(
+        row.material_id || row.id || 0
+      )
+
+      const assembleKey =
+        String(row.assemble_id)
+
+      const localActiveUsers =
+        startedUsersByAssembleId.value[
+          assembleKey
+        ]
+
+      return {
+        ...row,
+
+        has_any_running_process:
+          rowHasRunningProcess(row) ||
+          runningMaterialIds.has(materialId),
+
+        active_user_ids:
+          Array.isArray(localActiveUsers)
+            ? localActiveUsers
+            : row.active_user_ids
+      }
+    })
+
+  lockedMaterialIds.value =
+    runningMaterialIds
+}
+//
 
 const handleSchedulingDialogLock = (payload) => {
   const myUserId = String(currentUser.value?.empID || '').trim()
@@ -3990,6 +4693,64 @@ const handleKeyDownForBarCode = (event) => {
   //  //checkReceiveQty(event.target.item);  // 檢查接收數量的驗證
   //}
 };
+
+// ------------------------------------------------------------
+// 「+工序」是否因為真正的 active process 而禁止開啟
+//
+// 注意：
+// 1. 不使用 material.hasStarted
+// 2. 不看同 order_num 其他批次
+// 3. 只判斷目前 material / assemble 是否真的有 active process
+// ------------------------------------------------------------
+// 20260809版
+const isAddProcessDialogBlocked = (item) => {
+  const row = item?.raw || item || {}
+
+  // ------------------------------------------------------------
+  // 尚未設定工序的樣板列
+  //
+  // schedule_id = 0 的 B109 template
+  // 理論上不應存在 21/22/23 active process。
+  //
+  // 不再使用：
+  //   has_any_running_process
+  //   active_user_ids
+  //   users_for_press_start
+  //   active_count
+  //   show_timer
+  //
+  // 因為這些是 UI / socket 衍生狀態，
+  // 多批同 order_num 時可能被前一批污染。
+  // ------------------------------------------------------------
+  const isUnscheduledTemplate =
+    row.is_unscheduled_template === true ||
+    (
+      !isProcessStepEnabled(row) &&
+      Number(row.schedule_id || 0) === 0
+    )
+
+  if (isUnscheduledTemplate) {
+    const activeProcessId =
+      Number(row.active_process_id || 0)
+
+    const myProcessId =
+      Number(row.my_process_id || 0)
+
+    return (
+      activeProcessId > 0 ||
+      myProcessId > 0
+    )
+  }
+
+  // ------------------------------------------------------------
+  // 理論上 +工序只會走上面的 template，
+  // 下面只是保險。
+  // ------------------------------------------------------------
+  return (
+    Number(row.active_process_id || 0) > 0 ||
+    Number(row.my_process_id || 0) > 0
+  )
+}
 
 </script>
 

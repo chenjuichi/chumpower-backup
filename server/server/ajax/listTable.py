@@ -2228,7 +2228,8 @@ def list_materials_and_assembles():
         s.close()
 """
 
-# 20260717版
+
+# 20260810版
 @listTable.route("/listMaterialsAndAssembles", methods=['GET'])
 def list_materials_and_assembles():
     print("listMaterialsAndAssembles.")
@@ -2337,6 +2338,49 @@ def list_materials_and_assembles():
 
         shortage_order_set = set()
 
+        #
+        # ------------------------------------------------------------
+        # 20260810版 add
+        # 併單模式下，檢查是否仍存在尚未送到組裝區的 child material
+        #
+        # 例如：
+        # 173 已先送組裝
+        # 176 = 173 缺料拆出的 child
+        #
+        # 即使 176 的 BOM.receive 已經全部 = True，
+        # 只要 176 尚停留在備料流程，就代表整張訂單尚未完成併單。
+        # ------------------------------------------------------------
+        merge_pending_order_set = set()
+
+        if order_nums:
+            pending_rows = (
+                s.query(Material.order_num)
+                .filter(
+                    Material.order_num.in_(order_nums),
+
+                    # 必須是缺料拆出的 child
+                    Material.is_copied_from_id.isnot(None),
+
+                    # 併單模式
+                    Material.merge_enabled.is_(True),
+
+                    # child 尚未進入組裝區
+                    Material.isAssembleStationShow.is_(False),
+
+                    # 尚停留在備料階段
+                    Material.whichStation == 1,
+                )
+                .distinct()
+                .all()
+            )
+
+            merge_pending_order_set = {
+                safe_str(r[0])
+                for r in pending_rows
+                if safe_str(r[0])
+            }
+        #
+
         if order_nums:
             rows = (
                 s.query(Material.order_num)
@@ -2430,6 +2474,41 @@ def list_materials_and_assembles():
         for material_record in _objects:
             material_id = int(material_record.id or 0)
             order_num = safe_str(material_record.order_num)
+
+            # 20260810版 add
+            # ------------------------------------------------------------
+            # 併單模式：
+            # 同一 order_num 只要任一 parent / child BOM 尚未到齊，
+            # 整張工單不可出現在 Begin。
+            #
+            # merge_enabled=False 時不套用，
+            # 各 material 可獨立進 Begin。
+            # ------------------------------------------------------------
+            merge_enabled = _normalize_bool(
+                getattr(
+                    material_record,
+                    "merge_enabled",
+                    True
+                ),
+                default=True,
+            )
+
+            # 20260810版 add
+            # ------------------------------------------------------------
+            # 併單尚未完成：
+            # 同 order_num 還有 child 停在備料流程
+            # ------------------------------------------------------------
+            order_merge_pending = (
+                merge_enabled
+                and order_num in merge_pending_order_set
+            )
+
+            if (
+                merge_enabled
+                and order_num in shortage_order_set
+            ):
+                continue
+            #
 
             assemble_records = list(material_record._assemble or [])
             if not assemble_records:
@@ -2806,6 +2885,9 @@ def list_materials_and_assembles():
                         material_record.merge_enabled,
                         default=True,
                     ),
+                    # 20260810版 add
+                    "order_merge_pending": bool(order_merge_pending),
+
                     "process_step_code": step,
                     "top_work_rank": step,
                     "is_current_group": True,
@@ -2872,11 +2954,53 @@ def list_materials_and_assembles():
                 for r in started_rows
                 if safe_str(r[0])
             }
+        # 20260810版 add
+        scheduled_order_nums = {
+            safe_str(row.get("order_num"))
+            for row in _results
+            if (
+                _normalize_bool(
+                    row.get("merge_enabled"),
+                    default=True,
+                )
+                and int(row.get("schedule_id") or 0) > 0
+            )
+        }
         #
 
         merged = {}
 
         for row in _results:
+            # 20260810版 add
+            merge_enabled = _normalize_bool(
+                row.get("merge_enabled"),
+                default=True,
+            )
+
+            order_num = safe_str(
+                row.get("order_num")
+            )
+
+            schedule_id = int(
+                row.get("schedule_id") or 0
+            )
+
+            # --------------------------------------------------------
+            # 併單模式：
+            # 同 order_num 已經有正式排程列，
+            # 就不要再顯示未排程 +工序樣板。
+            #
+            # 不併單 merge_enabled=False 時完全不套用，
+            # parent / child 可以各自顯示。
+            # --------------------------------------------------------
+            if (
+                merge_enabled
+                and schedule_id == 0
+                and order_num in scheduled_order_nums
+            ):
+                continue
+            #
+
             row["has_any_running_process"] = row.get("order_num") in started_order_nums
 
             #merge_enabled = row.get("merge_enabled") in (1, True, "1", "true", "True")

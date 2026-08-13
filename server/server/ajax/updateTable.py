@@ -3276,72 +3276,6 @@ def send_assemble_to_warehouse():
         s.close()
 
 
-@updateTable.route('/sendProcessToWarehouse', methods=['POST'])
-def send_process_to_warehouse():
-    print("sendProcessToWarehouse.")
-
-    data = request.get_json(silent=True) or {}
-    material_id = data.get('id')
-    assemble_id = data.get('assemble_id')
-    mode = data.get('mode', 'manual')
-
-    if not material_id or not assemble_id:
-        return jsonify({
-            "status": False,
-            "message": "缺少 id 或 assemble_id"
-        }), 400
-
-    s = Session()
-    try:
-        material = s.query(P_Material).filter(P_Material.id == material_id).first()
-        row = (
-            s.query(P_Assemble)
-             .filter(P_Assemble.id == assemble_id)
-             .filter(P_Assemble.material_id == material_id)
-             .first()
-        )
-
-        if not material or not row:
-            return jsonify({
-                "status": False,
-                "message": "找不到 P_Material 或 P_Assemble"
-            }), 404
-
-        # 同一張加工工單只保留一筆進 Ware
-        s.query(P_Assemble).filter(
-            P_Assemble.material_id == material_id
-        ).update({
-            P_Assemble.isWarehouseStationShow: False
-        }, synchronize_session=False)
-
-        row.isAssembleStationShow = False
-        row.isWarehouseStationShow = True
-        row.isStockIn = True
-
-        material.move_by_automatic_or_manual_2 = True if mode == 'agv' else False
-        material.whichStation = 3
-        material.show2_ok = 6   # 等待入庫作業
-        material.show3_ok = 11  # 等待入庫作業 / 成品區
-
-        s.commit()
-
-        return jsonify({
-            "status": True,
-            "message": "加工件已送到成品區，可在 Ware~.vue 顯示"
-        })
-
-    except Exception as e:
-        s.rollback()
-        traceback.print_exc()
-        return jsonify({
-            "status": False,
-            "message": str(e)
-        }), 500
-
-    finally:
-        s.close()
-
-
 @updateTable.route("/updateModifyMaterialAndBoms", methods=['POST'])
 def update_modify_material_and_Boms():
   print("updateModifyMaterialAndBoms....")
@@ -3454,6 +3388,7 @@ def update_modify_material_and_Boms_p():
   })
 
 
+# 20260811版 修
 @updateTable.route("/updateAssmbleDataByMaterialID", methods=['POST'])
 def update_assemble_data_by_material_id():
   print("updateAssmbleDataByMaterialID....")
@@ -3484,7 +3419,15 @@ def update_assemble_data_by_material_id():
       assemble_records = (
           s.query(Assemble)
           .filter(Assemble.material_id == _material_id)
-          .filter(Assemble.isWarehouseStationShow.is_(False))
+          #.filter(Assemble.isWarehouseStationShow.is_(False))
+          # 20260811版 MODIFY
+          .filter(
+              or_(
+                  Assemble.isWarehouseStationShow.is_(False),
+                  Assemble.isWarehouseStationShow.is_(None),
+              )
+          )
+          #
           .filter(
               or_(
                   Assemble.reason.is_(None),
@@ -3497,6 +3440,23 @@ def update_assemble_data_by_material_id():
 
       # 動態設定欄位
       for asm in assemble_records:
+        # 20260811版 add
+        # ------------------------------------------------
+        # 本批送入組裝區時，同步應領取數量
+        #
+        # 注意：
+        # delivery_qty <= 0 時不可覆蓋 must_receive_qty，
+        # 避免再次把正常資料清成 0。
+        # ------------------------------------------------
+        if _delivery_qty is not None:
+            try:
+                delivery_qty_int = int(_delivery_qty)
+            except (TypeError, ValueError):
+                delivery_qty_int = 0
+
+            if delivery_qty_int > 0:
+                asm.must_receive_qty = delivery_qty_int
+        #
         if _record_name1 and _record_data1 is not None:
           setattr(asm, _record_name1, _record_data1)
         if _record_name2 and _record_data2 is not None:
@@ -3514,60 +3474,6 @@ def update_assemble_data_by_material_id():
   except Exception as e:
       s.rollback()
       print("更新失敗:", str(e))
-      return_value = False
-      #return
-
-  return jsonify({
-    'status': return_value
-  })
-
-
-@updateTable.route("/updateAssmbleDataByMaterialIDP", methods=['POST'])
-def update_assemble_data_by_material_id_p():
-  print("updateAssmbleDataByMaterialIDP....")
-
-  request_data = request.get_json()
-  #print("request_data", request_data)
-  _material_id = request_data.get('material_id')
-  _delivery_qty = request_data.get('delivery_qty')
-  _record_name1 = request_data.get('record_name1')
-  _record_data1 = request_data.get('record_data1')
-  _record_name2 = request_data.get('record_name2')
-  _record_data2 = request_data.get('record_data2')
-  _record_name3 = request_data.get('record_name3')
-  _record_data3 = request_data.get('record_data3')
-  _record_name4 = request_data.get('record_name4')
-  _record_data4 = request_data.get('record_data4')
-
-  #return_value = True  # true: 資料正確,
-  s = Session()
-
-  try:
-      # 查詢所有符合條件的紀錄
-      assemble_records = s.query(P_Assemble).filter(
-          P_Assemble.material_id == _material_id,
-          P_Assemble.must_receive_qty == _delivery_qty
-      ).all()
-
-      # 動態設定欄位
-      for asm in assemble_records:
-        if _record_name1 and _record_data1 is not None:
-          setattr(asm, _record_name1, _record_data1)
-        if _record_name2 and _record_data2 is not None:
-          setattr(asm, _record_name2, _record_data2)
-        if _record_name3 and _record_data3 is not None:
-          setattr(asm, _record_name3, _record_data3)
-        if _record_name4 and _record_data4 is not None:
-          setattr(asm, _record_name4, _record_data4)
-
-      # 提交更新
-      s.commit()
-      print(f"更新P_Assemble table成功，共 {len(assemble_records)} 筆資料")
-      return_value = True
-      #return
-  except Exception as e:
-      s.rollback()
-      print("更新P_Assemble table失敗:", str(e))
       return_value = False
       #return
 

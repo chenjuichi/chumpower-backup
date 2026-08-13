@@ -2732,6 +2732,7 @@ const onDragEndStep = () => {
   dragFromIndex.value = null
 }
 
+/*
 const fetchBomsV2 = async (item) => {
   try {
     const key = String(item.id)
@@ -2739,16 +2740,65 @@ const fetchBomsV2 = async (item) => {
     activeBomItemId.value = key
     isTableVisible.value = true
 
-    const payload = {
-      id: item.id,
-      mode: 'picked',
-    };
+    //const payload = {
+    //  id: item.id,
+    //  mode: 'picked',
+    //};
+    //
+    //console.log("getBoms payload:", payload);
+    //
+    //await getBoms(payload);
+    //
+    //bomsMap.value[item.id] = currentBoms.value
+    //
+    // 20260812版
+    let bomRows = [];
 
-    console.log("getBoms payload:", payload);
+    if (item.merge_enabled === true) {
 
-    await getBoms(payload);
+      const payload = {
+        order_num: item.order_num,
+        id: item.id,
+        mode: 'picked',
+      };
 
-    bomsMap.value[item.id] = currentBoms.value
+      console.log(
+        "getOrderPickedBoms payload:",
+        payload
+      );
+
+      const res = await getOrderPickedBoms(
+        payload
+      );
+
+      console.log("20260812 res =", res);
+      console.log("20260812 res.data =", res.data);
+      console.log("20260812 res.data.boms =", res.data.boms);
+      console.log("20260812 bom length =", res.data.boms?.length);
+
+      bomRows =
+        res?.data?.boms || [];
+
+    } else {
+
+      const payload = {
+        id: item.id,
+        mode: 'picked',
+      };
+
+      console.log(
+        "getBoms payload:",
+        payload
+      );
+
+      await getBoms(payload);
+
+      bomRows =
+        currentBoms.value || [];
+    }
+
+    bomsMap.value[item.id] = bomRows;
+    //
 
     console.log("activeBomItemId:", activeBomItemId.value)
     console.log("bomsMap:", key, bomsMap.value[key])
@@ -2759,6 +2809,77 @@ const fetchBomsV2 = async (item) => {
     bomsMap.value[String(item.id)] = []
   }
 };
+*/
+// 20260812版
+const fetchBomsV2 = async (item) => {
+  try {
+    const key = String(item.id)
+
+    activeBomItemId.value = key
+    isTableVisible.value = true
+
+    let bomRows = []
+
+    if (item.merge_enabled === true) {
+      const payload = {
+        order_num: item.order_num,
+        id: item.id,
+        mode: 'picked',
+      }
+
+      console.log(
+        "getOrderPickedBoms payload:",
+        payload
+      )
+
+      const res = await getOrderPickedBoms(payload)
+
+      console.log("20260812 res =", res)
+
+      bomRows = Array.isArray(res?.boms)
+        ? res.boms
+        : []
+
+    } else {
+      const payload = {
+        id: item.id,
+        mode: 'picked',
+      }
+
+      console.log(
+        "getBoms payload:",
+        payload
+      )
+
+      await getBoms(payload)
+
+      bomRows = Array.isArray(currentBoms.value)
+        ? currentBoms.value
+        : []
+    }
+
+    bomsMap.value[key] = bomRows
+
+    console.log(
+      "bomsMap[key] =",
+      bomsMap.value[key]
+    )
+
+    console.log(
+      "getFilteredBoms =",
+      getFilteredBoms(item)
+    )
+
+  } catch (e) {
+    console.error(
+      "fetchBomsV2 failed:",
+      e
+    )
+
+    bomsMap.value[String(item.id)] = []
+  }
+}
+//
 
 const closeSchedulingDialog = () => {
   const item = scheduling_target_item.value
@@ -3921,7 +4042,12 @@ const fetchBoms = async (item) => {
 
     res = await getOrderPickedBoms(payload);
 
-    boms.value = res?.data?.boms || [];
+    //boms.value = res?.data?.boms || [];
+    // 20260812版
+    boms.value = Array.isArray(res?.boms)
+    ? res.boms
+    : []
+    //
   } catch (e) {
     console.error("fetchBoms failed:", e);
     boms.value = [];
@@ -3980,9 +4106,15 @@ const continueConfirmSchedulingDialog = async () => {
   await doConfirmSchedulingDialog()
 }
 
+//const getFilteredBoms = (item) => {
+//  return (bomsMap.value[String(item.id)] || []).filter(bom => bom.receive)
+//}
+//
+// 20260812版
 const getFilteredBoms = (item) => {
-  return (bomsMap.value[String(item.id)] || []).filter(bom => bom.receive)
+  return bomsMap.value[String(item.id)] || []
 }
+//
 
 const hasOtherUserStarted = (row) => {
   const r = row?.raw || row || {}

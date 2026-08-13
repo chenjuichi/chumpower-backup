@@ -2,7 +2,9 @@
 
 import json
 
-from datetime import datetime
+import traceback
+
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
@@ -180,7 +182,8 @@ def create_process_p():
   })
 """
 
-
+# 20260813版
+# ...
 # 20260804版
 # createProcessP：
 # 1. 使用 P_Material row lock，避免多人同時新增
@@ -387,6 +390,7 @@ def create_process_p():
                         "不重複新增",
                 }), 200
 
+        '''
         # --------------------------------------------------------
         # type=6：
         # 空白堆高機通知防重複
@@ -431,6 +435,56 @@ def create_process_p():
                         "已有未執行的堆高機搬運紀錄，"
                         "不重複新增",
                 }), 200
+        '''
+        # 20260813版
+        # ------------------------------------------------------------
+        # type=6：
+        # 堆高機 加工區 -> 成品區
+        #
+        # 同一個「送出批次 assemble_id」只建立一次。
+        #
+        # 不可只用 material_id 防重複，
+        # 因為一張加工工單可以分批送出多次。
+        # ------------------------------------------------------------
+        if process_type == 6:
+
+            existed_type6 = (
+                session.query(P_Process)
+                .filter(
+                    P_Process.material_id ==
+                    material_id
+                )
+                .filter(
+                    P_Process.assemble_id ==
+                    assemble_id
+                )
+                .filter(
+                    P_Process.process_type == 6
+                )
+                .order_by(
+                    P_Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_type6:
+                session.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_type6.id,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此批次已有堆高機搬運紀錄，"
+                        "不重複新增",
+                }), 200
+        #
 
         # --------------------------------------------------------
         # type=21 / 22 / 23：
@@ -591,6 +645,7 @@ def create_process_p():
         session.close()
 
 
+# 20260813版
 @createTableP.route("/copyAssembleForDifferenceP", methods=['POST'])
 def copy_assemble_for_difference_p():
   print("copyAssembleForDifferenceP....")
@@ -612,14 +667,66 @@ def copy_assemble_for_difference_p():
   # 1. 取得原始 assemble 記錄
   source_assemble = s.query(P_Assemble).get(_copy_id)
 
-  """
+  #
+  if source_assemble is None:
+    s.close()
+
+    return jsonify({
+        'status': False,
+        'message':
+            f'找不到 P_Assemble id={_copy_id}',
+        'assemble_data': [],
+    }), 404
+
+  # ------------------------------------------------------------
+  # 剩餘列的「領取數量」必須維持整張工單原始領取量。
+  #
+  # 例如：
+  # 原始領取 120
+  # 完成 38、剩餘 82
+  #
+  # 新列：
+  #   ask_qty = 120
+  #   must_receive_end_qty = 82
+  #   total_completed_qty = 38
+  # ------------------------------------------------------------
+  material_record = (
+      s.query(P_Material)
+      .filter(
+          P_Material.id ==
+          source_assemble.material_id
+      )
+      .first()
+  )
+
+  original_ask_qty = max(
+      int(
+          source_assemble.ask_qty
+          or 0
+      ),
+      int(
+          source_assemble.total_ask_qty
+          or 0
+      ),
+      int(
+          getattr(
+              material_record,
+              'material_qty',
+              0
+          )
+          or 0
+      ),
+  )
+  #
+
+  '''
   # 2. 找出符合複製條件的所有 assemble 記錄
   matching_assembles = s.query(Assemble).filter(
       Assemble.material_id == source_assemble.material_id,
       Assemble.must_receive_qty == source_assemble.must_receive_qty,
       #Assemble.process_step_code <= source_assemble.process_step_code
   ).all()
-  """
+  '''
   k = _copy_id
   h = k + 1
   m = k + 2  # 若之後也要用，可以一起放進 IN
@@ -711,8 +818,22 @@ def copy_assemble_for_difference_p():
       input_end_disable =False,
       input_abnormal_disable = abnormal_field,
       completed_qty = 0,                    #完成數量
-      total_completed_qty = 0,
-      ask_qty=0,
+      #total_completed_qty = 0,
+      # 20260813版
+      # 整張工單累計完成量沿用
+      total_completed_qty=int(
+          _pre_must_qty or 0
+      ),
+
+      total_ask_qty_end=int(
+          _pre_must_qty or 0
+      ),
+      #
+      #ask_qty=0,
+      # 20260813版
+      ask_qty=original_ask_qty,
+      total_ask_qty=original_ask_qty,
+      #
       update_time= datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
       is_copied_from_id=record.id,
       show2_ok=ok2,
@@ -878,6 +999,7 @@ def copy_new_assemble_p():
   })
 
 
+"""
 @createTableP.route("/createProductP", methods=["POST"])
 def create_product_p():
 
@@ -1092,5 +1214,1015 @@ def create_product_p():
         s.rollback()
         return jsonify({"status": False, "error": str(e)}), 500
     finally:
+        s.close()
+"""
+
+
+@createTableP.route(
+    "/createProductP",
+    methods=["POST"]
+)
+def create_product_p():
+
+    # ============================================================
+    # 加工線入庫
+    #
+    # 1. 支援單筆或批次
+    # 2. allOk_qty 必須 > 0
+    # 3. 建立 P_Product
+    # 4. 若沒送 process_id：
+    #
+    #    一般情況：
+    #        建立 P_Process(process_type=31)
+    #
+    #    加工線 line_difference == 1：
+    #        同 material_id
+    #        同 user_id
+    #        5 秒內連續呼叫
+    #
+    #        視為「同一次按入庫」
+    #
+    #        P_Product 仍逐筆建立，
+    #        但 P_Process(type=31) 只建立一筆，
+    #        後續數量累加。
+    #
+    # 5. 回寫 P_Material / P_Assemble
+    # ============================================================
+
+    s = Session()
+
+    try:
+        payload = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        raw_items = payload.get(
+            "items",
+            None
+        )
+
+        if raw_items is None:
+            raw_items = [payload]
+
+        if (
+            not isinstance(
+                raw_items,
+                list
+            )
+            or
+            len(raw_items) == 0
+        ):
+            return jsonify({
+                "status": False,
+                "error":
+                    "payload 應為物件或 "
+                    "{items: [...]}，且不可為空"
+            }), 400
+
+
+        # ========================================================
+        # 1. 先驗證 material_id
+        # ========================================================
+        material_ids = [
+            it.get("material_id")
+            for it in raw_items
+        ]
+
+        try:
+            material_ids_int = [
+                int(mid)
+                for mid in material_ids
+            ]
+
+        except (
+            TypeError,
+            ValueError
+        ):
+            return jsonify({
+                "status": False,
+                "error":
+                    "material_id 必須是整數"
+            }), 400
+
+
+        exist_mid_set = set(
+            mid
+            for (mid,) in (
+                s.query(
+                    P_Material.id
+                )
+                .filter(
+                    P_Material.id.in_(
+                        material_ids_int
+                    )
+                )
+                .all()
+            )
+        )
+
+
+        errors = []
+
+        for idx, it in enumerate(
+            raw_items
+        ):
+            mid = it.get(
+                "material_id"
+            )
+
+            if mid is None:
+                errors.append({
+                    "index": idx,
+                    "error":
+                        "material_id 為必填"
+                })
+                continue
+
+            try:
+                mid_int = int(mid)
+            except (
+                TypeError,
+                ValueError
+            ):
+                errors.append({
+                    "index": idx,
+                    "error":
+                        "material_id 必須為整數"
+                })
+                continue
+
+            if (
+                mid_int
+                not in exist_mid_set
+            ):
+                errors.append({
+                    "index": idx,
+                    "error":
+                        f"material_id "
+                        f"{mid_int} 不存在"
+                })
+
+
+        if errors:
+            return jsonify({
+                "status": False,
+                "errors": errors
+            }), 400
+
+
+        created_rows = []
+
+
+        # ========================================================
+        # 2. 逐筆處理
+        # ========================================================
+        for idx, it in enumerate(
+            raw_items
+        ):
+
+            now_dt = datetime.now()
+
+            now_str = (
+                now_dt.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            )
+
+
+            # ----------------------------------------------------
+            # Material
+            # ----------------------------------------------------
+            mid = _normalize_int(
+                it.get(
+                    "material_id"
+                ),
+                0
+            )
+
+            if mid <= 0:
+                continue
+
+
+            # ----------------------------------------------------
+            # 本次入庫量
+            # ----------------------------------------------------
+            add_qty = _normalize_int(
+                it.get(
+                    "allOk_qty"
+                ),
+                0
+            )
+
+            if add_qty <= 0:
+                return jsonify({
+                    "status": False,
+                    "error":
+                        f"第 {idx + 1} 筆"
+                        "入庫數量必須大於 0"
+                }), 400
+
+
+            user_id = str(
+                it.get("user_id")
+                or ""
+            ).strip()
+
+            if not user_id:
+                user_id = "system"
+
+
+            delivery_qty = (
+                _normalize_int(
+                    it.get(
+                        "delivery_qty"
+                    ),
+                    0
+                )
+            )
+
+            assemble_qty = (
+                _normalize_int(
+                    it.get(
+                        "assemble_qty"
+                    ),
+                    0
+                )
+            )
+
+            good_qty = (
+                _normalize_int(
+                    it.get(
+                        "good_qty"
+                    ),
+                    add_qty
+                )
+            )
+
+            non_good_qty = (
+                _normalize_int(
+                    it.get(
+                        "non_good_qty"
+                    ),
+                    0
+                )
+            )
+
+            line_diff = (
+                _normalize_int(
+                    it.get(
+                        "line_difference"
+                    ),
+                    1
+                )
+            )
+
+
+            # ====================================================
+            # 3. 鎖定 Material
+            # ====================================================
+            m = (
+                s.query(P_Material)
+                .filter(
+                    P_Material.id ==
+                    mid
+                )
+                .with_for_update()
+                .one_or_none()
+            )
+
+            if m is None:
+                return jsonify({
+                    "status": False,
+                    "error":
+                        f"material_id={mid} "
+                        "不存在"
+                }), 400
+
+
+            # ====================================================
+            # 4. Assemble
+            #
+            # 優先使用前端送入的 assemble_id。
+            # 沒有才抓 material 最新一筆。
+            # ====================================================
+            assemble_id = (
+                _normalize_int(
+                    it.get(
+                        "assemble_id"
+                    ),
+                    0
+                )
+            )
+
+            if assemble_id <= 0:
+                latest_a = (
+                    s.query(P_Assemble)
+                    .filter(
+                        P_Assemble
+                        .material_id ==
+                        mid
+                    )
+                    .order_by(
+                        P_Assemble
+                        .id
+                        .desc()
+                    )
+                    .first()
+                )
+
+                assemble_id = (
+                    latest_a.id
+                    if latest_a
+                    else 0
+                )
+
+
+            a = None
+
+            if assemble_id > 0:
+                a = (
+                    s.query(P_Assemble)
+                    .filter(
+                        P_Assemble.id ==
+                        assemble_id
+                    )
+                    .filter(
+                        P_Assemble
+                        .material_id ==
+                        mid
+                    )
+                    .with_for_update()
+                    .one_or_none()
+                )
+
+
+            # ====================================================
+            # 5. Process 31
+            # ====================================================
+            process_id_to_use = (
+                _normalize_int(
+                    it.get(
+                        "process_id"
+                    ),
+                    0
+                )
+            )
+
+
+            if process_id_to_use <= 0:
+
+                # =================================================
+                # A. 加工線
+                #
+                # line_difference == 1
+                #
+                # Warehouse 前端會因多筆勾選：
+                #
+                #   createProductP(38)
+                #   createProductP(50)
+                #   createProductP(32)
+                #
+                # 三個 request 在極短時間內依序到達。
+                #
+                # 同 material + 同 user + 5 秒內，
+                # 視為同一次「按入庫」。
+                # =================================================
+                if line_diff == 1:
+
+                    merge_since = (
+                        now_dt
+                        - timedelta(
+                            seconds=5
+                        )
+                    )
+
+                    existing_stockin_proc = (
+                        s.query(P_Process)
+                        .filter(
+                            P_Process
+                            .material_id ==
+                            mid
+                        )
+                        .filter(
+                            P_Process
+                            .process_type ==
+                            31
+                        )
+                        .filter(
+                            P_Process
+                            .user_id ==
+                            user_id
+                        )
+                        .filter(
+                            P_Process
+                            .create_at >=
+                            merge_since
+                        )
+                        .order_by(
+                            P_Process
+                            .id
+                            .desc()
+                        )
+                        .with_for_update()
+                        .first()
+                    )
+
+
+                    # ---------------------------------------------
+                    # 已經有本次入庫 Process 31
+                    #
+                    # 不再新增，
+                    # 只累加數量。
+                    # ---------------------------------------------
+                    if existing_stockin_proc:
+
+                        old_qty = (
+                            _normalize_int(
+                                existing_stockin_proc
+                                .process_work_time_qty,
+                                0
+                            )
+                        )
+
+                        merged_qty = (
+                            old_qty
+                            + add_qty
+                        )
+
+
+                        existing_stockin_proc\
+                            .process_work_time_qty = (
+                                merged_qty
+                            )
+
+                        existing_stockin_proc\
+                            .allOk_qty = (
+                                merged_qty
+                            )
+
+
+                        # must_allOk_qty：
+                        # 優先保留整張 Material
+                        # 應入庫總量。
+                        material_must_qty = (
+                            _normalize_int(
+                                getattr(
+                                    m,
+                                    "must_allOk_qty",
+                                    0
+                                ),
+                                0
+                            )
+                        )
+
+                        if material_must_qty > 0:
+                            existing_stockin_proc\
+                                .must_allOk_qty = (
+                                    material_must_qty
+                                )
+
+
+                        existing_stockin_proc\
+                            .isAllOk = (
+                                merged_qty
+                                >= material_must_qty
+                                if material_must_qty > 0
+                                else True
+                            )
+
+
+                        # 第一筆 begin_time 保留，
+                        # end_time 更新為本批最後一筆時間。
+                        existing_stockin_proc\
+                            .end_time = (
+                                now_str
+                            )
+
+
+                        process_id_to_use = (
+                            existing_stockin_proc.id
+                        )
+
+
+                        print(
+                            "[createProductP] "
+                            "merge process31:",
+                            {
+                                "process_id":
+                                    process_id_to_use,
+
+                                "material_id":
+                                    mid,
+
+                                "first_assemble_id":
+                                    existing_stockin_proc
+                                    .assemble_id,
+
+                                "current_assemble_id":
+                                    assemble_id,
+
+                                "user_id":
+                                    user_id,
+
+                                "old_qty":
+                                    old_qty,
+
+                                "add_qty":
+                                    add_qty,
+
+                                "merged_qty":
+                                    merged_qty,
+
+                                "must_qty":
+                                    material_must_qty,
+                            }
+                        )
+
+
+                    # ---------------------------------------------
+                    # 本次入庫第一筆
+                    #
+                    # 建立新的 Process 31。
+                    # ---------------------------------------------
+                    else:
+
+                        must_qty = (
+                            _normalize_int(
+                                getattr(
+                                    m,
+                                    "must_allOk_qty",
+                                    0
+                                ),
+                                0
+                            )
+                        )
+
+
+                        stockin_proc = (
+                            P_Process(
+                                material_id=
+                                    mid,
+
+                                # 第一批 assemble 留下即可
+                                assemble_id=
+                                    assemble_id,
+
+                                has_started=
+                                    False,
+
+                                user_id=
+                                    user_id,
+
+                                begin_time=
+                                    now_str,
+
+                                end_time=
+                                    now_str,
+
+                                period_time=
+                                    "00:00:00",
+
+                                pause_time=
+                                    0,
+
+                                elapsedActive_time=
+                                    0,
+
+                                str_elapsedActive_time=
+                                    "00:00:00",
+
+                                is_pause=
+                                    True,
+
+                                process_type=
+                                    31,
+
+                                process_work_time_qty=
+                                    add_qty,
+
+                                must_allOk_qty=
+                                    must_qty,
+
+                                allOk_qty=
+                                    add_qty,
+
+                                isAllOk=(
+                                    add_qty >= must_qty
+                                    if must_qty > 0
+                                    else True
+                                ),
+
+                                normal_work_time=
+                                    0,
+                            )
+                        )
+
+
+                        s.add(
+                            stockin_proc
+                        )
+
+                        s.flush()
+
+
+                        process_id_to_use = (
+                            stockin_proc.id
+                        )
+
+
+                        print(
+                            "[createProductP] "
+                            "create process31:",
+                            {
+                                "process_id":
+                                    process_id_to_use,
+
+                                "material_id":
+                                    mid,
+
+                                "assemble_id":
+                                    assemble_id,
+
+                                "user_id":
+                                    user_id,
+
+                                "qty":
+                                    add_qty,
+
+                                "must_qty":
+                                    must_qty,
+                            }
+                        )
+
+
+                # =================================================
+                # B. 非加工線
+                #
+                # 保留原本行為：
+                # 依 material + assemble + qty
+                # 找既有 type=31，
+                # 找不到才新增。
+                #
+                # 雖然 createProductP 正常主要是加工線使用，
+                # 這段保留可避免影響既有相容邏輯。
+                # =================================================
+                else:
+
+                    exist_proc = None
+
+                    if assemble_id > 0:
+                        exist_proc = (
+                            s.query(P_Process)
+                            .filter(
+                                P_Process
+                                .material_id ==
+                                mid
+                            )
+                            .filter(
+                                P_Process
+                                .assemble_id ==
+                                assemble_id
+                            )
+                            .filter(
+                                P_Process
+                                .process_type ==
+                                31
+                            )
+                            .filter(
+                                P_Process
+                                .process_work_time_qty ==
+                                add_qty
+                            )
+                            .order_by(
+                                P_Process
+                                .id
+                                .desc()
+                            )
+                            .first()
+                        )
+
+
+                    if exist_proc:
+
+                        process_id_to_use = (
+                            exist_proc.id
+                        )
+
+                    else:
+
+                        must_qty = (
+                            _normalize_int(
+                                getattr(
+                                    m,
+                                    "must_allOk_qty",
+                                    0
+                                ),
+                                0
+                            )
+                        )
+
+
+                        stockin_proc = (
+                            P_Process(
+                                material_id=
+                                    mid,
+
+                                assemble_id=
+                                    assemble_id,
+
+                                has_started=
+                                    False,
+
+                                user_id=
+                                    user_id,
+
+                                begin_time=
+                                    now_str,
+
+                                end_time=
+                                    now_str,
+
+                                period_time=
+                                    "00:00:00",
+
+                                pause_time=
+                                    0,
+
+                                elapsedActive_time=
+                                    0,
+
+                                str_elapsedActive_time=
+                                    "00:00:00",
+
+                                is_pause=
+                                    True,
+
+                                process_type=
+                                    31,
+
+                                process_work_time_qty=
+                                    add_qty,
+
+                                must_allOk_qty=
+                                    must_qty,
+
+                                allOk_qty=
+                                    add_qty,
+
+                                isAllOk=
+                                    True,
+
+                                normal_work_time=
+                                    0,
+                            )
+                        )
+
+
+                        s.add(
+                            stockin_proc
+                        )
+
+                        s.flush()
+
+                        process_id_to_use = (
+                            stockin_proc.id
+                        )
+
+
+            # ====================================================
+            # 6. 建立 P_Product
+            #
+            # 即使 Process 31 被合併，
+            # Product 還是每一個 assemble 建自己的明細。
+            #
+            # 例如：
+            #
+            # P_Product:
+            #   assemble68 -> 38
+            #   assemble70 -> 50
+            #   assemble71 -> 32
+            #
+            # 但 process_id 全部指向同一筆 type=31。
+            # ====================================================
+            p = P_Product(
+                material_id=
+                    mid,
+
+                process_id=(
+                    process_id_to_use
+                    or None
+                ),
+
+                line_difference=
+                    line_diff,
+
+                delivery_qty=
+                    delivery_qty,
+
+                assemble_qty=
+                    assemble_qty,
+
+                allOk_qty=
+                    add_qty,
+
+                good_qty=
+                    good_qty,
+
+                non_good_qty=
+                    non_good_qty,
+
+                reason=(
+                    it.get("reason")
+                    or None
+                ),
+
+                confirm_comment=(
+                    it.get(
+                        "confirm_comment"
+                    )
+                    or None
+                ),
+            )
+
+
+            s.add(p)
+
+            s.flush()
+
+            created_rows.append(p)
+
+
+            # ====================================================
+            # 7. 回寫 P_Material
+            # ====================================================
+            old_total = (
+                _normalize_int(
+                    getattr(
+                        m,
+                        "total_allOk_qty",
+                        0
+                    ),
+                    0
+                )
+            )
+
+            new_total = (
+                old_total
+                + add_qty
+            )
+
+
+            m.allOk_qty = (
+                add_qty
+            )
+
+            m.total_allOk_qty = (
+                new_total
+            )
+
+
+            must_qty2 = (
+                _normalize_int(
+                    getattr(
+                        m,
+                        "must_allOk_qty",
+                        0
+                    ),
+                    0
+                )
+            )
+
+
+            if (
+                must_qty2 <= 0
+                or
+                new_total >= must_qty2
+            ):
+                m.isAllOk = True
+                m.show2_ok = 8
+
+
+            # ====================================================
+            # 8. 回寫 P_Assemble
+            # ====================================================
+            if a:
+
+                a.allOk_qty = (
+                    add_qty
+                )
+
+                a.isStockIn = (
+                    True
+                )
+
+                # 延續你目前既有邏輯：
+                # createProductP 先設 True，
+                # Warehouse 前端完成後會再依流程更新。
+                a.isWarehouseStationShow = (
+                    True
+                )
+
+                a.update_time = (
+                    now_str
+                )
+
+
+        # ========================================================
+        # 9. Commit
+        # ========================================================
+        s.commit()
+
+
+        # ========================================================
+        # 10. Response
+        # ========================================================
+        items = []
+
+        for p in created_rows:
+
+            items.append({
+                "id":
+                    p.id,
+
+                "material_id":
+                    p.material_id,
+
+                "process_id":
+                    p.process_id,
+
+                "delivery_qty":
+                    p.delivery_qty,
+
+                "assemble_qty":
+                    p.assemble_qty,
+
+                "allOk_qty":
+                    p.allOk_qty,
+
+                "good_qty":
+                    p.good_qty,
+
+                "non_good_qty":
+                    p.non_good_qty,
+
+                "reason":
+                    p.reason,
+
+                "confirm_comment":
+                    p.confirm_comment,
+
+                "create_at":
+                    (
+                        getattr(
+                            p,
+                            "create_at",
+                            None
+                        ).isoformat()
+                        if getattr(
+                            p,
+                            "create_at",
+                            None
+                        )
+                        else None
+                    ),
+            })
+
+
+        return jsonify({
+            "status": True,
+            "created": len(items),
+            "items": items
+        }), 200
+
+
+    except SQLAlchemyError as e:
+
+        s.rollback()
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "error": str(e)
+        }), 500
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "error": str(e)
+        }), 500
+
+
+    finally:
+
         s.close()
 

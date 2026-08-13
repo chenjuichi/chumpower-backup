@@ -20,6 +20,7 @@ from sqlalchemy import func, or_, cast, Integer
 from sqlalchemy.orm import selectinload, load_only
 from sqlalchemy import distinct, case, select
 
+
 listTableP = Blueprint('listTableP', __name__)
 
 
@@ -471,6 +472,7 @@ def list_materials_and_assembles_p():
         s.close()
 
 
+# 20260813版
 @listTableP.route("/listInformationsP", methods=['GET'])
 def list_informations_p():
     print("listInformationsP....")
@@ -568,7 +570,29 @@ def list_informations_p():
       assemble_records = record._assemble   # 存取與該 Material 物件關聯的所有 Assemble 物件
 
       process_records = record._process
-      total_process_records =len([p for p in process_records if ((p.material_id == record.id and p.has_started == 1 and p.begin_time != ''))])
+      #total_process_records =len([p for p in process_records if ((p.material_id == record.id and p.has_started == 1 and p.begin_time != ''))])
+      # 20260813版
+      # ------------------------------------------------------------
+      # Information「詳情」只要曾經有有效 Process 紀錄就應可查看。
+      #
+      # 不可限制 has_started == 1，
+      # 因為加工完成後 has_started 會變 False。
+      # ------------------------------------------------------------
+      total_process_records = len([
+          p
+          for p in process_records
+          if (
+              int(p.material_id or 0)
+              ==
+              int(record.id or 0)
+              and
+              str(
+                  p.begin_time or ''
+              ).strip() != ''
+          )
+      ])
+      #
+
 
       cleaned_comment = record.material_comment.strip()  # 刪除 material_comment 字串前後的空白
 
@@ -699,6 +723,7 @@ def list_informations_p():
     })
 
 
+# 20260813版
 @listTableP.route("/listInformationsPFiltered", methods=["POST"])
 def list_informations_p_filtered():
     print("listInformationsPFiltered....")
@@ -812,7 +837,28 @@ def list_informations_p_filtered():
         for record in rows:
             assemble_records = record._assemble
             process_records = record._process
-            total_process_records = len([p for p in process_records if (p.material_id == record.id and p.has_started == 1 and (p.begin_time or '') != '')])
+            #total_process_records = len([p for p in process_records if (p.material_id == record.id and p.has_started == 1 and (p.begin_time or '') != '')])
+            # 20260813版
+            # ------------------------------------------------------------
+            # Information「詳情」只要曾經有有效 Process 紀錄就應可查看。
+            #
+            # 不可限制 has_started == 1，
+            # 因為加工完成後 has_started 會變 False。
+            # ------------------------------------------------------------
+            total_process_records = len([
+                p
+                for p in process_records
+                if (
+                    int(p.material_id or 0)
+                    ==
+                    int(record.id or 0)
+                    and
+                    str(
+                        p.begin_time or ''
+                    ).strip() != ''
+                )
+            ])
+            #
 
             cleaned_comment = (record.material_comment or "").strip()
 

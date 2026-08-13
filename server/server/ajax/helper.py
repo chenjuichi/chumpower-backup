@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_
 
+from database.p_tables import P_Part
 from database.tables import Material, Assemble, Process, Session
 from database.tables import default_process_steps
 
@@ -1790,4 +1791,140 @@ def _normalize_bool(value, default=False):
     return default
 
 
+
+# 20260812版
+def get_parallel_orders(session, process):
+
+    # 回傳同一位員工、同製程(Process Type)、
+    # 且與目前 Process 時間重疊的工單資訊。
+
+    # 尚未開始或尚未結束，不分析
+    if not process.begin_time or not process.end_time:
+        return {
+            "is_parallel": False,
+            "parallel_order_count": 0,
+            "parallel_total_orders": 1,
+            "parallel_orders": [],
+        }
+
+    parallel_processes = (
+        session.query(Process)
+        .join(Material, Material.id == Process.material_id)
+        .filter(
+            Process.id != process.id,
+
+            Process.user_id == process.user_id,
+
+            Process.process_type == process.process_type,
+
+            Process.begin_time < process.end_time,
+
+            Process.end_time > process.begin_time
+        )
+        .all()
+    )
+
+    parallel_orders = sorted({
+        p.material.order_num
+        for p in parallel_processes
+        if p.material
+    })
+
+    return {
+
+        "is_parallel":
+            len(parallel_orders) > 0,
+
+        "parallel_order_count":
+            len(parallel_orders),
+
+        "parallel_total_orders":
+            len(parallel_orders) + 1,
+
+        "parallel_orders":
+            parallel_orders,
+    }
+
+
+def read_all_p_part_process_code_p():
+    #
+    # 從 p_part 資料表讀取所有製程資料，組出：
+    #
+    #     code_to_assembleStep = { '100-01': step_code, '100-02': step_code, ... }
+    #
+    # 規則：
+    #   - 使用 P_Part.part_code 當 key 的來源，例如 'B100-01'
+    #   - 若 part_code 以 'B' 開頭，就去掉 'B'，變成 '100-01' 當 dict 的 key
+    #   - value 直接使用 P_Part.process_step_code
+
+    session = Session()
+    code_to_assembleStep = {}
+
+    try:
+        parts = session.query(P_Part).order_by(P_Part.id).all()
+        print(f"read_all_p_part_process_code_p(): 從 p_part 讀到 {len(parts)} 筆資料")
+
+        for part in parts:
+            raw_code = (part.part_code or "").strip()
+            if not raw_code:
+                continue
+
+            # 去掉開頭 'B'，跟原本 Excel 版的行為一致
+            if raw_code.startswith("B"):
+                key = raw_code[1:]   # 'B100-01' -> '100-01'
+            else:
+                key = raw_code
+
+            step = part.process_step_code or 0
+            if not step:
+                # 若 process_step_code 為 0 或 None，就略過（必要時可以改成保留）
+                continue
+
+            # 若同一個 key 被多筆覆蓋，印出提示（最後一筆會生效）
+            if key in code_to_assembleStep and code_to_assembleStep[key] != step:
+                print(
+                    f"  ⚠️ key={key} 已有 step={code_to_assembleStep[key]}，"
+                    f"這筆 part_code={raw_code} 的 step={step} 會覆蓋前一筆"
+                )
+
+            code_to_assembleStep[key] = step
+
+    finally:
+        session.close()
+
+    print("read_all_p_part_process_code_p(), 從 p_part 組完，總筆數:", len(code_to_assembleStep))
+    return code_to_assembleStep
+
+
+def map_pt(row):
+    #
+    # 3 -> 21, 2 -> 22, 1 -> 23，其餘預設 23。
+    # 支援欄位名：process_step_code / process_step / step_code
+    # row 可為 dict 或 ORM 物件。
+
+    code = get_val(row, 'process_step_code')
+    if code is None:
+        code = get_val(row, 'process_step')
+    if code is None:
+        code = get_val(row, 'step_code')
+
+    try:
+        code = int(code) if code is not None else None
+    except Exception:
+        code = None
+
+    if code == 3:
+        return 21
+    if code == 2:
+        return 22
+    if code == 1:
+        return 23
+    return 23
+
+
+def get_val(row, key, default=None):
+    # 同時支援 dict 與 ORM 物件取值。
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
 

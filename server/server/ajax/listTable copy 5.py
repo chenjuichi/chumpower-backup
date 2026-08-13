@@ -24,7 +24,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import selectinload, load_only
 
 from .helper import (
-  _normalize_bool,
+  _normalize_bool
 )
 
 
@@ -136,7 +136,6 @@ def calc_shortage_note_by_order(s, order_num: str) -> str:
 """
 
 
-"""
 def read_all_p_part_process_code_p():
     '''
     從 p_part 資料表讀取所有製程資料，組出：
@@ -186,10 +185,8 @@ def read_all_p_part_process_code_p():
 
     print("read_all_p_part_process_code_p(), 從 p_part 組完，總筆數:", len(code_to_assembleStep))
     return code_to_assembleStep
-"""
 
 
-"""
 def map_pt(row):
     '''
     3 -> 21, 2 -> 22, 1 -> 23，其餘預設 23。
@@ -221,7 +218,6 @@ def get_val(row, key, default=None):
     if isinstance(row, dict):
         return row.get(key, default)
     return getattr(row, key, default)
-"""
 
 
 def active_count_map_by_material_multi(session, material_ids, process_types=(21,22,23), include_paused=True):
@@ -2498,6 +2494,7 @@ def list_materials_and_assembles():
                 default=True,
             )
 
+            # 20260812版
             # 20260810版 add
             # ------------------------------------------------------------
             # 併單尚未完成：
@@ -2507,11 +2504,40 @@ def list_materials_and_assembles():
                 merge_enabled
                 and order_num in merge_pending_order_set
             )
+            #
+            # 20260812版
+            #if (
+            #    merge_enabled
+            #    and order_num in shortage_order_set
+            #):
+            #    continue
+            #
+            # ------------------------------------------------------------
+            # Begin 缺料判斷必須以「目前 material」為單位。
+            #
+            # 缺料併單的情況：
+            #
+            # 208 parent：
+            #   已備好的 BOM 留在 parent
+            #   parent 可以先送 Begin
+            #
+            # 209 child：
+            #   receive=False BOM 搬到 child
+            #   child 留在備料區，不可進 Begin
+            #
+            # 因此不能因為相同 order_num 的 child 還缺料，
+            # 就把已送組裝區的 parent 一起隱藏。
+            # ------------------------------------------------------------
+            current_material_has_lack = (
+                bom_lack_by_mid.get(
+                    material_id,
+                    0
+                ) > 0
+            )
 
-            if (
-                merge_enabled
-                and order_num in shortage_order_set
-            ):
+            # 只有「目前這一筆 material 自己仍缺料」
+            # 才不可顯示 Begin。
+            if current_material_has_lack:
                 continue
             #
 
@@ -3268,41 +3294,6 @@ def list_materials_and_assembles():
             if m.id
         ]
 
-        # 20260812版 add
-        parent_ids = {
-            int(m.is_copied_from_id)
-            for m in _objects
-            if int(
-                getattr(
-                    m,
-                    "is_copied_from_id",
-                    0
-                ) or 0
-            ) > 0
-        }
-
-        parent_shortage_map = {}
-
-        if parent_ids:
-            rows = (
-                s.query(
-                    Material.id,
-                    Material.shortage_note
-                )
-                .filter(
-                    Material.id.in_(
-                        parent_ids
-                    )
-                )
-                .all()
-            )
-
-            parent_shortage_map = {
-                int(mid): safe_str(note)
-                for mid, note in rows
-            }
-        #
-
         order_nums = list({
             safe_str(m.order_num)
             for m in _objects
@@ -3801,130 +3792,12 @@ def list_materials_and_assembles():
                 )
             )
 
-            #shortage_note = (
-            #    "(缺料)"
-            #    if order_num
-            #    in shortage_order_set
-            #    else ""
-            #)
-            #
-            # 20260812版
-            # ------------------------------------------------------------
-            # 缺料歷史顯示
-            #
-            # 1. 目前 material 自己曾經標記缺料
-            # 2. child 的 parent 曾經標記缺料
-            # 3. 目前訂單仍有 receive=False BOM
-            #
-            # 任一成立，Begin 都顯示「(缺料)」
-            # ------------------------------------------------------------
-
-            material_shortage_note = safe_str(
-                getattr(
-                    material_record,
-                    "shortage_note",
-                    ""
-                )
-            )
-
-            parent_id = int(
-                getattr(
-                    material_record,
-                    "is_copied_from_id",
-                    0
-                ) or 0
-            )
-
-            parent_shortage_note = ""
-
-            # ------------------------------------------------------------
-            # 只有「缺料併單」才繼承 parent 的缺料歷史
-            # ------------------------------------------------------------
-            if merge_enabled and parent_id > 0:
-                parent_shortage_note = (
-                    parent_shortage_map.get(
-                        parent_id,
-                        ""
-                    )
-                )
-
-            #parent_shortage_note = (
-            #    parent_shortage_map.get(
-            #        parent_id,
-            #        ""
-            #    )
-            #)
-
-            # ------------------------------------------------------------
-            # 缺料顯示規則
-            #
-            # merge_enabled=True：
-            #   自己曾缺料 / parent 曾缺料 / 現在仍缺料
-            #
-            # merge_enabled=False：
-            #   只看自己曾缺料 / 現在仍缺料
-            # ------------------------------------------------------------
-            #has_shortage_history = (
-            #    bool(material_shortage_note)
-            #    or (
-            #        merge_enabled
-            #        and bool(parent_shortage_note)
-            #    )
-            #    or order_num in shortage_order_set
-            #)
-
-            #has_shortage_history = (
-            #    bool(material_shortage_note)
-            #    or bool(parent_shortage_note)
-            #    or order_num in shortage_order_set
-            #)
-
-            #shortage_note = (
-            #    "(缺料)"
-            #    if has_shortage_history
-            #    else ""
-            #)
-            #
-            # ------------------------------------------------------------
-            # 目前這一筆 material 自己是否仍有缺料 BOM
-            # ------------------------------------------------------------
-            current_material_has_lack = (
-                bom_lack_by_mid.get(
-                    material_id,
-                    0
-                ) > 0
-            )
-
-            # ------------------------------------------------------------
-            # 缺料顯示規則
-            #
-            # merge_enabled = True：
-            #   1. 自己曾經缺料
-            #   2. parent 曾經缺料
-            #   3. 自己目前仍有缺料 BOM
-            #
-            # merge_enabled = False：
-            #   1. 自己曾經缺料
-            #   2. 自己目前仍有缺料 BOM
-            #
-            # 不再用整張 order_num 判斷，
-            # 避免同 order_num 的其他 material 缺料時互相污染。
-            # ------------------------------------------------------------
-            has_shortage_history = (
-                bool(material_shortage_note)
-                or (
-                    merge_enabled
-                    and bool(parent_shortage_note)
-                )
-                or current_material_has_lack
-            )
-
             shortage_note = (
                 "(缺料)"
-                if has_shortage_history
+                if order_num
+                in shortage_order_set
                 else ""
             )
-            #
 
             has_bom = (
                 bom_count_by_mid

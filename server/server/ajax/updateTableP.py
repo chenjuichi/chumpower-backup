@@ -4,11 +4,11 @@ import datetime
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request
 
 import traceback
 
-from sqlalchemy import inspect, and_, or_
+from sqlalchemy import inspect, and_, or_, func
 
 from database.tables import Session
 
@@ -183,7 +183,7 @@ def update_assemble_process_step_p():
 """
 
 
-# 20260805版
+# 20260813版
 @updateTableP.route('/updateAssembleProcessStepP', methods=['POST'])
 def update_assemble_process_step_p():
     print("updateAssembleProcessStepP....")
@@ -630,28 +630,79 @@ def update_assemble_process_step_p():
 
             return_value = True
             next_assemble_id = 0
-        #
+
+        # 20260813版
         else:
             # =================================================
-            # 尚有下一道工序
+            # 尚有下一道工序 / 尚有剩餘加工數量
+            #
+            # 重要：
+            # 目前這筆若已有完成數量，
+            # 必須保留在 PEnd 成為「待送出」。
+            #
+            # 例如：
+            # 120 件，本次完成 38 件
+            #
+            # 已完成 38：
+            #   留在 PEnd
+            #   藍字
+            #   待送出
+            #
+            # 剩餘數量：
+            #   由 next_record 繼續進行加工
             # =================================================
+
             material_record.show2_ok = 3
 
-            material_record\
-                .isAssembleStation3TakeOk = False
+            material_record.isAssembleStation3TakeOk = False
 
             material_record.isOpen = False
             material_record.isOpenEmpId = ''
             material_record.hasStarted = False
 
-            # 目前已完成工序不可再出現在 Begin / End
-            assemble_record.show2_ok = 5
-            assemble_record.isAssembleStationShow = False
-            assemble_record.isWarehouseStationShow = False
+            # -------------------------------------------------
+            # 本次已完成的數量保留於 PEnd
+            # -------------------------------------------------
+            completed_qty = int(
+                assemble_record.completed_qty
+                or assemble_record.total_completed_qty
+                or assemble_record.total_ask_qty_end
+                or 0
+            )
 
-            assemble_record.input_disable = True
-            assemble_record.input_end_disable = True
-            assemble_record.input_abnormal_disable = True
+            if completed_qty > 0:
+                # 已完成批次 → PEnd 待送出
+                assemble_record.show2_ok = 5
+
+                assemble_record.isAssembleStationShow = True
+                assemble_record.isWarehouseStationShow = False
+
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+
+                # 已完成總數量
+                assemble_record.total_completed_qty = max(
+                    int(
+                        assemble_record.total_completed_qty
+                        or 0
+                    ),
+                    completed_qty
+                )
+
+                assemble_record.total_ask_qty_end = max(
+                    int(
+                        assemble_record.total_ask_qty_end
+                        or 0
+                    ),
+                    completed_qty
+                )
+
+            else:
+                # 沒有完成數量才真的隱藏
+                assemble_record.isAssembleStationShow = False
+                assemble_record.isWarehouseStationShow = False
+        #
 
             # 第一筆尚未完成的，就是下一道工序
             next_record = unfinished_records[0]
@@ -1130,4 +1181,697 @@ def preview_process_abnormal_qty_p():
         s.close()
 
 
+
+@updateTableP.route("/updateAssmbleDataByMaterialIDP", methods=['POST'])
+def update_assemble_data_by_material_id_p():
+  print("updateAssmbleDataByMaterialIDP....")
+
+  request_data = request.get_json()
+  #print("request_data", request_data)
+  _material_id = request_data.get('material_id')
+  _delivery_qty = request_data.get('delivery_qty')
+  _record_name1 = request_data.get('record_name1')
+  _record_data1 = request_data.get('record_data1')
+  _record_name2 = request_data.get('record_name2')
+  _record_data2 = request_data.get('record_data2')
+  _record_name3 = request_data.get('record_name3')
+  _record_data3 = request_data.get('record_data3')
+  _record_name4 = request_data.get('record_name4')
+  _record_data4 = request_data.get('record_data4')
+
+  #return_value = True  # true: 資料正確,
+  s = Session()
+
+  try:
+      # 查詢所有符合條件的紀錄
+      assemble_records = s.query(P_Assemble).filter(
+          P_Assemble.material_id == _material_id,
+          P_Assemble.must_receive_qty == _delivery_qty
+      ).all()
+
+      # 動態設定欄位
+      for asm in assemble_records:
+        if _record_name1 and _record_data1 is not None:
+          setattr(asm, _record_name1, _record_data1)
+        if _record_name2 and _record_data2 is not None:
+          setattr(asm, _record_name2, _record_data2)
+        if _record_name3 and _record_data3 is not None:
+          setattr(asm, _record_name3, _record_data3)
+        if _record_name4 and _record_data4 is not None:
+          setattr(asm, _record_name4, _record_data4)
+
+      # 提交更新
+      s.commit()
+      print(f"更新P_Assemble table成功，共 {len(assemble_records)} 筆資料")
+      return_value = True
+      #return
+  except Exception as e:
+      s.rollback()
+      print("更新P_Assemble table失敗:", str(e))
+      return_value = False
+      #return
+
+  return jsonify({
+    'status': return_value
+  })
+
+
+"""
+# 20260813版
+@updateTableP.route('/sendProcessToWarehouse', methods=['POST'])
+def send_process_to_warehouse():
+    print("sendProcessToWarehouse.")
+
+    data = request.get_json(silent=True) or {}
+    material_id = data.get('id')
+    assemble_id = data.get('assemble_id')
+    mode = data.get('mode', 'manual')
+
+    if not material_id or not assemble_id:
+        return jsonify({
+            "status": False,
+            "message": "缺少 id 或 assemble_id"
+        }), 400
+
+    s = Session()
+    try:
+        material = s.query(P_Material).filter(P_Material.id == material_id).first()
+        row = (
+            s.query(P_Assemble)
+             .filter(P_Assemble.id == assemble_id)
+             .filter(P_Assemble.material_id == material_id)
+             .first()
+        )
+
+        if not material or not row:
+            return jsonify({
+                "status": False,
+                "message": "找不到 P_Material 或 P_Assemble"
+            }), 404
+
+        # 同一張加工工單只保留一筆進 Ware
+        s.query(P_Assemble).filter(
+            P_Assemble.material_id == material_id
+        ).update({
+            P_Assemble.isWarehouseStationShow: False
+        }, synchronize_session=False)
+
+        '''
+        row.isAssembleStationShow = False
+        row.isWarehouseStationShow = True
+        row.isStockIn = True
+
+        material.move_by_automatic_or_manual_2 = True if mode == 'agv' else False
+        material.whichStation = 3
+        material.show2_ok = 6   # 等待入庫作業
+        material.show3_ok = 11  # 等待入庫作業 / 成品區
+        '''
+        # 20260813版
+        # ------------------------------------------------------------
+        # 本次只送出指定 assemble。
+        # 不能因為送出部分完成量，就把整張 material 移到成品區。
+        # ------------------------------------------------------------
+        row.isAssembleStationShow = False
+        row.isWarehouseStationShow = True
+        row.isStockIn = True
+
+        material.move_by_automatic_or_manual_2 = (
+            True if mode == 'agv'
+            else False
+        )
+
+        # ------------------------------------------------------------
+        # 查詢同 material 是否仍有尚未完成的加工列
+        # ------------------------------------------------------------
+        remaining_row = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id ==
+                material_id
+            )
+            .filter(
+                P_Assemble.id != row.id
+            )
+            .filter(
+                P_Assemble.process_step_code > 0
+            )
+            .filter(
+                func.coalesce(
+                    P_Assemble.must_receive_end_qty,
+                    0
+                ) > 0
+            )
+            .filter(
+                func.coalesce(
+                    P_Assemble.completed_qty,
+                    0
+                ) == 0
+            )
+            .order_by(
+                P_Assemble.id.asc()
+            )
+            .first()
+        )
+
+        if remaining_row:
+            # ========================================================
+            # 部分完成，例如 120 -> 已完成 38，仍有 82
+            #
+            # 只有 38 送 Warehouse。
+            # 整張 material 仍然留在加工站。
+            # ========================================================
+            material.whichStation = 2
+            material.show1_ok = 2
+            material.show2_ok = 4
+            material.show3_ok = str(
+                remaining_row.process_step_code
+                or 0
+            )
+
+            material.isAssembleStation3TakeOk = False
+
+            # 剩餘列重新顯示於加工端
+            remaining_row.isAssembleStationShow = False
+            remaining_row.isWarehouseStationShow = False
+
+            remaining_row.input_disable = False
+            remaining_row.input_end_disable = False
+            remaining_row.input_abnormal_disable = False
+
+        else:
+            # ========================================================
+            # 全部加工量真的都完成了
+            # 才能把整張工單送到成品區
+            # ========================================================
+            material.whichStation = 3
+            material.show2_ok = 6
+            material.show3_ok = 11
+        #
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": "加工件已送到成品區，可在 Ware~.vue 顯示"
+        })
+
+    except Exception as e:
+        s.rollback()
+        traceback.print_exc()
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
+"""
+
+
+# 20260813版
+@updateTableP.route('/sendProcessToWarehouse', methods=['POST'])
+def send_process_to_warehouse():
+    print("sendProcessToWarehouse.")
+
+    data = request.get_json(silent=True) or {}
+
+    material_id = data.get('id')
+    assemble_id = data.get('assemble_id')
+    mode = data.get('mode', 'manual')
+
+    user_id = str(
+        data.get('user_id') or ''
+    ).strip()
+
+    try:
+        process_type = int(
+            data.get('process_type') or 0
+        )
+    except (TypeError, ValueError):
+        process_type = 0
+
+    if not material_id or not assemble_id:
+        return jsonify({
+            "status": False,
+            "message": "缺少 id 或 assemble_id"
+        }), 400
+
+    try:
+        material_id = int(material_id)
+        assemble_id = int(assemble_id)
+    except (TypeError, ValueError):
+        return jsonify({
+            "status": False,
+            "message": "id / assemble_id 格式錯誤"
+        }), 400
+
+    s = Session()
+
+    try:
+        # ============================================================
+        # 1. 鎖定 material
+        # ============================================================
+        material = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id == material_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        row = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.id == assemble_id
+            )
+            .filter(
+                P_Assemble.material_id == material_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not material or not row:
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "找不到 P_Material 或 P_Assemble"
+            }), 404
+
+        print(
+            "[sendProcessToWarehouse]",
+            {
+                "material_id": material_id,
+                "assemble_id": assemble_id,
+                "order_num": material.order_num,
+                "completed_qty":
+                    int(row.completed_qty or 0),
+                "total_completed_qty":
+                    int(row.total_completed_qty or 0),
+                "user_id": user_id,
+                "process_type": process_type,
+            }
+        )
+
+        # ============================================================
+        # 2. 本次只送出指定完成列
+        #
+        # 不可以把同 material 其他剩餘加工列一起改成 Warehouse。
+        # ============================================================
+        row.isAssembleStationShow = False
+        row.isWarehouseStationShow = True
+
+        # 注意：
+        # 這裡只是「送到成品區等待入庫」，
+        # 若你的 isStockIn 定義是真正完成入庫，
+        # 建議此處應為 False。
+        #
+        # 目前先延續你原系統習慣。
+        row.isStockIn = True
+
+        row.input_disable = True
+        row.input_end_disable = True
+        row.input_abnormal_disable = True
+
+        material.move_by_automatic_or_manual_2 = (
+            True
+            if mode == 'agv'
+            else False
+        )
+
+        # ============================================================
+        # 3. 找這次部分完成所建立的「剩餘列」
+        #
+        # 優先：
+        #   is_copied_from_id == 本次完成 row.id
+        #
+        # 例如：
+        #   id=68 完成 38
+        #   id=70 剩餘 82
+        #   id70.is_copied_from_id = 68
+        # ============================================================
+        remaining_row = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id ==
+                material_id
+            )
+            .filter(
+                P_Assemble.is_copied_from_id ==
+                row.id
+            )
+            .filter(
+                P_Assemble.process_step_code > 0
+            )
+            .filter(
+                func.coalesce(
+                    P_Assemble.must_receive_end_qty,
+                    0
+                ) > 0
+            )
+            .filter(
+                func.coalesce(
+                    P_Assemble.completed_qty,
+                    0
+                ) == 0
+            )
+            .order_by(
+                P_Assemble.id.desc()
+            )
+            .with_for_update()
+            .first()
+        )
+
+        # ------------------------------------------------------------
+        # 相容舊資料：
+        # 若 is_copied_from_id 沒有正確建立，
+        # 再找同 material 其他尚未完成列。
+        # ------------------------------------------------------------
+        if remaining_row is None:
+            remaining_row = (
+                s.query(P_Assemble)
+                .filter(
+                    P_Assemble.material_id ==
+                    material_id
+                )
+                .filter(
+                    P_Assemble.id != row.id
+                )
+                .filter(
+                    P_Assemble.process_step_code > 0
+                )
+                .filter(
+                    func.coalesce(
+                        P_Assemble.must_receive_end_qty,
+                        0
+                    ) > 0
+                )
+                .filter(
+                    func.coalesce(
+                        P_Assemble.completed_qty,
+                        0
+                    ) == 0
+                )
+                .order_by(
+                    P_Assemble.id.asc()
+                )
+                .with_for_update()
+                .first()
+            )
+
+        # ============================================================
+        # 4. 還有剩餘數量
+        #
+        # 例如：
+        #   原始 120
+        #   已完成 38
+        #   剩餘 82
+        #
+        # 結果：
+        #   38 -> Warehouse
+        #   82 -> PEnd 繼續加工
+        # ============================================================
+        if remaining_row:
+
+            completed_total = max(
+                int(
+                    row.total_completed_qty
+                    or 0
+                ),
+                int(
+                    row.completed_qty
+                    or 0
+                ),
+            )
+
+            print(
+                "[sendProcessToWarehouse] remaining row:",
+                {
+                    "remaining_id":
+                        remaining_row.id,
+                    "remain_qty":
+                        remaining_row.must_receive_end_qty,
+                    "completed_total":
+                        completed_total,
+                }
+            )
+
+            # --------------------------------------------------------
+            # Material 仍留在加工站
+            # --------------------------------------------------------
+            material.whichStation = 2
+
+            material.show1_ok = 2
+            material.show2_ok = 4
+
+            material.show3_ok = str(
+                remaining_row.process_step_code
+                or 0
+            )
+
+            material.isAssembleStation3TakeOk = False
+
+            material.isOpen = False
+            material.isOpenEmpId = ''
+
+            # 有新的 active process 時會再設 True
+            material.hasStarted = False
+            material.startStatus = False
+
+            # --------------------------------------------------------
+            # 剩餘列：
+            #
+            # 本次完成數量 = 0
+            # 累計已完成量 = 38
+            # --------------------------------------------------------
+            remaining_row.completed_qty = 0
+
+            remaining_row.total_completed_qty = max(
+                int(
+                    remaining_row.total_completed_qty
+                    or 0
+                ),
+                completed_total
+            )
+
+            remaining_row.total_ask_qty_end = max(
+                int(
+                    remaining_row.total_ask_qty_end
+                    or 0
+                ),
+                completed_total
+            )
+
+            # 剩餘列可繼續輸入
+            remaining_row.input_disable = False
+            remaining_row.input_end_disable = False
+            remaining_row.input_abnormal_disable = False
+
+            # active Process 顯示於 PEnd，
+            # 所以這裡不用設成待送出。
+            remaining_row.isAssembleStationShow = False
+            remaining_row.isWarehouseStationShow = False
+
+            remaining_row.isStockIn = False
+
+            # --------------------------------------------------------
+            # 5. 建立剩餘列的 active P_Process
+            #
+            # 讓 PEnd：
+            #   完成數量=0 enable
+            #   Timer 繼續計時
+            # --------------------------------------------------------
+            if (
+                user_id
+                and process_type > 0
+            ):
+                existing_active = (
+                    s.query(P_Process)
+                    .filter(
+                        P_Process.material_id ==
+                        material_id
+                    )
+                    .filter(
+                        P_Process.assemble_id ==
+                        remaining_row.id
+                    )
+                    .filter(
+                        P_Process.process_type ==
+                        process_type
+                    )
+                    .filter(
+                        P_Process.user_id ==
+                        user_id
+                    )
+                    .filter(
+                        P_Process.has_started.is_(
+                            True
+                        )
+                    )
+                    .filter(
+                        or_(
+                            P_Process.end_time.is_(
+                                None
+                            ),
+                            P_Process.end_time == ''
+                        )
+                    )
+                    .order_by(
+                        P_Process.id.desc()
+                    )
+                    .first()
+                )
+
+                if not existing_active:
+                    now_str = (
+                        datetime.now()
+                        .strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                    )
+
+                    new_process = P_Process(
+                        material_id=material_id,
+
+                        assemble_id=
+                            remaining_row.id,
+
+                        has_started=True,
+
+                        user_id=user_id,
+
+                        process_type=
+                            process_type,
+
+                        begin_time=
+                            now_str,
+
+                        end_time=None,
+
+                        period_time='',
+
+                        elapsedActive_time=0,
+
+                        str_elapsedActive_time=
+                            '00:00:00',
+
+                        is_pause=False,
+
+                        pause_started_at=None,
+
+                        process_work_time_qty=0,
+
+                        normal_work_time=0,
+                    )
+
+                    s.add(new_process)
+                    s.flush()
+
+                    print(
+                        "[sendProcessToWarehouse] "
+                        "new remaining active process:",
+                        {
+                            "process_id":
+                                new_process.id,
+                            "assemble_id":
+                                remaining_row.id,
+                            "user_id":
+                                user_id,
+                            "process_type":
+                                process_type,
+                        }
+                    )
+
+                # Material 有進行中的加工
+                material.hasStarted = True
+                material.startStatus = True
+
+            else:
+                print(
+                    "[sendProcessToWarehouse] "
+                    "WARNING: remaining row exists, "
+                    "but user_id/process_type missing:",
+                    {
+                        "user_id":
+                            user_id,
+                        "process_type":
+                            process_type,
+                    }
+                )
+
+            message = (
+                "本批已送到成品區，"
+                "剩餘加工數量已重新開放"
+            )
+
+        # ============================================================
+        # 6. 沒有剩餘數量
+        #
+        # 只有這種情況才能整張 Material 進成品區。
+        # ============================================================
+        else:
+            material.whichStation = 3
+
+            material.show1_ok = 3
+            material.show2_ok = 6
+            material.show3_ok = 11
+
+            material.isOpen = False
+            material.isOpenEmpId = ''
+            material.hasStarted = False
+            material.startStatus = False
+
+            message = (
+                "加工件已全部送到成品區，"
+                "可在 Warehouse 顯示"
+            )
+
+        # ============================================================
+        # 7. Commit
+        # ============================================================
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "message": message,
+
+            "material_id":
+                material_id,
+
+            "sent_assemble_id":
+                row.id,
+
+            "remaining_assemble_id":
+                (
+                    remaining_row.id
+                    if remaining_row
+                    else 0
+                ),
+
+            "has_remaining":
+                bool(remaining_row),
+
+            "completed_total":
+                int(
+                    row.total_completed_qty
+                    or row.completed_qty
+                    or 0
+                ),
+        }), 200
+
+    except Exception as e:
+        s.rollback()
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+        s.close()
 

@@ -2599,6 +2599,634 @@ def copy_new_assemble():
     'assemble_data': new_ids,
   })
 
+
+# 20260811版
+# ------------------------------------------------------------
+# 檢料完成但仍有缺料：
+#
+# 1. 將 receive=False 的 BOM 搬到新的 Material copy
+# 2. 原 Material 保留 receive=True 的 BOM
+# 3. copy 繼承原工單的應備數量
+# 4. 絕對不可把原 Assemble.must_receive_qty 清成 0
+# 5. copy 繼承 merge_enabled
+# 6. 防止同一來源重複建立缺料 copy
+# ------------------------------------------------------------
+@createTable.route("/copyMaterialAndBom", methods=["POST"])
+def copy_material_and_bom():
+
+    print("copyMaterialAndBom....")
+
+    request_data = (request.get_json(silent=True) or {})
+
+    print("request_data:", request_data)
+
+    # --------------------------------------------------------
+    # 1. 取得參數
+    # --------------------------------------------------------
+    try:
+        _copy_id = int(
+            request_data.get("copy_id")
+            or 0
+        )
+
+        # 前端目前有傳 delivery_qty
+        _delivery_qty = int(
+            request_data.get("delivery_qty")
+            or 0
+        )
+
+        _total_delivery_qty_raw = (
+            request_data.get(
+                "total_delivery_qty"
+            )
+        )
+
+        _allOk_qty_raw = (
+            request_data.get(
+                "allOk_qty"
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "success": False,
+            "material_data": {},
+            "message":
+                "copy_id / delivery_qty 格式錯誤",
+        }), 400
+
+    _show2_ok = int(request_data.get("show2_ok", 2) or 2)
+
+    _shortage_note = str(
+        request_data.get(
+            "shortage_note",
+            "",
+        )
+        or ""
+    )
+
+    _merge_enabled = _normalize_bool(
+        request_data.get(
+            "merge_enabled",
+            True,
+        ),
+        default=True,
+    )
+
+    if _copy_id <= 0:
+        return jsonify({
+            "success": False,
+            "material_data": {},
+            "message":
+                "copy_id 不可為 0",
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ----------------------------------------------------
+        # 2. 鎖定來源 Material
+        # ----------------------------------------------------
+        existing_material = (
+            s.query(Material)
+            .filter(
+                Material.id
+                == _copy_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not existing_material:
+            s.rollback()
+
+            return jsonify({
+                "success": False,
+                "material_data": {},
+                "message":
+                    f"找不到 Material "
+                    f"id={_copy_id}",
+            }), 404
+
+        # ----------------------------------------------------
+        # 3. 本工單真正的應備數量
+        #
+        # 前端目前 copyMaterialAndBom 沒有固定傳
+        # total_delivery_qty，所以：
+        #
+        # request 有傳 -> 優先使用
+        # request 沒傳 -> 使用來源 Material.total_delivery_qty
+        #
+        # 缺料 copy 是 BOM 拆分，
+        # 不是一般數量拆批，因此不能直接使用
+        # material_qty - delivery_qty。
+        # ----------------------------------------------------
+        if (
+            _total_delivery_qty_raw
+            not in (
+                None,
+                "",
+            )
+        ):
+            copy_required_qty = int(
+                _total_delivery_qty_raw
+            )
+        else:
+            copy_required_qty = int(
+                existing_material
+                .total_delivery_qty
+                or existing_material
+                .material_qty
+                or 0
+            )
+
+        copy_required_qty = max(
+            copy_required_qty,
+            0,
+        )
+
+        # ----------------------------------------------------
+        # 4. allOk_qty
+        # ----------------------------------------------------
+        if (
+            _allOk_qty_raw
+            not in (
+                None,
+                "",
+            )
+        ):
+            _allOk_qty = int(
+                _allOk_qty_raw
+            )
+        else:
+            _allOk_qty = None
+
+        # ----------------------------------------------------
+        # 5. 找出真正缺料的 BOM
+        # ----------------------------------------------------
+        missing_boms = (
+            s.query(Bom)
+            .filter(
+                Bom.material_id
+                == existing_material.id,
+                Bom.receive.is_(
+                    False
+                ),
+            )
+            .order_by(
+                Bom.seq_num.asc(),
+                Bom.id.asc(),
+            )
+            .all()
+        )
+
+        if not missing_boms:
+            s.rollback()
+
+            return jsonify({
+                "success": False,
+                "material_data": {},
+                "message": (
+                    "目前已無缺料 BOM，"
+                    "不建立新的 Material copy"
+                ),
+            }), 200
+
+        # ----------------------------------------------------
+        # 6. 防止重複建立 copy
+        # ----------------------------------------------------
+        existing_copy = (
+            s.query(Material)
+            .filter(
+                Material.is_copied_from_id
+                == existing_material.id
+            )
+            .order_by(
+                Material.id.asc()
+            )
+            .first()
+        )
+
+        if existing_copy:
+            s.rollback()
+
+            return jsonify({
+                "success": False,
+                "return_value": False,
+                "material_data":
+                    existing_copy.to_dict(),
+                "message": (
+                    f"來源 Material"
+                    f"({existing_material.id}) "
+                    f"已存在缺料 copy"
+                    f"({existing_copy.id})，"
+                    "不重複建立。"
+                ),
+            }), 200
+
+        # ----------------------------------------------------
+        # 7. 建立缺料 Material copy
+        #
+        # copy 仍留在備料區。
+        # 不要複製來源 Material 已經進站之後的流程狀態。
+        # ----------------------------------------------------
+        new_material = Material(
+
+            abnormal_cause_id=
+                existing_material
+                .abnormal_cause_id,
+
+            order_num=
+                existing_material
+                .order_num,
+
+            material_num=
+                existing_material
+                .material_num,
+
+            material_comment=
+                existing_material
+                .material_comment,
+
+            # 訂單原始數量保留
+            material_qty=
+                existing_material
+                .material_qty,
+
+            material_date=
+                existing_material
+                .material_date,
+
+            material_delivery_date=
+                existing_material
+                .material_delivery_date,
+
+            # ---------------------------------------------
+            # copy 是尚待後續補料，
+            # 所以本批實際送料量先為 0
+            # ---------------------------------------------
+            delivery_qty=0,
+
+            total_delivery_qty=
+                copy_required_qty,
+
+            assemble_qty=(
+                _allOk_qty
+                if _allOk_qty
+                is not None
+                else 0
+            ),
+
+            # ---------------------------------------------
+            # copy 留在備料區
+            # ---------------------------------------------
+            isTakeOk=False,
+            isShow=False,
+            isAssembleStationShow=False,
+
+            whichStation=1,
+
+            show1_ok=1,
+            show2_ok=_show2_ok,
+            show3_ok=0,
+
+            shortage_note=
+                _shortage_note,
+
+            # 缺料 copy
+            isLackMaterial=0,
+
+            # ---------------------------------------------
+            # 併單設定直接繼承
+            # 不必再靠前端補一次才正確
+            # ---------------------------------------------
+            #merge_enabled=
+            #    _merge_enabled,
+            # 20260812版
+            merge_enabled=_normalize_bool(
+                existing_material.merge_enabled,
+                default=True,
+            ),
+            # 20260812版 remove
+            #merge_enable=
+            #    bool(
+            #        existing_material
+            #        .merge_enabled
+            #    ),
+
+            move_by_automatic_or_manual=
+                existing_material
+                .move_by_automatic_or_manual,
+
+            move_by_automatic_or_manual_2=
+                existing_material
+                .move_by_automatic_or_manual_2,
+
+            move_by_process_type=
+                existing_material
+                .move_by_process_type,
+
+            process_steps=
+                existing_material
+                .process_steps,
+
+            process_step_enable=
+                existing_material
+                .process_step_enable,
+
+            isOpen=False,
+            isOpenEmpId="",
+            hasStarted=False,
+            startStatus=0,
+
+            update_time=
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+
+            # 關鍵：
+            # 記住來源 parent
+            is_copied_from_id=
+                existing_material.id,
+        )
+
+        s.add(
+            new_material
+        )
+
+        # 先取得 new material id
+        s.flush()
+
+        print(
+            "[copyMaterialAndBom]",
+            "new_id=",
+            new_material.id,
+            "source_id=",
+            existing_material.id,
+            "delivery_qty=",
+            _delivery_qty,
+            "copy_required_qty=",
+            copy_required_qty,
+        )
+
+        # ----------------------------------------------------
+        # 8. 將缺料 BOM 複製到新 material
+        # ----------------------------------------------------
+        missing_bom_ids = []
+
+        for bom in missing_boms:
+
+            new_bom = Bom(
+
+                material_id=
+                    new_material.id,
+
+                seq_num=
+                    bom.seq_num,
+
+                material_num=
+                    bom.material_num,
+
+                material_comment=
+                    bom.material_comment,
+
+                req_qty=
+                    bom.req_qty,
+
+                pick_qty=
+                    bom.pick_qty,
+
+                non_qty=
+                    bom.non_qty,
+
+                lack_qty=
+                    bom.lack_qty,
+
+                lack=
+                    bom.lack,
+
+                lack_bom_qty=
+                    bom.lack_bom_qty,
+
+                receive=
+                    bom.receive,
+
+                isPickOK=
+                    bom.isPickOK,
+
+                start_date=
+                    bom.start_date,
+            )
+
+            s.add(
+                new_bom
+            )
+
+            missing_bom_ids.append(
+                bom.id
+            )
+
+        # flush 新 BOM
+        s.flush()
+
+        # ----------------------------------------------------
+        # 9. 從 parent 刪掉已搬走的 receive=False BOM
+        #
+        # 用 ID 精確刪除，
+        # 不要再次用模糊條件刪除。
+        # ----------------------------------------------------
+        if missing_bom_ids:
+
+            (
+                s.query(Bom)
+                .filter(
+                    Bom.id.in_(
+                        missing_bom_ids
+                    )
+                )
+                .delete(
+                    synchronize_session=False
+                )
+            )
+
+        # ----------------------------------------------------
+        # 10. 複製 Assemble 到缺料 copy
+        #
+        # ★ 重要：
+        # copy 的 must_receive_qty 使用應備數量。
+        #
+        # ★ 更重要：
+        # 絕對不要在這裡修改原 asm.must_receive_qty。
+        #
+        # 舊程式：
+        #
+        #   asm.must_receive_qty = _delivery_qty
+        #
+        # 會造成原本 479/480 被清成 0。
+        # ----------------------------------------------------
+        source_assemble_rows = (
+            s.query(Assemble)
+            .filter(
+                Assemble.material_id
+                == existing_material.id
+            )
+            .order_by(
+                Assemble.id.asc()
+            )
+            .all()
+        )
+
+        for asm in source_assemble_rows:
+
+            new_asm = Assemble(
+
+                material_id=
+                    new_material.id,
+
+                material_num=
+                    asm.material_num,
+
+                material_comment=
+                    asm.material_comment,
+
+                seq_num=
+                    asm.seq_num,
+
+                work_num=
+                    asm.work_num,
+
+                process_step_code=
+                    asm.process_step_code,
+
+                # -----------------------------------------
+                # 缺料 copy 的應領量
+                # -----------------------------------------
+                must_receive_qty=
+                    copy_required_qty,
+
+                user_id="",
+
+                # copy 尚未送到 Begin
+                isAssembleStationShow=False,
+                isWarehouseStationShow=False,
+
+                whichStation=1,
+
+                show1_ok=1,
+                show2_ok=0,
+                show3_ok=0,
+
+                # copy 尚未排程
+                schedule_id=0,
+
+                release_batch_no=0,
+            )
+
+            s.add(
+                new_asm
+            )
+
+            # ------------------------------------------------
+            # ★★★ 不要再有下面這段 ★★★
+            #
+            # if asm.must_receive_qty is not None:
+            #     asm.must_receive_qty = _delivery_qty
+            #
+            # parent Assemble 的狀態完全不動。
+            # ------------------------------------------------
+
+        # ----------------------------------------------------
+        # 11. 最後提交
+        # ----------------------------------------------------
+        s.commit()
+
+        print(
+            "[copyMaterialAndBom] success:",
+            {
+                "source_material_id":
+                    existing_material.id,
+
+                "new_material_id":
+                    new_material.id,
+
+                "delivery_qty":
+                    _delivery_qty,
+
+                "copy_required_qty":
+                    copy_required_qty,
+
+                "missing_bom_count":
+                    len(
+                        missing_bom_ids
+                    ),
+
+                "assemble_count":
+                    len(
+                        source_assemble_rows
+                    ),
+            }
+        )
+
+        return jsonify({
+            "success": True,
+            "return_value": True,
+
+            "material_data":
+                new_material.to_dict(),
+
+            "source_material_id":
+                existing_material.id,
+
+            "new_material_id":
+                new_material.id,
+
+            "delivery_qty":
+                _delivery_qty,
+
+            "copy_required_qty":
+                copy_required_qty,
+
+            "missing_bom_count":
+                len(
+                    missing_bom_ids
+                ),
+
+            "message":
+                "缺料 Material copy 建立成功",
+        }), 200
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "copyMaterialAndBom Error:",
+            str(e),
+        )
+
+        logger.exception(
+            "copyMaterialAndBom failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "return_value": False,
+            "material_data": {},
+            "error":
+                "錯誤! 資料新增複製沒有成功...",
+            "detail":
+                str(e),
+        }), 500
+
+    finally:
+        s.close()
+
+
+"""
 # 20260810版
 # copy material data table when 檢料完成但缺料的情形
 @createTable.route("/copyMaterialAndBom", methods=['POST'])
@@ -2779,6 +3407,7 @@ def copy_material_and_bom():
     }), 500
   finally:
     s.close()
+"""
 
 
 """

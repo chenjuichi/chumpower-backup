@@ -3161,6 +3161,7 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       editedRecord.value.merge_enabled
     );
 
+    /*
     payload = {
       copy_id: editedRecord.value.id,
       delivery_qty: editedRecord.value.delivery_qty,
@@ -3170,6 +3171,37 @@ const updateItem = async () => {    //編輯 bom, material及process後端table�
       merge_enabled: sourceMergeEnabled,
     };
     await copyMaterialAndBom(payload);
+    */
+    // 20260811版
+    payload = {
+      // 原 Material ID
+      copy_id: editedRecord.value.id,
+
+      // 本次實際備料(送料)數量
+      delivery_qty: Number(editedRecord.value.delivery_qty || 0),
+
+      // 本批應備總數量
+      total_delivery_qty: Number(editedRecord.value.total_delivery_qty || 0),
+
+      // 若之後有用到可保留
+      allOk_qty: Number(editedRecord.value.allOk_qty || 0),
+
+      //lack_bom_qty: Number(
+      //    editedRecord.value.lack_bom_qty || 0
+      //),
+
+      show2_ok: 2,
+
+      shortage_note: '',
+
+      merge_enabled: Boolean(sourceMergeEnabled),
+    };
+
+    console.log("[copyMaterialAndBom] payload:", payload);
+
+    await copyMaterialAndBom(payload);
+    //
+
 
     const newMaterialId = Number(
       material_copy.value?.id || 0

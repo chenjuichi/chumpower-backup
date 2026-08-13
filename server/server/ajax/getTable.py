@@ -1,5 +1,5 @@
 import re
-#import random
+
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
 from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, UserDelegate, Setting, Session
@@ -24,6 +24,9 @@ from .helper import (
     parse_dt_maybe_aw2,
     parse_dt_maybe,
     fmt_hhmmss,
+    get_parallel_orders,
+    map_pt,
+    get_val
 )
 
 from zoneinfo import ZoneInfo
@@ -184,89 +187,6 @@ def is_delegate_active_now(delegate_rows, now_dt):
             return True
 
     return False
-
-
-def read_all_p_part_process_code_p():
-    #
-    # 從 p_part 資料表讀取所有製程資料，組出：
-    #
-    #     code_to_assembleStep = { '100-01': step_code, '100-02': step_code, ... }
-    #
-    # 規則：
-    #   - 使用 P_Part.part_code 當 key 的來源，例如 'B100-01'
-    #   - 若 part_code 以 'B' 開頭，就去掉 'B'，變成 '100-01' 當 dict 的 key
-    #   - value 直接使用 P_Part.process_step_code
-
-    session = Session()
-    code_to_assembleStep = {}
-
-    try:
-        parts = session.query(P_Part).order_by(P_Part.id).all()
-        print(f"read_all_p_part_process_code_p(): 從 p_part 讀到 {len(parts)} 筆資料")
-
-        for part in parts:
-            raw_code = (part.part_code or "").strip()
-            if not raw_code:
-                continue
-
-            # 去掉開頭 'B'，跟原本 Excel 版的行為一致
-            if raw_code.startswith("B"):
-                key = raw_code[1:]   # 'B100-01' -> '100-01'
-            else:
-                key = raw_code
-
-            step = part.process_step_code or 0
-            if not step:
-                # 若 process_step_code 為 0 或 None，就略過（必要時可以改成保留）
-                continue
-
-            # 若同一個 key 被多筆覆蓋，印出提示（最後一筆會生效）
-            if key in code_to_assembleStep and code_to_assembleStep[key] != step:
-                print(
-                    f"  ⚠️ key={key} 已有 step={code_to_assembleStep[key]}，"
-                    f"這筆 part_code={raw_code} 的 step={step} 會覆蓋前一筆"
-                )
-
-            code_to_assembleStep[key] = step
-
-    finally:
-        session.close()
-
-    print("read_all_p_part_process_code_p(), 從 p_part 組完，總筆數:", len(code_to_assembleStep))
-    return code_to_assembleStep
-
-
-def map_pt(row):
-    #
-    # 3 -> 21, 2 -> 22, 1 -> 23，其餘預設 23。
-    # 支援欄位名：process_step_code / process_step / step_code
-    # row 可為 dict 或 ORM 物件。
-
-    code = get_val(row, 'process_step_code')
-    if code is None:
-        code = get_val(row, 'process_step')
-    if code is None:
-        code = get_val(row, 'step_code')
-
-    try:
-        code = int(code) if code is not None else None
-    except Exception:
-        code = None
-
-    if code == 3:
-        return 21
-    if code == 2:
-        return 22
-    if code == 1:
-        return 23
-    return 23
-
-
-def get_val(row, key, default=None):
-    # 同時支援 dict 與 ORM 物件取值。
-    if isinstance(row, dict):
-        return row.get(key, default)
-    return getattr(row, key, default)
 
 
 TPE = ZoneInfo("Asia/Taipei")
@@ -834,7 +754,6 @@ def pause_all_my_active_processes():
             print("after set:", p.id, p.user_id, p.is_pause, p.pause_time, p.begin_time)
 
         s.commit()
-        #print("commit ok")
 
         for p in processes:
             s.refresh(p)
@@ -857,13 +776,9 @@ def reLogin():
 
   request_data = request.get_json()
   userID = request_data.get('empID', '')
-  #print("login, userID:", userID)
   password = request_data.get('password', '')
 
   current_ip = request.remote_addr
-  #print("current_ip:",current_ip)
-  #local_ip = request.json.get('local_ip', '0.0.0.0')
-  #print("前端傳來的 local IP:", local_ip)
 
   local_ip = request.json.get('local_ip')
   user_agent = request.json.get('user_agent')
@@ -872,7 +787,6 @@ def reLogin():
   print("登入來源 IP:", local_ip)
   print("瀏覽器裝置資訊:", user_agent)
   print("裝置識別碼:", device_id)
-
 
   s = Session()
   try:
@@ -894,48 +808,19 @@ def reLogin():
           #'user': {}
       })
 
-    #status = True
     forceLogoutRequired = False
 
     # ✅ 若已經登入且 IP 不同，禁止登入（或選擇強制登出）
-    #if user.isOnline and user.last_login_ip != current_ip:
-    #if user.isOnline and user.last_login_ip != local_ip:
     if user.isOnline and user.last_login_ip and user.last_login_ip.strip() and user.last_login_ip != local_ip:
-    #if user.isOnline:
-      #status = False
       forceLogoutRequired = True
-      #print(f"⚠️ 此帳號已在線上且 IP 不同: {user.last_login_ip} ≠ {local_ip}")
+
       print(f"⚠️ 此帳號已在線上")
-      #user_data = {
-      #  'empID': user.emp_id,
-      #  'name': user.emp_name,
-      #}
-
-      #return jsonify({
-      #    'status': False,
-      #    'message': f'此帳號已從其他位置登入（{user.last_login_ip}），請先登出。',
-      #    'user': user_data,
-      #    'forceLogoutRequired': True  # 前端可用來決定是否提示強制登出
-      #})
-
-    # 強迫登出（如果已上線）
-    #if user.isOnline:
-    #  user.isOnline = False
-    #  s.commit()
-
-    ## 驗證密碼
-    #if not check_password_hash(user.password, password):
-    #  return jsonify({
-    #      'status': False,
-    #      'message': '密碼錯誤!',
-    #      'user': {}
-    #  })
 
     # 登入：設定 isOnline = True
     user.isOnline = True
     user.last_login_ip = local_ip
     user.last_login_time = datetime.now()
-    #user.forceLogoutRequired = forceLogoutRequired
+
     s.commit()
 
     # 取得權限與設定資料
@@ -981,10 +866,8 @@ def login():
     _user_object = {}
     user = s.query(User).filter_by(emp_id=userID).first()
     if user and user.isRemoved:
-        #print("login user: ", user)
 
         if user.isOnline:
-          #print("step1...")
           s.close()
           return jsonify({
             'status': False,          # false: 資料錯誤
@@ -992,7 +875,6 @@ def login():
           })
 
         if not check_password_hash(user.password, password):
-          #print("step2...")
           s.close()
           return jsonify({
             'status': False,          # false: 資料錯誤
@@ -1020,14 +902,12 @@ def login():
           'setting_lastRoutingName': setting_item.lastRoutingName,
         }
     else:
-      #print("step3...")
       s.close()
       return jsonify({
         'status': False,                        # false: 資料錯誤
         'message': '錯誤! 找不到工號' + userID
       })
 
-    #print("step4...")
     s.close()
 
     return jsonify({
@@ -1043,12 +923,10 @@ def login2():
     request_data = request.get_json()
     userID = (request_data['empID'] or '')
     password = (request_data['password'] or '')
-    #("step1...", userID,password)
 
     s = Session()
     user = s.query(User).filter_by(emp_id=userID).first()
     if user and user.isRemoved:
-      #print("step2...")
       if not check_password_hash(user.password, password):
         s.close()
         print("密碼錯誤...")
@@ -1069,6 +947,7 @@ def login2():
     })
 
 
+"""
 @getTable.route("/getOrderPickedBoms", methods=["POST"])
 def get_order_picked_boms():
     data = request.get_json() or {}
@@ -1128,6 +1007,482 @@ def get_order_picked_boms():
         return jsonify(status=True, boms=list(merged.values()))
     finally:
         s.close()
+"""
+
+
+# 20260812版
+@getTable.route("/getOrderPickedBoms", methods=["POST"])
+def get_order_picked_boms():
+    print("getOrderPickedBoms...")
+
+    data = request.get_json(silent=True) or {}
+
+    order_num = str(
+        data.get("order_num") or ""
+    ).strip()
+
+    _id = data.get("id")
+
+    # ------------------------------------------------------------
+    # order_num / id 至少一個
+    # ------------------------------------------------------------
+    if (
+        not order_num
+        and _id in (None, "", 0, "0")
+    ):
+        return jsonify({
+            "status": False,
+            "boms": [],
+            "error":
+                "missing order_num or id",
+        }), 400
+
+    s = Session()
+
+    try:
+
+        mids = []
+        current_material = None
+        merge_enabled = False
+
+        # ========================================================
+        # case 1：
+        # 前端有直接傳 order_num
+        #
+        # 此模式代表要以訂單層級查詢。
+        # ========================================================
+        if order_num:
+
+            material_rows = (
+                s.query(Material)
+                .filter(
+                    Material.order_num
+                    == order_num
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .all()
+            )
+
+            if not material_rows:
+                return jsonify({
+                    "status": False,
+                    "boms": [],
+                })
+
+            mids = [
+                int(m.id)
+                for m in material_rows
+                if m.id
+            ]
+
+            # 只作為 debug / 回傳資訊
+            #merge_enabled = any(
+            #    _normalize_bool(
+            #        getattr(
+            #            m,
+            #            "merge_enabled",
+            #            True,
+            #        ),
+            #        default=True,
+            #    )
+            #    for m in material_rows
+            #)
+            merge_enabled = any(
+                bool(
+                    getattr(
+                        m,
+                        "merge_enabled",
+                        True,
+                    )
+                )
+                for m in material_rows
+            )
+
+        # ========================================================
+        # case 2：
+        # Begin 通常只傳 material.id
+        # ========================================================
+        else:
+
+            try:
+                mid = int(_id)
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                return jsonify({
+                    "status": False,
+                    "boms": [],
+                    "error":
+                        "id must be int",
+                }), 400
+
+            current_material = (
+                s.query(Material)
+                .filter(
+                    Material.id == mid
+                )
+                .one_or_none()
+            )
+
+            if not current_material:
+                return jsonify({
+                    "status": False,
+                    "boms": [],
+                })
+
+            order_num = str(
+                current_material.order_num
+                or ""
+            ).strip()
+
+            #merge_enabled = (
+            #    _normalize_bool(
+            #        getattr(
+            #            current_material,
+            #            "merge_enabled",
+            #            True,
+            #        ),
+            #        default=True,
+            #    )
+            #)
+            merge_enabled = bool(
+                getattr(
+                    current_material,
+                    "merge_enabled",
+                    True,
+                )
+            )
+
+            # ----------------------------------------------------
+            # ★ 併單
+            #
+            # 例如：
+            #
+            # 208 parent
+            #  └─209 child
+            #
+            # Begin 現在顯示 209，
+            # BOM 必須把 208 + 209 一起顯示。
+            # ----------------------------------------------------
+            if merge_enabled:
+
+                # -----------------------------------------------
+                # 先找到 root material
+                #
+                # 209.is_copied_from_id = 208
+                # → root_id = 208
+                #
+                # 如果本身就是 root：
+                # → root_id = 自己
+                # -----------------------------------------------
+                root_id = int(
+                    getattr(
+                        current_material,
+                        "is_copied_from_id",
+                        0,
+                    )
+                    or 0
+                )
+
+                if root_id <= 0:
+                    root_id = int(
+                        current_material.id
+                    )
+
+                # -----------------------------------------------
+                # 找 root
+                # -----------------------------------------------
+                root_material = (
+                    s.query(Material)
+                    .filter(
+                        Material.id
+                        == root_id
+                    )
+                    .one_or_none()
+                )
+
+                # 防止舊資料 parent->child->child
+                # 往上找真正 root
+                visited = set()
+
+                while (
+                    root_material
+                    and getattr(
+                        root_material,
+                        "is_copied_from_id",
+                        None,
+                    )
+                    and int(
+                        root_material
+                        .is_copied_from_id
+                        or 0
+                    ) > 0
+                    and int(
+                        root_material.id
+                    )
+                    not in visited
+                ):
+
+                    visited.add(
+                        int(
+                            root_material.id
+                        )
+                    )
+
+                    parent_id = int(
+                        root_material
+                        .is_copied_from_id
+                        or 0
+                    )
+
+                    parent = (
+                        s.query(Material)
+                        .filter(
+                            Material.id
+                            == parent_id
+                        )
+                        .one_or_none()
+                    )
+
+                    if not parent:
+                        break
+
+                    root_material = parent
+
+                if root_material:
+                    root_id = int(
+                        root_material.id
+                    )
+
+                # -----------------------------------------------
+                # 取 root + 所有 child
+                #
+                # 目前 121100020703：
+                #   root = 208
+                #   child = 209
+                #
+                # → mids=[208,209]
+                # -----------------------------------------------
+                family_rows = (
+                    s.query(Material)
+                    .filter(
+                        Material.order_num
+                        == order_num
+                    )
+                    .filter(
+                        or_(
+                            Material.id
+                            == root_id,
+
+                            Material
+                            .is_copied_from_id
+                            == root_id,
+                        )
+                    )
+                    .order_by(
+                        Material.id.asc()
+                    )
+                    .all()
+                )
+
+                mids = [
+                    int(m.id)
+                    for m in family_rows
+                    if m.id
+                ]
+
+                # 萬一舊資料 chain 比較深，
+                # 至少保證目前 material 一定在 mids。
+                if mid not in mids:
+                    mids.append(mid)
+
+            # ----------------------------------------------------
+            # ★ 不併單
+            #
+            # 只看目前 material。
+            # ----------------------------------------------------
+            else:
+
+                mids = [mid]
+
+        # ========================================================
+        # 防呆
+        # ========================================================
+        mids = sorted(
+            set(
+                int(x)
+                for x in mids
+                if int(x or 0) > 0
+            )
+        )
+
+        if not mids:
+            return jsonify({
+                "status": False,
+                "boms": [],
+            })
+
+        print("[getOrderPickedBoms]", {
+                "order_num": order_num,
+                "request_id": _id,
+                "merge_enabled": merge_enabled,
+                "material_ids": mids,
+        })
+
+        # ========================================================
+        # 只取已領料 BOM
+        # ========================================================
+        bom_rows = (
+            s.query(Bom)
+            .filter(
+                Bom.material_id.in_(
+                    mids
+                )
+            )
+            .filter(
+                Bom.receive.is_(True)
+            )
+            .all()
+        )
+
+        # ========================================================
+        # 合併 BOM
+        #
+        # 同 material_num + seq_num
+        # 視為同一筆。
+        # ========================================================
+        merged = {}
+
+        for bom in bom_rows:
+
+            key = (
+                str(
+                    bom.material_num
+                    or ""
+                ).strip(),
+
+                str(
+                    bom.seq_num
+                    or ""
+                ).strip(),
+            )
+
+            if key in merged:
+                continue
+
+            merged[key] = {
+                "id":
+                    bom.id,
+
+                "material_id":
+                    bom.material_id,
+
+                "order_num":
+                    order_num,
+
+                "seq_num":
+                    bom.seq_num,
+
+                "material_num":
+                    bom.material_num,
+
+                "mtl_comment":
+                    bom.material_comment,
+
+                "qty":
+                    bom.req_qty,
+
+                "receive":
+                    bom.receive,
+
+                "lack":
+                    bom.lack,
+
+                "isPickOK":
+                    bom.isPickOK,
+            }
+
+        # ========================================================
+        # seq_num 用數字排序
+        #
+        # 避免：
+        # 1,10,2,3...
+        # ========================================================
+        def seq_sort_key(row):
+
+            raw = str(
+                row.get("seq_num")
+                or ""
+            ).strip()
+
+            try:
+                return (
+                    0,
+                    int(raw),
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                return (
+                    1,
+                    raw,
+                )
+
+        result_boms = sorted(
+            merged.values(),
+            key=seq_sort_key,
+        )
+
+        print("[getOrderPickedBoms] result:", {
+                "material_ids": mids,
+                "bom_count": len(result_boms),
+                "seq": [
+                    x.get(
+                        "seq_num"
+                    )
+                    for x
+                    in result_boms
+                ],
+        })
+
+        return jsonify({
+            "status": True,
+            "order_num": order_num,
+
+            "merge_enabled":
+                bool(
+                    merge_enabled
+                ),
+
+            "material_ids": mids,
+
+            "boms": result_boms,
+        })
+
+    except Exception as e:
+
+        s.rollback()
+
+        print("getOrderPickedBoms ERROR:", repr(e))
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "boms": [],
+            "error":
+                str(e),
+        }), 500
+
+    finally:
+
+        s.close()
 
 
 @getTable.route("/getBoms", methods=['POST'])
@@ -1139,10 +1494,8 @@ def get_boms():
   _order_num = request_data.get('order_num')
   _id = request_data.get('id')
 
-  #print("_order_num:", _order_num)
   return_value = True
   s = Session()
-
 
   # 檢查傳入的參數，選擇查詢條件
   material_record = None
@@ -2157,10 +2510,7 @@ def start_process_begin():
     except Exception as e:
         s.rollback()
 
-        print(
-            "[dialog2StartProcessBegin] error:",
-            repr(e)
-        )
+        print("[dialog2StartProcessBegin] error:", repr(e))
 
         return jsonify({
             "success": False,
@@ -2677,7 +3027,6 @@ def update_process_mp():
 def toggle_process_mp():
     print("dialog2ToggleProcessBegin API....")
 
-    #
     #切換暫停/恢復：
     #  - is_paused=True  → 進入暫停狀態：只記下 pause_started_at（若當前不是暫停）
     #  - is_paused=False → 恢復：把 (now - pause_started_at) 累加到 pause_time，並清空 pause_started_at
@@ -2765,11 +3114,8 @@ def close_process_mp():
     assemble_id  = data.get("assemble_id")
 
     print("process_id:", process_id, "receive_qty:", receive_qty, "alarm_enable:", alarm_enable, "assemble_id:", assemble_id)
-    #print("alarm_enable data type:",alarm_enable, type(alarm_enable))
-    #print("isAssembleFirstAlarm data type:",isAssembleFirstAlarm, type(isAssembleFirstAlarm))
 
     myTest  = data.get("test")
-    #print("test, qty:", myTest, receive_qty)
 
     s = Session()
 
@@ -2779,7 +3125,6 @@ def close_process_mp():
       return jsonify(success=False, message="p process not found"), 404
 
     if (log.end_time is not None) and (log.process_work_time_qty !=0):
-      #print("@@close_process_begin step1..")
       return jsonify(
         success=True,
         message="already closed",
@@ -2793,8 +3138,6 @@ def close_process_mp():
 
     # 1) 若暫停中，先把最後一段暫停秒數補進 pause_time
     if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
-      #print("@@close_process_begin step2..")
-
       try:
         ps = log.pause_started_at
         if isinstance(ps, str):
@@ -2812,8 +3155,6 @@ def close_process_mp():
 
     # 2) 校正『有效計時秒數』：採單向遞增（避免寫回比現值還小）
     if elapsed_time is not None:
-      #print("@@close_process_begin step3..")
-
       try:
         last_secs = int(elapsed_time)
       except Exception:
@@ -2824,33 +3165,25 @@ def close_process_mp():
 
     # 3) 可選：更新 HH:MM:SS 文字欄（若模型有此欄位）
     try:
-      #print("@@close_process_begin step4..")
-
       log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
     except Exception:
       pass
 
     # 4) 關閉狀態
-    #print("@@close_process_begin step5..")
-
     log.is_pause = True
     log.has_started = False   # 20260727 add
     log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
-    #print("log.process_work_time_qty:", receive_qty)
     log.process_work_time_qty = receive_qty
 
     if alarm_enable:
-      #print("@@close_process_begin step5a..")
       log.normal_work_time = 1
       log.abnormal_cause_message=''
 
     if not alarm_enable and isAssembleFirstAlarm:
-      #print("@@close_process_begin step5b..")
       log.normal_work_time = 1
       log.abnormal_cause_message=''
 
     if not alarm_enable and not isAssembleFirstAlarm:
-      #print("@@close_process_begin step5c..")
       log.normal_work_time = 0
       log.abnormal_cause_message=alarm_message
 
@@ -2863,23 +3196,18 @@ def close_process_mp():
     must_qty       = None
 
     try:
-      #print("@@close_process_begin step6..")
       rq = int(receive_qty or 0)
     except Exception:
       rq = 0
 
-    #print("@@close_process_begin step7..")
     if assemble_id is not None and rq > 0:
       try:
         asm = s.query(P_Assemble).get(int(assemble_id))
-        #print("@@close_process_begin step8..")
       except Exception:
         asm = None
 
-      #print("@@close_process_begin step9..")
       if asm:
-        #print("@@close_process_begin step10..")
-        # 依你的實際欄位名調整：
+        # 依實際欄位名調整：
         # 假設：must_receive_end_qty = 應完成數量、total_ask_qty_end = 已完成總數
         must_qty = int(asm.must_receive_end_qty or 0)
         cur_total = int(asm.total_ask_qty_end or 0)
@@ -2891,7 +3219,6 @@ def close_process_mp():
 
         s.add(asm)
 
-    #print("@@close_process_begin step11..")
     s.add(log)
 
     s.commit()
@@ -3875,11 +4202,8 @@ def close_process_process():
     assemble_id  = data.get("assemble_id")
 
     print("process_id:", process_id, "receive_qty:", receive_qty, "alarm_enable:", alarm_enable, "assemble_id:", assemble_id)
-    #print("alarm_enable data type:",alarm_enable, type(alarm_enable))
-    #print("isAssembleFirstAlarm data type:",isAssembleFirstAlarm, type(isAssembleFirstAlarm))
 
     myTest  = data.get("test")
-    #print("test, qty:", myTest, receive_qty)
 
     s = Session()
 
@@ -3889,7 +4213,6 @@ def close_process_process():
       return jsonify(success=False, message="p process not found"), 404
 
     if (log.end_time is not None) and (log.process_work_time_qty !=0):
-      #print("$$close_process_begin step1..")
       return jsonify(
         success=True,
         message="already closed",
@@ -3903,7 +4226,6 @@ def close_process_process():
 
     # 1) 若暫停中，先把最後一段暫停秒數補進 pause_time
     if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
-      #print("$$close_process_begin step2..")
 
       try:
         ps = log.pause_started_at
@@ -3922,7 +4244,6 @@ def close_process_process():
 
     # 2) 校正『有效計時秒數』：採單向遞增（避免寫回比現值還小）
     if elapsed_time is not None:
-      #print("$$close_process_begin step3..")
 
       try:
         last_secs = int(elapsed_time)
@@ -3934,31 +4255,23 @@ def close_process_process():
 
     # 3) 可選：更新 HH:MM:SS 文字欄（若模型有此欄位）
     try:
-      #print("$$close_process_begin step4..")
-
       log.str_elapsedActive_time = seconds_to_hms_str(int(log.elapsedActive_time or 0))
     except Exception:
       pass
 
     # 4) 關閉狀態
-    #print("$$close_process_begin step5..")
-
     log.is_pause = True
     log.has_started = False   # 20260727 add
     log.end_time = now_aw.strftime("%Y-%m-%d %H:%M:%S")
-    #print("log.process_work_time_qty:", receive_qty)
     log.process_work_time_qty = receive_qty
 
     if alarm_enable:
-      #print("$$close_process_begin step5a..")
       log.normal_work_time = 1
       log.abnormal_cause_message=''
     if not alarm_enable and isAssembleFirstAlarm:
-      #print("$$close_process_begin step5b..")
       log.normal_work_time = 1
       log.abnormal_cause_message=''
     if not alarm_enable and not isAssembleFirstAlarm:
-      #print("@@close_process_begin step5c..")
       log.normal_work_time = 0
       log.abnormal_cause_message=alarm_message
 
@@ -3971,22 +4284,17 @@ def close_process_process():
     must_qty       = None
 
     try:
-      #print("$$close_process_begin step6..")
       rq = int(receive_qty or 0)
     except Exception:
       rq = 0
 
-    #print("$$close_process_begin step7..")
     if assemble_id is not None and rq > 0:
       try:
         asm = s.query(P_Assemble).get(int(assemble_id))
-        #print("$$close_process_begin step8..")
       except Exception:
         asm = None
 
-      #print("$$close_process_begin step9..")
       if asm:
-        #print("$$close_process_begin step10..")
         # 依你的實際欄位名調整：
         # 假設：must_receive_end_qty = 應完成數量、total_ask_qty_end = 已完成總數
         '''
@@ -4044,9 +4352,7 @@ def close_process_process():
         )
 
         s.add(asm)
-        #
 
-    #print("$$close_process_begin step11..")
     s.add(log)
 
     s.commit()
@@ -4112,7 +4418,6 @@ def get_users_deps_processes():
 
         start_str = f"{start_day.strftime('%Y-%m-%d')} 00:00:00"
         end_str   = f"{end_day.strftime('%Y-%m-%d')} 23:59:59"
-        #print(f"計算區間: select={select_days}, {start_str} ~ {end_str}")
 
         s = Session()
 
@@ -4131,8 +4436,6 @@ def get_users_deps_processes():
               continue
 
           emp_id = user['emp_id']
-
-          #print("user['id'], today_dt:", user['id'], today_dt)
 
           delegate_rows = (
               s.query(UserDelegate)
@@ -4153,25 +4456,6 @@ def get_users_deps_processes():
 
           # 🔥 判斷是否在代理期間
           delegate_active = is_delegate_active_now(delegate_rows, now_dt)
-          """
-          delegate_active = (
-              s.query(UserDelegate)
-              .filter(
-                  UserDelegate.user_id == user['id'],
-                  UserDelegate.start_date <= today_dt,
-                  or_(
-                      UserDelegate.end_date == None,
-                      UserDelegate.end_date >= today_dt
-                  )
-              )
-              .first()
-              is not None
-          )
-          """
-
-          # 🔥 覆蓋 online 狀態
-          #is_online = False if delegate_active else user['isOnline']
-          #print("emp_id:", emp_id, is_online)
 
           # 0: 請假, 1: 在線, 2: 離線
           if delegate_active:
@@ -4197,14 +4481,12 @@ def get_users_deps_processes():
           ) or 0
 
           total_elapsed = int(total_elapsed)
-          #print("total_elapsed:", total_elapsed)
           # 轉成 hh:mm:ss 文字
           h = total_elapsed // 3600
           m = (total_elapsed % 3600) // 60
           sec = total_elapsed % 60
           total_str = f"{h:02d}:{m:02d}:{sec:02d}"
 
-          #online_value = 0 if str(emp_id).strip() in delegate_user_ids else random.randint(1, 2)   # 或你原本非代理時要給的值
           dep_name = user['dep_name'] or ''
           dep_name = dep_name.split('-', 1)[1] if '-' in dep_name else dep_name
 
@@ -5463,9 +5745,7 @@ def get_processes_by_order_num():
         )
         #
 
-        print(
-            "[Information][merged stockin]",
-            {
+        print("[Information][merged stockin]", {
                 "order_num":
                     order_num,
 
@@ -5654,6 +5934,24 @@ def get_processes_by_order_num():
                         0,
                     )
                 )
+
+                # 20260812版 add
+                # ----------------------------------------------------
+                # 同步工單分析（目前只分析備料）
+                # ----------------------------------------------------
+                parallel_info = {
+                    "is_parallel": False,
+                    "parallel_order_count": 0,
+                    "parallel_total_orders": 1,
+                    "parallel_orders": [],
+                }
+
+                if record_process_type == 1:
+                    parallel_info = get_parallel_orders(
+                        s,
+                        record
+                    )
+                #
 
                 # 20260810版 add
                 # ====================================================
@@ -6537,6 +6835,20 @@ def get_processes_by_order_num():
 
                     "create_at":
                         record.create_at,
+
+                    # 20260813版 add
+                    "is_parallel":
+                        parallel_info["is_parallel"],
+
+                    "parallel_order_count":
+                        parallel_info["parallel_order_count"],
+
+                    "parallel_total_orders":
+                        parallel_info["parallel_total_orders"],
+
+                    "parallel_orders":
+                        parallel_info["parallel_orders"],
+                    #
                 }
 
                 batch_processes.append(
@@ -9272,8 +9584,7 @@ def get_materials_and_assembles_by_user():
         # 1) 一次把 Material + Assemble + Process 載進來
         # ------------------------------------------------------------
 
-        _objects = (
-            s.query(Material)
+        _objects = (s.query(Material)
             .filter(Material.isShow == 1)
             .options(
                 load_only(
@@ -9357,8 +9668,7 @@ def get_materials_and_assembles_by_user():
             if str(m.order_num or '').strip()
         }
 
-        order_batch_materials = (
-            s.query(Material)
+        order_batch_materials = (s.query(Material)
             .filter(
                 Material.order_num.in_(
                     list(order_nums)
@@ -9379,9 +9689,7 @@ def get_materials_and_assembles_by_user():
         materials_by_order = {}
 
         for m in order_batch_materials:
-            order_num = str(
-                m.order_num or ''
-            ).strip()
+            order_num = str(m.order_num or '').strip()
 
             if not order_num:
                 continue
@@ -9444,9 +9752,7 @@ def get_materials_and_assembles_by_user():
         # ------------------------------------------------------------
         order_batch_status_map = {}
 
-        for order_num, batch_materials in (
-            materials_by_order.items()
-        ):
+        for order_num, batch_materials in (materials_by_order.items()):
             material_ids = [
                 int(m.id)
                 for m in batch_materials
@@ -9507,16 +9813,19 @@ def get_materials_and_assembles_by_user():
             waiting_send_material_ids = set()
 
             if batch_material_ids:
-                waiting_rows = (
-                    s.query(
-                        Assemble.material_id
-                    )
+                waiting_rows = (s.query(Assemble.material_id)
                     .filter(
                         Assemble.material_id.in_(
                             batch_material_ids
                         ),
 
-                        Assemble.work_num == 'B110',
+                        #Assemble.work_num == 'B110',
+                        # 20260811 modify
+                        # B109-only 與一般 B110 都可能是正式待送出列
+                        Assemble.work_num.in_([
+                            'B109',
+                            'B110'
+                        ]),
 
                         Assemble.process_step_code == 0,
 
@@ -9552,13 +9861,9 @@ def get_materials_and_assembles_by_user():
             ]
             #
 
-            total_count = len(
-                material_ids
-            )
+            total_count = len(material_ids)
 
-            end_finished_count = len(
-                end_finished_ids
-            )
+            end_finished_count = len(end_finished_ids)
 
             all_batches_end_finished = (
                 total_count > 0
@@ -9588,10 +9893,7 @@ def get_materials_and_assembles_by_user():
                     end_finished_count,
             }
 
-        print(
-            '[End][order_batch_status_map]',
-            order_batch_status_map
-        )
+        print('[End][order_batch_status_map]', order_batch_status_map)
         #
 
         # ------------------------------------------------------------
@@ -9969,17 +10271,17 @@ def get_materials_and_assembles_by_user():
                     material_record.order_num,
                 )
 
-                # 20260810版 add
+                # 20260811 修正
                 # ------------------------------------------------------------
-                # 2.5 同訂單是否還有其他批次停留在 Assem
+                # 2.5 同訂單是否還有其他「缺料分批」尚未完成
+                #
+                # 注意：
+                # 一般訂單不可受 all_batches_end_finished 限制。
+                # 只有缺料分批訂單，才需要等所有批次 End 完成。
                 # ------------------------------------------------------------
-                #has_pending_assem = order_has_pending_assem_material(
-                #    s,
-                #    material_record.order_num,
-                #    material_record.id,
-                #)
                 has_pending_assem = (
-                    not all_batches_end_finished
+                    is_lack_batch_order
+                    and not all_batches_end_finished
                 )
                 #
 
@@ -10245,6 +10547,17 @@ def get_materials_and_assembles_by_user():
                     'assemble_process': '' if (num > 2 and not step_enable) else temp_assemble_process_str,
                     'assemble_process_num': num,
                     'assemble_id': assemble_record.id,
+
+                    # 原始訂單編號（API 使用), 20260811 add
+                    'order_num': material_record.order_num,
+
+                    # 畫面顯示用, 20260811 add
+                    'display_order_num': (
+                        f"{material_record.order_num} 缺料"
+                        if is_lack_batch_order
+                        else material_record.order_num
+                    ),
+
                     'total_ask_qty_end': assemble_record.total_ask_qty_end,
                     'process_step_code': assemble_record.process_step_code,
 
@@ -10507,15 +10820,13 @@ def get_agv():
   print("getAGV....")
 
   request_data = request.get_json()
-  #_id = request_data['id']
   _id = request_data.get('agv_id')
-  #print("request_data", request_data, _id)
+
   s = Session()
 
   myAgv = s.query(Agv).filter(Agv.id == _id).first()
-  #print("myAgv", myAgv, myAgv.station)
+
   _object = {
-    #'id': myAgv.id,
     'status': myAgv.status,
     'station': myAgv.station
   }
@@ -10537,12 +10848,12 @@ def active_count_map():
 
     # ---- 解析 groups（新格式），或回退到舊格式 ----
     groups = data.get("groups")
-    #print("step0")
+
     if not groups:
         ids = data.get("ids", [])
         pt = int(data.get("process_type") or 21)
         groups = {str(pt): ids}
-    #print("step1")
+
     # 正規化：鍵轉字串、值轉 set[int]
     norm_groups = {}
     for k, v in groups.items():
@@ -10556,11 +10867,11 @@ def active_count_map():
             norm_groups[pt] = {int(x) for x in v if x is not None}
         except Exception:
             return jsonify(success=False, message="ids must be numbers"), 400
-    #print("step2")
+
     # 若所有組都空 → 回空
     if not any(norm_groups.values()):
         return jsonify(success=True, counts={pt:{} for pt in norm_groups.keys()})
-    #print("step3")
+
     # 集合總 ids 與 types
     all_ids = sorted({i for s in norm_groups.values() for i in s})
     types = sorted({int(pt) for pt, s in norm_groups.items() if s})
@@ -10574,7 +10885,6 @@ def active_count_map():
         s.query(group_col, Process.process_type, func.count(Process.id))
          .filter(group_col.in_(all_ids))
          .filter(Process.process_type.in_(types))
-         #.filter(Process.end_time.is_(None))
          .filter(
               or_(
                   Process.end_time.is_(None),
@@ -10584,13 +10894,11 @@ def active_count_map():
          .group_by(group_col, Process.process_type)
          .all()
     )
-    #print("step4", rows)
+
     # 轉為 { "21": { "101": 2, ... }, "22": {...}, ... }
     result = {str(pt): {} for pt in norm_groups.keys()}
     for id_, pt, cnt in rows:
         result[str(int(pt))][str(int(id_))] = int(cnt)
-
-    #print("result:", result)
 
     return jsonify({
       'status':True,
@@ -10738,8 +11046,7 @@ def get_today_unfinished_processes():
         start_dt = datetime.combine(today, time.min)
         end_dt = datetime.combine(today, time.max)
 
-        results = (
-            s.query(Process)
+        results = (s.query(Process)
             .filter(
                 or_(
                     Process.user_id == user_id,
@@ -10795,9 +11102,7 @@ def check_delete_batch_permission():
 
     data = request.get_json(silent=True) or {}
 
-    emp_id = str(
-        data.get('emp_id') or ''
-    ).strip()
+    emp_id = str(data.get('emp_id') or '').strip()
 
     if not emp_id:
         return jsonify({
@@ -10829,8 +11134,7 @@ def check_delete_batch_permission():
 
     try:
         # 只查目前登入的這一位使用者
-        user = (
-            s.query(User)
+        user = (s.query(User)
             .filter(User.emp_id == emp_id)
             .one_or_none()
         )
@@ -10863,10 +11167,7 @@ def check_delete_batch_permission():
         }), 200
 
     except Exception as e:
-        print(
-            "checkDeleteBatchPermission ERROR:",
-            repr(e)
-        )
+        print("checkDeleteBatchPermission ERROR:", repr(e))
 
         return jsonify({
             "success": False,

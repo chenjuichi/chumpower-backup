@@ -15,7 +15,10 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from datetime import datetime as dt, time
 
-from .helper import parse_dt_maybe_aw, fmt_hhmmss, pick_user_list
+from .helper import (
+  parse_dt_maybe_aw,
+  fmt_hhmmss,
+)
 
 from zoneinfo import ZoneInfo
 
@@ -330,7 +333,7 @@ def need_more_p_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
 # ------------------------------------------------------------------
 
 
-# 20260805版
+# 20260813版
 @getTableP.route("/getMaterialsAndAssemblesByUserP", methods=['POST'])
 def get_materials_and_assembles_by_user_p():
     print("getMaterialsAndAssemblesByUserP....")
@@ -407,6 +410,7 @@ def get_materials_and_assembles_by_user_p():
                 'process_step_code': int(p.process_step_code or 0)
             }
 
+        '''
         materials = (
             s.query(P_Material)
             .filter(P_Material.move_by_process_type == 4)
@@ -419,6 +423,38 @@ def get_materials_and_assembles_by_user_p():
 
             .all()
         )
+        '''
+        #
+        materials = (
+            s.query(P_Material)
+            .filter(
+                P_Material.move_by_process_type == 4
+            )
+            .filter(
+                P_Material.isShow.is_(True)
+            )
+            .filter(
+                P_Material.isTakeOk.is_(True)
+            )
+
+            # ------------------------------------------------------------
+            # PEnd 不可只依 material.show1_ok / show2_ok 過濾
+            #
+            # 原因：
+            # 部分完成後，例如 120 完成 38，
+            # material 可能已因搬運流程變成：
+            #
+            #   show1_ok = 3
+            #   show2_ok = 6
+            #   show3_ok = 11
+            #
+            # 但 p_assemble 的 38 件仍然是合法的「待送出」資料，
+            # 必須讓後面的 finished_process_rows 判斷。
+            # ------------------------------------------------------------
+
+            .all()
+        )
+        #
 
         material_ids_all = [m.id for m in materials]
 
@@ -790,10 +826,170 @@ def get_materials_and_assembles_by_user_p():
                     to_int(assemble_record.show2_ok, 0) == 5
                 )
 
+                # 20260813版
+                # ------------------------------------------------------------
+                # PEnd「應完成總數量」顯示規則
+                #
+                # 情況 A：
+                # 第一批完成，例如 120 -> 完成 38
+                #
+                #   完成列是原始列：
+                #       is_copied_from_id = NULL
+                #
+                #   待送出時顯示原始總量：
+                #       120
+                #
+                #
+                # 情況 B：
+                # 第二批以後，例如：
+                #
+                #   原始 120
+                #   第一批完成 38
+                #   第二批完成 20
+                #   累計完成 58
+                #   尚餘 62
+                #
+                #   此時待送出列本身是 copy row，
+                #   且它已經有下一個剩餘 child row。
+                #
+                #   PEnd 應顯示 child.must_receive_end_qty = 62
+                # ------------------------------------------------------------
+
+                next_remaining_row = None
+
+                if is_waiting_send:
+                    next_remaining_row = (
+                        s.query(P_Assemble)
+                        .filter(
+                            P_Assemble.material_id ==
+                            material_record.id
+                        )
+                        .filter(
+                            P_Assemble.is_copied_from_id ==
+                            assemble_record.id
+                        )
+                        .filter(
+                            P_Assemble.process_step_code > 0
+                        )
+                        .filter(
+                            func.coalesce(
+                                P_Assemble.completed_qty,
+                                0
+                            ) == 0
+                        )
+                        .filter(
+                            func.coalesce(
+                                P_Assemble.must_receive_end_qty,
+                                0
+                            ) > 0
+                        )
+                        .order_by(
+                            P_Assemble.id.desc()
+                        )
+                        .first()
+                    )
+
+
+                if is_waiting_send:
+
+                    # 第一批完成：
+                    # root row，仍顯示原始工單總量 120
+                    if not assemble_record.is_copied_from_id:
+
+                        display_must_receive_end_qty = (
+                            to_int(
+                                material_record.material_qty,
+                                0
+                            )
+                        )
+
+                    # 第二批以後：
+                    # 若已經產生下一個剩餘 row，
+                    # 顯示真正剩餘數量，例如 62
+                    elif next_remaining_row:
+
+                        display_must_receive_end_qty = (
+                            to_int(
+                                next_remaining_row
+                                .must_receive_end_qty,
+                                0
+                            )
+                        )
+
+                    else:
+                        # 沒有下一筆代表已經沒有剩餘
+                        display_must_receive_end_qty = (
+                            to_int(
+                                assemble_record
+                                .must_receive_end_qty,
+                                0
+                            )
+                        )
+
+                else:
+                    # 正在加工中的 row
+                    display_must_receive_end_qty = (
+                        to_int(
+                            assemble_record
+                            .must_receive_end_qty,
+                            0
+                        )
+                    )
+                #
+
                 end_report_done = bool(is_waiting_send)
 
                 user_is_show_last_time = _end_time is not None
                 user_last_time = getattr(display_log, "str_elapsedActive_time", "") if user_is_show_last_time else ""
+                '''
+                # 20260813版 add
+                # ------------------------------------------------------------
+                # PEnd 顯示 / 計算用應完成數量
+                #
+                # 1. 原始加工列：
+                #    應完成總量 = material.material_qty
+                #    例如 120
+                #
+                # 2. 部分完成後建立的剩餘列：
+                #    應完成總量 = 該剩餘列 must_receive_end_qty
+                #    例如 82
+                #
+                # 3. 已完成待送出列：
+                #    顯示原始工單總量，例如 120
+                # ------------------------------------------------------------
+                is_difference_row = (
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'is_copied_from_id',
+                            0
+                        ),
+                        0
+                    ) > 0
+                    and
+                    to_int(
+                        assemble_record.total_completed_qty,
+                        0
+                    ) > 0
+                )
+
+                display_must_receive_end_qty = (
+                    to_int(
+                        material_record.material_qty,
+                        0
+                    )
+                    if (
+                        is_waiting_send
+                        or not is_difference_row
+                    )
+                    else
+                    to_int(
+                        assemble_record.must_receive_end_qty,
+                        0
+                    )
+                )
+                '''
+                #
 
                 index += 1
 
@@ -810,13 +1006,36 @@ def get_materials_and_assembles_by_user_p():
                     'comment': cleaned_comment,
 
                     'assemble_id': assemble_record.id,
-                    'ask_qty': assemble_record.ask_qty,
+                    #'ask_qty': assemble_record.ask_qty,
+                    #
+                    'ask_qty': max(
+                        to_int(
+                            assemble_record.ask_qty,
+                            0
+                        ),
+                        to_int(
+                            assemble_record.total_ask_qty,
+                            0
+                        ),
+                        to_int(
+                            material_record.material_qty,
+                            0
+                        ),
+                    ),
+                    #
                     'assemble_work': show_comment,
                     'assemble_process': '' if (temp_show2_ok > 2 and not step_enable) else temp_assemble_process_str,
                     'assemble_process_num': temp_show2_ok,
                     'total_ask_qty_end': assemble_record.total_ask_qty_end,
                     'process_step_code': assemble_record.process_step_code,
                     'must_receive_end_qty': assemble_record.must_receive_end_qty,
+                    # 20260813版 add
+                    'must_receive_end_qty':
+                        assemble_record.must_receive_end_qty,
+
+                    'display_must_receive_end_qty':
+                        display_must_receive_end_qty,
+                    #
                     #'receive_qty': assemble_record.completed_qty,
                     #'abnormal_qty': assemble_record.abnormal_qty,
                     #'total_completed_qty': f"({assemble_record.total_completed_qty})",
@@ -904,8 +1123,39 @@ def get_materials_and_assembles_by_user_p():
                     'last_time': user_last_time,
                     'assemble_count': len(material_record._assemble),
 
-                    'isStockIn': '' if assemble_record.isStockIn else ' [不入庫]',
-                    'isStockInDone': bool(assemble_record.isStockIn),
+                    #'isStockIn': '' if assemble_record.isStockIn else ' [不入庫]',
+                    #'isStockInDone': bool(assemble_record.isStockIn),
+                    # 20260813版
+                    # ------------------------------------------------------------
+                    # [不入庫] 只適用於真正已完成、且明確不入庫的完成列。
+                    #
+                    # 尚在加工中的剩餘列：
+                    #   process_step_code > 0
+                    #   isStockIn = False
+                    #
+                    # 這是正常狀態，不可顯示 [不入庫]。
+                    # ------------------------------------------------------------
+                    'isStockIn':
+                        (
+                            ' [不入庫]'
+                            if (
+                                to_int(
+                                    assemble_record.process_step_code,
+                                    0
+                                ) == 0
+                                and
+                                not bool(
+                                    assemble_record.isStockIn
+                                )
+                            )
+                            else ''
+                        ),
+
+                    'isStockInDone':
+                        bool(
+                            assemble_record.isStockIn
+                        ),
+                    #
 
                     'is_copied_from_id': assemble_record.is_copied_from_id,
                     'create_at': assemble_record.create_at,
@@ -936,6 +1186,7 @@ def get_materials_and_assembles_by_user_p():
             row_user_id = str(
                 row.get("process_user_id") or "").strip()
 
+            '''
             is_waiting_send = (
                 to_int(row.get("process_step_code"), 0) == 0
                 and
@@ -945,6 +1196,27 @@ def get_materials_and_assembles_by_user_p():
                 and
                 to_int(row.get("assemble_process_num"), 0) == 5
             )
+            '''
+            # 20260813版
+            is_waiting_send = (
+                to_int(
+                    row.get("process_step_code"),
+                    0
+                ) == 0
+                and
+                to_bool01(
+                    row.get("isAssembleStationShow")
+                )
+                and
+                not to_bool01(
+                    row.get("isWarehouseStationShow")
+                )
+                and
+                bool(
+                    row.get("end_report_done")
+                )
+            )
+            #
 
             # 待送出資料讓所有登入 PEnd 的員工看到
             if is_waiting_send:
@@ -1000,6 +1272,7 @@ def get_materials_and_assembles_by_user_p():
         s.close()
 
 
+# 20260813版
 @getTableP.route("/getProcessesByOrderNumP", methods=['POST'])
 def get_processes_by_order_num_p():
     print("getProcessesByOrderNumP....")
@@ -1239,14 +1512,69 @@ def get_processes_by_order_num_p():
             abnormal_qty = aq if aq > 0 else ''
 
             # 入庫：只在 31 顯示（你要顯示 0 還是空白？通常 0 也顯示沒意義）
+            #if record.process_type == 31:
+            #    cq = int(getattr(assm, "completed_qty", 0) or 0)
+            #    completed_qty = cq if cq != 0 else ''   # 若你想 0 也顯示就改成：completed_qty = cq
+
+            # 20260813版
+            # ------------------------------------------------------------
+            # 入庫數量：
+            #
+            # process_type=31 時，
+            # 必須使用 P_Process.process_work_time_qty。
+            #
+            # 不可使用 assm.completed_qty，
+            # 因為一次勾選多批入庫時：
+            #
+            #   assemble 68 = 38
+            #   assemble 70 = 50
+            #   assemble 71 = 32
+            #
+            # 但同一次入庫已合併成：
+            #
+            #   P_Process(type=31)
+            #   process_work_time_qty = 120
+            #
+            # 若再取 assm.completed_qty，
+            # 就只會顯示最後綁定 assemble 的 32。
+            # ------------------------------------------------------------
             if record.process_type == 31:
-                cq = int(getattr(assm, "completed_qty", 0) or 0)
-                completed_qty = cq if cq != 0 else ''   # 若你想 0 也顯示就改成：completed_qty = cq
+
+                cq = int(
+                    getattr(
+                        record,
+                        "process_work_time_qty",
+                        0
+                    )
+                    or 0
+                )
+
+                completed_qty = (
+                    cq
+                    if cq > 0
+                    else ''
+                )
+            #
 
         _object = {
             'seq_num': seq_num,
             'id': material.id,
             'order_num': material.order_num,
+
+            # 20260813版 add
+            # --------------------------------------------------------
+            # PInformation 排序用
+            # --------------------------------------------------------
+            'process_id':
+                int(record.id or 0),
+
+            'assemble_id':
+                int(record.assemble_id or 0),
+
+            'process_type_code':
+                int(record.process_type or 0),
+            #
+
             'process_work_time_qty': (
                 record.process_work_time_qty
                 if record.process_type not in {19, 29, 2, 3, 5, 6}
@@ -1274,29 +1602,109 @@ def get_processes_by_order_num_p():
 
             'create_at': record.create_at,
         }
+
         _results.append(_object)
 
     s.close()
 
     # 依 create_at 排序
-    _results = sorted(_results, key=lambda x: x['create_at'])
-    '''
-    # ✅ 追加：同一張加工工單(material_id)的報廢/入庫總數
-    def _to_int(v, default=0):
-        try:
-            if v is None:
-                return default
-            return int(v)
-        except Exception:
-            return default
+    #_results = sorted(_results, key=lambda x: x['create_at'])
+    #
+    #_results = sorted(_results, key=lambda x: x['create_at'])
+    # 20260813版
+    # ============================================================
+    # PInformation 詳情排序
+    #
+    # 目的：
+    #
+    # 同一個 assemble_id 的加工與送出搬運必須排在一起：
+    #
+    #   加工
+    #   → 堆高機(加工區->成品區)
+    #
+    # 再進下一個 assemble_id。
+    # ============================================================
 
-    scrap_qty_total = sum(_to_int(getattr(a, "abnormal_qty", 0), 0) for a in assemble_records if getattr(a, "material_id", None) == material.id)
-    stockin_qty_total = sum(_to_int(getattr(a, "completed_qty", 0), 0) for a in assemble_records if getattr(a, "material_id", None) == material.id)
-    '''
+    def process_sort_key(row):
 
-    #s.close()
+        process_type = int(
+            row.get(
+                'process_type_code',
+                0
+            ) or 0
+        )
 
-    _results = sorted(_results, key=lambda x: x['create_at'])
+        assemble_id = int(
+            row.get(
+                'assemble_id',
+                0
+            ) or 0
+        )
+
+        process_id = int(
+            row.get(
+                'process_id',
+                0
+            ) or 0
+        )
+
+        create_at = row.get(
+            'create_at'
+        )
+
+        # --------------------------------------------------------
+        # assemble_id > 0：
+        # 分批加工相關 Process。
+        #
+        # 同一 assemble：
+        #   加工先
+        #   type=6 搬運後
+        # --------------------------------------------------------
+        if assemble_id > 0:
+
+            if process_type == 6:
+                sub_order = 90
+
+            elif process_type == 31:
+                sub_order = 100
+
+            else:
+                # 一般加工製程先排
+                sub_order = 10
+
+            return (
+                1,
+                assemble_id,
+                sub_order,
+                process_id,
+            )
+
+        # --------------------------------------------------------
+        # assemble_id=0：
+        # 例如領料、領料區->加工區等前置流程。
+        # 保持時間排序。
+        # --------------------------------------------------------
+        return (
+            0,
+            create_at or datetime.min,
+            process_id,
+            0,
+        )
+
+
+    _results.sort(
+        key=process_sort_key
+    )
+
+
+    # 重新編號
+    for idx, row in enumerate(
+        _results,
+        start=1
+    ):
+        row['seq_num'] = idx
+    #
+
     return jsonify({
       'processes': _results,
     })

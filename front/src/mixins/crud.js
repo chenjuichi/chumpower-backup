@@ -702,6 +702,7 @@ export const apiOperation = (operation, path, payload) => {
             temp_boms.value = [...res.data.boms];
             currentBoms.value = res.data.boms;
             list_table_is_ok.value = true;
+            return res.data;
           }
 
           if (path == '/getAGV') {

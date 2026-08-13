@@ -310,9 +310,19 @@
         </template>
 
         <!-- 自訂 '應完成數量'欄位 -->
+      <!--
         <template v-slot:item.must_receive_end_qty="{ item }">
           {{ item.must_receive_end_qty }}
         </template>
+      -->
+<!--20260813版-->
+<template v-slot:item.must_receive_end_qty="{ item }">
+  {{
+    item.display_must_receive_end_qty
+      ?? item.must_receive_end_qty
+  }}
+</template>
+
 
         <!-- 自訂 '完成數量' 輸入欄位 -->
         <template v-slot:item.receive_qty="{ item }">
@@ -1028,6 +1038,23 @@ onMounted(async () => {
     socket.value.on('station3_trans_end', async (data) => {
       console.log("收到 station3_trans_ready訊息...", data);
 
+      // 20260813版 add
+      // =========================================================
+      // 沒有真的執行堆高機送料，就完全忽略這個事件。
+      // 必須放在 station3_trans_over 之前。
+      // =========================================================
+      if (!isCallForklift.value) {
+        console.warn(
+          "[station3_trans_end] " +
+          "目前沒有執行堆高機送出，忽略事件"
+        )
+
+        return
+      }
+
+      // 確認是本頁真正發起的送料後，
+      // 才回覆 Socket
+      //
       socket.value.emit('station3_trans_over');
       console.log('送出 station3_trans_over 訊息...');
 
@@ -1035,12 +1062,49 @@ onMounted(async () => {
       forklift2EndTime.value = new Date();
       console.log('forklift end time:', forklift2EndTime.value);
 
+      /*
       // 取乾淨且去重的 index 陣列
       const selectedIdx = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
       if (selectedIdx.length === 0) {
         console.warn('沒有選取任何項目');
         return;
       }
+      */
+      // 20260813版
+      // =========================================================
+      // 只有使用者真的按下「堆高機送出」後，
+      // 才允許 station3_trans_end 改 Warehouse 狀態。
+      //
+      // 避免 localStorage 中殘留 selectedItems，
+      // 在一般「加工結束」後被誤送到 Warehouse。
+      // =========================================================
+      //if (!isCallForklift.value) {
+      //  console.warn(
+      //    "[station3_trans_end] " +
+      //    "目前沒有執行堆高機送出，忽略事件"
+      //  )
+      //
+      //  return
+      //}
+
+      const selectedIdx =
+        Array.isArray(selectedItems.value)
+          ? [
+              ...new Set(
+                selectedItems.value
+              )
+            ]
+          : []
+
+      if (selectedIdx.length === 0) {
+        console.warn(
+          "[station3_trans_end] " +
+          "沒有有效的待送出工單"
+        )
+
+        return
+      }
+      //
 
       // === 步驟1：狀態欄位更新（成品站 / 等待入庫 / 關閉組裝站顯示 / 手動搬運標記 等）===
       for (const idx of selectedIdx) {
@@ -1089,11 +1153,26 @@ onMounted(async () => {
           });
 
           //
+          //await sendProcessToWarehouse({
+          //  id: current_material_id,
+          //  assemble_id: current_assemble_id,
+          //  mode: 'manual'
+          //});
+          // 20260813版
           await sendProcessToWarehouse({
             id: current_material_id,
             assemble_id: current_assemble_id,
-            mode: 'manual'
-          });
+            mode: 'manual',
+
+            user_id:
+              rec.process_user_id
+              || rec.user_id
+              || currentUser.value?.empID
+              || '',
+
+            process_type:
+              Number(rec.process_type || 0),
+          })
           //
 
           // must_allOk_qty 用收料數（轉數值）
@@ -1144,6 +1223,8 @@ onMounted(async () => {
             user_id: currentUser.value?.empID ?? '',
             order_num: rec.order_num,
             id: rec.id,
+            // 每次送出都要綁這一批 assemble
+            assemble_id: Number(rec.assemble_id || 0),
             process_type: 6,         // 在成品區（堆高機）
             normal_work_time: true,
           });
@@ -1927,7 +2008,15 @@ const checkReceiveQty = (item) => {
   //item.receive_qty = Number(item.receive_qty || 0);
   const total = Number(item.receive_qty) || 0;            //完成數量
 
-  const temp = Number(item.must_receive_end_qty)          //應完成總數量
+  //const temp = Number(item.must_receive_end_qty)          //應完成總數量
+  // 20260813版
+  const temp = Number(
+    item.display_must_receive_end_qty
+    ?? item.must_receive_end_qty
+    ?? 0
+  )
+  //
+
   //const completed = Number(item.total_completed_qty_num)  //已完成總數量
   //const diff = Number(item.abnormal_qty)                  //廢料數量
   const tmp = temp
@@ -2357,24 +2446,26 @@ const callForklift = async () => {
       const mid = Number(rec.id || 0)
       const current_assemble_id = Number(rec.assemble_id || 0)
 
-      await updateMaterialRecord({
-        id: mid,
-        show1_ok: 3,    // 成品站
-        show2_ok: 6,    // 等待入庫作業
-        show3_ok: 3,    // 等待組裝中
-        //whichStation: 3 // 目標途程: 成品站
-      });
-
-      await updateAssmbleDataByMaterialID({
-        material_id: mid,
-        delivery_qty: 0,
-        record_name1: 'show1_ok',
-        record_data1: 3,
-        record_name2: 'show2_ok',
-        record_data2: 10,
-        record_name3: 'show3_ok',
-        record_data3: 3               // 等待組裝中
-      });
+      // 20260813 remove
+      //await updateMaterialRecord({
+      //  id: mid,
+      //  show1_ok: 3,    // 成品站
+      //  show2_ok: 6,    // 等待入庫作業
+      //  show3_ok: 3,    // 等待組裝中
+      //  //whichStation: 3 // 目標途程: 成品站
+      //});
+      //
+      //await updateAssmbleDataByMaterialID({
+      //  material_id: mid,
+      //  delivery_qty: 0,
+      //  record_name1: 'show1_ok',
+      //  record_data1: 3,
+      //  record_name2: 'show2_ok',
+      //  record_data2: 10,
+      //  record_name3: 'show3_ok',
+      //  record_data3: 3               // 等待組裝中
+      //});
+      //
 
       // 堆高機搬運標記（第二段）
       await updateMaterial({
@@ -2393,10 +2484,30 @@ const callForklift = async () => {
       //  record_data: false
       //});
       //
+      //await sendProcessToWarehouse({
+      //  id: mid,
+      //  assemble_id: current_assemble_id,
+      //  mode: 'manual'
+      //})
+      //20260813版
       await sendProcessToWarehouse({
         id: mid,
-        assemble_id: current_assemble_id,
-        mode: 'manual'
+
+        assemble_id:
+          current_assemble_id,
+
+        mode: 'manual',
+
+        user_id:
+          rec.process_user_id
+          || rec.user_id
+          || currentUser.value?.empID
+          || '',
+
+        process_type:
+          Number(
+            rec.process_type || 0
+          ),
       })
       //
 
@@ -2406,6 +2517,7 @@ const callForklift = async () => {
         record_name: 'must_allOk_qty',
         record_data: Number(rec.receive_qty) || 0
       });
+
     } //end for_loop_a
 
     console.log('agv_end 處理步驟2...');
@@ -2420,6 +2532,7 @@ const callForklift = async () => {
         user_id: selectedEmployee.value,
         //id: rec.id,
         id: Number(rec.id || 0),
+        assemble_id: Number(rec.assemble_id || 0),
         process_type: 6 // 在成品區（堆高機）
       });
       console.log('步驟2-1...');
@@ -2880,9 +2993,27 @@ const onClickEnd = async (item) => {
     return
   }
 
+  /*
   const mustReceiveQty = Number(
     item.must_receive_end_qty || 0
   )
+  */
+  // 20260813版
+  // ------------------------------------------------------
+  // 應完成總數量：
+  // 優先使用後端提供的顯示/原始總量。
+  //
+  // 例如：
+  // 原始 120，但舊 assemble.must_receive_end_qty=116，
+  // 畫面已修正顯示 120。
+  // 部分完成差額必須用 120 計算，不能再用舊 116。
+  // ------------------------------------------------------
+  const mustReceiveQty = Number(
+    item.display_must_receive_end_qty
+    ?? item.must_receive_end_qty
+    ?? 0
+  )
+  //
 
   const abnormalQty = Number(
     item.abnormal_qty || 0
@@ -2917,10 +3048,7 @@ const onClickEnd = async (item) => {
       item
     )
 
-    showSnackbar(
-      "製程資料不完整，請重新整理後再試!",
-      "red accent-2"
-    )
+    showSnackbar("製程資料不完整，請重新整理後再試!", "red accent-2")
 
     return
   }
@@ -3075,6 +3203,7 @@ const onClickEnd = async (item) => {
     }
 
     // 部分完成時，保留剩餘數量
+    /*
     if (difference > 0) {
       await copyAssembleForDifference({
         copy_id:
@@ -3090,6 +3219,50 @@ const onClickEnd = async (item) => {
           completedQty,
       })
     }
+    */
+    // 20260813版
+    let remainingAssembleId = 0
+
+    if (difference > 0) {
+      const copyResp =
+        await copyAssembleForDifference({
+          copy_id: assembleId,
+
+          pre_must_receive_qty:
+            completedQty,
+
+          must_receive_qty:
+            difference,
+
+          d1:
+            completedQty,
+        })
+
+      const copyData =
+        copyResp?.data ?? copyResp
+
+      const newIds =
+        Array.isArray(
+          copyData?.assemble_data
+        )
+          ? copyData.assemble_data
+          : []
+
+      remainingAssembleId =
+        Number(
+          newIds[0] || 0
+        )
+
+      console.log(
+        '[partial end]',
+        {
+          completedQty,
+          difference,
+          remainingAssembleId,
+        }
+      )
+    }
+    //
 
     // ======================================================
     // 5. 更新 Material / Assemble 狀態
@@ -3271,12 +3444,16 @@ const onClickEnd = async (item) => {
     // ======================================================
     await reloadEndRowsAndRestoreTimers()
 
-    //showSnackbar(
-    //  allStepsCompleted
-    //    ? "加工完成，已轉為待送出!"
-    //    : "本工序已完成!",
-    //  "green"
-    //)
+    // 20260813版 add
+    // 完工後清除舊的送出勾選。
+    // 避免 selectedItems/localStorage 殘留，
+    // 被 station3_trans_end 誤認成待搬運工單。
+    selectedItems.value = []
+
+    localStorage.removeItem(
+      'selectedItems'
+    )
+    //
 
     showSnackbar(allStepsCompleted
         ? "加工完成，已轉為待送出!"

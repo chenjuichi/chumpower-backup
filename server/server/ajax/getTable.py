@@ -5218,6 +5218,7 @@ def get_processes_by_order_num():
 """
 
 
+# 20260814版
 # 20260731 material_id 分群版
 @getTable.route("/getProcessesByOrderNum", methods=["POST"])
 def get_processes_by_order_num():
@@ -6701,9 +6702,108 @@ def get_processes_by_order_num():
                 # 不可以因為是 B109 / schedule_id=1，
                 # 就直接改成整張訂單數量。
                 # ----------------------------------------------------
+                '''
                 display_process_qty = record_report_qty
 
                 # 異常返工同樣顯示實際報工量
+                if is_rework_process:
+                    display_process_qty = record_report_qty
+                '''
+                # 20260814版
+                # ----------------------------------------------------
+                # Information 顯示數量
+                # ----------------------------------------------------
+                display_process_qty = record_report_qty
+
+                # ----------------------------------------------------
+                # 備料 process_type=1
+                #
+                # 舊資料有部分 process_work_time_qty 沒有寫入，
+                # 即使備料已完成仍為 0。
+                #
+                # 若備料 Process 已經有 end_time，
+                # 且 process_work_time_qty <= 0，
+                # Information 改以該 material 的實際批次數量顯示。
+                # ----------------------------------------------------
+                '''
+                if (
+                    record_process_type == 1
+                    and display_process_qty <= 0
+                    and not is_empty_process_time(
+                        getattr(
+                            record,
+                            "end_time",
+                            None,
+                        )
+                    )
+                ):
+                '''
+                # 20260814版
+                # ----------------------------------------------------
+                # 備料 process_type=1
+                #
+                # 舊資料有部分 process_work_time_qty 沒有寫入，
+                # 即使備料已完成仍為 0。
+                #
+                # 只有：
+                #   1. 備料 process_type = 1
+                #   2. process_work_time_qty <= 0
+                #   3. material 已完成備料
+                #   4. Process 已經結束
+                #
+                # 才使用 material 數量補顯示。
+                # ----------------------------------------------------
+                if (
+                    record_process_type == 1
+                    and display_process_qty <= 0
+
+                    # 必須確認 material 已完成備料
+                    and bool(
+                        getattr(
+                            material,
+                            "isTakeOk",
+                            False,
+                        )
+                    )
+
+                    # 備料 Process 必須已經結束
+                    and not is_empty_process_time(
+                        getattr(
+                            record,
+                            "end_time",
+                            None,
+                        )
+                    )
+                ):
+                #
+
+                    display_process_qty = safe_int(
+                        getattr(
+                            material,
+                            "total_delivery_qty",
+                            0,
+                        )
+                    )
+
+                    if display_process_qty <= 0:
+                        display_process_qty = safe_int(
+                            getattr(
+                                material,
+                                "delivery_qty",
+                                0,
+                            )
+                        )
+
+                    if display_process_qty <= 0:
+                        display_process_qty = safe_int(
+                            getattr(
+                                material,
+                                "material_qty",
+                                0,
+                            )
+                        )
+
+                # 異常返工仍顯示實際報工量
                 if is_rework_process:
                     display_process_qty = record_report_qty
                 #

@@ -278,6 +278,10 @@ class P_Product(BASE):
     process_id = Column(Integer)                                  #process table id
     line_difference = Column(Integer, default=1)             # 0:組裝線, 1:加工線
 
+    # 20260816版 add
+    # 真正執行成品入庫的人員
+    user_id = Column(String(50), nullable=True)
+
     delivery_qty = Column(Integer, default=0)
     assemble_qty = Column(Integer, default=0)
     allOk_qty = Column(Integer, default=0)

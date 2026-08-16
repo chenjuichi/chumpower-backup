@@ -2019,6 +2019,10 @@ def create_product_p():
                 line_difference=
                     line_diff,
 
+                # 20260816版 add
+                # 真正執行入庫的人員
+                user_id=user_id,
+
                 delivery_qty=
                     delivery_qty,
 

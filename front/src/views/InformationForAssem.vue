@@ -1053,6 +1053,108 @@
   [{{ process_item.schedule_name }}]
 </span>
 
+<!--20260814版 add-->
+<!-- 同步工單提示，目前只顯示備料 -->
+<!--
+<div
+  v-if="shouldShowParallelWarning(process_item)"
+  class="parallel-process-warning"
+>
+  ⚠ 同時處理
+  {{ process_item.parallel_total_orders }}
+  張工單
+</div>
+-->
+<!--
+    同步工單提示
+    目前只顯示備料 process_type_code = 1
+    hover / click [查看] 都可顯示工單
+-->
+<div
+  v-if="shouldShowParallelWarning(process_item)"
+  class="parallel-process-warning"
+>
+  <span>
+    ⚠ 同時處理
+    {{ process_item.parallel_total_orders }}
+    張工單
+  </span>
+
+  <v-menu
+    open-on-hover
+    :close-on-content-click="false"
+    location="bottom start"
+    :offset="6"
+  >
+    <template #activator="{ props }">
+      <span
+        v-bind="props"
+        class="parallel-process-view"
+        @click.stop
+      >
+        [查看]
+      </span>
+    </template>
+
+    <v-card
+      min-width="260"
+      max-width="360"
+      class="pa-3"
+    >
+      <div class="parallel-process-menu-title">
+        <div>同時處理:</div>
+
+        <div
+          v-if="process_item.begin_time"
+          class="parallel-process-menu-time"
+        >
+          (在
+          {{ formatParallelTime(process_item.begin_time) }}
+          左右)
+        </div>
+      </div>
+    <!--
+      <div
+        v-if="
+          Array.isArray(process_item.parallel_orders)
+          && process_item.parallel_orders.length > 0
+        "
+      >
+        <div
+          v-for="orderNum in process_item.parallel_orders"
+          :key="orderNum"
+          class="parallel-process-order"
+        >
+          {{ orderNum }}
+        </div>
+      </div>
+    -->
+<div
+  v-if="
+    Array.isArray(process_item.parallel_orders)
+    && process_item.parallel_orders.length > 0
+  "
+  class="parallel-process-order-list"
+>
+  <div
+    v-for="orderNum in process_item.parallel_orders"
+    :key="orderNum"
+    class="parallel-process-order"
+  >
+    {{ orderNum }}
+  </div>
+</div>
+
+      <div
+        v-else
+        class="parallel-process-empty"
+      >
+        無其它同步工單
+      </div>
+    </v-card>
+  </v-menu>
+</div>
+
           </td>
 
           <td
@@ -1465,6 +1567,28 @@ const startMouseY = ref(0)
 
 const startDialogX = ref(0)
 const startDialogY = ref(0)
+
+// ==工時顯示修正 20260814版
+// ============================================================
+// Information 同步工單提示
+//
+// 目前只啟用：
+//   1 = 備料
+//
+// 未來若要開放：
+//   21 = 組裝
+//   22 = 檢驗
+//   23 = 雷射
+//
+// 只要加入 Set 即可，不需要修改 template。
+// ============================================================
+const parallelWarningProcessTypes = new Set([
+  1,        // 備料
+  // 21,    // 組裝
+  // 22,    // 檢驗
+  // 23,    // 雷射
+])
+// ==
 
 //=== watch ===
 setupGetBomsWatcher();
@@ -2897,7 +3021,46 @@ const isTransportProcess = (item) => {
   )
 }
 
+// 20260814版
+const shouldShowParallelWarning = (processItem) => {
+  if (!processItem) return false
 
+  const processTypeCode = Number(
+    processItem.process_type_code || 0
+  )
+
+  // 此製程目前是否允許顯示同步提示
+  if (!parallelWarningProcessTypes.has(processTypeCode)) {
+    return false
+  }
+
+  // 後端判定沒有同步
+  if (!processItem.is_parallel) {
+    return false
+  }
+
+  // 至少要有 2 張工單才算同步
+  const totalOrders = Number(
+    processItem.parallel_total_orders || 0
+  )
+
+  return totalOrders > 1
+}
+
+// 20260814版
+// ============================================================
+// 同步工單：顯示目前 Process 開始時間
+// 例如：2026-08-14 08:35
+// ============================================================
+const formatParallelTime = (value) => {
+  if (!value) return ''
+
+  const d = dayjs(value)
+
+  if (!d.isValid()) return ''
+
+  return d.format('YYYY-MM-DD HH:mm')
+}
 
 </script>
 
@@ -3411,6 +3574,65 @@ const isTransportProcess = (item) => {
   font-size: 12px;
   font-weight: 600;
   color: #37474f;
+}
+
+// 20260814版
+.parallel-process-warning {
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  font-size: 12px;
+  font-weight: 700;
+  color: #e65100;
+  line-height: 1.4;
+}
+
+.parallel-process-view {
+  color: #1565c0;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.parallel-process-view:hover {
+  color: #0d47a1;
+}
+
+.parallel-process-empty {
+  font-size: 12px;
+  color: #777;
+}
+
+.parallel-process-menu-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.parallel-process-menu-time {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #777;
+}
+
+// 同步訂單清單
+.parallel-process-order-list {
+  height: 150px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.parallel-process-order {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #1565c0;
+  font-weight: 600;
+  padding-left: 8px;
 }
 
 </style>

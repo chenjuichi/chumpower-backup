@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
 from database.tables import User, Process, Session
 
-from database.p_tables import P_Material, P_Assemble, P_Process, P_Part
+from database.p_tables import P_Material, P_Assemble, P_Process, P_Part, P_Product
 
 from sqlalchemy import and_, or_, not_, func, tuple_, literal, false, cast, case, Integer
 from sqlalchemy.orm.exc import MultipleResultsFound
@@ -1272,6 +1272,7 @@ def get_materials_and_assembles_by_user_p():
         s.close()
 
 
+"""
 # 20260813版
 @getTableP.route("/getProcessesByOrderNumP", methods=['POST'])
 def get_processes_by_order_num_p():
@@ -1708,6 +1709,2133 @@ def get_processes_by_order_num_p():
     return jsonify({
       'processes': _results,
     })
+"""
+
+
+# 20260815版
+@getTableP.route(
+    "/getProcessesByOrderNumP",
+    methods=["POST"]
+)
+def get_processes_by_order_num_p():
+
+    print("getProcessesByOrderNumP....")
+
+    request_data = (
+        request.get_json(silent=True)
+        or {}
+    )
+
+    order_num = str(
+        request_data.get("order_num")
+        or ""
+    ).strip()
+
+    if not order_num:
+        return jsonify({
+            "success": False,
+            "message": "order_num is required",
+            "processes": [],
+        }), 400
+
+    # ============================================================
+    # 加工線特殊 Process Type
+    #
+    # 注意：
+    #
+    #   1 = 領料
+    #   5 = 堆高機 領料區 -> 加工區
+    #   6 = 堆高機 加工區 -> 成品區
+    #
+    # 其它：
+    #
+    #   100 / 99 / 98 / ... / 31 / ...
+    #
+    # 都可能是 P_Part.process_step_code。
+    #
+    # 特別注意：
+    #
+    #   process_type = 31
+    #
+    # 在加工線是：
+    #
+    #   B107-02
+    #   主軸配件-分爪片
+    #
+    # 不是成品入庫。
+    #
+    # 真正入庫資料來源：
+    #
+    #   P_Product
+    # ============================================================
+
+    SPECIAL_PROCESS_TYPES = {
+        1,
+        5,
+        6,
+    }
+
+    SPECIAL_PROCESS_NAMES = {
+        1: "領料",
+        5: "堆高機運行(領料區->加工區)",
+        6: "堆高機運行(加工區->成品區)",
+    }
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 共用小工具
+        # ========================================================
+
+        def to_int(
+            value,
+            default=0
+        ):
+            try:
+                if value is None:
+                    return default
+
+                if isinstance(
+                    value,
+                    bool
+                ):
+                    return int(value)
+
+                value = str(
+                    value
+                ).strip()
+
+                if value == "":
+                    return default
+
+                return int(
+                    float(value)
+                )
+
+            except Exception:
+                return default
+
+        def safe_str(
+            value,
+            default=""
+        ):
+            try:
+                if value is None:
+                    return default
+
+                return str(value)
+
+            except Exception:
+                return default
+
+        # ========================================================
+        # employee 顯示名稱
+        #
+        # P_Process.user_id 有兩種資料：
+        #
+        #   01004005
+        #
+        # 或：
+        #
+        #   01004005 陳世玟
+        #
+        # ========================================================
+
+        user_name_cache = {}
+
+        def get_process_user_display(
+            raw_user_id
+        ):
+
+            raw = safe_str(
+                raw_user_id
+            ).strip()
+
+            if not raw:
+                return ""
+
+            # DB 已經帶姓名：
+            #
+            # 01004005 陳世玟
+            if " " in raw:
+
+                parts = raw.split(
+                    None,
+                    1
+                )
+
+                emp_id = (
+                    parts[0]
+                    if parts
+                    else ""
+                )
+
+                emp_name = (
+                    parts[1]
+                    if len(parts) > 1
+                    else ""
+                )
+
+                #return (
+                #    f"{emp_id.lstrip('0')}"
+                #    f" {emp_name}"
+                #).strip()
+                # 20260815版
+                return (
+                    f"{emp_id.lstrip('0')}"
+                    f"{emp_name}"
+                ).strip()
+                #
+
+            emp_id = raw
+
+            if emp_id in user_name_cache:
+
+                emp_name = (
+                    user_name_cache[
+                        emp_id
+                    ]
+                )
+
+            else:
+
+                user = (
+                    s.query(User)
+                    .filter_by(
+                        emp_id=emp_id
+                    )
+                    .first()
+                )
+
+                emp_name = (
+                    safe_str(
+                        getattr(
+                            user,
+                            "emp_name",
+                            ""
+                        )
+                    ).strip()
+                    if user
+                    else ""
+                )
+
+                user_name_cache[
+                    emp_id
+                ] = emp_name
+
+            return (
+                f"{emp_id.lstrip('0')}"
+                f"{emp_name}"
+            ).strip()
+
+        # ========================================================
+        # 1. 建立 P_Part mapping
+        #
+        # A:
+        #   work_num
+        #       -> P_Part
+        #
+        # B:
+        #   process_step_code
+        #       -> P_Part
+        #
+        # 例如：
+        #
+        #   B100-03 -> 98
+        #   B107-02 -> 31
+        # ========================================================
+
+        part_by_code = {}
+        part_by_step = {}
+
+        part_rows = (
+            s.query(P_Part)
+            .all()
+        )
+
+        for p in part_rows:
+
+            part_code = safe_str(
+                p.part_code
+            ).strip()
+
+            step_code = to_int(
+                p.process_step_code,
+                0
+            )
+
+            if not part_code:
+                continue
+
+            info = {
+                "part_code":
+                    part_code,
+
+                "comment":
+                    safe_str(
+                        p.part_comment
+                    ).strip(),
+
+                "process_step_code":
+                    step_code,
+            }
+
+            part_by_code[
+                part_code
+            ] = info
+
+            if step_code > 0:
+
+                # 若 step_code 有重複，
+                # 保留第一筆即可。
+                part_by_step.setdefault(
+                    step_code,
+                    info
+                )
+
+        # ========================================================
+        # 2. 同 order_num 所有 P_Material
+        #
+        # 舊版：
+        #
+        #   .first()
+        #
+        # 會造成：
+        #
+        # 121200006445
+        #
+        #   material_id = 16
+        #   material_id = 50
+        #
+        # 只讀其中一筆。
+        # ========================================================
+
+        materials = (
+            s.query(P_Material)
+            .filter(
+                P_Material.order_num
+                ==
+                order_num
+            )
+            .order_by(
+                P_Material.id.asc()
+            )
+            .all()
+        )
+
+        if not materials:
+
+            return jsonify({
+                "success": False,
+                "message":
+                    "order not found",
+                "processes": [],
+            }), 404
+
+        material_ids = [
+            int(m.id)
+            for m in materials
+        ]
+
+        # ========================================================
+        # 3. 一次把真正入庫資料查出來
+        # ========================================================
+
+        product_rows = (
+            s.query(P_Product)
+            .filter(
+                P_Product.material_id
+                .in_(
+                    material_ids
+                )
+            )
+            .order_by(
+                P_Product.create_at.asc(),
+                P_Product.id.asc(),
+            )
+            .all()
+        )
+
+        products_by_material = {}
+
+        for product in product_rows:
+
+            mid = to_int(
+                product.material_id,
+                0
+            )
+
+            products_by_material.setdefault(
+                mid,
+                []
+            ).append(
+                product
+            )
+
+        # ========================================================
+        # 4. 建立 Process Map
+        #
+        # 後面 P_Product.process_id 若需要找到原 Process，
+        # 可直接使用。
+        # ========================================================
+
+        all_process_ids = [
+            to_int(
+                p.process_id,
+                0
+            )
+            for p in product_rows
+            if to_int(
+                p.process_id,
+                0
+            ) > 0
+        ]
+
+        linked_process_map = {}
+
+        if all_process_ids:
+
+            linked_process_rows = (
+                s.query(P_Process)
+                .filter(
+                    P_Process.id.in_(
+                        all_process_ids
+                    )
+                )
+                .all()
+            )
+
+            linked_process_map = {
+                int(p.id): p
+                for p
+                in linked_process_rows
+            }
+
+        # ========================================================
+        # 5. 最終回傳內容
+        # ========================================================
+
+        results = []
+
+        now_tpe_aw = (
+            datetime.now(TPE)
+            .replace(
+                microsecond=0
+            )
+        )
+
+        # ========================================================
+        # 6. 每個 material 分別處理
+        # ========================================================
+
+        for material in materials:
+
+            material_id = to_int(
+                material.id,
+                0
+            )
+
+            assemble_records = list(
+                material._assemble
+                or []
+            )
+
+            process_records = list(
+                material._process
+                or []
+            )
+
+            # ----------------------------------------------------
+            # assemble map
+            # ----------------------------------------------------
+
+            assemble_map = {
+                to_int(a.id, 0): a
+                for a
+                in assemble_records
+                if to_int(
+                    a.id,
+                    0
+                ) > 0
+            }
+
+            # ----------------------------------------------------
+            # 加工作業數量
+            #
+            # 原本用 total_delivery_qty。
+            # 沒值時 fallback material_qty。
+            # ----------------------------------------------------
+
+            work_qty = to_int(
+                getattr(
+                    material,
+                    "total_delivery_qty",
+                    0
+                ),
+                0
+            )
+
+            if work_qty <= 0:
+
+                work_qty = to_int(
+                    getattr(
+                        material,
+                        "material_qty",
+                        0
+                    ),
+                    0
+                )
+
+            # ----------------------------------------------------
+            # Process 先按建立順序整理
+            # ----------------------------------------------------
+
+            process_records.sort(
+                key=lambda p: (
+                    getattr(
+                        p,
+                        "create_at",
+                        None
+                    )
+                    or datetime.min,
+                    to_int(
+                        p.id,
+                        0
+                    )
+                )
+            )
+
+            # ====================================================
+            # A. P_Process
+            # ====================================================
+
+            for record in process_records:
+
+                process_id = to_int(
+                    record.id,
+                    0
+                )
+
+                process_type = to_int(
+                    record.process_type,
+                    0
+                )
+
+                assemble_id = to_int(
+                    record.assemble_id,
+                    0
+                )
+
+                # 20260815版
+                # ====================================================
+                # 不領料加工單
+                #
+                # 加工線判斷「是否需要領料」應看：
+                #
+                #     P_Material.isBom
+                #
+                # isBom = 0：
+                #     不領料
+                #
+                # isBom = 1：
+                #     有 BOM / 需要領料流程
+                #
+                # 注意：
+                # isTakeOk 不能拿來判斷是否「不領料」，
+                # 因為不領料工單自動過站後 isTakeOk 也會是 True。
+                #
+                # 例如 121200006701：
+                #
+                # material_id=2
+                # material_id=23
+                #
+                # 兩筆：
+                #     isBom    = 0
+                #     isTakeOk = 1
+                #
+                # DB 雖殘留自動過站的 type=1 / type=5，
+                # PInformation 不應顯示。
+                # ====================================================
+
+                is_no_pick_material = (
+                    not bool(
+                        getattr(
+                            material,
+                            "isBom",
+                            False
+                        )
+                    )
+                )
+
+                if (
+                    is_no_pick_material
+                    and
+                    process_type in {
+                        1,  # 領料
+                        5,  # 堆高機：領料區 -> 加工區
+                    }
+                ):
+                    continue
+                #
+
+                # ------------------------------------------------
+                # 舊 5 / 6 搬運紀錄可能沒有 begin_time。
+                #
+                # 一般加工若完全沒有 begin_time，
+                # 代表沒有真正開始過，不顯示。
+                # ------------------------------------------------
+
+                begin_raw = safe_str(
+                    record.begin_time
+                ).strip()
+
+                if (
+                    (
+                        not begin_raw
+                        or
+                        begin_raw
+                        ==
+                        "0000-00-00 00:00:00"
+                    )
+                    and
+                    process_type
+                    not in {
+                        5,
+                        6,
+                    }
+                ):
+                    continue
+
+                # ------------------------------------------------
+                # 找對應 P_Assemble
+                # ------------------------------------------------
+
+                assm = None
+
+                if assemble_id > 0:
+
+                    assm = (
+                        assemble_map.get(
+                            assemble_id
+                        )
+                    )
+
+                    # 防止異常關聯
+                    if (
+                        assm is not None
+                        and
+                        to_int(
+                            assm.material_id,
+                            0
+                        )
+                        !=
+                        material_id
+                    ):
+                        assm = None
+
+                # =================================================
+                # Process 顯示名稱
+                # =================================================
+
+                status = ""
+
+                part_info = None
+
+                # -------------------------------------------------
+                # 領料 / 搬運
+                # -------------------------------------------------
+
+                if (
+                    process_type
+                    in SPECIAL_PROCESS_TYPES
+                ):
+
+                    status = (
+                        SPECIAL_PROCESS_NAMES
+                        .get(
+                            process_type,
+                            f"Process({process_type})"
+                        )
+                    )
+
+                # -------------------------------------------------
+                # 一般加工
+                #
+                # 包含：
+                #
+                #   98 = B100-03
+                #   31 = B107-02
+                #
+                # -------------------------------------------------
+
+                else:
+
+                    # 優先依 assemble.work_num
+                    if assm is not None:
+
+                        work_num = safe_str(
+                            assm.work_num
+                        ).strip()
+
+                        if work_num:
+
+                            part_info = (
+                                part_by_code
+                                .get(
+                                    work_num
+                                )
+                            )
+
+                    # fallback：
+                    # 直接 process_type
+                    # 對 P_Part.process_step_code
+                    if part_info is None:
+
+                        part_info = (
+                            part_by_step
+                            .get(
+                                process_type
+                            )
+                        )
+
+                    if part_info:
+
+                        status = (
+                            part_info.get(
+                                "comment"
+                            )
+                            or
+                            part_info.get(
+                                "part_code"
+                            )
+                            or
+                            f"加工({process_type})"
+                        )
+
+                    elif assm is not None:
+
+                        status = safe_str(
+                            assm.work_num
+                        ).strip()
+
+                        if not status:
+
+                            status = (
+                                f"加工({process_type})"
+                            )
+
+                    else:
+
+                        status = (
+                            f"加工({process_type})"
+                        )
+
+                '''
+                # =================================================
+                # 領料 / 搬運後面加人員
+                # =================================================
+
+                if (
+                    process_type
+                    in SPECIAL_PROCESS_TYPES
+                ):
+
+                    display_user = (
+                        get_process_user_display(
+                            record.user_id
+                        )
+                    )
+
+                    if display_user:
+
+                        status = (
+                            f"{status}"
+                            f"({display_user})"
+                        )
+                '''
+                # 20260815版
+                # =================================================
+                # 所有 Process 後面加操作人員
+                #
+                # 包含：
+                #
+                #   領料
+                #   搬運
+                #   一般加工
+                #
+                # 例如：
+                #
+                #   主軸配件-分爪片(1004005陳世玟)
+                #   加工(一)-精車(1004005陳世玟)
+                # =================================================
+
+                display_user = (
+                    get_process_user_display(
+                        record.user_id
+                    )
+                )
+
+                if display_user:
+
+                    status = (
+                        f"{status}"
+                        f"({display_user})"
+                    )
+                #
+
+                # =================================================
+                # 異常資訊
+                # =================================================
+
+                alarm_msg_enable = True
+                alarm_msg_is_first = True
+                alarm_msg_string = ""
+
+                if assm is not None:
+
+                    alarm_msg_enable = bool(
+                        getattr(
+                            assm,
+                            "alarm_enable",
+                            True
+                        )
+                    )
+
+                    alarm_msg_is_first = bool(
+                        getattr(
+                            assm,
+                            "isAssembleFirstAlarm",
+                            True
+                        )
+                    )
+
+                    if (
+                        not alarm_msg_enable
+                        and
+                        not alarm_msg_is_first
+                    ):
+
+                        alarm_msg_string = (
+                            safe_str(
+                                getattr(
+                                    assm,
+                                    "alarm_message",
+                                    ""
+                                )
+                            )
+                            .strip()
+                        )
+
+                else:
+
+                    incoming0 = safe_str(
+                        getattr(
+                            material,
+                            "Incoming0_Abnormal",
+                            ""
+                        )
+                    ).strip()
+
+                    if (
+                        incoming0
+                        and
+                        process_type
+                        in {
+                            1,
+                            5,
+                        }
+                    ):
+
+                        alarm_msg_string = (
+                            incoming0
+                        )
+
+                # =================================================
+                # 廢品數量
+                # =================================================
+
+                abnormal_qty = ""
+
+                if (
+                    assm is not None
+                    and
+                    process_type
+                    not in SPECIAL_PROCESS_TYPES
+                ):
+
+                    aq = to_int(
+                        getattr(
+                            assm,
+                            "abnormal_qty",
+                            0
+                        ),
+                        0
+                    )
+
+                    if aq > 0:
+                        abnormal_qty = aq
+
+                # =================================================
+                # 時間
+                # =================================================
+
+                temp_period_time = ""
+                work_time_str = ""
+                single_std_time_str = ""
+
+                if (
+                    process_type
+                    not in {
+                        5,
+                        6,
+                    }
+                ):
+
+                    start_time = (
+                        parse_dt_maybe_aw(
+                            record.begin_time
+                        )
+                    )
+
+                    end_time = (
+                        parse_dt_maybe_aw(
+                            record.end_time
+                        )
+                    )
+
+                    total_seconds = None
+
+                    if start_time:
+
+                        # -----------------------------------------
+                        # 已完成
+                        # -----------------------------------------
+
+                        if end_time:
+
+                            total_seconds = int(
+                                (
+                                    end_time
+                                    -
+                                    start_time
+                                )
+                                .total_seconds()
+                            )
+
+                        # -----------------------------------------
+                        # 還在跑
+                        # -----------------------------------------
+
+                        else:
+
+                            pause_total = (
+                                to_int(
+                                    getattr(
+                                        record,
+                                        "pause_time",
+                                        0
+                                    ),
+                                    0
+                                )
+                            )
+
+                            if (
+                                bool(
+                                    getattr(
+                                        record,
+                                        "is_pause",
+                                        False
+                                    )
+                                )
+                                and
+                                getattr(
+                                    record,
+                                    "pause_started_at",
+                                    None
+                                )
+                            ):
+
+                                ps_aw = (
+                                    parse_dt_maybe_aw(
+                                        record
+                                        .pause_started_at
+                                    )
+                                )
+
+                                if ps_aw:
+
+                                    extra_pause = int(
+                                        (
+                                            now_tpe_aw
+                                            -
+                                            ps_aw
+                                        )
+                                        .total_seconds()
+                                    )
+
+                                    pause_total += max(
+                                        0,
+                                        extra_pause
+                                    )
+
+                            total_seconds = int(
+                                (
+                                    now_tpe_aw
+                                    -
+                                    start_time
+                                )
+                                .total_seconds()
+                            ) - pause_total
+
+                        total_seconds = max(
+                            0,
+                            total_seconds
+                        )
+
+                        calculated_period = (
+                            fmt_hhmmss(
+                                total_seconds
+                            )
+                        )
+
+                        if process_type == 1:
+
+                            temp_period_time = (
+                                safe_str(
+                                    getattr(
+                                        record,
+                                        "str_elapsedActive_time",
+                                        ""
+                                    )
+                                )
+                                or
+                                safe_str(
+                                    getattr(
+                                        record,
+                                        "period_time",
+                                        ""
+                                    )
+                                )
+                                or
+                                calculated_period
+                            )
+
+                        else:
+
+                            temp_period_time = (
+                                safe_str(
+                                    getattr(
+                                        record,
+                                        "period_time",
+                                        ""
+                                    )
+                                )
+                                or
+                                calculated_period
+                            )
+
+                        # -----------------------------------------
+                        # 實際工時 分/PCS
+                        #
+                        # 只對真正加工製程計算
+                        # -----------------------------------------
+
+                        if (
+                            process_type
+                            not in SPECIAL_PROCESS_TYPES
+                            and
+                            work_qty > 0
+                        ):
+
+                            minutes_total = (
+                                total_seconds
+                                / 60.0
+                            )
+
+                            work_time = round(
+                                minutes_total
+                                /
+                                work_qty,
+                                2
+                            )
+
+                            work_time_str = (
+                                str(
+                                    work_time
+                                )
+                            )
+
+                    else:
+
+                        temp_period_time = (
+                            safe_str(
+                                getattr(
+                                    record,
+                                    "period_time",
+                                    ""
+                                )
+                            )
+                        )
+
+                # =================================================
+                # 單件標工
+                #
+                # P_Part:
+                #
+                #   B100-03
+                #
+                # ↓
+                #
+                # P_Material:
+                #
+                #   sd_time_B100
+                # =================================================
+
+                if (
+                    process_type
+                    not in SPECIAL_PROCESS_TYPES
+                ):
+
+                    std_info = (
+                        part_info
+                        or
+                        part_by_step.get(
+                            process_type
+                        )
+                    )
+
+                    if std_info:
+
+                        part_code = safe_str(
+                            std_info.get(
+                                "part_code"
+                            )
+                        ).strip()
+
+                        if part_code:
+
+                            prefix = (
+                                part_code
+                                .split(
+                                    "-",
+                                    1
+                                )[0]
+                                .split(
+                                    "_",
+                                    1
+                                )[0]
+                            )
+
+                            col_name = (
+                                f"sd_time_{prefix}"
+                            )
+
+                            std_value = (
+                                getattr(
+                                    material,
+                                    col_name,
+                                    None
+                                )
+                            )
+
+                            if (
+                                std_value
+                                not in {
+                                    None,
+                                    "",
+                                }
+                            ):
+
+                                single_std_time_str = (
+                                    str(
+                                        std_value
+                                    )
+                                )
+
+                # =================================================
+                # Process 數量
+                #
+                # 搬運不顯示。
+                # =================================================
+
+                if (
+                    process_type
+                    in {
+                        5,
+                        6,
+                    }
+                ):
+
+                    process_work_time_qty = ""
+
+                else:
+
+                    qty_value = (
+                        getattr(
+                            record,
+                            "process_work_time_qty",
+                            None
+                        )
+                    )
+
+                    process_work_time_qty = (
+                        qty_value
+                        if qty_value is not None
+                        else ""
+                    )
+
+                # =================================================
+                # 一般 Process 不再拿 completed_qty
+                # 當成「入庫數量」。
+                #
+                # 入庫數量只由 P_Product 提供。
+                # =================================================
+
+                completed_qty = ""
+
+                # =================================================
+                # assemble 排序序號
+                # =================================================
+
+                assemble_seq = 0
+
+                if assm is not None:
+
+                    assemble_seq = (
+                        to_int(
+                            getattr(
+                                assm,
+                                "seq_num",
+                                0
+                            ),
+                            0
+                        )
+                    )
+
+                # =================================================
+                # stage
+                #
+                # material 內排序：
+                #
+                # 0  領料
+                # 1  領料區->加工區
+                # 10 加工
+                # 90 加工區->成品區
+                # 100 入庫
+                # =================================================
+
+                if process_type == 1:
+                    stage = 0
+
+                elif process_type == 5:
+                    stage = 1
+
+                elif process_type == 6:
+                    stage = 90
+
+                else:
+                    stage = 10
+
+                # =================================================
+                # Process row
+                # =================================================
+
+                results.append({
+
+                    "seq_num":
+                        0,
+
+                    "id":
+                        material_id,
+
+                    "material_id":
+                        material_id,
+
+                    "order_num":
+                        material.order_num,
+
+                    "process_id":
+                        process_id,
+
+                    "assemble_id":
+                        assemble_id,
+
+                    "process_type_code":
+                        process_type,
+
+                    "process_work_time_qty":
+                        process_work_time_qty,
+
+                    "abnormal_qty":
+                        abnormal_qty,
+
+                    # 入庫欄位：
+                    # Process 一律空
+                    "completed_qty":
+                        completed_qty,
+
+                    "sd_time_B100":
+                        getattr(
+                            material,
+                            "sd_time_B100",
+                            None
+                        ),
+
+                    "sd_time_B102":
+                        getattr(
+                            material,
+                            "sd_time_B102",
+                            None
+                        ),
+
+                    "sd_time_B103":
+                        getattr(
+                            material,
+                            "sd_time_B103",
+                            None
+                        ),
+
+                    "sd_time_B107":
+                        getattr(
+                            material,
+                            "sd_time_B107",
+                            None
+                        ),
+
+                    "sd_time_B108":
+                        getattr(
+                            material,
+                            "sd_time_B108",
+                            None
+                        ),
+
+                    "user_id":
+                        safe_str(
+                            record.user_id
+                        ),
+
+                    "begin_time":
+                        record.begin_time
+                        or "",
+
+                    "end_time":
+                        record.end_time
+                        or "",
+
+                    "period_time":
+                        temp_period_time,
+
+                    "work_time":
+                        work_time_str,
+
+                    "single_std_time":
+                        single_std_time_str,
+
+                    "process_type":
+                        status,
+
+                    "normal_type":
+                        (
+                            " - 異常整修"
+                            if (
+                                not
+                                alarm_msg_enable
+                                and
+                                not
+                                alarm_msg_is_first
+                            )
+                            else
+                            ""
+                        ),
+
+                    "user_comment":
+                        alarm_msg_string,
+
+                    "create_at":
+                        record.create_at,
+
+                    # ---------------------------------------------
+                    # 以下只供後端排序
+                    # 最後會 pop
+                    # ---------------------------------------------
+
+                    "_material_id":
+                        material_id,
+
+                    "_stage":
+                        stage,
+
+                    "_assemble_seq":
+                        assemble_seq,
+
+                    # 20260815 add
+                    # 同 seq_num 的拆批仍要依 assemble_id 分組
+                    "_assemble_id_sort":
+                        assemble_id,
+
+                    "_sort_id":
+                        process_id,
+                })
+
+            # ====================================================
+            # B. P_Product
+            #
+            # 真正成品入庫
+            # ====================================================
+
+            material_products = (
+                products_by_material
+                .get(
+                    material_id,
+                    []
+                )
+            )
+
+            for product in material_products:
+
+                product_id = to_int(
+                    product.id,
+                    0
+                )
+
+                linked_process_id = (
+                    to_int(
+                        product.process_id,
+                        0
+                    )
+                )
+
+                linked_process = (
+                    linked_process_map
+                    .get(
+                        linked_process_id
+                    )
+                )
+
+                # ------------------------------------------------
+                # P_Product 沒有 user_id。
+                #
+                # 所以不能把 linked_process.user_id
+                # 說成「入庫人員」。
+                #
+                # 此版只顯示：
+                #
+                #   成品入庫
+                #
+                # 不虛構：
+                #
+                #   成品入庫(1004005陳世玟)
+                #
+                # ------------------------------------------------
+
+                stockin_status = (
+                    "成品入庫"
+                )
+
+                # 20260815版 add
+                stockin_user_display = (
+                    get_process_user_display(
+                        getattr(
+                            product,
+                            "user_id",
+                            ""
+                        )
+                    )
+                )
+
+                if stockin_user_display:
+
+                    stockin_status = (
+                        f"成品入庫"
+                        f"({stockin_user_display})"
+                    )
+                #
+
+                # ------------------------------------------------
+                # 入庫數量
+                #
+                # 優先：
+                #
+                #   allOk_qty
+                #
+                # fallback：
+                #
+                #   good_qty
+                #   delivery_qty
+                # ------------------------------------------------
+
+                stockin_qty = (
+                    to_int(
+                        product.allOk_qty,
+                        0
+                    )
+                )
+
+                if stockin_qty <= 0:
+
+                    stockin_qty = (
+                        to_int(
+                            product.good_qty,
+                            0
+                        )
+                    )
+
+                if stockin_qty <= 0:
+
+                    stockin_qty = (
+                        to_int(
+                            product.delivery_qty,
+                            0
+                        )
+                    )
+
+                # ------------------------------------------------
+                # product.process_id 若能對應到 P_Process，
+                # 只用來補 assemble_id 做資料關聯，
+                # 不用它假裝入庫人員。
+                # ------------------------------------------------
+
+                product_assemble_id = 0
+                product_assemble_seq = 0
+
+                if linked_process is not None:
+
+                    product_assemble_id = (
+                        to_int(
+                            linked_process
+                            .assemble_id,
+                            0
+                        )
+                    )
+
+                    linked_assm = (
+                        assemble_map.get(
+                            product_assemble_id
+                        )
+                    )
+
+                    if linked_assm is not None:
+
+                        product_assemble_seq = (
+                            to_int(
+                                getattr(
+                                    linked_assm,
+                                    "seq_num",
+                                    0
+                                ),
+                                0
+                            )
+                        )
+
+                '''
+                # ------------------------------------------------
+                # P_Product.create_at 是目前唯一可確認
+                # 的真正入庫紀錄時間。
+                #
+                # 前端欄位：
+                #
+                #   開始時間
+                #
+                # 先顯示在 begin_time。
+                # ------------------------------------------------
+
+                stockin_time = (
+                    product.create_at
+                    or ""
+                )
+                '''
+
+                '''
+                # ------------------------------------------------
+                # 成品入庫「開始時間」
+                #
+                # 顯示該次入庫所對應加工 Process 的開始時間，
+                # 格式與一般加工列一致。
+                #
+                # 例如：
+                #
+                #   P_Product.process_id = 14
+                #   P_Process.id         = 14
+                #   begin_time           = 2026-07-31 09:29:42
+                #
+                # 若找不到 linked_process，
+                # 才 fallback 到 product.create_at。
+                # ------------------------------------------------
+
+                stockin_time = ""
+
+                if linked_process is not None:
+
+                    stockin_time = (
+                        linked_process.begin_time
+                        or ""
+                    )
+
+                if not stockin_time:
+
+                    stockin_time = (
+                        product.create_at
+                        or ""
+                    )
+                '''
+                #
+                # ------------------------------------------------
+                # 成品入庫「開始時間」
+                #
+                # 優先：
+                # 1. P_Product.process_id 對應的 P_Process.begin_time
+                #
+                # 若該 process 是後來建立的空白/樣板 Process，
+                # 則再找同：
+                #
+                #   material_id
+                #   assemble_id
+                #   process_type
+                #
+                # 中真正已執行、具有 begin_time 的 Process。
+                #
+                # 最後才 fallback P_Product.create_at。
+                # ------------------------------------------------
+
+                stockin_time = ""
+
+                # ------------------------------------------------
+                # 1. P_Product.process_id 直接對應
+                # ------------------------------------------------
+                if linked_process is not None:
+
+                    stockin_time = safe_str(
+                        linked_process.begin_time
+                    ).strip()
+
+
+                # ------------------------------------------------
+                # 2. linked process 沒有 begin_time
+                #
+                # 例如：
+                #
+                # 121200006501
+                #
+                # P_Product.process_id = 12
+                #
+                # P_Process 12：
+                #   material_id  = 8
+                #   assemble_id  = 8
+                #   process_type = 98
+                #   begin_time   = NULL
+                #
+                # 真正加工完成的是 P_Process 9。
+                # ------------------------------------------------
+                if (
+                    not stockin_time
+                    and
+                    linked_process is not None
+                ):
+
+                    linked_material_id = to_int(
+                        linked_process.material_id,
+                        0
+                    )
+
+                    linked_assemble_id = to_int(
+                        linked_process.assemble_id,
+                        0
+                    )
+
+                    linked_process_type = to_int(
+                        linked_process.process_type,
+                        0
+                    )
+
+                    real_process = (
+                        s.query(P_Process)
+                        .filter(
+                            P_Process.material_id
+                            ==
+                            linked_material_id
+                        )
+                        .filter(
+                            P_Process.assemble_id
+                            ==
+                            linked_assemble_id
+                        )
+                        .filter(
+                            P_Process.process_type
+                            ==
+                            linked_process_type
+                        )
+                        .filter(
+                            P_Process.begin_time.isnot(None)
+                        )
+                        .filter(
+                            P_Process.begin_time != ""
+                        )
+                        .filter(
+                            P_Process.end_time.isnot(None)
+                        )
+                        .filter(
+                            P_Process.end_time != ""
+                        )
+                        .order_by(
+                            P_Process.id.desc()
+                        )
+                        .first()
+                    )
+
+                    if real_process is not None:
+
+                        stockin_time = safe_str(
+                            real_process.begin_time
+                        ).strip()
+
+
+                # ------------------------------------------------
+                # 3. 最後 fallback P_Product.create_at
+                #
+                # 同時轉成 yyyy-mm-dd HH:MM:SS，
+                # 避免 Flask jsonify 顯示：
+                #
+                # Tue, 11 Aug 2026 08:31:31 GMT
+                # ------------------------------------------------
+                if not stockin_time:
+
+                    product_time = getattr(
+                        product,
+                        "create_at",
+                        None
+                    )
+
+                    if isinstance(
+                        product_time,
+                        datetime
+                    ):
+
+                        stockin_time = (
+                            product_time.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
+                        )
+
+                    else:
+
+                        stockin_time = safe_str(
+                            product_time
+                        ).strip()
+                #
+
+                results.append({
+
+                    "seq_num":
+                        0,
+
+                    "id":
+                        material_id,
+
+                    "material_id":
+                        material_id,
+
+                    "order_num":
+                        material.order_num,
+
+                    # product row 沒有真正 P_Process id
+                    "process_id":
+                        0,
+
+                    "product_id":
+                        product_id,
+
+                    "assemble_id":
+                        product_assemble_id,
+
+                    # 0 代表不是 P_Process type
+                    "process_type_code":
+                        0,
+
+                    # 數量欄不顯示
+                    "process_work_time_qty":
+                        "",
+
+                    "abnormal_qty":
+                        "",
+
+                    # 前端「入庫數量」欄位
+                    "completed_qty":
+                        (
+                            stockin_qty
+                            if stockin_qty > 0
+                            else ""
+                        ),
+
+                    "sd_time_B100":
+                        getattr(
+                            material,
+                            "sd_time_B100",
+                            None
+                        ),
+
+                    "sd_time_B102":
+                        getattr(
+                            material,
+                            "sd_time_B102",
+                            None
+                        ),
+
+                    "sd_time_B103":
+                        getattr(
+                            material,
+                            "sd_time_B103",
+                            None
+                        ),
+
+                    "sd_time_B107":
+                        getattr(
+                            material,
+                            "sd_time_B107",
+                            None
+                        ),
+
+                    "sd_time_B108":
+                        getattr(
+                            material,
+                            "sd_time_B108",
+                            None
+                        ),
+
+                    "user_id":
+                        "",
+
+                    "begin_time":
+                        stockin_time,
+
+                    "end_time":
+                        "",
+
+                    "period_time":
+                        "",
+
+                    "work_time":
+                        "",
+
+                    "single_std_time":
+                        "",
+
+                    "process_type":
+                        stockin_status,
+
+                    "normal_type":
+                        "",
+
+                    "user_comment":
+                        "",
+
+                    "create_at":
+                        product.create_at,
+
+                    # ---------------------------------------------
+                    # 入庫永遠排在同 material 最後
+                    # ---------------------------------------------
+
+                    "_material_id":
+                        material_id,
+
+                    "_stage":
+                        100,
+
+                    "_assemble_seq":
+                        product_assemble_seq,
+
+                    # 20260815 add
+                    "_assemble_id_sort":
+                        product_assemble_id,
+
+
+                    "_sort_id":
+                        product_id,
+                })
+
+        '''
+        # ========================================================
+        # 7. 最終排序
+        #
+        # 先依 material_id 分批，
+        # 再依 stage。
+        #
+        # 例如：
+        #
+        # material 16：
+        #
+        #   加工
+        #   ↓
+        #   搬運
+        #   ↓
+        #   入庫
+        #
+        # material 50：
+        #
+        #   加工
+        #   ↓
+        #   搬運
+        #   ↓
+        #   入庫（若真的有 P_Product）
+        # ========================================================
+
+        results.sort(
+            key=lambda row: (
+
+                to_int(
+                    row.get(
+                        "_material_id"
+                    ),
+                    0
+                ),
+
+                to_int(
+                    row.get(
+                        "_stage"
+                    ),
+                    0
+                ),
+
+                to_int(
+                    row.get(
+                        "_assemble_seq"
+                    ),
+                    0
+                ),
+
+                (
+                    row.get(
+                        "create_at"
+                    )
+                    or
+                    datetime.min
+                ),
+
+                to_int(
+                    row.get(
+                        "_sort_id"
+                    ),
+                    0
+                ),
+            )
+        )
+        '''
+        #
+        # ========================================================
+        # 7. 最終排序
+        #
+        # 正確順序：
+        #
+        # material
+        #   ↓
+        # 工序 seq
+        #   ↓
+        # 同工序拆批 assemble_id
+        #   ↓
+        # 加工
+        #   ↓
+        # 搬運
+        #   ↓
+        # 入庫
+        #
+        # 例如 121200006710 / material 52：
+        #
+        # assemble 57
+        #   加工76
+        #   搬運
+        #   入庫76
+        #
+        # assemble 77
+        #   加工72
+        #   搬運
+        #
+        # assemble 78
+        #   加工中68
+        #
+        # ========================================================
+
+        def detail_sort_key(row):
+
+            material_id = to_int(
+                row.get(
+                    "_material_id"
+                ),
+                0
+            )
+
+            stage = to_int(
+                row.get(
+                    "_stage"
+                ),
+                0
+            )
+
+            assemble_seq = to_int(
+                row.get(
+                    "_assemble_seq"
+                ),
+                0
+            )
+
+            assemble_id_sort = to_int(
+                row.get(
+                    "_assemble_id_sort"
+                ),
+                0
+            )
+
+            create_at = (
+                row.get(
+                    "create_at"
+                )
+                or
+                datetime.min
+            )
+
+            sort_id = to_int(
+                row.get(
+                    "_sort_id"
+                ),
+                0
+            )
+
+            # ----------------------------------------------------
+            # 領料 / 領料區->加工區
+            #
+            # assemble_id 通常為 0，
+            # 必須留在正式加工批次之前。
+            # ----------------------------------------------------
+
+            if stage < 10:
+
+                return (
+                    material_id,
+                    0,
+                    create_at,
+                    stage,
+                    sort_id,
+                )
+
+            # ----------------------------------------------------
+            # 正式加工批次
+            #
+            # 最重要：
+            #
+            #   assemble_seq
+            #   assemble_id
+            #
+            # 必須排在 stage 前面。
+            #
+            # 才會：
+            #
+            #   加工77
+            #   搬運77
+            #   →
+            #   加工78
+            #
+            # 而不是：
+            #
+            #   加工77
+            #   加工78
+            #   搬運77
+            # ----------------------------------------------------
+
+            return (
+                material_id,
+                1,
+
+                assemble_seq,
+
+                assemble_id_sort,
+
+                stage,
+
+                create_at,
+
+                sort_id,
+            )
+
+
+        results.sort(
+            key=detail_sort_key
+        )
+        #
+
+        # ========================================================
+        # 8. 移除後端排序欄位
+        #    並重新編 seq_num
+        # ========================================================
+
+        for index, row in enumerate(
+            results,
+            start=1
+        ):
+
+            row[
+                "seq_num"
+            ] = index
+
+            row.pop(
+                "_material_id",
+                None
+            )
+
+            row.pop(
+                "_stage",
+                None
+            )
+
+            row.pop(
+                "_assemble_seq",
+                None
+            )
+
+            row.pop(
+                "_sort_id",
+                None
+            )
+            # 20260815版 add
+            row.pop(
+                "_assemble_id_sort",
+                None
+            )
+
+        print(
+            "getProcessesByOrderNumP:",
+            order_num,
+            "material_ids:",
+            material_ids,
+            "process/product rows:",
+            len(results)
+        )
+
+        return jsonify({
+            "success": True,
+            "processes": results,
+        })
+
+    except Exception as e:
+
+        print(
+            "getProcessesByOrderNumP ERROR:",
+            repr(e)
+        )
+
+        logger.exception(
+            "getProcessesByOrderNumP failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "message": str(e),
+            "processes": [],
+        }), 500
+
+    finally:
+
+        s.close()
 
 
 @getTableP.route("/getCountMaterialsAndAssemblesByUserP", methods=['POST'])

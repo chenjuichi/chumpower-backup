@@ -898,6 +898,7 @@ const isInformationEmpty = computed(() => {
   return informations.value.length === 0;
 });
 
+/*
 // 過濾符合條件的資訊
 const filteredInformations = computed(() => {
   const filtered = informations.value.filter(item => {
@@ -905,13 +906,6 @@ const filteredInformations = computed(() => {
     const isWithinOrderRange = checkOrderInRange(item.order_num);
     return isWithinDateRange && isWithinOrderRange;
   });
-
-  // 去重：同 order_num 只保留一筆（保留最後一筆）
-  /*
-  const map = new Map();
-  for (const it of filtered) map.set(it.order_num, it);
-  return Array.from(map.values());
-  */
 
   // 去重：同 order_num 只保留 1 筆
   // 不要保留最後一筆，避免 copy 資料蓋掉 root 資料
@@ -949,6 +943,19 @@ const filteredInformations = computed(() => {
   }
 
   return Array.from(map.values());
+});
+*/
+// 20260814版
+const filteredInformations = computed(() => {
+  return informations.value.filter(item => {
+    const isWithinDateRange = checkDateInRange(item.delivery_date);
+    const isWithinOrderRange = checkOrderInRange(item.order_num);
+
+    return (
+      isWithinDateRange &&
+      isWithinOrderRange
+    );
+  });
 });
 
 //=== mounted ===

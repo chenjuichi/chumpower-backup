@@ -3613,15 +3613,21 @@ const readAllExcelFun = async () => {
   try {
     // 等待 readAllExcelFiles 完成
     const excel_file_data = await readAllExcelFiles();
-    console.log("data:", excel_file_data);
+    console.log("readAllExcelFiles result:", excel_file_data);
 
     fileCount.value = 0;
     if (excel_file_data.status) {
-      //fileCount.value = 0;
+
       await deleteAssemblesWithNegativeGoodQty();
 
-      //listMaterials();
+      // 重新取得組裝備料資料
       await fetchMaterials();
+
+      // ----------------------------------------------------------
+      // 顯示成功訊息
+      // 優先使用後端 message
+      // ----------------------------------------------------------
+      showSnackbar(excel_file_data.message || "Excel工單下載完成!", 'green darken-1');
 
       // 自動 focus, 2025-06-03
       if (barcodeInput.value) {
@@ -3629,7 +3635,11 @@ const readAllExcelFun = async () => {
       }
 
     } else {
-      showSnackbar(excel_file_data.message, 'red accent-2');
+      // 匯入失敗
+      showSnackbar(
+        excel_file_data.message || "Excel工單讀取失敗!",
+        'red accent-2'
+      );
       await delay(3000);
 
       //待待
@@ -3638,7 +3648,7 @@ const readAllExcelFun = async () => {
     }
   } catch (error) {
     console.error("Error during execution:", error);
-    showSnackbar("An error occurred.", 'red accent-2');
+    showSnackbar("Excel工單讀取發生錯誤!", 'red accent-2');
   }
 };
 

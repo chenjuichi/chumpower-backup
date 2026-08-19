@@ -2211,6 +2211,39 @@ onMounted(async () => {
             );
           }
 
+          // 20260817版 add
+          // ========================================================
+          // 20260817
+          // 堆高機：組裝區 -> 成品區
+          //
+          // sendAssembleToWarehouse() 負責切換 Warehouse 狀態；
+          // createProcess(type=6) 負責 Information 搬運歷程。
+          //
+          // 同一 material 只建立一次。
+          // ========================================================
+
+          const forkliftProcessResult = await createProcess({
+            id: group.material_id,
+
+            user_id:
+              currentUser.value?.empID
+              ?? currentUser.value?.emp_id
+              ?? '',
+
+            process_type: 6,
+
+            normal_work_time: true,
+          })
+
+          console.log(
+            '[station3_trans_end] createProcess type=6:',
+            {
+              material_id: group.material_id,
+              result: forkliftProcessResult,
+            }
+          )
+          //
+
           console.log('[station3_trans_end] 送出成功:', result );
         } catch (e) {
           console.error('步驟1 更新失敗：material_id =', group.material_id, e);
@@ -4017,6 +4050,32 @@ const callForklift = async () => {
           || `工單 ${group.order_num || group.material_id} 送出失敗`
         );
       }
+
+      // 20260817版 add
+      const forkliftUserId =
+        selectedEmployee.value?.emp_id
+        || selectedEmployee.value?.id
+        || selectedEmployee.value
+        || ''
+
+      const forkliftProcessResult = await createProcess({
+        id: group.material_id,
+
+        user_id: forkliftUserId,
+
+        process_type: 6,
+
+        normal_work_time: true,
+      })
+
+      console.log(
+        '[callForklift] createProcess type=6:',
+        {
+          material_id: group.material_id,
+          result: forkliftProcessResult,
+        }
+      )
+      //
     }
 
     /*

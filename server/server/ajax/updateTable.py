@@ -3007,17 +3007,31 @@ def send_assemble_to_warehouse():
                 )
             '''
             #
+            #if missing_ids:
+            #    s.rollback()
+            #
+            #    return jsonify({
+            #        "status": False,
+            #        "message": "部分勾選資料不符合送出條件，已取消整批送出",
+            #        "material_id": material_id,
+            #        "requested_assemble_ids": assemble_ids,
+            #        "found_assemble_ids": sorted(found_ids),
+            #        "missing_assemble_ids": missing_ids,
+            #    }), 200
+            # 20260817版
             if missing_ids:
-                s.rollback()
+                print(
+                    "[sendAssembleToWarehouse] ignored invalid assemble ids:",
+                    {
+                        "material_id": material_id,
+                        "requested": assemble_ids,
+                        "found": sorted(found_ids),
+                        "ignored": missing_ids,
+                    }
+                )
 
-                return jsonify({
-                    "status": False,
-                    "message": "部分勾選資料不符合送出條件，已取消整批送出",
-                    "material_id": material_id,
-                    "requested_assemble_ids": assemble_ids,
-                    "found_assemble_ids": sorted(found_ids),
-                    "missing_assemble_ids": missing_ids,
-                }), 200
+                # 不 rollback。
+                # 只送目前仍符合條件的 targets。
             #
 
         else:

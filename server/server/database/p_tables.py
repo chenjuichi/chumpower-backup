@@ -39,6 +39,12 @@ class P_Material(BASE):
     material_qty = Column(Integer, nullable=False)
     delivery_qty = Column(Integer, default=0)                 #送料數量(現況數量), 領料數量
     total_delivery_qty = Column(Integer, default=0)
+
+    # 20260817 add
+    # 外部加工完成後、送進廠內加工線以前
+    # 已經產生的廢料數量
+    external_scrap_qty = Column(Integer, nullable=False, default=0, server_default=text("0"))
+
     input_disable = Column(Boolean, default=False)
 
     material_date = Column(String(12), nullable=False)
@@ -123,6 +129,9 @@ class P_Material(BASE):
         'req_qty': self.material_qty,
         'delivery_qty': self.delivery_qty,
         'total_delivery_qty': self.total_delivery_qty,
+        # 20260817 add
+        'external_scrap_qty': self.external_scrap_qty,
+
         'input_disable': self.input_disable,
         'date': self.material_date,
         'delivery_date': self.material_delivery_date,

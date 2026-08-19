@@ -465,7 +465,7 @@
                     </div>
                   </v-btn>
 
-                  <!--組裝進行中-->
+                  <!--組裝作業進行中-->
                   <v-btn
                     v-show="showStatusButton('assemble')"
                     variant="outlined"
@@ -475,7 +475,7 @@
                     @click="filterByStatus('assemble')"
                   >
                     <div class="d-flex flex-column align-center">
-                      <span>組裝進行中</span>
+                      <span>組裝作業進行中</span>
                       <span style="font-size:24px;font-weight:bold;">
                         <!--{{ assemble_count }}-->
                         {{ currentAssembleCount }}

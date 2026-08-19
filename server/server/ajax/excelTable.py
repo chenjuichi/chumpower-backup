@@ -589,7 +589,7 @@ def count_excel_files():
     })
 
 
-# 20260804版
+# 20260817版
 @excelTable.route("/readAllExcelFilesP", methods=['GET'])
 def read_all_excel_files_p():
   print("readAllExcelFilesP....")
@@ -831,11 +831,72 @@ def read_all_excel_files_p():
           material_isTakeOk = temp_bom_empty
           material_isShow = temp_bom_empty
 
+          #
+          # ============================================================
+          # 20260817
+          # 外部加工既有廢料
+          #
+          # material_qty = Excel 訂單數量
+          # MEINH        = Excel 加工工序作業數量
+          #
+          # 例如：
+          #   material_qty = 350
+          #   MEINH        = 349
+          #   external_scrap_qty = 1
+          # ============================================================
+
+          temp_external_scrap_qty = 0
+
+          # 找這張訂單的加工工序
+          order_assemble_rows = assemble_df[
+              assemble_df['訂單'].astype(str)
+              ==
+              str(order_num)
+          ]
+
+          if not order_assemble_rows.empty:
+
+              # 取第一道加工工序的 MEINH
+              first_process_row = (
+                  order_assemble_rows.iloc[0]
+              )
+
+              temp_meinh = to_int0(
+                  clean_nan(
+                      first_process_row.get(
+                          '作業數量 (MEINH)'
+                      )
+                  )
+              )
+
+              if temp_meinh > 0:
+
+                  temp_external_scrap_qty = max(
+                      0,
+                      tempQty - temp_meinh
+                  )
+
+          print(
+              "[external_scrap]",
+              order_num,
+              "material_qty=",
+              tempQty,
+              "MEINH=",
+              temp_meinh if not order_assemble_rows.empty else 0,
+              "external_scrap_qty=",
+              temp_external_scrap_qty
+          )
+          #
+
           material = P_Material(
             order_num=order_num,
             material_num=clean_nan(row.get('料號')) or '',
             material_comment=clean_nan(row.get('說明')) or '',
             material_qty=tempQty,
+            # 20260817
+            # 外部加工既有廢料
+            external_scrap_qty=temp_external_scrap_qty,
+            #
             material_date=convert_date(row.get('立單日')),
             material_delivery_date=convert_date(row.get('交期')),
             total_delivery_qty=tempQty,

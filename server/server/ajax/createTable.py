@@ -744,20 +744,35 @@ def create_process():
         # --------------------------------------------------------
         if process_type_int in (2, 5):
 
+            #existed_inbound_transport = (
+            #    s.query(Process)
+            #    .filter(
+            #        Process.material_id == material_id_int,
+            #
+            #        # AGV 與堆高機互斥
+            #        Process.process_type.in_([2, 5])
+            #    )
+            #    .order_by(
+            #        Process.create_at.asc(),
+            #        Process.id.asc()
+            #    )
+            #    .first()
+            #)
+            # 20260817版
             existed_inbound_transport = (
                 s.query(Process)
                 .filter(
                     Process.material_id == material_id_int,
-
-                    # AGV 與堆高機互斥
                     Process.process_type.in_([2, 5])
                 )
                 .order_by(
                     Process.create_at.asc(),
                     Process.id.asc()
                 )
+                .with_for_update()
                 .first()
             )
+            #
 
             if existed_inbound_transport is not None:
                 s.commit()
@@ -864,6 +879,100 @@ def create_process():
 
                     "message":
                         "此批工單已有等待 AGV 紀錄，"
+                        "不重複新增"
+                }), 200
+
+        # 20260818版
+        # ========================================================
+        # 20260818
+        # process_type=29：
+        # 等待 AGV（組裝區）
+        #
+        # 同一 material 只允許一筆 type=29。
+        #
+        # 防止：
+        #   1. station2_agv_ready Socket 重送
+        #   2. 前端重複呼叫 createProcess
+        #   3. 多台電腦同時收到 Socket
+        #
+        # material 已在前面 with_for_update() 鎖定，
+        # 所以可避免同時 INSERT。
+        # ========================================================
+        if process_type_int == 29:
+
+            # ----------------------------------------------------
+            # 1. 已完成入庫，不再建立等待 AGV
+            # ----------------------------------------------------
+            has_stockin = (
+                s.query(Process.id)
+                .filter(
+                    Process.material_id
+                    == material_id_int,
+
+                    Process.process_type
+                    == 31
+                )
+                .first()
+            )
+
+            if has_stockin:
+
+                s.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id": None,
+                    "process_type": 29,
+
+                    "skipped": True,
+                    "duplicate": False,
+
+                    "message":
+                        "此工單已完成入庫，"
+                        "不再建立等待AGV(組裝區)紀錄"
+                }), 200
+
+
+            # ----------------------------------------------------
+            # 2. 同一 material 已存在 type=29
+            #    → 不再建立第二筆
+            # ----------------------------------------------------
+            existed_type29 = (
+                s.query(Process)
+                .filter(
+                    Process.material_id
+                    == material_id_int,
+
+                    Process.process_type
+                    == 29
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_type29 is not None:
+
+                s.commit()
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_type29.id,
+
+                    "process_type": 29,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此工單已有等待AGV(組裝區)紀錄，"
                         "不重複新增"
                 }), 200
         #
@@ -5350,6 +5459,7 @@ def create_product():
     finally:
         s.close()
 """
+
 
 # 20260809版
 @createTable.route("/createProduct", methods=["POST"])

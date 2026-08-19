@@ -711,9 +711,9 @@ const footerOptions = [
 ];
 
 const headers = [
-  { title: '訂單編號', sortable: true, key: 'order_num' },
+  { title: '訂單編號', sortable: true, key: 'order_num', width:140 },
   { title: '現況進度', sortable: false, key: 'show1_ok', width:150 },
-  { title: '現況備註', sortable: false, key: 'show3_ok', width:220 },
+  { title: '現況備註', sortable: false, key: 'show3_ok', width:250 },
   { title: '交期', sortable: false, key: 'delivery_date', width:110 },
   { title: '訂單數量', sortable: false, key: 'req_qty', width:90 },
   { title: '現況數量', sortable: false, key: 'delivery_qty', width:90 },

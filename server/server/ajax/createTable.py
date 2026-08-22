@@ -200,6 +200,7 @@ def create_delegate():
     return jsonify(success=True, id=ud.id)
 
 
+# 20260820版
 # 20260807版
 # 1. type=2/5/19 短時間重複呼叫防護
 # 2. type=3/6 搬運紀錄防重複
@@ -818,6 +819,7 @@ def create_process():
                         "不重複新增"
                 }), 200
 
+        '''
         # --------------------------------------------------------
         # type=19：
         # 等待 AGV（備料區）
@@ -831,6 +833,31 @@ def create_process():
         # type 2 AGV 運行
         # --------------------------------------------------------
         if process_type_int == 19:
+            #
+            latest_pick = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 1,
+                    Process.end_time.isnot(None),
+                    Process.end_time != '',
+                )
+                .order_by(
+                    Process.end_time.desc(),
+                    Process.id.desc(),
+                )
+                .first()
+            )
+
+            if latest_pick is not None:
+                pick_end = latest_pick.end_time
+
+                if (
+                    not _begin_time
+                    or _begin_time < pick_end
+                ):
+                    _begin_time = pick_end
+            #
 
             existed_waiting_agv = (
                 s.query(Process)
@@ -881,6 +908,622 @@ def create_process():
                         "此批工單已有等待 AGV 紀錄，"
                         "不重複新增"
                 }), 200
+        '''
+
+        '''
+        # 20260820版
+        # --------------------------------------------------------
+        # type=19：
+        # 等待 AGV（備料區）
+        #
+        # 規則：
+        # 1. 同一 material 只允許一筆等待 AGV
+        # 2. 等待 AGV 的 begin_time 不得早於備料完成時間
+        #
+        # 正常流程：
+        #
+        # type 1  備料完成
+        #       ↓
+        # type 19 等待 AGV
+        #       ↓
+        # type 2  AGV 運行
+        # --------------------------------------------------------
+        if process_type_int == 19:
+
+            # ----------------------------------------------------
+            # 1. 找此 material 最後一次「備料完成」時間
+            # ----------------------------------------------------
+            latest_pick = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 1,
+                    Process.end_time.isnot(None),
+                    Process.end_time != '',
+                )
+                .order_by(
+                    Process.end_time.desc(),
+                    Process.id.desc(),
+                )
+                .first()
+            )
+
+            if latest_pick is not None:
+
+                pick_end = latest_pick.end_time
+
+                # ------------------------------------------------
+                # DB 取出的時間有可能是字串，也可能是 datetime
+                # 統一轉成 datetime
+                # ------------------------------------------------
+                if isinstance(pick_end, str):
+                    try:
+                        pick_end_dt = datetime.fromisoformat(
+                            pick_end.strip()
+                        )
+                    except Exception:
+                        pick_end_dt = None
+                else:
+                    pick_end_dt = pick_end
+
+                # ------------------------------------------------
+                # 前端傳來的 begin_time 通常是字串
+                # ------------------------------------------------
+                begin_time_dt = None
+
+                if _begin_time:
+                    try:
+                        if isinstance(_begin_time, datetime):
+                            begin_time_dt = _begin_time
+                        else:
+                            begin_time_dt = datetime.fromisoformat(
+                                str(_begin_time).strip()
+                            )
+                    except Exception:
+                        begin_time_dt = None
+
+                # ------------------------------------------------
+                # 等待 AGV 不可以比備料完成還早
+                #
+                # 情況 A：
+                # 沒有 begin_time
+                #     → 直接使用備料完成時間
+                #
+                # 情況 B：
+                # begin_time < 備料完成時間
+                #     → 修正成備料完成時間
+                # ------------------------------------------------
+                if pick_end_dt is not None:
+
+                    if (
+                        begin_time_dt is None
+                        or begin_time_dt < pick_end_dt
+                    ):
+                        print(
+                            "[createProcess] type19 begin_time corrected:",
+                            {
+                                "material_id":
+                                    material_id_int,
+
+                                "old_begin_time":
+                                    str(_begin_time),
+
+                                "pick_end":
+                                    str(pick_end_dt),
+                            }
+                        )
+
+                        # 保持 createProcess 原本使用的字串格式
+                        _begin_time = pick_end_dt.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+
+            # ----------------------------------------------------
+            # 2. 同一 material 只保留一筆等待 AGV
+            # ----------------------------------------------------
+            existed_waiting_agv = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 19
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_waiting_agv is not None:
+
+                s.commit()
+
+                print(
+                    "[createProcess] waiting AGV "
+                    "duplicate skipped:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "existing_process_id":
+                            existed_waiting_agv.id,
+
+                        "existing_begin_time":
+                            str(
+                                existed_waiting_agv.begin_time
+                            ),
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_waiting_agv.id,
+
+                    "process_type": 19,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此批工單已有等待 AGV 紀錄，"
+                        "不重複新增"
+                }), 200
+        #
+        '''
+
+        # 20260820版 修正結構
+        # --------------------------------------------------------
+        # type=19：
+        # 等待 AGV（備料區）
+        #
+        # 規則：
+        # 1. 同一 material 只允許一筆等待 AGV
+        # 2. 必須先有完成的備料 process(type=1)
+        # 3. 等待 AGV 的 begin_time 不得早於備料完成時間
+        #
+        # 正常流程：
+        #
+        # type 1  備料完成
+        #       ↓
+        # type 19 等待 AGV
+        #       ↓
+        # type 2  AGV 運行
+        # --------------------------------------------------------
+        if process_type_int == 19:
+
+            # ====================================================
+            # 1. 先檢查：
+            #    同一 material 是否已經有 type=19
+            #
+            #    有的話直接回傳，不需要再做時間修正。
+            # ====================================================
+            existed_waiting_agv = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 19
+                )
+                .order_by(
+                    Process.create_at.asc(),
+                    Process.id.asc()
+                )
+                .first()
+            )
+
+            if existed_waiting_agv is not None:
+
+                s.commit()
+
+                print(
+                    "[createProcess] waiting AGV "
+                    "duplicate skipped:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "existing_process_id":
+                            existed_waiting_agv.id,
+
+                        "existing_begin_time":
+                            str(
+                                existed_waiting_agv.begin_time
+                            ),
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+
+                    "process_id":
+                        existed_waiting_agv.id,
+
+                    "process_type": 19,
+
+                    "skipped": True,
+                    "duplicate": True,
+
+                    "message":
+                        "此批工單已有等待 AGV 紀錄，"
+                        "不重複新增"
+                }), 200
+
+
+            # ====================================================
+            # 2. 找此 material 最後一次完成的備料紀錄
+            #
+            #    type=19 必須建立在 type=1 完成之後。
+            # ====================================================
+            latest_pick = (
+                s.query(Process)
+                .filter(
+                    Process.material_id == material_id_int,
+                    Process.process_type == 1,
+                    Process.end_time.isnot(None),
+                    Process.end_time != '',
+                )
+                .order_by(
+                    Process.end_time.desc(),
+                    Process.id.desc(),
+                )
+                .first()
+            )
+
+
+            # ====================================================
+            # 3. 尚未完成備料：
+            #    不允許建立等待 AGV。
+            #
+            #    這可以直接防止：
+            #
+            #    等待AGV 08:54
+            #    備料     08:55
+            #
+            #    這種流程倒置。
+            # ====================================================
+            if latest_pick is None:
+
+                s.rollback()
+
+                print(
+                    "[createProcess] type19 skipped, "
+                    "pick process not completed:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "incoming_begin_time":
+                            str(_begin_time),
+                    }
+                )
+
+                return jsonify({
+                    "status": False,
+                    "created": False,
+
+                    "process_id": None,
+                    "process_type": 19,
+
+                    "skipped": True,
+                    "duplicate": False,
+
+                    "message":
+                        "備料尚未完成，"
+                        "不建立等待 AGV 紀錄"
+                }), 200
+
+
+            # ====================================================
+            # 4. 取得備料完成時間
+            # ====================================================
+            pick_end = latest_pick.end_time
+
+
+            # ====================================================
+            # 5. DB 的 end_time 正規化成 datetime
+            # ====================================================
+            pick_end_dt = None
+
+            if isinstance(pick_end, datetime):
+                pick_end_dt = pick_end
+
+            elif isinstance(pick_end, str):
+                try:
+                    pick_end_dt = datetime.fromisoformat(
+                        pick_end.strip()
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    pick_end_dt = None
+
+
+            # ====================================================
+            # 6. 如果備料完成時間無法解析，
+            #    不要建立錯誤的 type=19。
+            # ====================================================
+            if pick_end_dt is None:
+
+                s.rollback()
+
+                print(
+                    "[createProcess] type19 skipped, "
+                    "invalid pick end_time:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "pick_process_id":
+                            latest_pick.id,
+
+                        "pick_end":
+                            str(pick_end),
+                    }
+                )
+
+                return jsonify({
+                    "status": False,
+                    "created": False,
+
+                    "process_id": None,
+                    "process_type": 19,
+
+                    "skipped": True,
+                    "duplicate": False,
+
+                    "message":
+                        "備料完成時間異常，"
+                        "不建立等待 AGV 紀錄"
+                }), 200
+
+
+            # ====================================================
+            # 7. 將前端傳入的 begin_time 正規化
+            # ====================================================
+            begin_time_dt = None
+
+            if _begin_time:
+
+                if isinstance(
+                    _begin_time,
+                    datetime
+                ):
+                    begin_time_dt = _begin_time
+
+                else:
+                    try:
+                        begin_time_dt = (
+                            datetime.fromisoformat(
+                                str(
+                                    _begin_time
+                                ).strip()
+                            )
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        begin_time_dt = None
+
+
+            # ====================================================
+            # 8. 修正等待 AGV 起始時間
+            #
+            #    A. 沒有 begin_time
+            #       → 使用備料完成時間
+            #
+            #    B. begin_time < 備料完成時間
+            #       → 使用備料完成時間
+            #
+            #    C. begin_time >= 備料完成時間
+            #       → 保留原 begin_time
+            # ====================================================
+            '''
+            if (
+                begin_time_dt is None
+                or begin_time_dt < pick_end_dt
+            ):
+
+                old_begin_time = _begin_time
+
+                _begin_time = (
+                    pick_end_dt.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+
+                print(
+                    "[createProcess] type19 "
+                    "begin_time corrected:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "pick_process_id":
+                            latest_pick.id,
+
+                        "old_begin_time":
+                            str(
+                                old_begin_time
+                            ),
+
+                        "pick_end":
+                            str(
+                                pick_end_dt
+                            ),
+
+                        "new_begin_time":
+                            str(
+                                _begin_time
+                            ),
+                    }
+                )
+            '''
+
+            # 20260820版
+            if (
+                begin_time_dt is None
+                or begin_time_dt < pick_end_dt
+            ):
+
+                old_begin_time = _begin_time
+
+                # ------------------------------------------------
+                # 1. 修正等待 AGV 開始時間
+                # ------------------------------------------------
+                _begin_time = (
+                    pick_end_dt.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+
+                '''
+                # ------------------------------------------------
+                # 2. begin_time 被修正後，
+                #    period_time 也必須重新計算
+                #
+                #    不能再沿用前端傳來的 periodTime，
+                #    否則會發生：
+                #
+                #    begin = 08:58:41
+                #    end   = 09:01:36
+                #    period_time 卻仍是 00:07:30
+                # ------------------------------------------------
+
+                if _end_time:
+
+                    try:
+                        if isinstance(
+                            _end_time,
+                            datetime
+                        ):
+                            end_time_dt = _end_time
+                        else:
+                            end_time_dt = (
+                                datetime.fromisoformat(
+                                    str(
+                                        _end_time
+                                    ).strip()
+                                )
+                            )
+
+                        if end_time_dt >= pick_end_dt:
+
+                            time_diff = (
+                                end_time_dt
+                                - pick_end_dt
+                            )
+
+                            _period_time = (
+                                str(time_diff)
+                                .split('.')[0]
+                            )
+
+                            # periodTime2 優先權更高，
+                            # 所以也必須清掉
+                            _period_time2 = None
+
+                            print(
+                                "[createProcess] type19 "
+                                "period_time recalculated:",
+                                {
+                                    "material_id":
+                                        material_id_int,
+
+                                    "begin_time":
+                                        str(_begin_time),
+
+                                    "end_time":
+                                        str(_end_time),
+
+                                    "new_period_time":
+                                        str(_period_time),
+                                }
+                            )
+
+                    except (
+                        TypeError,
+                        ValueError,
+                    ) as e:
+
+                        print(
+                            "[createProcess] type19 "
+                            "period_time recalc failed:",
+                            {
+                                "material_id":
+                                    material_id_int,
+
+                                "begin_time":
+                                    str(_begin_time),
+
+                                "end_time":
+                                    str(_end_time),
+
+                                "error":
+                                    str(e),
+                            }
+                        )
+                '''
+                print(
+                    "[createProcess] type19 "
+                    "begin_time corrected:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "pick_process_id":
+                            latest_pick.id,
+
+                        "old_begin_time":
+                            str(
+                                old_begin_time
+                            ),
+
+                        "pick_end":
+                            str(
+                                pick_end_dt
+                            ),
+
+                        "new_begin_time":
+                            str(
+                                _begin_time
+                            ),
+
+                        #"new_period_time":
+                        #    str(
+                        #        _period_time
+                        #    ),
+                        # 20260820版 remove
+                    }
+                )
+            #
+
+            else:
+
+                print(
+                    "[createProcess] type19 "
+                    "begin_time valid:",
+                    {
+                        "material_id":
+                            material_id_int,
+
+                        "pick_end":
+                            str(
+                                pick_end_dt
+                            ),
+
+                        "begin_time":
+                            str(
+                                _begin_time
+                            ),
+                    }
+                )
+        #
+
 
         # 20260818版
         # ========================================================
@@ -1150,6 +1793,7 @@ def create_process():
                         "(組裝區->成品區)紀錄，不重複新增"
                 }), 200
 
+        '''
         # --------------------------------------------------------
         # 計算 period_time
         #
@@ -1180,6 +1824,203 @@ def create_process():
                 period_time = ''
 
             print("period_time:", period_time)
+        '''
+
+        # 20260820版
+        # --------------------------------------------------------
+        # 計算 period_time
+        #
+        # 規則：
+        #
+        # type=19：
+        #   永遠依「最終 begin_time / end_time」重新計算，
+        #   不相信前端傳來的 periodTime / periodTime2。
+        #
+        # 其他 type：
+        #   保留原本邏輯。
+        #
+        # type=6：
+        #   空白搬運通知，不計算。
+        # --------------------------------------------------------
+        if process_type_int != 6:
+
+            # ====================================================
+            # type=19：
+            # 等待 AGV（備料區）
+            #
+            # begin_time 可能已經在前面被校正成
+            # 備料完成時間，所以這裡必須重新計算。
+            # ====================================================
+            if (
+                process_type_int == 19
+                and _begin_time
+                and _end_time
+            ):
+                try:
+                    # --------------------------------------------
+                    # begin_time
+                    # --------------------------------------------
+                    if isinstance(
+                        _begin_time,
+                        datetime
+                    ):
+                        begin_dt = _begin_time
+
+                    else:
+                        begin_dt = (
+                            datetime.fromisoformat(
+                                str(
+                                    _begin_time
+                                ).strip()
+                            )
+                        )
+
+                    # --------------------------------------------
+                    # end_time
+                    # --------------------------------------------
+                    if isinstance(
+                        _end_time,
+                        datetime
+                    ):
+                        end_dt = _end_time
+
+                    else:
+                        end_dt = (
+                            datetime.fromisoformat(
+                                str(
+                                    _end_time
+                                ).strip()
+                            )
+                        )
+
+                    # --------------------------------------------
+                    # 防止 end < begin
+                    # --------------------------------------------
+                    if end_dt >= begin_dt:
+
+                        time_diff = (
+                            end_dt
+                            - begin_dt
+                        )
+
+                        period_time = (
+                            str(time_diff)
+                            .split('.')[0]
+                        )
+
+                    else:
+                        period_time = ''
+
+                        print(
+                            "[createProcess] type19 "
+                            "invalid time range:",
+                            {
+                                "material_id":
+                                    material_id_int,
+
+                                "begin_time":
+                                    str(_begin_time),
+
+                                "end_time":
+                                    str(_end_time),
+                            }
+                        )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ) as e:
+
+                    period_time = ''
+
+                    print(
+                        "[createProcess] type19 "
+                        "period_time calculate failed:",
+                        {
+                            "material_id":
+                                material_id_int,
+
+                            "begin_time":
+                                str(_begin_time),
+
+                            "end_time":
+                                str(_end_time),
+
+                            "error":
+                                str(e),
+                        }
+                    )
+
+            # ====================================================
+            # 其他 process_type：
+            # 保留原本前端 periodTime 邏輯
+            # ====================================================
+            else:
+
+                if _period_time2:
+                    period_time = str(
+                        _period_time2
+                    )
+
+                elif _period_time:
+                    period_time = str(
+                        _period_time
+                    )
+
+                elif (
+                    _begin_time
+                    and _end_time
+                ):
+                    begin_dt = (
+                        datetime.fromisoformat(
+                            str(
+                                _begin_time
+                            ).strip()
+                        )
+                    )
+
+                    end_dt = (
+                        datetime.fromisoformat(
+                            str(
+                                _end_time
+                            ).strip()
+                        )
+                    )
+
+                    time_diff = (
+                        end_dt
+                        - begin_dt
+                    )
+
+                    period_time = (
+                        str(time_diff)
+                        .split('.')[0]
+                    )
+
+                else:
+                    # 只有開始時間，尚未結束
+                    period_time = ''
+
+            print(
+                "[createProcess] period_time:",
+                {
+                    "material_id":
+                        material_id_int,
+
+                    "process_type":
+                        process_type_int,
+
+                    "begin_time":
+                        str(_begin_time),
+
+                    "end_time":
+                        str(_end_time),
+
+                    "period_time":
+                        str(period_time),
+                }
+            )
+        #
 
         # --------------------------------------------------------
         # 不重複建立同一員工、同 assemble、同製程的
@@ -3115,14 +3956,20 @@ def copy_material_and_bom():
                 lack_qty=
                     bom.lack_qty,
 
-                lack=
-                    bom.lack,
+                #lack=
+                #    bom.lack,
+                # 20260820版
+                # ★ 新一批重新判斷缺料
+                lack=False,
 
                 lack_bom_qty=
                     bom.lack_bom_qty,
 
-                receive=
-                    bom.receive,
+                #receive=
+                #    bom.receive,
+                # 20260820版
+                # copy 出來的補料 BOM 預設全部勾選
+                receive=True,
 
                 isPickOK=
                     bom.isPickOK,

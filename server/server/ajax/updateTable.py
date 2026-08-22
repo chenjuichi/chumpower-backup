@@ -568,6 +568,7 @@ def terminate_active():
     return jsonify(success=True, affected=len(rows))
 
 
+"""
 @updateTable.route("/updateBoms", methods=['POST'])
 def update_boms():
   print("updateBoms....")
@@ -689,7 +690,114 @@ def update_boms():
   return jsonify({
       'status': return_value
   })
+"""
 
+
+# 20260822版
+@updateTable.route("/updateBoms", methods=['POST'])
+def update_boms():
+    print("updateBoms....")
+
+    request_data = request.get_json()
+
+    s = Session()
+    return_value = True
+
+    try:
+        # --------------------------------------------------------
+        # request 統一成 list
+        # --------------------------------------------------------
+        if isinstance(request_data, dict):
+            bom_list = list(request_data.values())
+        elif isinstance(request_data, list):
+            bom_list = request_data
+        else:
+            bom_list = []
+
+        for bom_data in bom_list:
+
+            if not isinstance(bom_data, dict):
+                continue
+
+            bom_id = bom_data.get('id')
+
+            if not bom_id:
+                continue
+
+            # ----------------------------------------------------
+            # ★ 必須只用 BOM.id 定位
+            # 不可用 seq_num 更新，避免跨 material / order 污染。
+            # ----------------------------------------------------
+            bom = (
+                s.query(Bom)
+                .filter(Bom.id == bom_id)
+                .one_or_none()
+            )
+
+            if not bom:
+                print(
+                    f"updateBoms: "
+                    f"Bom id={bom_id} not found"
+                )
+                continue
+
+            # ----------------------------------------------------
+            # receive
+            # ----------------------------------------------------
+            if 'receive' in bom_data:
+                bom.receive = bool(
+                    bom_data['receive']
+                )
+
+            # ----------------------------------------------------
+            # lack
+            # ----------------------------------------------------
+            if 'lack' in bom_data:
+                bom.lack = bool(
+                    bom_data['lack']
+                )
+
+            # ----------------------------------------------------
+            # lack_bom_qty
+            # ----------------------------------------------------
+            if 'lack_bom_qty' in bom_data:
+                bom.lack_bom_qty = int(
+                    bom_data['lack_bom_qty']
+                    or 0
+                )
+
+            # ----------------------------------------------------
+            # isPickOK
+            # ----------------------------------------------------
+            if 'isPickOK' in bom_data:
+                bom.isPickOK = bool(
+                    bom_data['isPickOK']
+                )
+
+        s.commit()
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBoms Error:",
+            repr(e)
+        )
+
+        return_value = False
+
+        return jsonify({
+            'status': False,
+            'message': str(e),
+        }), 500
+
+    finally:
+        s.close()
+
+    return jsonify({
+        'status': return_value,
+    })
 
 @updateTable.route("/updateBomsInMaterial", methods=['POST'])
 def update_bom(material_id):

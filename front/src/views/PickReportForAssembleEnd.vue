@@ -405,6 +405,7 @@
             >
           -->
 <!--20260810版-->
+<!--
 <div
   v-if="
     item.waiting_send &&
@@ -418,53 +419,66 @@
     position: relative;
   "
 >
+-->
+<!--20260820版-->
+<div
+  v-if="
+    item.waiting_send &&
+    item.input_end_disable &&
+    item.bom_all_ready === false
+  "
+  style="
+    color: blue;
+    margin-right: 2px;
+    right: 50px;
+    position: relative;
+  "
+>
+  <!-- 訂單編號 + 缺料 -->
+  <div>
+    {{ item.order_num }}&nbsp;&nbsp;
 
-              <!-- 訂單編號 + 缺料 -->
-              <div>
-                {{ item.order_num }}&nbsp;&nbsp;
+    <span
+      style="
+        color: red;
+        font-weight: 700;
+        font-size: 12px;
+      "
+    >
+      缺料
+    </span>
+  </div>
 
-                <span
-                  style="
-                    color: red;
-                    font-weight: 700;
-                    font-size: 12px;
-                  "
-                >
-                  缺料
-                </span>
-              </div>
+  <!-- 工序名稱 -->
+  <div
+    style="
+      color: #a6a6a6;
+      font-size: 12px;
+    "
+  >
+    {{ item.assemble_work }}
 
-              <!-- 工序名稱 -->
-              <div
-                style="
-                  color: #a6a6a6;
-                  font-size: 12px;
-                "
-              >
-                {{ item.assemble_work }}
+    <!-- 工序 -->
+    <span
+      v-if="item.schedule_name"
+      style="
+        font-weight: 600;
+        font-size: 12px;
+        color: black;
+      "
+    >
+      [{{ item.schedule_name }}]
+    </span>
 
-                <!-- 工序 -->
-                <span
-                  v-if="item.schedule_name"
-                  style="
-                    font-weight: 600;
-                    font-size: 12px;
-                    color: black;
-                  "
-                >
-                  [{{ item.schedule_name }}]
-                </span>
-
-                <!-- 異常返工 -->
-                <span
-                  v-if="isAbnormalReworkRow(item)"
-                  class="abnormal-process-text"
-                >
-                  -異常
-                </span>
-              </div>
-            </div>
-
+    <!-- 異常返工 -->
+    <span
+      v-if="isAbnormalReworkRow(item)"
+      class="abnormal-process-text"
+    >
+      -異常
+    </span>
+  </div>
+</div>
 
             <!-- ====================================================== -->
             <!-- 2. 待送出 -->

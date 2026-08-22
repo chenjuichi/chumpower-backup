@@ -3829,13 +3829,10 @@ def get_processes_by_order_num_p():
 """
 
 
+# 20260820版
 # 20260818版
-@getTableP.route(
-    "/getProcessesByOrderNumP",
-    methods=["POST"]
-)
+@getTableP.route("/getProcessesByOrderNumP", methods=["POST"])
 def get_processes_by_order_num_p():
-
     print("getProcessesByOrderNumP....")
 
     request_data = (
@@ -4743,6 +4740,7 @@ def get_processes_by_order_num_p():
 
                     total_seconds = None
 
+                    '''
                     if start_time:
 
                         # -----------------------------------------
@@ -4913,6 +4911,239 @@ def get_processes_by_order_num_p():
                                 )
                             )
                         )
+                    '''
+                    # 20260820版
+                    if start_time:
+                        if end_time:
+                            # ============================================================
+                            # 20260820 修正
+                            # 已結束的加工製程：
+                            #
+                            # 不可直接使用：
+                            #     end_time - begin_time
+                            #
+                            # 因為其中包含：
+                            #     暫停時間
+                            #     下班時間
+                            #     週末跨日時間
+                            #
+                            # P_Process.elapsedActive_time 已經是實際有效加工秒數，
+                            # PInformation 應以此欄位為準。
+                            # ============================================================
+
+                            total_seconds = int(
+                                getattr(
+                                    record,
+                                    "elapsedActive_time",
+                                    0
+                                )
+                                or 0
+                            )
+
+                            # ------------------------------------------------------------
+                            # 舊資料保護：
+                            # 若 elapsedActive_time 沒有資料，
+                            # 才 fallback 回 end_time - begin_time
+                            # ------------------------------------------------------------
+                            if total_seconds <= 0:
+                                total_seconds = int(
+                                    (end_time - start_time).total_seconds()
+                                )
+
+                        else:
+                            # ============================================================
+                            # 尚未結束：
+                            # 目前時間 - 開始時間 - 暫停時間
+                            # ============================================================
+
+                            pause_total = int(
+                                getattr(
+                                    record,
+                                    "pause_time",
+                                    0
+                                )
+                                or 0
+                            )
+
+                            if (
+                                getattr(record, "is_pause", False)
+                                and
+                                getattr(
+                                    record,
+                                    "pause_started_at",
+                                    None
+                                )
+                            ):
+                                ps_aw = parse_dt_maybe_aw(
+                                    record.pause_started_at
+                                )
+
+                                if ps_aw:
+                                    extra_pause = int(
+                                        (
+                                            now_tpe_aw
+                                            -
+                                            ps_aw
+                                        ).total_seconds()
+                                    )
+
+                                    pause_total += max(
+                                        0,
+                                        extra_pause
+                                    )
+
+                            total_seconds = int(
+                                (
+                                    now_tpe_aw
+                                    -
+                                    start_time
+                                ).total_seconds()
+                            ) - pause_total
+
+
+                        total_seconds = max(
+                            0,
+                            total_seconds
+                        )
+
+                        # ================================================================
+                        # 實際耗時
+                        # ================================================================
+
+                        time_diff_str_format = fmt_hhmmss(
+                            total_seconds
+                        )
+
+
+                        if record.process_type == 1:
+
+                            temp_period_time = (
+                                record.str_elapsedActive_time
+                                or
+                                record.period_time
+                                or
+                                time_diff_str_format
+                            )
+                        # 20260820版 remove
+                        #elif record.process_type == 31:
+                        #
+                        #    temp_period_time = ""
+
+                        else:
+                            # ============================================================
+                            # 20260820 修正
+                            #
+                            # 加工製程的「實際耗時」必須跟 total_seconds
+                            # 使用相同的有效工時來源。
+                            #
+                            # 不再優先使用舊的 period_time，
+                            # 避免 period_time 仍保存 end-begin 的跨日時間。
+                            # ============================================================
+
+                            temp_period_time = time_diff_str_format
+
+                        '''
+                        # ================================================================
+                        # 實際工時（分 / PCS）
+                        #
+                        # 公式：
+                        #
+                        #     有效加工秒數
+                        #     ----------------
+                        #       60 × 加工數量
+                        #
+                        # ================================================================
+
+                        if (
+                            show_code > 1000
+                            and
+                            work_qty > 0
+                        ):
+
+                            work_time = round(
+                                total_seconds
+                                /
+                                60.0
+                                /
+                                work_qty,
+                                2
+                            )
+
+                            work_time_str = str(
+                                work_time
+                            )
+
+                        elif record.process_type == 31:
+
+                            work_time_str = ""
+
+
+                        else:
+
+                            # 沒有開始時間
+                            temp_period_time = (
+                                record.period_time
+                                or ""
+                            )
+                        '''
+
+                        # 20260820版
+                        # ================================================================
+                        # 20260820
+                        # 實際工時（分 / PCS）
+                        #
+                        # 優先使用：
+                        #     P_Process.process_work_time_qty
+                        #
+                        # 因為加工單可能拆批，例如：
+                        #
+                        #     第1批 = 47 pcs
+                        #     第2批 = 95 pcs
+                        #
+                        # 不可直接使用整張 material 的 total_delivery_qty。
+                        #
+                        # 公式：
+                        #
+                        #     elapsedActive_time
+                        #     ------------------
+                        #       60 × 本批加工數量
+                        # ================================================================
+
+                        process_qty = to_int(
+                            getattr(
+                                record,
+                                "process_work_time_qty",
+                                0
+                            ),
+                            0
+                        )
+
+                        # 舊資料沒有 process_work_time_qty 時，
+                        # 才 fallback 使用 material 層級的 work_qty。
+                        if process_qty <= 0:
+                            process_qty = work_qty
+
+                        if (
+                            not is_transport_process
+                            and
+                            process_qty > 0
+                        ):
+                            work_time = round(
+                                total_seconds
+                                /
+                                60.0
+                                /
+                                process_qty,
+                                2
+                            )
+
+                            work_time_str = str(
+                                work_time
+                            )
+
+                        else:
+                            work_time_str = ""
+                    #
 
                 # =================================================
                 # 單件標工
@@ -6081,7 +6312,6 @@ def get_processes_by_order_num_p():
     finally:
 
         s.close()
-
 
 
 @getTableP.route("/getCountMaterialsAndAssemblesByUserP", methods=['POST'])

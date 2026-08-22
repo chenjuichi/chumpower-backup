@@ -360,6 +360,7 @@ def parse_dt_maybe_aw(value):
         return dt.astimezone(TPE)
 
 
+"""
 def _live_elapsed_seconds(log) -> int:
     begin = _to_aware(getattr(log, 'begin_time', None))
     if not begin:
@@ -375,6 +376,130 @@ def _live_elapsed_seconds(log) -> int:
         end = datetime.now(timezone.utc)
 
     return max(0, int((end - begin).total_seconds()) - pause_total)
+"""
+
+
+# 20260821版
+def _live_elapsed_seconds(log) -> int:
+
+    # --------------------------------------------------------
+    # DB 已經保存的有效秒數
+    #
+    # 這是最重要的保底值：
+    # 重開 dialog 絕對不能比這個值更小。
+    # --------------------------------------------------------
+    saved_elapsed = int(
+        getattr(
+            log,
+            "elapsedActive_time",
+            0
+        )
+        or 0
+    )
+
+    begin = _to_aware(
+        getattr(
+            log,
+            "begin_time",
+            None
+        )
+    )
+
+    # --------------------------------------------------------
+    # 舊資料 / 異常資料沒有 begin_time
+    #
+    # 不可直接變成 0，
+    # 至少沿用 DB 已累積秒數。
+    # --------------------------------------------------------
+    if not begin:
+        return max(
+            0,
+            saved_elapsed
+        )
+
+    pause_total = int(
+        getattr(
+            log,
+            "pause_time",
+            0
+        )
+        or 0
+    )
+
+    is_pause = bool(
+        getattr(
+            log,
+            "is_pause",
+            False
+        )
+    )
+
+    pause_started = _to_aware(
+        getattr(
+            log,
+            "pause_started_at",
+            None
+        )
+    )
+
+    # --------------------------------------------------------
+    # 暫停中：
+    #
+    # 有 pause_started_at
+    # → 計算到暫停那一刻
+    #
+    # 否則：
+    # → 不再增加，直接使用 saved_elapsed
+    # --------------------------------------------------------
+    if is_pause:
+
+        if not pause_started:
+            return max(
+                0,
+                saved_elapsed
+            )
+
+        end = pause_started
+
+    else:
+
+        # ----------------------------------------------------
+        # 正在執行：
+        # 使用現在時間計算 live elapsed
+        # ----------------------------------------------------
+        end = datetime.now(
+            timezone.utc
+        )
+
+    wall_elapsed = max(
+        0,
+        int(
+            (
+                end
+                - begin
+            ).total_seconds()
+        )
+        - pause_total
+    )
+
+    # --------------------------------------------------------
+    # ★ 關鍵
+    #
+    # live 計算值絕對不能小於
+    # DB 已保存 elapsedActive_time。
+    #
+    # 避免 reopen dialog：
+    #
+    # 原本 00:05:32
+    # ↓
+    # 計算異常
+    # ↓
+    # 00:00:00
+    # --------------------------------------------------------
+    return max(
+        saved_elapsed,
+        wall_elapsed
+    )
 
 
 # 將 step code 轉成製程代號
@@ -1582,6 +1707,8 @@ def get_boms():
 # -----dialog2~ for 前端 MaterialListForAssem.vue -------------------------------------------------------------
 
 
+# 20260821版
+# 20260820版
 @getTable.route("/dialog2StartProcess", methods=['POST'])
 def start_process():
     print("dialog2StartProcess API....")
@@ -1597,7 +1724,7 @@ def start_process():
     material_record = s.query(Material).filter_by(id=material_id).first()
 
     # 1) 先找「同工單(同製程)、尚未結束」的最後一筆（不帶 user 條件）
-    """
+    '''
     log = (
         s.query(Process)
         # .filter_by(material_id=material_id, process_type=process_type, user_id=user_id)
@@ -1606,8 +1733,9 @@ def start_process():
         .order_by(Process.id.desc())
         .first()
     )
-    """
+    '''
 
+    '''
     log = (
         s.query(Process)
         .filter(Process.material_id == material_id)
@@ -1622,9 +1750,115 @@ def start_process():
         .order_by(Process.id.desc())
         .first()
     )
+    '''
+    # 20260820版
+    # ============================================================
+    # 20260820 fix
+    #
+    # 重新開啟 Material 備料 dialog 時：
+    #
+    # 1. 優先找「目前員工真正已開始、尚未結束」的 Process
+    # 2. 再找其他已開始、尚未結束 Process
+    # 3. 最後才允許使用尚未開始的 placeholder Process
+    #
+    # 不可以單純 order_by(id.desc())，
+    # 否則較新的 has_started=False 空 Process 會蓋掉真正計時中的 Process。
+    # ============================================================
 
+    # ------------------------------------------------------------
+    # A. 最優先：
+    # 同 material + process type + user
+    # 已真正開始、尚未結束
+    # ------------------------------------------------------------
+    log = (
+        s.query(Process)
+        .filter(
+            Process.material_id == material_id,
+            Process.process_type == process_type,
+
+            or_(
+                Process.end_time.is_(None),
+                Process.end_time == ''
+            ),
+
+            Process.has_started.is_(True),
+
+            or_(
+                Process.user_id == user_id,
+                Process.user_id.like(
+                    f"{user_id} %"
+                )
+            )
+        )
+        .order_by(
+            Process.id.desc()
+        )
+        .first()
+    )
+
+
+    # ------------------------------------------------------------
+    # B. 防舊資料：
+    # 如果 user_id 格式不同，
+    # 再找這個 material 真正已開始的 Process
+    # ------------------------------------------------------------
+    if not log:
+
+        log = (
+            s.query(Process)
+            .filter(
+                Process.material_id == material_id,
+                Process.process_type == process_type,
+
+                or_(
+                    Process.end_time.is_(None),
+                    Process.end_time == ''
+                ),
+
+                Process.has_started.is_(True)
+            )
+            .order_by(
+                Process.id.desc()
+            )
+            .first()
+        )
+
+
+    # ------------------------------------------------------------
+    # C. 都沒有真正開始的 Process，
+    # 才找尚未開始 placeholder。
+    #
+    # 這通常是第一次打開 dialog。
+    # ------------------------------------------------------------
+    if not log:
+
+        log = (
+            s.query(Process)
+            .filter(
+                Process.material_id == material_id,
+                Process.process_type == process_type,
+
+                or_(
+                    Process.end_time.is_(None),
+                    Process.end_time == ''
+                ),
+
+                or_(
+                    Process.has_started.is_(False),
+                    Process.has_started.is_(None)
+                )
+            )
+            .order_by(
+                Process.id.desc()
+            )
+            .first()
+        )
+    #
+
+    '''
     if log:
       live = _live_elapsed_seconds(log)
+
       return jsonify(
         success=True,
         process_id=log.id,
@@ -1639,6 +1873,130 @@ def start_process():
         startStatus=getattr(material_record, "startStatus", None) if material_record else None,
         isOpenEmpId=getattr(material_record, "isOpenEmpId", None) if material_record else None,
       )
+    '''
+    # 20260821版
+    if log:
+
+        live = _live_elapsed_seconds(
+            log
+        )
+
+        saved_elapsed = int(
+            getattr(
+                log,
+                "elapsedActive_time",
+                0
+            )
+            or 0
+        )
+
+        # --------------------------------------------------------
+        # 防止 active Process reopen 時秒數倒退
+        # --------------------------------------------------------
+        live = max(
+            int(live or 0),
+            saved_elapsed
+        )
+
+        print(
+            "[dialog2StartProcess restore]",
+            {
+                "process_id":
+                    log.id,
+
+                "material_id":
+                    log.material_id,
+
+                "has_started":
+                    log.has_started,
+
+                "is_pause":
+                    log.is_pause,
+
+                "begin_time":
+                    log.begin_time,
+
+                "pause_time":
+                    log.pause_time,
+
+                "pause_started_at":
+                    log.pause_started_at,
+
+                "saved_elapsed":
+                    saved_elapsed,
+
+                "live_elapsed":
+                    live,
+            }
+        )
+
+        return jsonify(
+            success=True,
+
+            process_id=
+                log.id,
+
+            begin_time=
+                log.begin_time,
+
+            elapsed_time=
+                int(live),
+
+            is_paused=
+                bool(log.is_pause),
+
+            pause_time=
+                int(
+                    log.pause_time
+                    or 0
+                ),
+
+            has_started=
+                bool(
+                    getattr(
+                        log,
+                        "has_started",
+                        True
+                    )
+                ),
+
+            isOpen=
+                getattr(
+                    material_record,
+                    "isOpen",
+                    None
+                )
+                if material_record
+                else None,
+
+            hasStarted=
+                getattr(
+                    material_record,
+                    "hasStarted",
+                    None
+                )
+                if material_record
+                else None,
+
+            startStatus=
+                getattr(
+                    material_record,
+                    "startStatus",
+                    None
+                )
+                if material_record
+                else None,
+
+            isOpenEmpId=
+                getattr(
+                    material_record,
+                    "isOpenEmpId",
+                    None
+                )
+                if material_record
+                else None,
+        )
+    #
 
     # 2) 沒有未結束流程 → 幫當前 user 新建
     new_log = Process(
@@ -1753,6 +2111,7 @@ def update_process():
     )
 
 
+# 20260819版
 @getTable.route("/dialog2ToggleProcess", methods=['POST'])
 def toggle_process():
     print("dialog2ToggleProcess API....")
@@ -1807,6 +2166,7 @@ def toggle_process():
             log.is_pause = False
 
         # 第一次開始時，標記 has_started=True，並補 begin_time
+        '''
         if not getattr(log, "has_started", False):
             # 若你的模型已有 has_started 欄位，這裡會生效
             try:
@@ -1817,6 +2177,52 @@ def toggle_process():
 
             if not log.begin_time:
                 log.begin_time = now_tpe_str
+        '''
+        # 20260819版
+        if not getattr(log, "has_started", False):
+
+            log.has_started = True
+
+            if not log.begin_time:
+
+                elapsed_secs = int(
+                    getattr(
+                        log,
+                        "elapsedActive_time",
+                        0
+                    )
+                    or 0
+                )
+
+                # --------------------------------------------------------
+                # 若已經累積過有效工時，
+                # 表示這不是全新開始。
+                #
+                # begin_time 應由：
+                #
+                #   現在 - 已累積有效秒數
+                #
+                # 回推出真正開始時間，
+                # 不能直接寫 now。
+                # --------------------------------------------------------
+                if elapsed_secs > 0:
+
+                    estimated_begin = (
+                        now_tpe_aw
+                        - timedelta(
+                            seconds=elapsed_secs
+                        )
+                    )
+
+                    log.begin_time = (
+                        estimated_begin
+                        .strftime(FMT)
+                    )
+
+                else:
+                    # 真正第一次開始
+                    log.begin_time = now_tpe_str
+        #
 
     s.commit()
 
@@ -1831,6 +2237,7 @@ def toggle_process():
     )
 
 
+# 20260819版
 # 20260727版
 @getTable.route("/dialog2CloseProcess", methods=['POST'])
 def close_process():
@@ -1863,6 +2270,48 @@ def close_process():
     #
 
     now = datetime.now()
+
+    #
+    # ------------------------------------------------------------
+    # 20260819
+    # 舊資料防護：
+    #
+    # 已有 elapsedActive_time，
+    # 但 begin_time 尚未寫入時，
+    # 由 elapsedActive_time 回推出開始時間。
+    #
+    # 避免：
+    # begin_time == end_time
+    # 但 elapsedActive_time 實際已有數十分鐘。
+    # ------------------------------------------------------------
+
+    if not log.begin_time:
+
+        elapsed_secs = int(
+            elapsed_time
+            if elapsed_time is not None
+            else (
+                log.elapsedActive_time
+                or 0
+            )
+        )
+
+        if elapsed_secs > 0:
+
+            estimated_begin = (
+                now
+                - timedelta(
+                    seconds=elapsed_secs
+                )
+            )
+
+            log.begin_time = (
+                estimated_begin
+                .strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            )
+    #
 
     # 1) 若暫停中，先把最後一段暫停秒數補進 pause_time
     if getattr(log, "is_pause", False) and getattr(log, "pause_started_at", None):
@@ -7217,6 +7666,8 @@ def get_processes_by_order_num():
 """
 
 
+# 20260820版
+# 20260819版
 # 20260817版
 # 20260814版
 # 20260731 material_id 分群版
@@ -7755,6 +8206,128 @@ def get_processes_by_order_num():
             if safe_int(material.id) > 0
         ]
 
+        # 20260819版
+        # ============================================================
+        # 20260819
+        # 整張訂單是否已經完整完成，停在 End 等待送出
+        #
+        # 用途：
+        # 若整張訂單數量已完整完成，例如：
+        #
+        #   訂單數量 = 38
+        #   B110 completed_qty = 38
+        #   isAssembleStationShow = True
+        #   isWarehouseStationShow = False
+        #
+        # 則舊 copy material 上仍未結束的：
+        #
+        #   type=5 堆高機：備料區 -> 組裝區
+        #
+        # 已屬歷史殘影，Information 詳情不再顯示。
+        #
+        # 注意：
+        # 不修改 DB，只控制 Information 顯示。
+        # ============================================================
+
+        waiting_send_rows = (
+            s.query(Assemble)
+            .filter(
+                Assemble.material_id.in_(
+                    all_material_ids
+                ),
+                Assemble.work_num == "B110",
+                Assemble.process_step_code == 0,
+                Assemble.isAssembleStationShow.is_(True),
+                Assemble.isWarehouseStationShow.is_(False),
+                Assemble.show2_ok.in_([9, 10]),
+            )
+            .all()
+            if all_material_ids
+            else []
+        )
+
+        order_required_qty = safe_int(
+            getattr(
+                root_material,
+                "material_qty",
+                0,
+            ),
+            0,
+        )
+
+        waiting_send_completed_qty = max(
+            [
+                max(
+                    safe_int(
+                        getattr(
+                            row,
+                            "completed_qty",
+                            0,
+                        )
+                    ),
+                    safe_int(
+                        getattr(
+                            row,
+                            "total_completed_qty",
+                            0,
+                        )
+                    ),
+                )
+                for row in waiting_send_rows
+            ]
+            or [0]
+        )
+
+        order_is_fully_waiting_send = (
+            order_required_qty > 0
+            and
+            waiting_send_completed_qty
+            >=
+            order_required_qty
+        )
+
+        # 哪個 material 是真正完成並等待送出的 material
+        waiting_send_material_ids = {
+            safe_int(
+                getattr(
+                    row,
+                    "material_id",
+                    0,
+                )
+            )
+            for row in waiting_send_rows
+            if safe_int(
+                getattr(
+                    row,
+                    "material_id",
+                    0,
+                )
+            ) > 0
+        }
+
+        print(
+            "[Information][waiting send]",
+            {
+                "order_num":
+                    order_num,
+
+                "order_required_qty":
+                    order_required_qty,
+
+                "waiting_send_completed_qty":
+                    waiting_send_completed_qty,
+
+                "order_is_fully_waiting_send":
+                    order_is_fully_waiting_send,
+
+                "waiting_send_material_ids":
+                    sorted(
+                        waiting_send_material_ids
+                    ),
+            }
+        )
+        #
+
         # ------------------------------------------------------------
         # 所有 type=31 入庫紀錄
         # ------------------------------------------------------------
@@ -7774,6 +8347,7 @@ def get_processes_by_order_num():
             if all_material_ids
             else []
         )
+
         # 20260817版 add
         # ============================================================
         # 建立每個 material 的「實際入庫時間」
@@ -8129,6 +8703,102 @@ def get_processes_by_order_num():
                     )
                 )
 
+                #
+                # ============================================================
+                # 20260819
+                # 整單已完整完成並停在 End 等待送出：
+                #
+                # 排除其他 copy material 上仍未正常結束的
+                # 「堆高機：備料區 -> 組裝區」殘影。
+                #
+                # 例如 121100020707：
+                #
+                #   material 220
+                #       B110 completed = 38
+                #       End 等待送出
+                #
+                #   material 225
+                #       type=5 / end_time=NULL
+                #
+                #   material 278
+                #       type=5 / end_time=NULL
+                #
+                # 225 / 278 的 type=5 已不應再代表目前流程。
+                #
+                # 只影響 Information 顯示，不刪 DB。
+                # ============================================================
+
+                record_material_id = safe_int(
+                    getattr(
+                        record,
+                        "material_id",
+                        material.id,
+                    )
+                )
+
+                record_end_is_empty = (
+                    is_empty_process_time(
+                        getattr(
+                            record,
+                            "end_time",
+                            None,
+                        )
+                    )
+                )
+
+                if (
+                    order_is_fully_waiting_send
+
+                    # 目前先只處理明確有問題的堆高機
+                    and record_process_type == 5
+
+                    # 未正常結束
+                    and record_end_is_empty
+
+                    # 而且不是目前真正等待送出的 material
+                    and record_material_id
+                    not in waiting_send_material_ids
+                ):
+                    print(
+                        "[Information] "
+                        "skip stale forklift before assemble:",
+                        {
+                            "order_num":
+                                order_num,
+
+                            "material_id":
+                                record_material_id,
+
+                            "process_id":
+                                safe_int(
+                                    getattr(
+                                        record,
+                                        "id",
+                                        0,
+                                    )
+                                ),
+
+                            "process_type":
+                                record_process_type,
+
+                            "begin_time":
+                                getattr(
+                                    record,
+                                    "begin_time",
+                                    None,
+                                ),
+
+                            "end_time":
+                                getattr(
+                                    record,
+                                    "end_time",
+                                    None,
+                                ),
+                        }
+                    )
+
+                    continue
+                #
 
                 # ============================================================
                 # 20260817
@@ -9374,6 +10044,218 @@ def get_processes_by_order_num():
                 "processes":
                     batch_processes,
             })
+
+        # 20260820版
+        # ============================================================
+        # 20260820
+        # Information 詳情：
+        # 隱藏「只有補料 / 備料歷史」的 copy material group
+        #
+        # 例如：
+        #
+        #   121100020707
+        #
+        #   220：正式生產
+        #       備料
+        #       組裝
+        #       檢驗
+        #
+        #   225：缺料補料 copy
+        #       只有備料
+        #
+        #   278：再次補料 copy
+        #       只有備料
+        #
+        # 225 / 278 保留在 DB，
+        # 但 Information 詳情不顯示，
+        # 也不顯示「第2批 / 第3批」抬頭。
+        #
+        # 注意：
+        # 若 copy material 本身真的有組裝 / 檢驗 / 雷射 /
+        # 送 Warehouse / 入庫，
+        # 則仍然保留顯示。
+        # ============================================================
+
+        formal_process_types = {
+            21,     # 組裝
+            22,     # 檢驗
+            23,     # 雷射
+
+            29,     # 等待 AGV（組裝區）
+            3,      # AGV 組裝區 -> 成品區
+            6,      # 堆高機 組裝區 -> 成品區
+
+            31,     # 成品入庫
+        }
+
+        visible_groups = []
+
+        for group in groups:
+
+            is_copy_group = bool(
+                group.get(
+                    "is_copied_from_id"
+                )
+            )
+
+            process_type_codes = {
+                safe_int(
+                    process_row.get(
+                        "process_type_code",
+                        0
+                    )
+                )
+                for process_row
+                in (
+                    group.get(
+                        "processes"
+                    )
+                    or []
+                )
+            }
+
+            has_formal_process = bool(
+                process_type_codes
+                &
+                formal_process_types
+            )
+
+            # --------------------------------------------------------
+            # copy material 且只有：
+            #
+            #   1  = 備料
+            #   19 = 等待 AGV(備料區)
+            #   2  = AGV 備料區 -> 組裝區
+            #   5  = 堆高機 備料區 -> 組裝區
+            #
+            # 沒有真正生產 / 後段流程
+            #
+            # → 視為補料歷史
+            # → Information 詳情隱藏整個 group
+            # --------------------------------------------------------
+            if (
+                is_copy_group
+                and
+                not has_formal_process
+            ):
+
+                print(
+                    "[Information] "
+                    "hide prepare-only copy group:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "material_id":
+                            group.get(
+                                "material_id"
+                            ),
+
+                        "is_copied_from_id":
+                            group.get(
+                                "is_copied_from_id"
+                            ),
+
+                        "process_type_codes":
+                            sorted(
+                                process_type_codes
+                            ),
+                    }
+                )
+
+                continue
+
+            visible_groups.append(
+                group
+            )
+
+        # ============================================================
+        # 隱藏 group 後重新編號
+        #
+        # 避免原本：
+        #
+        #   第1批
+        #   第3批
+        #
+        # 應重新變成：
+        #
+        #   第1批
+        #   第2批
+        #
+        # ============================================================
+
+        for new_batch_no, group in enumerate(
+            visible_groups,
+            start=1
+        ):
+
+            group[
+                "batch_no"
+            ] = new_batch_no
+
+            for batch_seq_num, process_row in enumerate(
+                group.get(
+                    "processes"
+                )
+                or [],
+                start=1
+            ):
+
+                process_row[
+                    "batch_no"
+                ] = new_batch_no
+
+                process_row[
+                    "seq_num"
+                ] = batch_seq_num
+
+        groups = visible_groups
+
+        # ============================================================
+        # flat_results 也必須同步重建
+        #
+        # 否則新版 groups 雖然隱藏，
+        # 舊版相容 processes 還是會看到 225 / 278。
+        # ============================================================
+
+        flat_results = []
+
+        global_seq_num = 0
+
+        for group in groups:
+
+            for batch_seq_num, process_row in enumerate(
+                group.get(
+                    "processes"
+                )
+                or [],
+                start=1
+            ):
+
+                global_seq_num += 1
+
+                flat_object = dict(
+                    process_row
+                )
+
+                flat_object[
+                    "seq_num"
+                ] = global_seq_num
+
+                flat_object[
+                    "batch_seq_num"
+                ] = batch_seq_num
+
+                flat_object[
+                    "batch_no"
+                ] = group.get(
+                    "batch_no"
+                )
+
+                flat_results.append(
+                    flat_object
+                )
+        #
 
         print(
             "=== NEW "
@@ -12202,6 +13084,7 @@ def get_materials_and_assembles():
         }), 200
 
 
+# 20260820版
 # 20260818版
 # 20260809版
 @getTable.route("/getMaterialsAndAssemblesByUser", methods=['POST'])
@@ -12550,6 +13433,8 @@ def get_materials_and_assembles_by_user():
                     end_finished_count,
             }
             '''
+
+            '''
             # 20260818版
             # ============================================================
             # 20260818
@@ -12685,6 +13570,283 @@ def get_materials_and_assembles_by_user():
 
                 'waiting_send_material_ids':
                     waiting_send_material_ids,
+            }
+            #
+            '''
+
+            # 20260820版
+            # ============================================================
+            # 缺料分批 End 完成判斷
+            #
+            # 重要：
+            #
+            # 缺料 copy material：
+            #
+            #   220 -> 225 -> 278
+            #
+            # 代表 BOM / 補料歷程，
+            # 不代表成品真的有 3 批。
+            #
+            # 所以不可要求：
+            #
+            #   220、225、278
+            #
+            # 每一筆都各自完成 End。
+            #
+            # 正確判斷：
+            #
+            # 同 order_num 只要已有 waiting_send 成品完成量
+            # >= 訂單需求量，
+            # 就視為整張訂單 End 已完成。
+            # ============================================================
+
+            batch_material_ids = [
+                int(m.id)
+                for m in batch_materials
+            ]
+
+            # ------------------------------------------------------------
+            # 仍保留 material 數量，
+            # 用於表示這張訂單曾有幾個缺料 / 補料 material。
+            #
+            # 例如：
+            #   220 / 225 / 278
+            #   batch_count = 3
+            #
+            # 但不再用這個數量判斷成品是否完成。
+            # ------------------------------------------------------------
+            batch_count = len(
+                batch_material_ids
+            )
+
+            # ------------------------------------------------------------
+            # 整張訂單應完成數量
+            #
+            # 缺料 copy 的 material_qty 通常都仍為原訂單數量，
+            # 例如全部都是 38。
+            #
+            # 所以取 max，不可 sum：
+            #
+            #   max(38, 38, 38) = 38
+            #
+            # 不可以：
+            #
+            #   38 + 38 + 38 = 114
+            # ------------------------------------------------------------
+            order_required_qty = max(
+                [
+                    int(
+                        getattr(
+                            m,
+                            'material_qty',
+                            0
+                        )
+                        or 0
+                    )
+                    for m in batch_materials
+                ]
+                or [0]
+            )
+
+            # ------------------------------------------------------------
+            # 找真正完成、正在 End 等待送出的 Assemble
+            #
+            # B110：
+            #   一般組裝 + 檢驗流程
+            #
+            # B109：
+            #   只有組裝、沒有檢驗的工單
+            # ------------------------------------------------------------
+            waiting_rows = []
+
+            if batch_material_ids:
+
+                waiting_rows = (
+                    s.query(
+                        Assemble
+                    )
+                    .filter(
+                        Assemble.material_id.in_(
+                            batch_material_ids
+                        ),
+
+                        Assemble.work_num.in_([
+                            'B109',
+                            'B110'
+                        ]),
+
+                        Assemble.process_step_code
+                        == 0,
+
+                        Assemble.completed_qty
+                        > 0,
+
+                        Assemble.isAssembleStationShow
+                        .is_(True),
+
+                        # 尚未送 Warehouse
+                        or_(
+                            Assemble.isWarehouseStationShow
+                            .is_(False),
+
+                            Assemble.isWarehouseStationShow
+                            .is_(None),
+                        ),
+
+                        Assemble.show2_ok.in_(
+                            [9, 10]
+                        ),
+                    )
+                    .all()
+                )
+
+            # ------------------------------------------------------------
+            # waiting_send 的 material ids
+            #
+            # 保留供除錯 / 前端資訊使用。
+            # ------------------------------------------------------------
+            waiting_send_material_ids = {
+                int(
+                    getattr(
+                        row,
+                        'material_id',
+                        0
+                    )
+                    or 0
+                )
+                for row in waiting_rows
+                if int(
+                    getattr(
+                        row,
+                        'material_id',
+                        0
+                    )
+                    or 0
+                ) > 0
+            }
+
+            # ------------------------------------------------------------
+            # 整張訂單真正完成量
+            #
+            # 非常重要：
+            #
+            # 缺料分批不是成品數量分批，
+            # 所以不能把不同 copy material 的 completed_qty 相加。
+            #
+            # 例如：
+            #
+            #   material 220 = 38
+            #   material 225 = 38
+            #   material 278 = 38
+            #
+            # 若 sum 就會變 114，錯誤。
+            #
+            # 因此取 waiting_send 中最大完成量。
+            # ------------------------------------------------------------
+            waiting_completed_qty = max(
+                [
+                    max(
+                        int(
+                            getattr(
+                                row,
+                                'completed_qty',
+                                0
+                            )
+                            or 0
+                        ),
+
+                        int(
+                            getattr(
+                                row,
+                                'total_completed_qty',
+                                0
+                            )
+                            or 0
+                        ),
+                    )
+                    for row in waiting_rows
+                ]
+                or [0]
+            )
+
+            # ------------------------------------------------------------
+            # 整張訂單是否已完成 End
+            #
+            # 例如 121100020707：
+            #
+            #   order_required_qty      = 38
+            #   waiting_completed_qty   = 38
+            #
+            # → True
+            # ------------------------------------------------------------
+            all_batches_end_finished = (
+                order_required_qty > 0
+                and
+                waiting_completed_qty
+                >=
+                order_required_qty
+            )
+
+            # ------------------------------------------------------------
+            # 顯示用完成批次數
+            #
+            # 舊畫面若還使用：
+            #
+            #   end_finished_batch_count / batch_count
+            #
+            # 成品已足量完成時，
+            # 就不要再顯示錯誤的：
+            #
+            #   1/3
+            #
+            # 改成 3/3。
+            #
+            # 注意：
+            # 這只是顯示相容值，
+            # 不代表 225 / 278 真的各自做過 End。
+            # ------------------------------------------------------------
+            if all_batches_end_finished:
+
+                end_finished_batch_count = (
+                    batch_count
+                )
+
+            else:
+
+                end_finished_batch_count = len(
+                    waiting_send_material_ids
+                )
+
+            # ------------------------------------------------------------
+            # 存入 order-level 狀態
+            # ------------------------------------------------------------
+            order_batch_status_map[
+                order_num
+            ] = {
+                'is_lack_batch_order':
+                    is_lack_batch_order,
+
+                'all_batches_end_finished':
+                    all_batches_end_finished,
+
+                'material_ids':
+                    batch_material_ids,
+
+                'total_count':
+                    batch_count,
+
+                'end_finished_count':
+                    end_finished_batch_count,
+
+                'waiting_send_material_ids':
+                    waiting_send_material_ids,
+
+                # 20260820 add
+                'order_required_qty':
+                    order_required_qty,
+
+                'waiting_completed_qty':
+                    waiting_completed_qty,
             }
             #
 
@@ -13146,12 +14308,17 @@ def get_materials_and_assembles_by_user():
                 #     is_waiting_send
                 #     and bom_all_ready
                 # )
+                # 20260822版
+                # End 待送出時：
+                # 1. 本批必須已完成
+                # 2. BOM 必須全部到齊
+                # 3. 缺料分批不得還有其他批次未完成
                 can_send_to_warehouse = (
                     is_waiting_send
                     and bom_all_ready
                     and not has_pending_assem
                 )
-                #
+
 
                 # End 只顯示：
                 # 1. 目前員工自己的 active process
@@ -13387,6 +14554,25 @@ def get_materials_and_assembles_by_user():
                     if assemble_completed_total <= 0
                     else f"({assemble_completed_total})"
                 )
+
+                # 20260822版
+                # ------------------------------------------------------------
+                # End 等待訊息
+                # ------------------------------------------------------------
+                if has_pending_assem:
+                    waiting_message = (
+                        '缺料分批尚未全部完成：'
+                        f'{end_finished_batch_count}/'
+                        f'{batch_count}'
+                    )
+
+                elif not bom_all_ready:
+                    waiting_message = (
+                        '同訂單 BOM 尚未全部到齊'
+                    )
+
+                else:
+                    waiting_message = ''
                 #
 
                 _object = {
@@ -13406,11 +14592,28 @@ def get_materials_and_assembles_by_user():
                     'order_num': material_record.order_num,
 
                     # 畫面顯示用, 20260811 add
+                    #'display_order_num': (
+                    #    f"{material_record.order_num} 缺料"
+                    #    if is_lack_batch_order
+                    #    else material_record.order_num
+                    #),
+                    #
+                    # 20260820版
+                    #'display_order_num': (
+                    #    f"{material_record.order_num} 缺料"
+                    #    if not bom_all_ready
+                    #    else material_record.order_num
+                    #),
+                    #
+                    # 20260821版
+                    # End 的「缺料」顯示應看是否為缺料分批訂單，
+                    # 不可單純用 BOM.receive=False 判定。
                     'display_order_num': (
                         f"{material_record.order_num} 缺料"
                         if is_lack_batch_order
                         else material_record.order_num
                     ),
+                    #
 
                     'total_ask_qty_end': assemble_record.total_ask_qty_end,
                     'process_step_code': assemble_record.process_step_code,
@@ -13440,15 +14643,15 @@ def get_materials_and_assembles_by_user():
                         can_send_to_warehouse
                     ),
 
-                    'waiting_message': (
-                        '同訂單尚有備料資料未送至組裝區'
-                        if has_pending_assem
-                        else (
-                            '同訂單 BOM 尚未全部到齊'
-                            if not bom_all_ready
-                            else ''
-                        )
-                    ),
+                    #'waiting_message': (
+                    #    '同訂單尚有備料資料未送至組裝區'
+                    #    if has_pending_assem
+                    #    else (
+                    #        '同訂單 BOM 尚未全部到齊'
+                    #        if not bom_all_ready
+                    #        else ''
+                    #    )
+                    #),
                     #
 
                     # 20260809版 add
@@ -13587,12 +14790,25 @@ def get_materials_and_assembles_by_user():
                     'is_lack_batch_order':
                         is_lack_batch_order,
 
-                    'display_shortage_note':
-                        (
-                            '(缺料)'
-                            if is_lack_batch_order
-                            else ''
-                        ),
+                    #'display_shortage_note':
+                    #    (
+                    #        '(缺料)'
+                    #        if is_lack_batch_order
+                    #        else ''
+                    #    ),
+                    # 20260820版
+                    #'display_shortage_note': (
+                    #    '(缺料)'
+                    #    if not bom_all_ready
+                    #    else ''
+                    #),
+                    #
+                    # 20260821版
+                    'display_shortage_note': (
+                        '(缺料)'
+                        if is_lack_batch_order
+                        else ''
+                    ),
                     #
                 }
 

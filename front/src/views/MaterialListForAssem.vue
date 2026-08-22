@@ -554,6 +554,9 @@
             :key="dlg.material_id"
             v-model="dlg.dialogVisible"
             max-width="980px"
+
+            persistent
+
             @keydown.esc="handleEscClose(dlg)"
             @click:outside="handleOutsideClick(dlg)"
             :eager="true"
@@ -644,7 +647,15 @@
                         </div>
                       </td>
                       <td>
+                        <!--
                         <v-checkbox-btn v-model="bom_item.receive" :disabled="enableDialogBtn" />
+                        -->
+                        <!--20260820版-->
+                        <v-checkbox-btn
+                          v-model="bom_item.receive"
+                          :disabled="enableDialogBtn"
+                          @update:model-value="onBomReceiveChanged"
+                        />
                       </td>
                     </tr>
                   </tbody>
@@ -1305,7 +1316,8 @@ watch(
           //
           if (reason === 'esc' || reason === 'outside') {
             // ESC／外點關閉：不結束 process
-            if (dlg.proc.isPaused?.value === true) {
+            //if (dlg.proc.isPaused?.value === true) {
+            if (dlg.proc.isPaused === true) {
               await dlg.proc.updateKeepPaused();
 
               setRowState(dlg.material_id, {
@@ -1325,6 +1337,7 @@ watch(
               });
             }
 
+          /*
           } else if (reason === 'confirm') {
             // handleConfirm() 已經成功呼叫 closeProcess()
             // watcher 不可再關閉第二次
@@ -1342,6 +1355,55 @@ watch(
                 result
               );
             }
+          }
+          */
+          // 20260820
+          } else if (reason === 'confirm') {
+
+            // 只有按「確定」才允許真正結束 process
+            //
+            // handleConfirm() 已經執行 closeProcess()
+            // watcher 不可以再做一次
+            toRemove.add(it.k);
+
+          } else {
+
+            // =====================================================
+            // ★ 防呆：
+            //
+            // 不知道關閉原因時，
+            // 絕對不能 closeProcess。
+            //
+            // 因為 v-dialog / overlay / UI race
+            // 都可能讓 reason 暫時為 null。
+            // =====================================================
+
+            console.warn(
+              '[dialog watcher] unknown close reason, KEEP PROCESS ACTIVE',
+              {
+                material_id: dlg.material_id,
+                reason,
+                processId: dlg.proc?.processId,
+                isPaused: dlg.proc?.isPaused,
+              }
+            );
+
+            // 只保存目前狀態
+            if (dlg.proc) {
+
+              if (dlg.proc.isPaused === true) {
+
+                await dlg.proc.updateKeepPaused?.();
+
+              } else {
+
+                await dlg.proc.updateActiveNoPause?.();
+              }
+            }
+
+            // ★ 絕對不要：
+            //
+            // await dlg.proc.closeProcess()
           }
           //
         } catch (e) {
@@ -2242,6 +2304,7 @@ const startProcessOnce = async (dlg) => {
 }
 */
 
+/*
 const startProcessOnce = async (dlg) => {
   if (dlg._starting) return;
 
@@ -2257,6 +2320,61 @@ const startProcessOnce = async (dlg) => {
     await dlg.proc.startProcess(dlg.material_id, dlg.process_type, dlg.user_id);
     dlg._started = true;
   } finally {
+    dlg._starting = false;
+  }
+};
+*/
+// 20260820版
+const startProcessOnce = async (dlg) => {
+  if (!dlg?.proc) return;
+  if (dlg._starting) return;
+
+  dlg._starting = true;
+
+  try {
+    await waitTimerRefReady(dlg);
+
+    // =====================================================
+    // 重要：
+    // 每次 dialog 開啟都重新向後端取得目前 process。
+    //
+    // 不可因為 _started=true 就只做 syncToTimer，
+    // 因為 dialog 關閉期間：
+    //   process 仍會繼續計時
+    //   elapsed_time / is_pause 狀態可能已改變
+    // =====================================================
+    await dlg.proc.startProcess(
+      dlg.material_id,
+      dlg.process_type,
+      dlg.user_id
+    );
+
+    dlg._started = true;
+
+    await nextTick();
+
+    // 將後端還原完成的狀態送進 TimerDisplay
+    dlg.proc.syncToTimer?.();
+
+    console.log(
+      '[startProcessOnce restore]',
+      {
+        material_id: dlg.material_id,
+        processId: dlg.proc.processId,
+        isPaused: dlg.proc.isPaused,
+        elapsedMs: dlg.proc.elapsedMs
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      '[startProcessOnce] restore process failed:',
+      err
+    );
+
+  } finally {
+
     dlg._starting = false;
   }
 };
@@ -2622,6 +2740,7 @@ const toggleSelect = (item) => {
   }
 };
 
+/*
 const handleEscClose = (dlg) => {
   if (!dlg) return;                         // 防空
   if (dlg._closing) return;                 // 防重複關閉
@@ -2630,7 +2749,49 @@ const handleEscClose = (dlg) => {
   dlg.closeReason = 'esc';
   dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
 };
+*/
+// 20260820版
+const handleEscClose = async (dlg) => {
+  if (!dlg) return;
+  if (dlg._closing) return;
 
+  // ★ 必須在 await 前
+  dlg._closing = true;
+  dlg.closeReason = 'esc';
+
+  try {
+
+    if (boms.value?.length > 0) {
+      await updateBoms(
+        boms.value
+      );
+    }
+    /*
+    if (dlg.proc) {
+
+      if (dlg.proc.isPaused === true) {
+
+        await dlg.proc.updateKeepPaused?.();
+
+      } else {
+
+        await dlg.proc.updateActiveNoPause?.();
+      }
+    }
+    */
+  } catch (err) {
+
+    console.error(
+      '[handleEscClose] save failed:',
+      err
+    );
+  }
+
+  // 只關畫面
+  dlg.dialogVisible = false;
+};
+
+/*
 const handleOutsideClick = (dlg) => {
   if (!dlg) return;
   if (dlg._closing) return;
@@ -2638,6 +2799,76 @@ const handleOutsideClick = (dlg) => {
 
   dlg.closeReason = 'outside';
   dlg.dialogVisible = false;                // 交給 watcher 做後續回寫
+};
+*/
+// 20260820版
+const handleOutsideClick = async (dlg) => {
+  if (!dlg) return;
+  if (dlg._closing) return;
+
+  // =====================================================
+  // ★ 一定要在任何 await 之前設定
+  // =====================================================
+  dlg._closing = true;
+  dlg.closeReason = 'outside';
+
+  console.log(
+    '[handleOutsideClick] BEFORE SAVE',
+    {
+      material_id: dlg.material_id,
+      closeReason: dlg.closeReason,
+      isPaused: dlg.proc?.isPaused,
+      processId: dlg.proc?.processId,
+    }
+  );
+
+  try {
+
+    // BOM checkbox 狀態保存
+    if (boms.value?.length > 0) {
+      await updateBoms(
+        boms.value
+      );
+    }
+    /*
+    // ===================================================
+    // ★ 正在計時：
+    // 只更新 elapsed，不可 closeProcess
+    // ===================================================
+    if (dlg.proc) {
+
+      if (dlg.proc.isPaused === true) {
+
+        await dlg.proc.updateKeepPaused?.();
+
+      } else {
+
+        await dlg.proc.updateActiveNoPause?.();
+      }
+    }
+    */
+  } catch (err) {
+
+    console.error(
+      '[handleOutsideClick] save failed:',
+      err
+    );
+
+  }
+
+  console.log(
+    '[handleOutsideClick] CLOSE DIALOG ONLY',
+    {
+      material_id: dlg.material_id,
+      closeReason: dlg.closeReason,
+      isPaused: dlg.proc?.isPaused,
+      processId: dlg.proc?.processId,
+    }
+  );
+
+  // ★ 只是關畫面
+  // 不可結束 process
+  dlg.dialogVisible = false;
 };
 
 const editOrderNum = async (item) => {
@@ -2707,7 +2938,6 @@ async function enforceStartPausedIfNew(dlg) {
   }
 }
 */
-
 
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),id, order_num, item.isOpen:", item.id, item.order_num, item.isOpen);
@@ -2805,6 +3035,7 @@ const toggleExpand = async (item) => {
     console.log("Process ID:", dlg.proc.processId);
     currentProcessId.value = dlg.proc.processId;
 
+  /*
   } else {
     dlg._closing = false;       // 重置關閉旗標
     dlg.closeReason = null;     // 重置關閉原因
@@ -2814,6 +3045,82 @@ const toggleExpand = async (item) => {
     await nextTick();
     // 再同步一次（例如換人接手或後端狀態變了）
     //await dlg.proc.startProcess(material_id, process_type, user_id);
+  }
+  */
+
+  /*
+  // 20260820版
+  } else {
+
+    dlg._closing = false;
+    dlg.closeReason = null;
+
+    // -----------------------------------------------------
+    // 第二次 / 第三次開啟：
+    // 必須重新取得後端 active process
+    // -----------------------------------------------------
+    dlg.dialogVisible = true;
+
+    await waitTimerRefReady(dlg);
+
+    await startProcessOnce(dlg);
+
+    currentProcessId.value =
+      dlg.proc?.processId || null;
+
+    console.log(
+      '[toggleExpand reopen]',
+      {
+        material_id,
+        processId:
+          dlg.proc?.processId,
+        isPaused:
+          dlg.proc?.isPaused,
+        elapsedMs:
+          dlg.proc?.elapsedMs
+      }
+    );
+  }
+  */
+  // 20260821版
+  } else {
+
+    dlg._closing = false;
+    dlg.closeReason = null;
+
+    // -----------------------------------------------------
+    // 第二次 / 第三次開啟
+    //
+    // 这里只負責把 dialog 打開。
+    //
+    // 真正的 process restore
+    // 統一交給 dialogVisible watcher。
+    // -----------------------------------------------------
+    dlg.dialogVisible = true;
+
+    // ★ 刪掉：
+    //
+    // await waitTimerRefReady(dlg);
+    // await startProcessOnce(dlg);
+
+    currentProcessId.value =
+      dlg.proc?.processId
+      || null;
+
+    console.log(
+      '[toggleExpand reopen]',
+      {
+        material_id,
+        processId:
+          dlg.proc?.processId,
+
+        isPaused:
+          dlg.proc?.isPaused,
+
+        elapsedMs:
+          dlg.proc?.elapsedMs,
+      }
+    );
   }
 };
 
@@ -3873,6 +4180,33 @@ const unlockCreatingTransport = (materialId) => {
   creatingTransportMaterialIds.value = next
 }
 //
+
+// 20260820版
+const onBomReceiveChanged = async () => {
+  try {
+    // 等 v-model 先完成更新
+    await nextTick();
+
+    console.log(
+      '[onBomReceiveChanged] save BOM:',
+      boms.value
+    );
+
+    // checkbox 一變更就立即寫入 DB
+    await updateBoms(boms.value);
+
+  } catch (err) {
+    console.error(
+      '[onBomReceiveChanged] updateBoms failed:',
+      err
+    );
+
+    showSnackbar(
+      'BOM 領料狀態儲存失敗',
+      'red accent-2'
+    );
+  }
+};
 
 </script>
 

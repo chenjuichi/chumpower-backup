@@ -2319,6 +2319,7 @@ def export_to_excel_for_assemble_information_by_work_date():
         s.close()
 
 
+"""
 @excelTable.route("/exportToExcelForAssembleInformation", methods=['POST'])
 def export_to_excel_for_assemble_information():
     print("exportToExcelForAssembleInformation....")
@@ -2392,11 +2393,11 @@ def export_to_excel_for_assemble_information():
             return default
 
     def _seconds_from_elapsed(val):
-        """
-        將 elapsed / pause 可能的值轉成秒數：
-        - 數值可能是秒或毫秒（過大視為毫秒）
-        - 字串可能是 HH:MM:SS 或 MM:SS
-        """
+
+        #將 elapsed / pause 可能的值轉成秒數：
+        #- 數值可能是秒或毫秒（過大視為毫秒）
+        #- 字串可能是 HH:MM:SS 或 MM:SS
+
         if val is None:
             return None
 
@@ -2429,12 +2430,12 @@ def export_to_excel_for_assemble_information():
         return None
 
     def get_active_seconds(process, start_dt, end_dt, effective_end):
-        """
-        實際有效秒數（排除暫停）：
-        1) 優先用 elapsedActive_time / elapsed_active_time
-        2) 次用 (end-start) - pause_time
-        3) 都沒有就 (end-start)
-        """
+
+        #實際有效秒數（排除暫停）：
+        #1) 優先用 elapsedActive_time / elapsed_active_time
+        #2) 次用 (end-start) - pause_time
+        #3) 都沒有就 (end-start)
+
         for k in ("elapsedActive_time", "elapsed_active_time"):
             v = getattr(process, k, None)
             sec = _seconds_from_elapsed(v)
@@ -2742,8 +2743,1766 @@ def export_to_excel_for_assemble_information():
 
     finally:
         s.close()
+"""
 
 
+# 20260820版
+@excelTable.route(
+    "/exportToExcelForAssembleInformation",
+    methods=['POST']
+)
+def export_to_excel_for_assemble_information():
+
+    print("exportToExcelForAssembleInformation....")
+
+    request_data = request.get_json(force=True) or {}
+
+    _blocks = request_data.get(
+        'blocks',
+        []
+    )
+
+    _name = request_data.get(
+        'name',
+        ''
+    )
+
+    now = datetime.datetime.now()
+
+    today = now.strftime(
+        '%Y-%m-%d-%H%M'
+    )
+
+    file_name = (
+        f'組裝區在製品生產資訊查詢_'
+        f'{today}.xlsx'
+    )
+
+    export_dir = (
+        r'C:\vue\chumpower\excel_export'
+    )
+
+    os.makedirs(
+        export_dir,
+        exist_ok=True
+    )
+
+    current_file = os.path.join(
+        export_dir,
+        file_name
+    )
+
+    temp_file = (
+        current_file.replace(
+            ".xlsx",
+            "_temp.xlsx"
+        )
+    )
+
+    # ============================================================
+    # Process 名稱
+    #
+    # 組裝線：
+    #
+    # 21 = 組裝
+    # 22 = 檢驗
+    # 23 = 雷射
+    # 31 = 成品入庫
+    #
+    # ★ 注意：
+    # 組裝線的 31 確實是成品入庫，
+    # 與加工線不同。
+    # ============================================================
+
+    code_to_name = {
+        1:  '備料',
+        19: '等待AGV(備料區)',
+        2:  'AGV運行(備料區->組裝區)',
+        20: 'AGV運行到組裝區',
+        21: '組裝',
+        22: '檢驗',
+        23: '雷射',
+        29: '等待AGV(組裝區)',
+        3:  'AGV運行(組裝區->成品區)',
+        30: 'AGV運行到成品區',
+        31: '成品入庫',
+        5:  '堆高機運行(備料區->組裝區)',
+        6:  '堆高機運行(組裝區->成品區)',
+    }
+
+    # ============================================================
+    # process_type -> Material 單件標工欄位
+    #
+    # 這些欄位本身已經是：
+    #
+    #     分 / PCS
+    #
+    # 因此後面不可再除數量。
+    # ============================================================
+
+    ptype_to_sd_field = {
+        21: "sd_time_B109",
+        22: "sd_time_B110",
+        23: "sd_time_B106",
+    }
+
+    AGV_NAMES = {
+        "AGV1-1",
+        "AGV1-2",
+        "AGV2-1",
+        "AGV2-2",
+        "(AGV1-1)",
+        "(AGV1-2)",
+        "(AGV2-1)",
+        "(AGV2-2)",
+    }
+
+    AGV_IDS = set(
+        AGV_NAMES
+    )
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 共用函式
+        # ========================================================
+
+        def safe_str(
+            value,
+            default=''
+        ):
+            try:
+
+                if value is None:
+                    return default
+
+                return str(
+                    value
+                )
+
+            except Exception:
+                return default
+
+
+        def to_int(
+            value,
+            default=0
+        ):
+            try:
+
+                if value is None:
+                    return default
+
+                if isinstance(
+                    value,
+                    bool
+                ):
+                    return int(value)
+
+                value = str(
+                    value
+                ).strip()
+
+                if not value:
+                    return default
+
+                return int(
+                    float(
+                        value
+                    )
+                )
+
+            except Exception:
+                return default
+
+
+        def _to_float(
+            value,
+            default=0.0
+        ):
+            try:
+
+                if value is None:
+                    return default
+
+                value = str(
+                    value
+                ).strip()
+
+                if (
+                    value == ''
+                    or
+                    value.lower() == 'nan'
+                ):
+                    return default
+
+                return float(
+                    value
+                )
+
+            except Exception:
+                return default
+
+
+        def to_dt(
+            value
+        ):
+
+            if not value:
+                return None
+
+            if isinstance(
+                value,
+                datetime.datetime
+            ):
+                return value
+
+            if isinstance(
+                value,
+                datetime.date
+            ):
+
+                return datetime.datetime.combine(
+                    value,
+                    datetime.time.min
+                )
+
+            if isinstance(
+                value,
+                str
+            ):
+
+                value = value.strip()
+
+                if (
+                    not value
+                    or
+                    value ==
+                    '0000-00-00 00:00:00'
+                ):
+                    return None
+
+                for date_format in (
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M",
+                    "%Y/%m/%d %H:%M",
+                ):
+
+                    try:
+
+                        return (
+                            datetime.datetime
+                            .strptime(
+                                value,
+                                date_format
+                            )
+                        )
+
+                    except ValueError:
+                        continue
+
+            return None
+
+
+        def fmt(
+            value
+        ):
+
+            if isinstance(
+                value,
+                datetime.datetime
+            ):
+
+                return value.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            return ""
+
+
+        def _seconds_from_elapsed(
+            value
+        ):
+            """
+            elapsed / pause 轉換成秒數。
+
+            支援：
+            1. 秒數
+            2. 毫秒
+            3. HH:MM:SS
+            4. MM:SS
+            """
+
+            if value is None:
+                return None
+
+            if isinstance(
+                value,
+                (int, float)
+            ):
+
+                x = float(
+                    value
+                )
+
+                return (
+                    x / 1000.0
+                    if x > 1e7
+                    else x
+                )
+
+
+            value = str(
+                value
+            ).strip()
+
+            if not value:
+                return None
+
+
+            if ":" in value:
+
+                try:
+
+                    parts = [
+                        float(v)
+                        for v
+                        in value.split(":")
+                    ]
+
+                    if len(parts) == 3:
+
+                        hour, minute, second = (
+                            parts
+                        )
+
+                        return (
+                            hour * 3600
+                            +
+                            minute * 60
+                            +
+                            second
+                        )
+
+                    elif len(parts) == 2:
+
+                        minute, second = (
+                            parts
+                        )
+
+                        return (
+                            minute * 60
+                            +
+                            second
+                        )
+
+                except Exception:
+                    return None
+
+
+            try:
+
+                x = float(
+                    value
+                )
+
+                return (
+                    x / 1000.0
+                    if x > 1e7
+                    else x
+                )
+
+            except Exception:
+                return None
+
+
+        def get_active_seconds(
+            process,
+            start_dt,
+            end_dt
+        ):
+            """
+            實際有效工時。
+
+            已完成：
+                優先使用 elapsedActive_time。
+
+            若舊資料沒有：
+                end - begin - pause_time。
+
+            未完成：
+                now - begin - pause_time。
+            """
+
+            # ----------------------------------------------------
+            # DB 已記錄的有效秒數
+            # ----------------------------------------------------
+
+            active_sec = (
+                _seconds_from_elapsed(
+                    getattr(
+                        process,
+                        "elapsedActive_time",
+                        None
+                    )
+                )
+            )
+
+            if (
+                end_dt is not None
+                and
+                active_sec is not None
+                and
+                active_sec > 0
+            ):
+
+                return active_sec
+
+
+            if start_dt is None:
+                return None
+
+
+            effective_end = (
+                end_dt
+                if end_dt is not None
+                else now
+            )
+
+
+            total_sec = (
+                effective_end
+                -
+                start_dt
+            ).total_seconds()
+
+
+            total_sec = max(
+                0,
+                total_sec
+            )
+
+
+            pause_sec = (
+                _seconds_from_elapsed(
+                    getattr(
+                        process,
+                        "pause_time",
+                        0
+                    )
+                )
+                or 0
+            )
+
+
+            # ----------------------------------------------------
+            # 尚未結束，且目前仍在暫停：
+            #
+            # 把最後一段尚未寫回 pause_time 的時間補進去。
+            # ----------------------------------------------------
+
+            if (
+                end_dt is None
+                and
+                bool(
+                    getattr(
+                        process,
+                        "is_pause",
+                        False
+                    )
+                )
+                and
+                getattr(
+                    process,
+                    "pause_started_at",
+                    None
+                )
+            ):
+
+                pause_started_at = to_dt(
+                    getattr(
+                        process,
+                        "pause_started_at",
+                        None
+                    )
+                )
+
+                if pause_started_at:
+
+                    extra_pause = (
+                        now
+                        -
+                        pause_started_at
+                    ).total_seconds()
+
+                    pause_sec += max(
+                        0,
+                        extra_pause
+                    )
+
+
+            return max(
+                0,
+                total_sec
+                -
+                pause_sec
+            )
+
+
+        # ========================================================
+        # 員工顯示
+        # ========================================================
+
+        user_name_cache = {}
+
+
+        def get_employee_display(
+            raw_user_id
+        ):
+
+            raw = safe_str(
+                raw_user_id
+            ).strip()
+
+            if not raw:
+                return ""
+
+
+            if raw in AGV_IDS:
+                return ""
+
+
+            # ----------------------------------------------------
+            # DB 已經有姓名：
+            #
+            # 01004005 陳世玟
+            # ----------------------------------------------------
+
+            if " " in raw:
+
+                parts = raw.split(
+                    None,
+                    1
+                )
+
+                emp_id = (
+                    parts[0]
+                    if parts
+                    else ""
+                )
+
+                emp_name = (
+                    parts[1]
+                    if len(parts) > 1
+                    else ""
+                )
+
+
+                if emp_name in AGV_NAMES:
+                    emp_name = ""
+
+
+                return (
+                    f"("
+                    f"{emp_id.lstrip('0')}"
+                    f"{emp_name}"
+                    f")"
+                )
+
+
+            emp_id = raw
+
+
+            if emp_id in user_name_cache:
+
+                emp_name = (
+                    user_name_cache[
+                        emp_id
+                    ]
+                )
+
+            else:
+
+                user = (
+                    s.query(User)
+                    .filter_by(
+                        emp_id=emp_id
+                    )
+                    .first()
+                )
+
+                emp_name = (
+                    safe_str(
+                        getattr(
+                            user,
+                            "emp_name",
+                            ""
+                        )
+                    ).strip()
+                    if user
+                    else ""
+                )
+
+                user_name_cache[
+                    emp_id
+                ] = emp_name
+
+
+            if emp_name in AGV_NAMES:
+                emp_name = ""
+
+
+            return (
+                f"("
+                f"{emp_id.lstrip('0')}"
+                f"{emp_name}"
+                f")"
+            )
+
+
+        # ========================================================
+        # Excel 檔案
+        # ========================================================
+
+        if os.path.exists(
+            current_file
+        ):
+
+            try:
+
+                os.remove(
+                    current_file
+                )
+
+            except PermissionError:
+
+                return jsonify({
+                    "status":
+                        False,
+
+                    "message":
+                        "請關閉 Excel 檔案後重試",
+
+                    "file_name":
+                        "",
+                }), 200
+
+
+        if os.path.exists(
+            temp_file
+        ):
+
+            try:
+
+                os.remove(
+                    temp_file
+                )
+
+            except Exception:
+                pass
+
+
+        wb = Workbook()
+
+        ws = wb.worksheets[0]
+
+        ws.title = (
+            '組裝區在製品生產資訊查詢-'
+            +
+            safe_str(
+                _name
+            )[:15]
+        )
+
+        ws.sheet_properties.tabColor = (
+            '7da797'
+        )
+
+
+        header = [
+            '訂單編號',
+            '物料',
+            '說明',
+            '交期',
+            '訂單數量',
+            '現況數量',
+            '工序',
+            '員工',
+            '開始時間',
+            '結束時間',
+            '實際耗時(分)',
+            '實際工時(分/PCS)',
+            '單件標工(分/PCS)',
+            '註記',
+        ]
+
+
+        ws.append(
+            header
+        )
+
+
+        for idx, _ in enumerate(
+            header,
+            start=1
+        ):
+
+            cell = ws.cell(
+                row=1,
+                column=idx
+            )
+
+            cell.font = Font(
+                name='微軟正黑體',
+                color='FF0000',
+                bold=True
+            )
+
+            cell.alignment = Alignment(
+                horizontal='center'
+            )
+
+            ws.column_dimensions[
+                cell.column_letter
+            ].width = 16
+
+
+        ORDER_COL = (
+            header.index(
+                '訂單編號'
+            )
+            + 1
+        )
+
+        PROCESS_COL = (
+            header.index(
+                '工序'
+            )
+            + 1
+        )
+
+        EMP_COL = (
+            header.index(
+                '員工'
+            )
+            + 1
+        )
+
+
+        fill_white = PatternFill(
+            "solid",
+            fgColor="FFFFFFFF"
+        )
+
+        fill_gray = PatternFill(
+            "solid",
+            fgColor="FFEDF2F4"
+        )
+
+
+        # ========================================================
+        # 同一個 order_num 在 _blocks 可能出現多次。
+        #
+        # Excel 不可因此整批重複匯出。
+        # ========================================================
+
+        processed_orders = set()
+
+        group_idx = -1
+
+
+        # ========================================================
+        # 每一個 Information order
+        # ========================================================
+
+        for obj in _blocks:
+
+            order_num = safe_str(
+                obj.get(
+                    'order_num',
+                    ''
+                )
+            ).strip()
+
+
+            if not order_num:
+                continue
+
+
+            if order_num in processed_orders:
+                continue
+
+
+            processed_orders.add(
+                order_num
+            )
+
+
+            group_idx += 1
+
+            group_fill = (
+                fill_white
+                if group_idx % 2 == 0
+                else fill_gray
+            )
+
+
+            # ====================================================
+            # ★ 20260820 修正
+            #
+            # 舊：
+            #
+            # material = query(...).first()
+            #
+            # 問題：
+            #
+            # 同一 order_num 若存在：
+            #
+            # material 78
+            # material 85
+            # material 111
+            #
+            # 或缺料分批 / copy material，
+            # Excel 只會匯第一批。
+            #
+            # 現在全部抓出。
+            # ====================================================
+
+            materials = (
+                s.query(Material)
+                .filter(
+                    Material.order_num
+                    ==
+                    order_num
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .all()
+            )
+
+
+            # ----------------------------------------------------
+            # DB 找不到資料仍保留基本列
+            # ----------------------------------------------------
+
+            if not materials:
+
+                ws.append([
+                    order_num,
+                    obj.get(
+                        'material_num',
+                        ''
+                    ),
+                    obj.get(
+                        'comment',
+                        ''
+                    ),
+                    obj.get(
+                        'delivery_date',
+                        ''
+                    ),
+                    obj.get(
+                        'req_qty',
+                        ''
+                    ),
+                    obj.get(
+                        'delivery_qty',
+                        ''
+                    ),
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                ])
+
+                row_num = ws.max_row
+
+                order_cell = ws.cell(
+                    row=row_num,
+                    column=ORDER_COL
+                )
+
+                order_cell.number_format = '@'
+
+                order_cell.value = str(
+                    order_num
+                )
+
+                order_cell.fill = (
+                    group_fill
+                )
+
+                continue
+
+
+            # ====================================================
+            # 同一 order_num 的所有 Material
+            # ====================================================
+
+            for material in materials:
+
+                material_id = to_int(
+                    getattr(
+                        material,
+                        'id',
+                        0
+                    ),
+                    0
+                )
+
+
+                material_num = safe_str(
+                    getattr(
+                        material,
+                        'material_num',
+                        ''
+                    )
+                )
+
+
+                material_comment = safe_str(
+                    getattr(
+                        material,
+                        'material_comment',
+                        ''
+                    )
+                )
+
+
+                material_delivery_date = (
+                    getattr(
+                        material,
+                        'material_delivery_date',
+                        ''
+                    )
+                    or ''
+                )
+
+
+                material_qty = to_int(
+                    getattr(
+                        material,
+                        'material_qty',
+                        0
+                    ),
+                    0
+                )
+
+
+                material_delivery_qty = to_int(
+                    getattr(
+                        material,
+                        'total_delivery_qty',
+                        0
+                    ),
+                    0
+                )
+
+
+                if material_delivery_qty <= 0:
+
+                    material_delivery_qty = to_int(
+                        getattr(
+                            material,
+                            'delivery_qty',
+                            0
+                        ),
+                        0
+                    )
+
+
+                if material_delivery_qty <= 0:
+
+                    material_delivery_qty = (
+                        material_qty
+                    )
+
+
+                processes = list(
+                    getattr(
+                        material,
+                        '_process',
+                        []
+                    )
+                    or []
+                )
+
+
+                assemble_records = list(
+                    getattr(
+                        material,
+                        '_assemble',
+                        []
+                    )
+                    or []
+                )
+
+
+                assemble_map = {
+                    to_int(
+                        getattr(
+                            a,
+                            'id',
+                            0
+                        ),
+                        0
+                    ):
+                    a
+
+                    for a
+                    in assemble_records
+                }
+
+
+                # ------------------------------------------------
+                # Process 依建立時間排序
+                # ------------------------------------------------
+
+                processes.sort(
+                    key=lambda p: (
+                        getattr(
+                            p,
+                            'create_at',
+                            None
+                        )
+                        or
+                        datetime.datetime.min,
+
+                        to_int(
+                            getattr(
+                                p,
+                                'id',
+                                0
+                            ),
+                            0
+                        )
+                    )
+                )
+
+
+                if not processes:
+                    continue
+
+
+                # =================================================
+                # Process
+                # =================================================
+
+                for process in processes:
+
+                    ptype = to_int(
+                        getattr(
+                            process,
+                            'process_type',
+                            0
+                        ),
+                        0
+                    )
+
+
+                    assemble_id = to_int(
+                        getattr(
+                            process,
+                            'assemble_id',
+                            0
+                        ),
+                        0
+                    )
+
+
+                    assemble_record = (
+                        assemble_map.get(
+                            assemble_id
+                        )
+                    )
+
+
+                    # =============================================
+                    # 異常資訊
+                    # =============================================
+
+                    alarm_msg_enable = True
+
+                    alarm_msg_is_first = True
+
+                    alarm_msg_string = ""
+
+
+                    if assemble_record is not None:
+
+                        alarm_msg_enable = bool(
+                            getattr(
+                                assemble_record,
+                                'alarm_enable',
+                                True
+                            )
+                        )
+
+                        alarm_msg_is_first = bool(
+                            getattr(
+                                assemble_record,
+                                'isAssembleFirstAlarm',
+                                True
+                            )
+                        )
+
+
+                        if (
+                            not alarm_msg_enable
+                            and
+                            not alarm_msg_is_first
+                        ):
+
+                            alarm_msg_string = safe_str(
+                                getattr(
+                                    assemble_record,
+                                    'alarm_message',
+                                    ''
+                                )
+                            ).strip()
+
+
+                        if ptype == 21:
+
+                            incoming1 = safe_str(
+                                getattr(
+                                    assemble_record,
+                                    'Incoming1_Abnormal',
+                                    ''
+                                )
+                            ).strip()
+
+                            if incoming1:
+
+                                alarm_msg_string = (
+                                    incoming1
+                                )
+
+                    else:
+
+                        incoming0 = safe_str(
+                            getattr(
+                                material,
+                                'Incoming0_Abnormal',
+                                ''
+                            )
+                        ).strip()
+
+
+                        if (
+                            incoming0
+                            and
+                            assemble_id == 0
+                            and
+                            ptype in [1, 5]
+                        ):
+
+                            alarm_msg_string = (
+                                incoming0
+                            )
+
+
+                    is_abnormal = (
+                        not alarm_msg_enable
+                        and
+                        not alarm_msg_is_first
+                    )
+
+
+                    # =============================================
+                    # 工序名稱
+                    # =============================================
+
+                    process_name_base = (
+                        code_to_name.get(
+                            ptype,
+                            '空白'
+                        )
+                    )
+
+
+                    # ------------------------------------------------
+                    # 組裝 / 檢驗動態工序名稱
+                    #
+                    # material.process_steps：
+                    #
+                    # assemble
+                    # check
+                    # ------------------------------------------------
+
+                    process_steps = {}
+
+                    raw_ps = getattr(
+                        material,
+                        'process_steps',
+                        None
+                    )
+
+
+                    if raw_ps:
+
+                        if isinstance(
+                            raw_ps,
+                            str
+                        ):
+
+                            try:
+
+                                import json
+
+                                process_steps = (
+                                    json.loads(
+                                        raw_ps
+                                    )
+                                )
+
+                            except Exception:
+
+                                process_steps = {}
+
+                        elif isinstance(
+                            raw_ps,
+                            dict
+                        ):
+
+                            process_steps = (
+                                raw_ps
+                            )
+
+
+                    schedule_name = ""
+
+
+                    if (
+                        assemble_record is not None
+                        and
+                        getattr(
+                            assemble_record,
+                            'schedule_id',
+                            0
+                        )
+                    ):
+
+                        work_num = safe_str(
+                            getattr(
+                                assemble_record,
+                                'work_num',
+                                ''
+                            )
+                        )
+
+
+                        schedule_id = to_int(
+                            getattr(
+                                assemble_record,
+                                'schedule_id',
+                                0
+                            ),
+                            0
+                        )
+
+
+                        if 'B109' in work_num:
+
+                            steps = (
+                                process_steps.get(
+                                    'assemble',
+                                    []
+                                )
+                            )
+
+                        elif 'B110' in work_num:
+
+                            steps = (
+                                process_steps.get(
+                                    'check',
+                                    []
+                                )
+                            )
+
+                        else:
+
+                            steps = []
+
+
+                        for step in steps:
+
+                            if to_int(
+                                step.get(
+                                    'id',
+                                    0
+                                ),
+                                0
+                            ) == schedule_id:
+
+                                schedule_name = (
+                                    step.get(
+                                        'name',
+                                        ''
+                                    )
+                                    or ''
+                                )
+
+                                break
+
+
+                    if schedule_name:
+
+                        process_name_base = (
+                            f"{process_name_base}"
+                            f"({schedule_name})"
+                        )
+
+
+                    process_name_display = (
+                        process_name_base
+                        +
+                        (
+                            " - 異常整修"
+                            if is_abnormal
+                            else ""
+                        )
+                    )
+
+
+                    # =============================================
+                    # 員工
+                    # =============================================
+
+                    emp_col = (
+                        get_employee_display(
+                            getattr(
+                                process,
+                                'user_id',
+                                ''
+                            )
+                        )
+                    )
+
+
+                    # =============================================
+                    # 時間
+                    #
+                    # 31 = 成品入庫：
+                    #
+                    # 保留你原本規則：
+                    # Excel 不顯示 end_time / 工時計算。
+                    # =============================================
+
+                    start_dt = to_dt(
+                        getattr(
+                            process,
+                            'begin_time',
+                            None
+                        )
+                    )
+
+
+                    if ptype == 31:
+
+                        end_dt = None
+
+                    else:
+
+                        end_dt = to_dt(
+                            getattr(
+                                process,
+                                'end_time',
+                                None
+                            )
+                        )
+
+
+                    # =============================================
+                    # 本 Process 實際加工數量
+                    #
+                    # ★ 20260820 修正
+                    #
+                    # 優先：
+                    #
+                    # P_Process.process_work_time_qty
+                    #
+                    # fallback：
+                    #
+                    # material.total_delivery_qty
+                    # =============================================
+
+                    process_qty = to_int(
+                        getattr(
+                            process,
+                            'process_work_time_qty',
+                            0
+                        ),
+                        0
+                    )
+
+
+                    if process_qty <= 0:
+
+                        process_qty = (
+                            material_delivery_qty
+                        )
+
+
+                    # =============================================
+                    # 實際耗時 / 實際工時
+                    #
+                    # 只有：
+                    #
+                    # 21 組裝
+                    # 22 檢驗
+                    # 23 雷射
+                    #
+                    # 才計算 分/PCS。
+                    # =============================================
+
+                    actual_minutes = ""
+
+                    actual_per_pcs = ""
+
+
+                    if ptype in [21, 22, 23]:
+
+                        active_sec = (
+                            get_active_seconds(
+                                process,
+                                start_dt,
+                                end_dt
+                            )
+                        )
+
+
+                        if active_sec is not None:
+
+                            actual_minutes = round(
+                                active_sec
+                                /
+                                60.0,
+                                2
+                            )
+
+
+                            if process_qty > 0:
+
+                                actual_per_pcs = round(
+                                    active_sec
+                                    /
+                                    60.0
+                                    /
+                                    process_qty,
+                                    2
+                                )
+
+
+                    # =============================================
+                    # 搬運 / 備料若仍希望顯示「實際耗時」
+                    #
+                    # 有開始時間才計算；
+                    # 但不計算 分/PCS。
+                    # =============================================
+
+                    elif (
+                        ptype != 31
+                        and
+                        start_dt is not None
+                    ):
+
+                        active_sec = (
+                            get_active_seconds(
+                                process,
+                                start_dt,
+                                end_dt
+                            )
+                        )
+
+
+                        if active_sec is not None:
+
+                            actual_minutes = round(
+                                active_sec
+                                /
+                                60.0,
+                                2
+                            )
+
+
+                    # =============================================
+                    # 單件標工
+                    #
+                    # ★ 20260820 修正
+                    #
+                    # sd_time_B109 / B110 / B106
+                    # 本身已經是：
+                    #
+                    #     分 / PCS
+                    #
+                    # 不再除 work_qty。
+                    # =============================================
+
+                    std_per_pcs = ""
+
+
+                    sd_field = (
+                        ptype_to_sd_field.get(
+                            ptype
+                        )
+                    )
+
+
+                    if (
+                        sd_field
+                        and
+                        hasattr(
+                            material,
+                            sd_field
+                        )
+                    ):
+
+                        std_value = _to_float(
+                            getattr(
+                                material,
+                                sd_field,
+                                0
+                            ),
+                            0
+                        )
+
+
+                        if std_value > 0:
+
+                            std_per_pcs = round(
+                                std_value,
+                                2
+                            )
+
+
+                    # =============================================
+                    # Excel「現況數量」
+                    #
+                    # 真正工序優先顯示該 Process 數量。
+                    #
+                    # 搬運 / 入庫沿用 material 現況數量。
+                    # =============================================
+
+                    if (
+                        ptype in [21, 22, 23]
+                        and
+                        process_qty > 0
+                    ):
+
+                        display_qty = (
+                            process_qty
+                        )
+
+                    else:
+
+                        display_qty = (
+                            material_delivery_qty
+                            if material_delivery_qty > 0
+                            else ''
+                        )
+
+
+                    # =============================================
+                    # 寫 Excel
+                    # =============================================
+
+                    ws.append([
+                        order_num,
+                        material_num,
+                        material_comment,
+                        material_delivery_date,
+                        material_qty,
+                        display_qty,
+
+                        process_name_display,
+
+                        emp_col,
+
+                        fmt(
+                            start_dt
+                        ),
+
+                        fmt(
+                            end_dt
+                        ),
+
+                        actual_minutes,
+
+                        actual_per_pcs,
+
+                        std_per_pcs,
+
+                        alarm_msg_string,
+                    ])
+
+
+                    row_num = (
+                        ws.max_row
+                    )
+
+
+                    order_cell = ws.cell(
+                        row=row_num,
+                        column=ORDER_COL
+                    )
+
+                    order_cell.number_format = '@'
+
+                    order_cell.value = str(
+                        order_num
+                    )
+
+                    order_cell.fill = (
+                        group_fill
+                    )
+
+
+                    # ---------------------------------------------
+                    # 異常整修紅字
+                    # ---------------------------------------------
+
+                    if is_abnormal:
+
+                        process_cell = ws.cell(
+                            row=row_num,
+                            column=PROCESS_COL
+                        )
+
+
+                        rt = CellRichText()
+
+
+                        rt.append(
+                            TextBlock(
+                                InlineFont(
+                                    rFont='微軟正黑體',
+                                    sz=11
+                                ),
+                                process_name_base
+                            )
+                        )
+
+
+                        rt.append(
+                            TextBlock(
+                                InlineFont(
+                                    rFont='微軟正黑體',
+                                    sz=11,
+                                    color='FFFF0000'
+                                ),
+                                " - 異常整修"
+                            )
+                        )
+
+
+                        process_cell.value = (
+                            rt
+                        )
+
+
+        # ========================================================
+        # Auto Filter
+        # ========================================================
+
+        order_letter = (
+            get_column_letter(
+                ORDER_COL
+            )
+        )
+
+        emp_letter = (
+            get_column_letter(
+                EMP_COL
+            )
+        )
+
+
+        ws.auto_filter.ref = (
+            f"{order_letter}1:"
+            f"{emp_letter}{ws.max_row}"
+        )
+
+
+        wb.save(
+            temp_file
+        )
+
+
+        os.replace(
+            temp_file,
+            current_file
+        )
+
+
+        return jsonify({
+            'status':
+                True,
+
+            'message':
+                current_file,
+
+            'file_name':
+                file_name,
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        try:
+
+            if os.path.exists(
+                temp_file
+            ):
+
+                os.remove(
+                    temp_file
+                )
+
+        except Exception:
+            pass
+
+
+        print(
+            "export_to_excel_for_assemble_information "
+            "EXCEPTION:",
+            repr(e)
+        )
+
+
+        logger.exception(
+            "export_to_excel_for_assemble_information failed"
+        )
+
+
+        return jsonify({
+            'status':
+                False,
+
+            'message':
+                f'匯出失敗: {e}',
+
+            'file_name':
+                '',
+        }), 500
+
+
+    finally:
+
+        s.close()
+
+
+"""
 @excelTable.route("/exportToExcelForProcessInformation", methods=['POST'])
 def export_to_excel_for_process_information():
     print("exportToExcelForProcessInformation....")
@@ -2839,11 +4598,11 @@ def export_to_excel_for_process_information():
         return default
 
     def _seconds_from_elapsed(val):
-        """
-        將 elapsed / pause 可能的值轉成秒數：
-        - 數值可能是秒或毫秒（過大視為毫秒）
-        - 字串可能是 HH:MM:SS 或 MM:SS
-        """
+
+        #將 elapsed / pause 可能的值轉成秒數：
+        #- 數值可能是秒或毫秒（過大視為毫秒）
+        #- 字串可能是 HH:MM:SS 或 MM:SS
+
         if val is None:
           return None
 
@@ -2877,12 +4636,12 @@ def export_to_excel_for_process_information():
         return None
 
     def get_active_seconds(process, start_dt, end_dt, effective_end):
-        """
-        實際有效秒數（排除暫停）：
-        1) 優先用 elapsedActive_time / elapsed_active_time
-        2) 次用 (end-start) - pause_time
-        3) 都沒有就 (end-start)
-        """
+
+        #實際有效秒數（排除暫停）：
+        #1) 優先用 elapsedActive_time / elapsed_active_time
+        #2) 次用 (end-start) - pause_time
+        #3) 都沒有就 (end-start)
+
         for k in ("elapsedActive_time", "elapsed_active_time"):
             v = getattr(process, k, None)
             sec = _seconds_from_elapsed(v)
@@ -3206,6 +4965,2184 @@ def export_to_excel_for_process_information():
         return jsonify({'status': False, 'message': f'匯出失敗: {e}', 'file_name': ''}), 500
 
     finally:
+        s.close()
+"""
+
+
+# 20260820版
+@excelTable.route(
+    "/exportToExcelForProcessInformation",
+    methods=['POST']
+)
+def export_to_excel_for_process_information():
+
+    print(
+        "exportToExcelForProcessInformation...."
+    )
+
+    request_data = (
+        request.get_json(
+            force=True
+        )
+        or {}
+    )
+
+    _blocks = request_data.get(
+        'blocks',
+        []
+    )
+
+    _name = request_data.get(
+        'name',
+        ''
+    )
+
+    now = datetime.datetime.now()
+
+    today = now.strftime(
+        '%Y-%m-%d-%H%M'
+    )
+
+    file_name = (
+        f'加工區在製品生產資訊查詢_'
+        f'{today}.xlsx'
+    )
+
+    export_dir = (
+        r'C:\vue\chumpower\excel_export'
+    )
+
+    os.makedirs(
+        export_dir,
+        exist_ok=True
+    )
+
+    current_file = os.path.join(
+        export_dir,
+        file_name
+    )
+
+    temp_file = (
+        current_file.replace(
+            ".xlsx",
+            "_temp.xlsx"
+        )
+    )
+
+    # ============================================================
+    # 加工線特殊 Process
+    #
+    # 注意：
+    #
+    # 1 = 領料
+    #
+    # 5 + assemble_id = 0
+    #     堆高機 領料區 -> 加工區
+    #
+    # 5 + assemble_id > 0
+    #     可能是真正加工工序
+    #
+    # 6 = 堆高機 加工區 -> 成品區
+    #
+    # ★ process_type=31 不是固定「成品入庫」
+    #
+    # 加工線的 31 可能是：
+    #
+    #     B107-02
+    #     主軸配件-分爪片
+    #
+    # 真正成品入庫只由 P_Product 產生。
+    # ============================================================
+
+    SPECIAL_PROCESS_NAMES = {
+        1:
+            '領料',
+
+        5:
+            '堆高機運行(領料區->加工區)',
+
+        6:
+            '堆高機運行(加工區->成品區)',
+    }
+
+    AGV_IDS = {
+        "AGV1-1",
+        "AGV1-2",
+        "AGV2-1",
+        "AGV2-2",
+        "(AGV1-1)",
+        "(AGV1-2)",
+        "(AGV2-1)",
+        "(AGV2-2)",
+    }
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 共用工具
+        # ========================================================
+
+        def safe_str(
+            value,
+            default=""
+        ):
+            try:
+                if value is None:
+                    return default
+
+                return str(value)
+
+            except Exception:
+                return default
+
+
+        def to_int(
+            value,
+            default=0
+        ):
+            try:
+                if value is None:
+                    return default
+
+                if isinstance(
+                    value,
+                    bool
+                ):
+                    return int(
+                        value
+                    )
+
+                value = str(
+                    value
+                ).strip()
+
+                if not value:
+                    return default
+
+                return int(
+                    float(
+                        value
+                    )
+                )
+
+            except Exception:
+                return default
+
+
+        def to_float(
+            value,
+            default=0.0
+        ):
+            try:
+                if value is None:
+                    return default
+
+                value = str(
+                    value
+                ).strip()
+
+                if (
+                    value == ""
+                    or
+                    value.lower() == "nan"
+                ):
+                    return default
+
+                return float(
+                    value
+                )
+
+            except Exception:
+                return default
+
+
+        def to_dt(
+            value
+        ):
+
+            if not value:
+                return None
+
+            if isinstance(
+                value,
+                datetime.datetime
+            ):
+                return value
+
+            if isinstance(
+                value,
+                datetime.date
+            ):
+                return datetime.datetime.combine(
+                    value,
+                    datetime.time.min
+                )
+
+            if isinstance(
+                value,
+                str
+            ):
+
+                value = value.strip()
+
+                if (
+                    not value
+                    or
+                    value ==
+                    "0000-00-00 00:00:00"
+                ):
+                    return None
+
+                for date_format in (
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M",
+                    "%Y/%m/%d %H:%M",
+                ):
+
+                    try:
+
+                        return (
+                            datetime.datetime
+                            .strptime(
+                                value,
+                                date_format
+                            )
+                        )
+
+                    except ValueError:
+                        continue
+
+            return None
+
+
+        def fmt(
+            value
+        ):
+
+            if isinstance(
+                value,
+                datetime.datetime
+            ):
+
+                return value.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            return ""
+
+
+        def seconds_from_elapsed(
+            value
+        ):
+            """
+            elapsedActive_time /
+            pause_time 轉秒數。
+            """
+
+            if value is None:
+                return None
+
+            if isinstance(
+                value,
+                (int, float)
+            ):
+
+                value = float(
+                    value
+                )
+
+                # 舊資料若為毫秒
+                if value > 1e7:
+                    value = (
+                        value
+                        /
+                        1000.0
+                    )
+
+                return value
+
+
+            value = str(
+                value
+            ).strip()
+
+            if not value:
+                return None
+
+
+            if ":" in value:
+
+                try:
+
+                    parts = [
+                        float(v)
+                        for v
+                        in value.split(":")
+                    ]
+
+                    if len(parts) == 3:
+
+                        hour, minute, second = (
+                            parts
+                        )
+
+                        return (
+                            hour * 3600
+                            +
+                            minute * 60
+                            +
+                            second
+                        )
+
+                    if len(parts) == 2:
+
+                        minute, second = (
+                            parts
+                        )
+
+                        return (
+                            minute * 60
+                            +
+                            second
+                        )
+
+                except Exception:
+                    return None
+
+
+            try:
+
+                value = float(
+                    value
+                )
+
+                if value > 1e7:
+                    value = (
+                        value
+                        /
+                        1000.0
+                    )
+
+                return value
+
+            except Exception:
+                return None
+
+
+        def get_active_seconds(
+            process,
+            start_dt,
+            end_dt
+        ):
+            """
+            實際有效加工秒數。
+
+            優先：
+                P_Process.elapsedActive_time
+
+            fallback：
+                end - begin - pause
+
+            尚未結束：
+                now - begin - pause
+            """
+
+            elapsed_sec = (
+                seconds_from_elapsed(
+                    getattr(
+                        process,
+                        "elapsedActive_time",
+                        None
+                    )
+                )
+            )
+
+            # ----------------------------------------------------
+            # 已完成 Process：
+            #
+            # 有 elapsedActive_time 就直接使用。
+            # ----------------------------------------------------
+
+            if (
+                end_dt is not None
+                and
+                elapsed_sec is not None
+                and
+                elapsed_sec > 0
+            ):
+
+                return elapsed_sec
+
+
+            if start_dt is None:
+                return None
+
+
+            effective_end = (
+                end_dt
+                if end_dt is not None
+                else now
+            )
+
+
+            total_sec = (
+                effective_end
+                -
+                start_dt
+            ).total_seconds()
+
+
+            total_sec = max(
+                0,
+                total_sec
+            )
+
+
+            pause_sec = (
+                seconds_from_elapsed(
+                    getattr(
+                        process,
+                        "pause_time",
+                        0
+                    )
+                )
+                or 0
+            )
+
+
+            # ----------------------------------------------------
+            # 如果目前仍在 pause，
+            # 加入尚未寫回 pause_time 的秒數。
+            # ----------------------------------------------------
+
+            if (
+                end_dt is None
+                and
+                bool(
+                    getattr(
+                        process,
+                        "is_pause",
+                        False
+                    )
+                )
+                and
+                getattr(
+                    process,
+                    "pause_started_at",
+                    None
+                )
+            ):
+
+                pause_started = to_dt(
+                    getattr(
+                        process,
+                        "pause_started_at",
+                        None
+                    )
+                )
+
+                if pause_started:
+
+                    extra_pause = (
+                        now
+                        -
+                        pause_started
+                    ).total_seconds()
+
+                    pause_sec += max(
+                        0,
+                        extra_pause
+                    )
+
+
+            return max(
+                0,
+                total_sec
+                -
+                pause_sec
+            )
+
+
+        # ========================================================
+        # 員工顯示
+        #
+        # 支援：
+        #
+        #     01004005
+        #
+        # 以及：
+        #
+        #     01004005 陳世玟
+        #
+        # 最後顯示：
+        #
+        #     (1004005陳世玟)
+        # ========================================================
+
+        user_name_cache = {}
+
+
+        def get_employee_display(
+            raw_user_id
+        ):
+
+            raw = safe_str(
+                raw_user_id
+            ).strip()
+
+            if not raw:
+                return ""
+
+
+            if raw in AGV_IDS:
+                return ""
+
+
+            # DB 已經是：
+            #
+            # 01004005 陳世玟
+            #
+            if " " in raw:
+
+                parts = raw.split(
+                    None,
+                    1
+                )
+
+                emp_id = (
+                    parts[0]
+                    if parts
+                    else ""
+                )
+
+                emp_name = (
+                    parts[1]
+                    if len(parts) > 1
+                    else ""
+                )
+
+                if emp_name in AGV_IDS:
+                    emp_name = ""
+
+                return (
+                    f"("
+                    f"{emp_id.lstrip('0')}"
+                    f"{emp_name}"
+                    f")"
+                )
+
+
+            emp_id = raw
+
+
+            if emp_id in user_name_cache:
+
+                emp_name = (
+                    user_name_cache[
+                        emp_id
+                    ]
+                )
+
+            else:
+
+                user = (
+                    s.query(User)
+                    .filter_by(
+                        emp_id=emp_id
+                    )
+                    .first()
+                )
+
+                emp_name = (
+                    safe_str(
+                        getattr(
+                            user,
+                            "emp_name",
+                            ""
+                        )
+                    ).strip()
+                    if user
+                    else ""
+                )
+
+                user_name_cache[
+                    emp_id
+                ] = emp_name
+
+
+            if emp_name in AGV_IDS:
+                emp_name = ""
+
+
+            return (
+                f"("
+                f"{emp_id.lstrip('0')}"
+                f"{emp_name}"
+                f")"
+            )
+
+
+        # ========================================================
+        # P_Part mapping
+        #
+        # A:
+        #
+        #     work_num
+        #         -> P_Part
+        #
+        # B:
+        #
+        #     process_step_code
+        #         -> P_Part
+        # ========================================================
+
+        part_by_code = {}
+        part_by_step = {}
+
+
+        part_rows = (
+            s.query(P_Part)
+            .all()
+        )
+
+
+        for part in part_rows:
+
+            part_code = safe_str(
+                part.part_code
+            ).strip()
+
+            if not part_code:
+                continue
+
+
+            step_code = to_int(
+                part.process_step_code,
+                0
+            )
+
+
+            part_info = {
+
+                "part_code":
+                    part_code,
+
+                "comment":
+                    safe_str(
+                        part.part_comment
+                    ).strip(),
+
+                "process_step_code":
+                    step_code,
+            }
+
+
+            part_by_code[
+                part_code
+            ] = part_info
+
+
+            if step_code > 0:
+
+                part_by_step.setdefault(
+                    step_code,
+                    part_info
+                )
+
+
+        # ========================================================
+        # Excel
+        # ========================================================
+
+        if os.path.exists(
+            current_file
+        ):
+
+            try:
+
+                os.remove(
+                    current_file
+                )
+
+            except PermissionError:
+
+                return jsonify({
+                    "status":
+                        False,
+
+                    "message":
+                        "請關閉 Excel 檔案後重試",
+
+                    "file_name":
+                        "",
+                }), 200
+
+
+        if os.path.exists(
+            temp_file
+        ):
+
+            try:
+                os.remove(
+                    temp_file
+                )
+            except Exception:
+                pass
+
+
+        wb = Workbook()
+
+        ws = wb.worksheets[0]
+
+        ws.title = (
+            '加工區在製品生產資訊查詢-'
+            +
+            safe_str(
+                _name
+            )[:15]
+        )
+
+        ws.sheet_properties.tabColor = (
+            '7da797'
+        )
+
+
+        header = [
+            '訂單編號',
+            '物料',
+            '說明',
+            '交期',
+            '訂單數量',
+            '數量',
+            '廢品數量',
+            '入庫數量',
+            '工序',
+            '員工',
+            '開始時間',
+            '結束時間',
+            '實際耗時(分)',
+            '實際工時(分/PCS)',
+            '單件標工(分/PCS)',
+            '註記',
+        ]
+
+
+        ws.append(
+            header
+        )
+
+
+        for idx, _ in enumerate(
+            header,
+            start=1
+        ):
+
+            cell = ws.cell(
+                row=1,
+                column=idx
+            )
+
+            cell.font = Font(
+                name='微軟正黑體',
+                color='FF0000',
+                bold=True
+            )
+
+            cell.alignment = Alignment(
+                horizontal='center'
+            )
+
+            ws.column_dimensions[
+                cell.column_letter
+            ].width = 16
+
+
+        ORDER_COL = (
+            header.index(
+                '訂單編號'
+            )
+            + 1
+        )
+
+        SCRAP_COL = (
+            header.index(
+                '廢品數量'
+            )
+            + 1
+        )
+
+        STOCKIN_COL = (
+            header.index(
+                '入庫數量'
+            )
+            + 1
+        )
+
+        PROCESS_COL = (
+            header.index(
+                '工序'
+            )
+            + 1
+        )
+
+        EMP_COL = (
+            header.index(
+                '員工'
+            )
+            + 1
+        )
+
+
+        fill_white = PatternFill(
+            "solid",
+            fgColor="FFFFFFFF"
+        )
+
+        fill_gray = PatternFill(
+            "solid",
+            fgColor="FFEDF2F4"
+        )
+
+
+        # ========================================================
+        # 避免 _blocks 同一訂單出現多次，
+        # 造成整張訂單重複匯出。
+        # ========================================================
+
+        processed_orders = set()
+
+        group_idx = -1
+
+
+        # ========================================================
+        # 寫一列的共用函式
+        # ========================================================
+
+        def append_row(
+            row_data,
+            group_fill,
+            abnormal=False,
+            process_name_base=""
+        ):
+
+            ws.append(
+                row_data
+            )
+
+            row_num = (
+                ws.max_row
+            )
+
+
+            # 訂單編號強制文字
+            order_cell = ws.cell(
+                row=row_num,
+                column=ORDER_COL
+            )
+
+            order_cell.number_format = '@'
+
+            order_cell.value = safe_str(
+                row_data[0]
+            )
+
+            order_cell.fill = (
+                group_fill
+            )
+
+
+            # 廢品 > 0 紅字
+            scrap_value = ws.cell(
+                row=row_num,
+                column=SCRAP_COL
+            ).value
+
+            try:
+
+                if (
+                    scrap_value is not None
+                    and
+                    float(scrap_value) > 0
+                ):
+
+                    ws.cell(
+                        row=row_num,
+                        column=SCRAP_COL
+                    ).font = Font(
+                        name='微軟正黑體',
+                        color='FFFF0000',
+                        bold=True
+                    )
+
+            except Exception:
+                pass
+
+
+            # 入庫 > 0 綠字
+            stockin_value = ws.cell(
+                row=row_num,
+                column=STOCKIN_COL
+            ).value
+
+            try:
+
+                if (
+                    stockin_value is not None
+                    and
+                    float(stockin_value) > 0
+                ):
+
+                    ws.cell(
+                        row=row_num,
+                        column=STOCKIN_COL
+                    ).font = Font(
+                        name='微軟正黑體',
+                        color='FF00B050',
+                        bold=True
+                    )
+
+            except Exception:
+                pass
+
+
+            # 異常整修紅字
+            if abnormal:
+
+                cell = ws.cell(
+                    row=row_num,
+                    column=PROCESS_COL
+                )
+
+                rt = CellRichText()
+
+                rt.append(
+                    TextBlock(
+                        InlineFont(
+                            rFont='微軟正黑體',
+                            sz=11
+                        ),
+                        process_name_base
+                    )
+                )
+
+                rt.append(
+                    TextBlock(
+                        InlineFont(
+                            rFont='微軟正黑體',
+                            sz=11,
+                            color='FFFF0000'
+                        ),
+                        " - 異常整修"
+                    )
+                )
+
+                cell.value = rt
+
+
+        # ========================================================
+        # _blocks
+        # ========================================================
+
+        for obj in _blocks:
+
+            order_num = safe_str(
+                obj.get(
+                    'order_num',
+                    ''
+                )
+            ).strip()
+
+
+            if not order_num:
+                continue
+
+
+            # 同一訂單只處理一次
+            if order_num in processed_orders:
+                continue
+
+
+            processed_orders.add(
+                order_num
+            )
+
+
+            group_idx += 1
+
+            group_fill = (
+                fill_white
+                if group_idx % 2 == 0
+                else fill_gray
+            )
+
+
+            # ====================================================
+            # ★ 重要修正
+            #
+            # 舊版：
+            #
+            #     .first()
+            #
+            # 會漏掉：
+            #
+            #     121200006445
+            #
+            #     material 16
+            #     material 50
+            #
+            # 現在全部抓出來。
+            # ====================================================
+
+            materials = (
+                s.query(P_Material)
+                .filter(
+                    P_Material.order_num
+                    ==
+                    order_num
+                )
+                .order_by(
+                    P_Material.id.asc()
+                )
+                .all()
+            )
+
+
+            # 找不到 DB 資料，
+            # 仍保留一列基本資料。
+            if not materials:
+
+                append_row(
+                    [
+                        order_num,
+                        obj.get(
+                            'material_num',
+                            ''
+                        ),
+                        obj.get(
+                            'comment',
+                            ''
+                        ),
+                        obj.get(
+                            'delivery_date',
+                            ''
+                        ),
+                        obj.get(
+                            'req_qty',
+                            ''
+                        ),
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                    ],
+                    group_fill
+                )
+
+                continue
+
+
+            # ====================================================
+            # 每一個 material 分批處理
+            # ====================================================
+
+            for material in materials:
+
+                material_id = to_int(
+                    material.id,
+                    0
+                )
+
+
+                material_num = safe_str(
+                    getattr(
+                        material,
+                        "material_num",
+                        ""
+                    )
+                )
+
+
+                material_comment = safe_str(
+                    getattr(
+                        material,
+                        "material_comment",
+                        ""
+                    )
+                )
+
+
+                material_delivery_date = (
+                    getattr(
+                        material,
+                        "material_delivery_date",
+                        ""
+                    )
+                    or ""
+                )
+
+
+                material_qty = to_int(
+                    getattr(
+                        material,
+                        "material_qty",
+                        0
+                    ),
+                    0
+                )
+
+
+                assemble_records = list(
+                    getattr(
+                        material,
+                        "_assemble",
+                        []
+                    )
+                    or []
+                )
+
+
+                process_records = list(
+                    getattr(
+                        material,
+                        "_process",
+                        []
+                    )
+                    or []
+                )
+
+
+                assemble_map = {
+                    to_int(
+                        a.id,
+                        0
+                    ):
+                    a
+
+                    for a
+                    in assemble_records
+
+                    if to_int(
+                        a.id,
+                        0
+                    ) > 0
+                }
+
+
+                # ------------------------------------------------
+                # Process 建立順序
+                # ------------------------------------------------
+
+                process_records.sort(
+                    key=lambda p: (
+                        getattr(
+                            p,
+                            "create_at",
+                            None
+                        )
+                        or
+                        datetime.datetime.min,
+
+                        to_int(
+                            getattr(
+                                p,
+                                "id",
+                                0
+                            ),
+                            0
+                        )
+                    )
+                )
+
+
+                # =================================================
+                # A. P_Process
+                # =================================================
+
+                for process in process_records:
+
+                    process_type = to_int(
+                        getattr(
+                            process,
+                            "process_type",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    assemble_id = to_int(
+                        getattr(
+                            process,
+                            "assemble_id",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    # ---------------------------------------------
+                    # 搬運 Process 判斷
+                    # ---------------------------------------------
+
+                    is_transport_process = (
+                        process_type == 1
+                        or
+                        process_type == 6
+                        or
+                        (
+                            process_type == 5
+                            and
+                            assemble_id == 0
+                        )
+                    )
+
+
+                    begin_raw = safe_str(
+                        getattr(
+                            process,
+                            "begin_time",
+                            ""
+                        )
+                    ).strip()
+
+
+                    # 一般加工沒有 begin_time，
+                    # 代表沒有真正開始，不輸出。
+                    #
+                    # 搬運 5/6 舊資料允許空時間。
+                    if (
+                        (
+                            not begin_raw
+                            or
+                            begin_raw
+                            ==
+                            "0000-00-00 00:00:00"
+                        )
+                        and
+                        not is_transport_process
+                    ):
+                        continue
+
+
+                    assm = (
+                        assemble_map.get(
+                            assemble_id
+                        )
+                        if assemble_id > 0
+                        else None
+                    )
+
+
+                    # =============================================
+                    # 工序名稱
+                    # =============================================
+
+                    part_info = None
+
+
+                    if is_transport_process:
+
+                        process_name_base = (
+                            SPECIAL_PROCESS_NAMES
+                            .get(
+                                process_type,
+                                f"Process({process_type})"
+                            )
+                        )
+
+                    else:
+
+                        # -----------------------------------------
+                        # 一般加工：
+                        #
+                        # 優先 assemble.work_num
+                        # -----------------------------------------
+
+                        if assm is not None:
+
+                            work_num = safe_str(
+                                getattr(
+                                    assm,
+                                    "work_num",
+                                    ""
+                                )
+                            ).strip()
+
+                            if work_num:
+
+                                part_info = (
+                                    part_by_code
+                                    .get(
+                                        work_num
+                                    )
+                                )
+
+
+                        # fallback：
+                        # process_type -> P_Part
+                        if part_info is None:
+
+                            part_info = (
+                                part_by_step
+                                .get(
+                                    process_type
+                                )
+                            )
+
+
+                        if part_info:
+
+                            process_name_base = (
+                                part_info.get(
+                                    "comment"
+                                )
+                                or
+                                part_info.get(
+                                    "part_code"
+                                )
+                                or
+                                f"加工({process_type})"
+                            )
+
+                        elif assm is not None:
+
+                            process_name_base = safe_str(
+                                getattr(
+                                    assm,
+                                    "work_num",
+                                    ""
+                                )
+                            ).strip()
+
+                            if not process_name_base:
+
+                                process_name_base = (
+                                    f"加工({process_type})"
+                                )
+
+                        else:
+
+                            process_name_base = (
+                                f"加工({process_type})"
+                            )
+
+
+                    # =============================================
+                    # 異常
+                    # =============================================
+
+                    alarm_msg_enable = True
+
+                    alarm_msg_is_first = True
+
+                    alarm_msg_string = ""
+
+
+                    if assm is not None:
+
+                        alarm_msg_enable = bool(
+                            getattr(
+                                assm,
+                                "alarm_enable",
+                                True
+                            )
+                        )
+
+                        alarm_msg_is_first = bool(
+                            getattr(
+                                assm,
+                                "isAssembleFirstAlarm",
+                                True
+                            )
+                        )
+
+
+                        if (
+                            not alarm_msg_enable
+                            and
+                            not alarm_msg_is_first
+                        ):
+
+                            alarm_msg_string = (
+                                safe_str(
+                                    getattr(
+                                        assm,
+                                        "alarm_message",
+                                        ""
+                                    )
+                                )
+                                .strip()
+                            )
+
+
+                        if process_type == 21:
+
+                            incoming1 = safe_str(
+                                getattr(
+                                    assm,
+                                    "Incoming1_Abnormal",
+                                    ""
+                                )
+                            ).strip()
+
+                            if incoming1:
+                                alarm_msg_string = (
+                                    incoming1
+                                )
+
+                    else:
+
+                        incoming0 = safe_str(
+                            getattr(
+                                material,
+                                "Incoming0_Abnormal",
+                                ""
+                            )
+                        ).strip()
+
+                        if (
+                            incoming0
+                            and
+                            (
+                                process_type == 1
+                                or
+                                (
+                                    process_type == 5
+                                    and
+                                    assemble_id == 0
+                                )
+                            )
+                        ):
+
+                            alarm_msg_string = (
+                                incoming0
+                            )
+
+
+                    is_abnormal = (
+                        not alarm_msg_enable
+                        and
+                        not alarm_msg_is_first
+                    )
+
+
+                    process_name_display = (
+                        process_name_base
+                        +
+                        (
+                            " - 異常整修"
+                            if is_abnormal
+                            else ""
+                        )
+                    )
+
+
+                    # =============================================
+                    # 員工
+                    # =============================================
+
+                    emp_col = (
+                        get_employee_display(
+                            getattr(
+                                process,
+                                "user_id",
+                                ""
+                            )
+                        )
+                    )
+
+
+                    # =============================================
+                    # 時間
+                    #
+                    # ★ process_type=31 也要正常讀 end_time
+                    # =============================================
+
+                    start_dt = to_dt(
+                        getattr(
+                            process,
+                            "begin_time",
+                            None
+                        )
+                    )
+
+                    end_dt = to_dt(
+                        getattr(
+                            process,
+                            "end_time",
+                            None
+                        )
+                    )
+
+
+                    active_sec = (
+                        get_active_seconds(
+                            process,
+                            start_dt,
+                            end_dt
+                        )
+                    )
+
+
+                    actual_minutes = ""
+
+                    actual_per_pcs = ""
+
+
+                    if (
+                        active_sec is not None
+                        and
+                        not is_transport_process
+                    ):
+
+                        actual_minutes = round(
+                            active_sec
+                            /
+                            60.0,
+                            2
+                        )
+
+
+                    # =============================================
+                    # 本批加工數量
+                    #
+                    # ★ 優先 process_work_time_qty
+                    #
+                    # 例如：
+                    #
+                    # 121200006445
+                    #
+                    # material 16 -> 250
+                    # material 50 -> 246
+                    # =============================================
+
+                    if is_transport_process:
+
+                        process_qty = ""
+
+                    else:
+
+                        process_qty_num = to_int(
+                            getattr(
+                                process,
+                                "process_work_time_qty",
+                                0
+                            ),
+                            0
+                        )
+
+
+                        # 舊資料 fallback
+                        if process_qty_num <= 0:
+
+                            process_qty_num = to_int(
+                                getattr(
+                                    assm,
+                                    "completed_qty",
+                                    0
+                                ),
+                                0
+                            ) if assm else 0
+
+
+                        if process_qty_num <= 0:
+
+                            process_qty_num = to_int(
+                                getattr(
+                                    assm,
+                                    "must_receive_end_qty",
+                                    0
+                                ),
+                                0
+                            ) if assm else 0
+
+
+                        process_qty = (
+                            process_qty_num
+                            if process_qty_num > 0
+                            else ""
+                        )
+
+
+                        # -----------------------------------------
+                        # 實際工時 分/PCS
+                        #
+                        # elapsedActive_time
+                        # ------------------
+                        # 60 × process_work_time_qty
+                        # -----------------------------------------
+
+                        if (
+                            active_sec is not None
+                            and
+                            process_qty_num > 0
+                        ):
+
+                            actual_per_pcs = round(
+                                active_sec
+                                /
+                                60.0
+                                /
+                                process_qty_num,
+                                2
+                            )
+
+
+                    # =============================================
+                    # 單件標工
+                    #
+                    # Information 使用：
+                    #
+                    # P_Part.part_code
+                    #       ↓
+                    # B107-02
+                    #       ↓
+                    # sd_time_B107
+                    #
+                    # ★ sd_time 已是單件標工，
+                    #   不可以再除數量。
+                    # =============================================
+
+                    std_per_pcs = ""
+
+
+                    if not is_transport_process:
+
+                        std_info = (
+                            part_info
+                            or
+                            part_by_step.get(
+                                process_type
+                            )
+                        )
+
+
+                        if std_info:
+
+                            part_code = safe_str(
+                                std_info.get(
+                                    "part_code"
+                                )
+                            ).strip()
+
+
+                            if part_code:
+
+                                prefix = (
+                                    part_code
+                                    .split(
+                                        "-",
+                                        1
+                                    )[0]
+                                    .split(
+                                        "_",
+                                        1
+                                    )[0]
+                                )
+
+
+                                col_name = (
+                                    f"sd_time_"
+                                    f"{prefix}"
+                                )
+
+
+                                std_value = getattr(
+                                    material,
+                                    col_name,
+                                    None
+                                )
+
+
+                                if std_value not in (
+                                    None,
+                                    ""
+                                ):
+
+                                    std_per_pcs = (
+                                        to_float(
+                                            std_value,
+                                            0
+                                        )
+                                    )
+
+
+                                    if std_per_pcs == 0:
+
+                                        std_per_pcs = ""
+
+
+                    # =============================================
+                    # 廢品
+                    # =============================================
+
+                    scrap_qty = ""
+
+
+                    if (
+                        assm is not None
+                        and
+                        not is_transport_process
+                    ):
+
+                        abnormal_qty = to_int(
+                            getattr(
+                                assm,
+                                "abnormal_qty",
+                                0
+                            ),
+                            0
+                        )
+
+                        if abnormal_qty > 0:
+
+                            scrap_qty = (
+                                abnormal_qty
+                            )
+
+
+                    # =============================================
+                    # Process 本身不當成入庫
+                    #
+                    # ★ 即使 process_type=31 也不是。
+                    # =============================================
+
+                    stockin_qty = ""
+
+
+                    append_row(
+                        [
+                            order_num,
+                            material_num,
+                            material_comment,
+                            material_delivery_date,
+                            material_qty,
+
+                            process_qty,
+
+                            scrap_qty,
+
+                            stockin_qty,
+
+                            process_name_display,
+
+                            emp_col,
+
+                            fmt(
+                                start_dt
+                            ),
+
+                            fmt(
+                                end_dt
+                            ),
+
+                            actual_minutes,
+
+                            actual_per_pcs,
+
+                            std_per_pcs,
+
+                            alarm_msg_string,
+                        ],
+
+                        group_fill,
+
+                        abnormal=is_abnormal,
+
+                        process_name_base=
+                            process_name_base
+                    )
+
+
+                # =================================================
+                # B. P_Product
+                #
+                # ★ 真正成品入庫
+                # =================================================
+
+                product_rows = (
+                    s.query(P_Product)
+                    .filter(
+                        P_Product.material_id
+                        ==
+                        material_id
+                    )
+                    .order_by(
+                        P_Product.create_at.asc(),
+                        P_Product.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                for product in product_rows:
+
+                    # ---------------------------------------------
+                    # 入庫數量
+                    #
+                    # 優先：
+                    #
+                    # allOk_qty
+                    # good_qty
+                    # delivery_qty
+                    # ---------------------------------------------
+
+                    stockin_qty = to_int(
+                        getattr(
+                            product,
+                            "allOk_qty",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    if stockin_qty <= 0:
+
+                        stockin_qty = to_int(
+                            getattr(
+                                product,
+                                "good_qty",
+                                0
+                            ),
+                            0
+                        )
+
+
+                    if stockin_qty <= 0:
+
+                        stockin_qty = to_int(
+                            getattr(
+                                product,
+                                "delivery_qty",
+                                0
+                            ),
+                            0
+                        )
+
+
+                    if stockin_qty <= 0:
+
+                        stockin_qty = ""
+
+
+                    # =============================================
+                    # 入庫開始時間
+                    #
+                    # 與 Information 相同：
+                    #
+                    # 先找 product.process_id 對應 Process。
+                    # =============================================
+
+                    linked_process = None
+
+
+                    linked_process_id = to_int(
+                        getattr(
+                            product,
+                            "process_id",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    if linked_process_id > 0:
+
+                        linked_process = (
+                            s.query(P_Process)
+                            .filter(
+                                P_Process.id
+                                ==
+                                linked_process_id
+                            )
+                            .first()
+                        )
+
+
+                    stockin_time = ""
+
+
+                    if linked_process is not None:
+
+                        stockin_time = safe_str(
+                            getattr(
+                                linked_process,
+                                "begin_time",
+                                ""
+                            )
+                        ).strip()
+
+
+                    # ---------------------------------------------
+                    # linked Process 是空樣板時，
+                    # 找同 material / assemble / process_type
+                    # 真正做過的 Process。
+                    # ---------------------------------------------
+
+                    if (
+                        not stockin_time
+                        and
+                        linked_process is not None
+                    ):
+
+                        linked_assemble_id = to_int(
+                            getattr(
+                                linked_process,
+                                "assemble_id",
+                                0
+                            ),
+                            0
+                        )
+
+
+                        linked_process_type = to_int(
+                            getattr(
+                                linked_process,
+                                "process_type",
+                                0
+                            ),
+                            0
+                        )
+
+
+                        real_process = (
+                            s.query(P_Process)
+                            .filter(
+                                P_Process.material_id
+                                ==
+                                material_id
+                            )
+                            .filter(
+                                P_Process.assemble_id
+                                ==
+                                linked_assemble_id
+                            )
+                            .filter(
+                                P_Process.process_type
+                                ==
+                                linked_process_type
+                            )
+                            .filter(
+                                P_Process.begin_time
+                                .isnot(None)
+                            )
+                            .filter(
+                                P_Process.begin_time
+                                != ""
+                            )
+                            .filter(
+                                P_Process.end_time
+                                .isnot(None)
+                            )
+                            .filter(
+                                P_Process.end_time
+                                != ""
+                            )
+                            .order_by(
+                                P_Process.id.desc()
+                            )
+                            .first()
+                        )
+
+
+                        if real_process is not None:
+
+                            stockin_time = safe_str(
+                                getattr(
+                                    real_process,
+                                    "begin_time",
+                                    ""
+                                )
+                            ).strip()
+
+
+                    # ---------------------------------------------
+                    # 最後 fallback product.create_at
+                    # ---------------------------------------------
+
+                    if not stockin_time:
+
+                        product_time = getattr(
+                            product,
+                            "create_at",
+                            None
+                        )
+
+
+                        if isinstance(
+                            product_time,
+                            datetime.datetime
+                        ):
+
+                            stockin_time = (
+                                product_time.strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                )
+                            )
+
+                        else:
+
+                            stockin_time = (
+                                safe_str(
+                                    product_time
+                                ).strip()
+                            )
+
+
+                    stockin_dt = to_dt(
+                        stockin_time
+                    )
+
+
+                    # ---------------------------------------------
+                    # 入庫人員
+                    # ---------------------------------------------
+
+                    stockin_emp = (
+                        get_employee_display(
+                            getattr(
+                                product,
+                                "user_id",
+                                ""
+                            )
+                        )
+                    )
+
+
+                    append_row(
+                        [
+                            order_num,
+                            material_num,
+                            material_comment,
+                            material_delivery_date,
+                            material_qty,
+
+                            '',             # 加工數量
+
+                            '',             # 廢品
+
+                            stockin_qty,    # 入庫數量
+
+                            '成品入庫',
+
+                            stockin_emp,
+
+                            fmt(
+                                stockin_dt
+                            ),
+
+                            '',             # 入庫結束時間
+
+                            '',             # 實際耗時
+
+                            '',             # 實際工時
+
+                            '',             # 單件標工
+
+                            '',             # 註記
+                        ],
+
+                        group_fill
+                    )
+
+
+        # ========================================================
+        # Filter
+        # ========================================================
+
+        order_letter = get_column_letter(
+            ORDER_COL
+        )
+
+        emp_letter = get_column_letter(
+            EMP_COL
+        )
+
+        ws.auto_filter.ref = (
+            f"{order_letter}1:"
+            f"{emp_letter}{ws.max_row}"
+        )
+
+
+        wb.save(
+            temp_file
+        )
+
+        os.replace(
+            temp_file,
+            current_file
+        )
+
+
+        return jsonify({
+
+            'status':
+                True,
+
+            'message':
+                current_file,
+
+            'file_name':
+                file_name,
+
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        try:
+
+            if os.path.exists(
+                temp_file
+            ):
+                os.remove(
+                    temp_file
+                )
+
+        except Exception:
+            pass
+
+
+        print(
+            "exportToExcelForProcessInformation "
+            "EXCEPTION:",
+            repr(e)
+        )
+
+        logger.exception(
+            "exportToExcelForProcessInformation failed"
+        )
+
+
+        return jsonify({
+
+            'status':
+                False,
+
+            'message':
+                f'匯出失敗: {e}',
+
+            'file_name':
+                '',
+
+        }), 500
+
+
+    finally:
+
         s.close()
 
 

@@ -90,6 +90,7 @@ function pause() {
   emit("update:time", elapsed);
 }
 
+/*
 function resume() {
   if (!paused.value) return;
   paused.value = false;
@@ -100,6 +101,38 @@ function resume() {
   emit("update:isPaused", false);
 
   emit("resume", elapsed);
+  update();
+}
+*/
+// 20260820版
+function resume() {
+
+  // 真正判斷 Timer 是否已經啟動，
+  // 不要只判斷 paused。
+  if (intervalId) {
+    return;
+  }
+
+  paused.value = false;
+
+  startTime = Date.now();
+
+  intervalId = setInterval(
+    update,
+    1000
+  );
+
+  emit(
+    "update:isPaused",
+    false
+  );
+
+  emit(
+    "resume",
+    elapsed
+  );
+
+  // 立即刷新
   update();
 }
 
@@ -142,6 +175,8 @@ function setElapsedTime(seconds) {
  * @param {number} seconds - 已累積秒數
  * @param {boolean} paused - 是否暫停
  */
+
+ /*
 function setState(seconds, paused) {
   setElapsedTime(seconds);
 
@@ -150,6 +185,76 @@ function setState(seconds, paused) {
   } else {
     resume(); // 繼續跑
   }
+}
+*/
+// 20260820版
+function setState(
+  seconds,
+  isPaused
+) {
+
+  // =====================================================
+  // 1. 清除舊 interval
+  // =====================================================
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  startTime = null;
+
+  // =====================================================
+  // 2. 還原後端累積秒數
+  // =====================================================
+  elapsed =
+    Math.max(
+      0,
+      Number(seconds) || 0
+    ) * 1000;
+
+  paused.value =
+    Boolean(isPaused);
+
+  // =====================================================
+  // 3. 暫停狀態
+  // =====================================================
+  if (paused.value) {
+
+    displayTime.value =
+      format(elapsed);
+
+    emit(
+      "update:isPaused",
+      true
+    );
+
+    emit(
+      "update:time",
+      elapsed
+    );
+
+    return;
+  }
+
+  // =====================================================
+  // 4. active process：
+  // 從目前累積秒數繼續計時
+  // =====================================================
+  paused.value = false;
+
+  startTime = Date.now();
+
+  intervalId = setInterval(
+    update,
+    1000
+  );
+
+  emit(
+    "update:isPaused",
+    false
+  );
+
+  update();
 }
 
 function getElapsedMs() {
@@ -165,6 +270,7 @@ function getElapsedMs() {
 }
 
 // 父層變更 v-model:isPaused 時，同步處理
+/*
 watch(
   () => props.isPaused,
   (val) => {
@@ -172,6 +278,40 @@ watch(
     val ? pause() : resume();
   },
   { immediate: true }
+);
+*/
+// 20260820版
+watch(
+  () => props.isPaused,
+
+  (val) => {
+
+    if (val) {
+
+      // 要暫停
+      if (
+        !paused.value ||
+        intervalId
+      ) {
+        pause();
+      }
+
+    } else {
+
+      // 要執行
+      //
+      // 即使 paused 已經是 false，
+      // 只要 interval 不存在，
+      // 就必須真正 resume。
+      if (!intervalId) {
+        resume();
+      }
+    }
+  },
+
+  {
+    immediate: true
+  }
 );
 
 watch(

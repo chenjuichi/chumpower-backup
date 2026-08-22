@@ -8182,6 +8182,7 @@ def list_materials_and_assembles():
         s.close()
 
 
+# 20260819版
 # 20260709版
 @listTable.route("/listInformations", methods=['GET'])
 def list_informations():
@@ -8318,13 +8319,12 @@ def list_informations():
             .distinct()
             .all()
         )
-
+        '''
         waiting_warehouse_orders = {
             str(row[0])
             for row in waiting_warehouse_rows
             if row[0]
         }
-        #
 
         status_ids = {
             "not_prepare": [],
@@ -8333,6 +8333,80 @@ def list_informations():
             "warehouse": [],
             "stockin": [],
         }
+        '''
+        #
+        waiting_warehouse_orders = {
+            str(row[0])
+            for row in waiting_warehouse_rows
+            if row[0]
+        }
+
+        # ============================================================
+        # 20260819
+        # 同 order_num 是否已有完成列停在 End 等待送出
+        #
+        # 條件與 End waiting_send 一致：
+        #
+        #   B110
+        #   process_step_code = 0
+        #   completed_qty > 0
+        #   isAssembleStationShow = True
+        #   isWarehouseStationShow = False
+        #   show2_ok in (9, 10)
+        #
+        # 用途：
+        # 避免 material.show3_ok = 9 時，
+        # Information 被固定翻譯成「雷射已結束」。
+        # ============================================================
+
+        waiting_send_rows = (
+            s.query(
+                Material.order_num
+            )
+            .join(
+                Assemble,
+                Assemble.material_id
+                == Material.id
+            )
+            .filter(
+                Assemble.work_num
+                == "B110",
+
+                Assemble.process_step_code
+                == 0,
+
+                Assemble.completed_qty > 0,
+
+                Assemble.isAssembleStationShow
+                .is_(True),
+
+                Assemble.isWarehouseStationShow
+                .is_(False),
+
+                Assemble.show2_ok.in_(
+                    [9, 10]
+                ),
+            )
+            .distinct()
+            .all()
+        )
+
+        waiting_send_orders = {
+            str(row[0])
+            for row in waiting_send_rows
+            if row[0]
+        }
+        #
+
+
+        status_ids = {
+            "not_prepare": [],
+            "prepare": [],
+            "assemble": [],
+            "warehouse": [],
+            "stockin": [],
+        }
+        #
 
         status_orders = {
             "not_prepare": set(),
@@ -8506,6 +8580,15 @@ def list_informations():
                 show3_code = 11
                 show3_text = '等待入庫作業'
 
+            # 20260819版
+            elif (
+                str(record.order_num)
+                in waiting_send_orders
+            ):
+
+                # 3. End 待送出
+                show3_text = '等待送出'
+            #
 
             else:
 

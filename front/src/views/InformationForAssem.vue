@@ -2336,7 +2336,10 @@ const exportToExcelFun = async () => {
   console.log('InformationForAssem.vue, exportToExcelFun()...');
 
   // 先取得 data table 內的 filteredInformations
-  let filteredData = filteredInformations.value;
+  //let filteredData = filteredInformations.value;
+  // 20260820 修正：
+  // Excel 匯出資料應與目前畫面 v-data-table 顯示資料一致
+  let filteredData = [...displayInformations.value];
   console.log("1. filteredData: ", filteredData);
 
   // 再手動應用 customFilter()

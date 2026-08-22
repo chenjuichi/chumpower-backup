@@ -10105,6 +10105,7 @@ def list_informations_p():
 """
 
 
+"""
 # 20260817 clean version
 @listTableP.route(
     "/listInformationsP",
@@ -12063,6 +12064,2895 @@ def list_informations_p():
                     )
                 )
 
+
+            # ====================================================
+            # 回傳
+            # ====================================================
+
+            result = {
+
+                "id":
+                    to_int(
+                        representative.id,
+                        0
+                    ),
+
+                "order_num":
+                    order_num,
+
+                "material_num":
+                    safe_str(
+                        representative.material_num
+                    ),
+
+                "isTakeOk":
+                    any(
+                        bool(
+                            getattr(
+                                m,
+                                "isTakeOk",
+                                False
+                            )
+                        )
+                        for m
+                        in group_materials
+                    ),
+
+                "isShow":
+                    any(
+                        bool(
+                            getattr(
+                                m,
+                                "isShow",
+                                False
+                            )
+                        )
+                        for m
+                        in group_materials
+                    ),
+
+                "is_copied_from_id":
+                    getattr(
+                        representative,
+                        "is_copied_from_id",
+                        None
+                    ),
+
+                "whichStation":
+                    to_int(
+                        getattr(
+                            representative,
+                            "whichStation",
+                            0
+                        ),
+                        0
+                    ),
+
+                "req_qty":
+                    req_qty,
+
+                "delivery_date":
+                    getattr(
+                        representative,
+                        "material_delivery_date",
+                        None
+                    ),
+
+                "delivery_qty":
+                    display_delivery_qty,
+
+                "comment":
+                    safe_str(
+                        representative.material_comment
+                    ).strip(),
+
+                "show1_ok":
+                    station_from_status(
+                        order_status
+                    ),
+
+                "show2_ok":
+                    status_text(
+                        order_status
+                    ),
+
+                "show3_ok":
+                    show3_text,
+
+                "isOpenEmpId":
+                    display_open_emp_id,
+
+                "total_process_records":
+                    total_process_records,
+
+                "material_count":
+                    len(
+                        group_materials
+                    ),
+
+                "effective_material_count":
+                    len(
+                        status_source
+                    ),
+
+                "material_ids":
+                    [
+                        to_int(
+                            m.id,
+                            0
+                        )
+                        for m
+                        in group_materials
+                    ],
+
+                "completed_total":
+                    total_completed,
+
+                "stockin_total":
+                    total_stockin,
+
+                "scrap_total":
+                    total_scrap,
+
+                "accounted_total":
+                    accounted_total,
+
+                "unexplained_difference":
+                    unexplained_difference,
+
+                "remaining_stockin_qty":
+                    max(
+                        0,
+                        total_completed
+                        -
+                        total_stockin
+                    ),
+
+                "remaining_process_qty":
+                    max(
+                        0,
+                        req_qty
+                        -
+                        total_completed
+                        -
+                        total_scrap
+                    )
+                    if req_qty > 0
+                    else 0,
+
+                "order_status_code":
+                    order_status,
+
+                "all_batches_stockin_done":
+                    all_batches_stockin_done,
+
+                "has_pending_process_step":
+                    any(
+                        bool(
+                            item.get(
+                                "has_pending_process_step",
+                                False
+                            )
+                        )
+                        for item
+                        in status_source
+                    ),
+
+                "has_waiting_send":
+                    any(
+                        bool(
+                            item.get(
+                                "has_waiting_send",
+                                False
+                            )
+                        )
+                        for item
+                        in status_source
+                    ),
+            }
+
+
+            results.append(
+                result
+            )
+
+
+        # ========================================================
+        # 9. 排序
+        # ========================================================
+
+        results.sort(
+            key=lambda x: (
+
+                (
+                    to_int(
+                        x.get(
+                            "total_process_records"
+                        ),
+                        0
+                    )
+                    ==
+                    0
+                ),
+
+                safe_str(
+                    x.get(
+                        "order_num"
+                    )
+                ),
+            )
+        )
+
+
+        # ========================================================
+        # 10. 不限制筆數
+        # ========================================================
+
+        total = len(
+            results
+        )
+
+        page_results = (
+            results
+        )
+
+
+        print(
+            "listInformationsP:",
+            "order total=",
+            total,
+            "return=",
+            len(
+                page_results
+            )
+        )
+
+
+        return jsonify({
+            "status": True,
+            "total": total,
+            "informations": page_results,
+        })
+
+
+    except Exception as e:
+
+        print(
+            "listInformationsP ERROR:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "total": 0,
+            "message": str(e),
+            "informations": [],
+        }), 500
+
+
+    finally:
+
+        s.close()
+"""
+
+
+# 20260821版
+# 20260819版 clean version
+@listTableP.route(
+    "/listInformationsP",
+    methods=["GET"]
+)
+def list_informations_p():
+
+    print("listInformationsP....")
+
+    only_unfinished = (
+        request.args.get(
+            "only_unfinished",
+            "0"
+        )
+        in (
+            "1",
+            "true",
+            "True",
+        )
+    )
+
+    print(
+        '\033[42m'
+        + 'only_unfinished:'
+        + '\033[0m',
+        only_unfinished
+    )
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 共用工具
+        # ========================================================
+
+        def to_int(
+            value,
+            default=0
+        ):
+            try:
+
+                if value is None:
+                    return default
+
+                if isinstance(
+                    value,
+                    bool
+                ):
+                    return int(value)
+
+                value = str(
+                    value
+                ).strip()
+
+                if value == "":
+                    return default
+
+                return int(
+                    float(value)
+                )
+
+            except Exception:
+                return default
+
+
+        def safe_str(
+            value,
+            default=""
+        ):
+            try:
+
+                if value is None:
+                    return default
+
+                return str(value)
+
+            except Exception:
+                return default
+
+
+        def norm_code(
+            value
+        ):
+
+            return (
+                safe_str(value)
+                .strip()
+                .upper()
+                .replace(
+                    " ",
+                    ""
+                )
+            )
+
+
+        def alias_code(
+            value
+        ):
+
+            value = norm_code(
+                value
+            )
+
+            m = re.match(
+                r'^(B\d{3})[A-Z]*-(\d+)$',
+                value
+            )
+
+            if not m:
+                return value
+
+            return (
+                f"{m.group(1)}-"
+                f"{m.group(2)}"
+            )
+
+
+        # ========================================================
+        # 狀態
+        # ========================================================
+
+        STATUS_TEXT = {
+            0: "未領料",
+            1: "領料中",
+            2: "領料已完成",
+            3: "等待加工作業",
+            4: "加工作業進行中",
+            5: "等待送出",
+            6: "等待入庫作業",
+            7: "入庫進行中",
+            8: "入庫完成",
+        }
+
+
+        def status_text(
+            status_code
+        ):
+
+            return STATUS_TEXT.get(
+                to_int(
+                    status_code,
+                    -1
+                ),
+                f"未知狀態({status_code})"
+            )
+
+
+        def station_from_status(
+            status_code
+        ):
+
+            status_code = to_int(
+                status_code,
+                0
+            )
+
+            if status_code <= 2:
+                return "領料站"
+
+            if status_code <= 5:
+                return "加工站"
+
+            return "成品站"
+
+
+        # ========================================================
+        # 20260819
+        # P_Process 是否屬於「非加工」流程
+        #
+        # process_type = 5 有撞碼：
+        #   type=5 + assemble_id=0  -> 堆高機：領料區 -> 加工區
+        #   type=5 + assemble_id>0  -> 真正加工工序，例如 B108-26
+        #
+        # type=6 目前固定代表：
+        #   堆高機：加工區 -> 成品區
+        # ========================================================
+
+        def is_non_work_process(
+            process_type,
+            assemble_id
+        ):
+
+            process_type = to_int(
+                process_type,
+                0
+            )
+
+            assemble_id = to_int(
+                assemble_id,
+                0
+            )
+
+            if process_type in {
+                1,
+                2,
+                3,
+                6,
+                19,
+                29,
+                31,
+            }:
+                return True
+
+            if (
+                process_type == 5
+                and
+                assemble_id == 0
+            ):
+                return True
+
+            return False
+
+        # ========================================================
+        # 1. P_Part 製程名稱
+        # ========================================================
+
+        part_info_map = {}
+
+        for p in (
+            s.query(P_Part)
+            .all()
+        ):
+
+            code = norm_code(
+                p.part_code
+            )
+
+            if not code:
+                continue
+
+            info = {
+                "comment":
+                    safe_str(
+                        p.part_comment
+                    ).strip(),
+
+                "process_step_code":
+                    to_int(
+                        p.process_step_code,
+                        0
+                    ),
+            }
+
+            part_info_map[
+                code
+            ] = info
+
+            part_info_map.setdefault(
+                alias_code(
+                    code
+                ),
+                info
+            )
+
+
+        # ========================================================
+        # 2. P_Assemble 廢品
+        # ========================================================
+
+        asm_scrap_rows = (
+            s.query(
+                P_Assemble.material_id,
+
+                func.coalesce(
+                    func.sum(
+                        P_Assemble.abnormal_qty
+                    ),
+                    0
+                )
+            )
+            .group_by(
+                P_Assemble.material_id
+            )
+            .all()
+        )
+
+        asm_scrap_map = {
+            to_int(mid, 0):
+                to_int(qty, 0)
+
+            for mid, qty
+            in asm_scrap_rows
+        }
+
+
+        # ========================================================
+        # 3. P_Product 入庫量
+        # ========================================================
+
+        stockin_rows = (
+            s.query(
+                P_Product.material_id,
+
+                func.coalesce(
+                    func.sum(
+                        P_Product.allOk_qty
+                    ),
+                    0
+                )
+            )
+            .group_by(
+                P_Product.material_id
+            )
+            .all()
+        )
+
+        stockin_map = {
+            to_int(mid, 0):
+                to_int(qty, 0)
+
+            for mid, qty
+            in stockin_rows
+        }
+
+
+        # ========================================================
+        # 4. P_Product 廢品
+        # ========================================================
+
+        product_scrap_rows = (
+            s.query(
+                P_Product.material_id,
+
+                func.coalesce(
+                    func.sum(
+                        P_Product.non_good_qty
+                    ),
+                    0
+                )
+            )
+            .group_by(
+                P_Product.material_id
+            )
+            .all()
+        )
+
+        product_scrap_map = {
+            to_int(mid, 0):
+                to_int(qty, 0)
+
+            for mid, qty
+            in product_scrap_rows
+        }
+
+
+        # ========================================================
+        # 5. P_Product count
+        # ========================================================
+
+        product_count_rows = (
+            s.query(
+                P_Product.material_id,
+
+                func.count(
+                    P_Product.id
+                )
+            )
+            .group_by(
+                P_Product.material_id
+            )
+            .all()
+        )
+
+        product_count_map = {
+            to_int(mid, 0):
+                to_int(cnt, 0)
+
+            for mid, cnt
+            in product_count_rows
+        }
+
+
+        # ========================================================
+        # 6. 所有 P_Material
+        # ========================================================
+
+        materials = (
+            s.query(P_Material)
+            .order_by(
+                P_Material.order_num.asc(),
+                P_Material.id.asc(),
+            )
+            .all()
+        )
+
+        if not materials:
+
+            return jsonify({
+                "status": False,
+                "total": 0,
+                "informations": [],
+            })
+
+
+        # ========================================================
+        # 7. order_num 分組
+        # ========================================================
+
+        order_groups = {}
+
+        for material in materials:
+
+            order_num = safe_str(
+                material.order_num
+            ).strip()
+
+            if not order_num:
+                continue
+
+            order_groups.setdefault(
+                order_num,
+                []
+            ).append(
+                material
+            )
+
+
+        results = []
+
+
+        # ========================================================
+        # 8. 每張訂單
+        # ========================================================
+
+        for (
+            order_num,
+            group_materials
+        ) in order_groups.items():
+
+            if not group_materials:
+                continue
+
+
+            representative = sorted(
+                group_materials,
+                key=lambda m: (
+
+                    0
+                    if getattr(
+                        m,
+                        "is_copied_from_id",
+                        None
+                    ) is None
+                    else 1,
+
+                    to_int(
+                        m.id,
+                        0
+                    ),
+                )
+            )[0]
+
+
+            req_qty = to_int(
+                representative.material_qty,
+                0
+            )
+
+
+            total_stockin = 0
+            total_completed = 0
+
+            # 廠內加工產生的廢品
+            total_scrap = 0
+
+            # 外部加工送進廠內前已存在的廢料
+            total_external_scrap = 0
+
+            total_process_records = 0
+
+            material_summaries = []
+
+            current_process_comment = ""
+
+
+            # ====================================================
+            # 8-1. 每個 material
+            # ====================================================
+
+            for material in group_materials:
+
+                material_id = to_int(
+                    material.id,
+                    0
+                )
+
+
+                assemble_records = (
+                    s.query(P_Assemble)
+                    .filter(
+                        P_Assemble.material_id
+                        ==
+                        material_id
+                    )
+                    .order_by(
+                        P_Assemble.id.asc()
+                    )
+                    .all()
+                )
+
+                '''
+                # =================================================
+                # 外部加工既有廢料
+                #
+                # 適用：
+                #   不領料 / 外部加工後直接送廠內加工
+                #
+                # Excel：
+                #
+                #   訂單數量 = material_qty
+                #   工序 MEINH = original_must_receive_end_qty
+                #
+                # 差額即為送入廠內前已存在的外部加工廢料。
+                #
+                # 例如：
+                #
+                #   999900006747
+                #
+                #   material_qty = 350
+                #   MEINH         = 349
+                #
+                #   外部加工廢料 = 1
+                # =================================================
+
+                external_scrap_qty = 0
+
+                for a in assemble_records:
+
+                    original_end_qty = to_int(
+                        getattr(
+                            a,
+                            "original_must_receive_end_qty",
+                            0
+                        ),
+                        0
+                    )
+
+                    if original_end_qty <= 0:
+                        continue
+
+                    external_scrap_qty = max(
+                        external_scrap_qty,
+
+                        max(
+                            0,
+                            to_int(
+                                material.material_qty,
+                                0
+                            )
+                            -
+                            original_end_qty
+                        )
+                    )
+                '''
+                #
+                # =================================================
+                # 外部加工既有廢料
+                #
+                # 不再用：
+                #
+                # material_qty - MEINH
+                #
+                # 推算。
+                #
+                # 改成直接讀 Excel 匯入 P_Material 的真實欄位。
+                # =================================================
+
+                external_scrap_qty = max(
+                    0,
+                    to_int(
+                        getattr(
+                            material,
+                            "external_scrap_qty",
+                            0
+                        ),
+                        0
+                    )
+                )
+                #
+
+                process_records = (
+                    s.query(P_Process)
+                    .filter(
+                        P_Process.material_id
+                        ==
+                        material_id
+                    )
+                    .order_by(
+                        P_Process.id.asc()
+                    )
+                    .all()
+                )
+
+
+                # =================================================
+                # 入庫 / 廢品
+                # =================================================
+
+                material_stockin = (
+                    stockin_map.get(
+                        material_id,
+                        0
+                    )
+                )
+
+
+                assemble_scrap = (
+                    asm_scrap_map.get(
+                        material_id,
+                        0
+                    )
+                )
+
+
+                product_scrap = (
+                    product_scrap_map.get(
+                        material_id,
+                        0
+                    )
+                )
+
+
+                material_scrap = max(
+                    assemble_scrap,
+                    product_scrap,
+                    0,
+                )
+
+
+                total_stockin += (
+                    material_stockin
+                )
+
+                total_scrap += (
+                    material_scrap
+                )
+
+                # 外部加工送進廠內前既有廢料
+                total_external_scrap += (
+                    external_scrap_qty
+                )
+
+                # =================================================
+                # Information 詳情按鍵
+                #
+                # 有真正 Process.begin_time 才 enable
+                # =================================================
+
+                valid_processes = [
+                    p
+                    for p
+                    in process_records
+                    if (
+                        to_int(
+                            p.material_id,
+                            0
+                        )
+                        ==
+                        material_id
+
+                        and
+
+                        safe_str(
+                            p.begin_time
+                        ).strip()
+                        != ""
+                    )
+                ]
+
+
+                total_process_records += (
+                    len(
+                        valid_processes
+                    )
+                )
+
+
+                # =================================================
+                # Process 完成良品量
+                # =================================================
+
+                process_completed_qty = 0
+
+                for p in process_records:
+
+                    process_type = to_int(
+                        p.process_type,
+                        0
+                    )
+
+
+                    # ---------------------------------------------
+                    # 非加工 Process 排除
+                    # ---------------------------------------------
+
+                    if is_non_work_process(
+                        process_type,
+                        getattr(
+                            p,
+                            "assemble_id",
+                            0
+                        )
+                    ):
+                        continue
+
+
+                    if not safe_str(
+                        p.begin_time
+                    ).strip():
+                        continue
+
+
+                    if not safe_str(
+                        p.end_time
+                    ).strip():
+                        continue
+
+
+                    qty = to_int(
+                        getattr(
+                            p,
+                            "process_work_time_qty",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    process_completed_qty = max(
+                        process_completed_qty,
+                        qty
+                    )
+
+
+                # =================================================
+                # Assemble fallback
+                # =================================================
+
+                assemble_completed_qty = 0
+
+                for a in assemble_records:
+
+                    assemble_step = to_int(
+                        getattr(
+                            a,
+                            "process_step_code",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    # 只有真正結束列
+                    if assemble_step != 0:
+                        continue
+
+
+                    row_completed_qty = max(
+
+                        to_int(
+                            getattr(
+                                a,
+                                "completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        to_int(
+                            getattr(
+                                a,
+                                "total_completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+                    )
+
+
+                    assemble_completed_qty = max(
+                        assemble_completed_qty,
+                        row_completed_qty
+                    )
+
+
+                material_completed = max(
+                    process_completed_qty,
+                    assemble_completed_qty,
+                    material_stockin,
+                    0,
+                )
+
+
+                # 20260819：
+                # 訂單層 completed 改在 material_summaries 完成後彙總。
+                # 避免串接工序：
+                # B100 2268 + B108 2268 被誤算成 4536。
+
+
+                # =================================================
+                # Active 加工 Process
+                # =================================================
+
+                has_active_process = False
+
+                for p in process_records:
+
+                    process_type = to_int(
+                        p.process_type,
+                        0
+                    )
+
+
+                    if is_non_work_process(
+                        process_type,
+                        getattr(
+                            p,
+                            "assemble_id",
+                            0
+                        )
+                    ):
+                        continue
+
+
+                    has_begin = bool(
+                        safe_str(
+                            p.begin_time
+                        ).strip()
+                    )
+
+
+                    has_end = bool(
+                        safe_str(
+                            p.end_time
+                        ).strip()
+                    )
+
+
+                    if (
+                        has_begin
+                        and
+                        not has_end
+                        and
+                        bool(
+                            getattr(
+                                p,
+                                "has_started",
+                                False
+                            )
+                        )
+                    ):
+
+                        has_active_process = True
+                        break
+
+
+                # =================================================
+                # Pending 加工工序
+                # =================================================
+
+                pending_assemble_rows = []
+
+                for a in assemble_records:
+
+                    step = to_int(
+                        getattr(
+                            a,
+                            "process_step_code",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    if step <= 0:
+                        continue
+
+
+                    # ---------------------------------------------
+                    # 排除歷史複製列
+                    # ---------------------------------------------
+
+                    if (
+                        getattr(
+                            a,
+                            "is_copied_from_id",
+                            None
+                        ) is not None
+
+                        and
+
+                        to_int(
+                            getattr(
+                                a,
+                                "show2_ok",
+                                0
+                            ),
+                            0
+                        ) == 0
+                    ):
+                        continue
+
+
+                    if bool(
+                        getattr(
+                            a,
+                            "isWarehouseStationShow",
+                            False
+                        )
+                    ):
+                        continue
+
+
+                    must_end_qty = to_int(
+                        getattr(
+                            a,
+                            "must_receive_end_qty",
+                            0
+                        ),
+                        0
+                    )
+
+
+                    if must_end_qty <= 0:
+
+                        must_end_qty = to_int(
+                            getattr(
+                                a,
+                                "must_receive_qty",
+                                0
+                            ),
+                            0
+                        )
+
+
+                    completed_qty = max(
+
+                        to_int(
+                            getattr(
+                                a,
+                                "completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        to_int(
+                            getattr(
+                                a,
+                                "total_completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+                    )
+
+
+                    if (
+                        must_end_qty > 0
+                        and
+                        completed_qty >= must_end_qty
+                    ):
+                        continue
+
+
+                    pending_assemble_rows.append(
+                        a
+                    )
+
+
+                has_pending_process_step = bool(
+                    pending_assemble_rows
+                )
+
+
+                # =================================================
+                # 下一道工序名稱
+                # =================================================
+
+                if (
+                    not current_process_comment
+                    and
+                    pending_assemble_rows
+                ):
+
+                    min_assemble = min(
+                        pending_assemble_rows,
+                        key=lambda a:
+                            to_int(
+                                getattr(
+                                    a,
+                                    "seq_num",
+                                    999999
+                                ),
+                                999999
+                            )
+                    )
+
+
+                    work_num = safe_str(
+                        min_assemble.work_num
+                    ).strip()
+
+
+                    key = norm_code(
+                        work_num
+                    )
+
+
+                    part_info = (
+                        part_info_map.get(
+                            key
+                        )
+                        or
+                        part_info_map.get(
+                            alias_code(
+                                key
+                            )
+                        )
+                    )
+
+
+                    if part_info:
+
+                        current_process_comment = (
+                            safe_str(
+                                part_info.get(
+                                    "comment"
+                                )
+                            ).strip()
+                        )
+
+                    else:
+
+                        current_process_comment = (
+                            work_num
+                        )
+
+
+                # =================================================
+                # Material 原始狀態
+                # =================================================
+
+                raw_status = to_int(
+                    getattr(
+                        material,
+                        "show2_ok",
+                        0
+                    ),
+                    0
+                )
+
+
+                # =================================================
+                # 是否已具備 PBegin 資格
+                #
+                # 與 PBegin Material 狀態一致：
+                #
+                # isTakeOk = True
+                # isShow   = True
+                # show1_ok = 2
+                # show2_ok >= 3
+                #
+                # 支援：
+                #
+                # 正常領料
+                # 不領料直接送出
+                # =================================================
+
+                material_is_take_ok = bool(
+                    getattr(
+                        material,
+                        "isTakeOk",
+                        False
+                    )
+                )
+
+
+                material_is_show = bool(
+                    getattr(
+                        material,
+                        "isShow",
+                        False
+                    )
+                )
+
+
+                material_show1 = to_int(
+                    getattr(
+                        material,
+                        "show1_ok",
+                        0
+                    ),
+                    0
+                )
+
+                '''
+                has_entered_process_stage = (
+                    material_is_take_ok
+                    and
+                    material_is_show
+                    and
+                    material_show1 == 2
+                    and
+                    raw_status >= 3
+                )
+                '''
+                # 20260817版
+                # =================================================
+                # 是否已進入加工/後續流程
+                #
+                # show1_ok:
+                #   2 = 加工站
+                #   3 = 成品站
+                #
+                # 所以不能只限定 == 2。
+                # 已到成品站的舊工單也明顯早已離開領料區。
+                # =================================================
+
+                has_entered_process_stage = (
+                    material_is_take_ok
+                    and
+                    material_is_show
+                    and
+                    material_show1 >= 2
+                    and
+                    raw_status >= 3
+                )
+                #
+
+
+                is_still_prepare_stage = (
+                    not has_entered_process_stage
+                )
+
+
+                # =================================================
+                # PEnd 待送出
+                # =================================================
+
+                has_waiting_send = any(
+                    (
+                        to_int(
+                            getattr(
+                                a,
+                                "process_step_code",
+                                -1
+                            ),
+                            -1
+                        ) == 0
+
+                        and
+
+                        max(
+                            to_int(
+                                getattr(
+                                    a,
+                                    "completed_qty",
+                                    0
+                                ),
+                                0
+                            ),
+
+                            to_int(
+                                getattr(
+                                    a,
+                                    "total_completed_qty",
+                                    0
+                                ),
+                                0
+                            ),
+                        ) > 0
+
+                        and
+
+                        bool(
+                            getattr(
+                                a,
+                                "isAssembleStationShow",
+                                False
+                            )
+                        )
+
+                        and
+
+                        not bool(
+                            getattr(
+                                a,
+                                "isWarehouseStationShow",
+                                False
+                            )
+                        )
+                    )
+
+                    for a
+                    in assemble_records
+                )
+
+
+                # =================================================
+                # Warehouse
+                # =================================================
+
+                has_arrived_warehouse = any(
+                    bool(
+                        getattr(
+                            a,
+                            "isWarehouseStationShow",
+                            False
+                        )
+                    )
+
+                    for a
+                    in assemble_records
+                )
+
+
+                # =================================================
+                # Batch Status
+                #
+                # 順序：
+                #
+                # prepare
+                # active
+                # waiting PBegin
+                # next process
+                # PEnd
+                # Warehouse
+                # stockin
+                # =================================================
+
+                #
+                # =================================================
+                # 20260819版
+                # Batch Status
+                #
+                # 正確優先順序：
+                #
+                # 1. 尚未進加工
+                # 2. 真正加工中
+                # 3. PEnd 等待送出
+                # 4. Warehouse 等待入庫
+                # 5. 已入庫完成
+                # 6. 等待下一道加工
+                # 7. 等待 PBegin
+                # 8. fallback
+                #
+                # 非常重要：
+                #
+                # Warehouse 狀態必須優先於 raw_status == 3。
+                #
+                # 否則：
+                #
+                # show2_ok = 3
+                # +
+                # isWarehouseStationShow = True
+                #
+                # 仍會被誤判成「等待加工作業」。
+                # =================================================
+
+
+                # -------------------------------------------------
+                # A. 尚未真正進入加工流程
+                # -------------------------------------------------
+                if is_still_prepare_stage:
+
+                    if raw_status <= 0:
+
+                        batch_status = 0
+
+                    elif raw_status == 1:
+
+                        batch_status = 1
+
+                    else:
+
+                        batch_status = 2
+
+
+                # -------------------------------------------------
+                # B. 真正加工中
+                # -------------------------------------------------
+                elif has_active_process:
+
+                    batch_status = 4
+
+
+                # -------------------------------------------------
+                # C. PEnd 已完成，等待送出
+                # -------------------------------------------------
+                elif has_waiting_send:
+
+                    batch_status = 5
+
+
+                # -------------------------------------------------
+                # D. 已經送到 Warehouse，
+                #    但尚未全部入庫
+                # -------------------------------------------------
+                elif (
+                    has_arrived_warehouse
+                    and
+                    material_completed > 0
+                    and
+                    material_stockin
+                    <
+                    material_completed
+                ):
+
+                    if raw_status == 7:
+
+                        batch_status = 7
+
+                    else:
+
+                        batch_status = 6
+
+
+                # -------------------------------------------------
+                # E. 已真正入庫完成
+                # -------------------------------------------------
+                elif (
+                    material_completed > 0
+                    and
+                    material_stockin > 0
+                    and
+                    material_stockin
+                    >=
+                    material_completed
+                ):
+
+                    batch_status = 8
+
+
+                # -------------------------------------------------
+                # F. 尚有下一道加工工序
+                # -------------------------------------------------
+                elif has_pending_process_step:
+
+                    batch_status = 3
+
+
+                # -------------------------------------------------
+                # G. 已具備 PBegin 資格，
+                #    等待加工
+                # -------------------------------------------------
+                elif (
+                    has_entered_process_stage
+                    and
+                    raw_status == 3
+                ):
+
+                    batch_status = 3
+
+
+                # -------------------------------------------------
+                # H. fallback
+                # -------------------------------------------------
+                else:
+
+                    batch_status = max(
+                        0,
+                        min(
+                            raw_status,
+                            8
+                        )
+                    )
+                #
+
+                # =================================================
+                # 20260819
+                # 這個 material 是否代表「最終需入庫」工序
+                # =================================================
+
+                requires_stockin = any(
+                    bool(
+                        getattr(
+                            a,
+                            "isStockIn",
+                            False
+                        )
+                    )
+                    for a
+                    in assemble_records
+                )
+
+
+                # =================================================
+                # summary
+                # =================================================
+
+                material_summaries.append({
+
+                    "material":
+                        material,
+
+                    "material_id":
+                        material_id,
+
+                    "requires_stockin":
+                        requires_stockin,
+
+                    "completed_qty":
+                        material_completed,
+
+                    "stockin_qty":
+                        material_stockin,
+
+                    "scrap_qty":
+                        material_scrap,
+
+                    "status":
+                        batch_status,
+                    '''
+                    #
+                    # =================================================
+                    # 此 material 是否包含「最後需要入庫」的加工工序
+                    #
+                    # B100-03 isStockIn=False
+                    #   → 中間工序
+                    #
+                    # B108-26 isStockIn=True
+                    #   → 最終輸出工序
+                    # =================================================
+                    "requires_stockin":
+                        any(
+                            bool(
+                                getattr(
+                                    a,
+                                    "isStockIn",
+                                    False
+                                )
+                            )
+                            for a
+                            in assemble_records
+                        ),
+                    #
+                    '''
+
+                    "has_active_process":
+                        has_active_process,
+
+                    "has_pending_process_step":
+                        has_pending_process_step,
+
+                    "has_waiting_send":
+                        has_waiting_send,
+
+                    "has_arrived_warehouse":
+                        has_arrived_warehouse,
+
+                    "has_entered_process_stage":
+                        has_entered_process_stage,
+
+                    "is_still_prepare_stage":
+                        is_still_prepare_stage,
+
+                    "assemble_count":
+                        len(
+                            assemble_records
+                        ),
+
+                    "process_count":
+                        len(
+                            process_records
+                        ),
+
+                    "product_count":
+                        product_count_map.get(
+                            material_id,
+                            0
+                        ),
+
+                    "external_scrap_qty":
+                        external_scrap_qty,
+                })
+
+
+            # ====================================================
+            # 8-2. 排除空 root
+            # ====================================================
+
+            effective_material_summaries = [
+                item
+                for item
+                in material_summaries
+
+                if (
+                    to_int(
+                        item.get(
+                            "assemble_count"
+                        ),
+                        0
+                    ) > 0
+
+                    or
+
+                    to_int(
+                        item.get(
+                            "process_count"
+                        ),
+                        0
+                    ) > 0
+
+                    or
+
+                    to_int(
+                        item.get(
+                            "product_count"
+                        ),
+                        0
+                    ) > 0
+
+                    or
+
+                    to_int(
+                        item.get(
+                            "completed_qty"
+                        ),
+                        0
+                    ) > 0
+
+                    or
+
+                    to_int(
+                        item.get(
+                            "stockin_qty"
+                        ),
+                        0
+                    ) > 0
+
+                    or
+
+                    bool(
+                        item.get(
+                            "has_active_process",
+                            False
+                        )
+                    )
+
+                    or
+
+                    bool(
+                        item.get(
+                            "has_pending_process_step",
+                            False
+                        )
+                    )
+
+                    or
+
+                    bool(
+                        item.get(
+                            "has_waiting_send",
+                            False
+                        )
+                    )
+
+                    or
+
+                    bool(
+                        item.get(
+                            "has_arrived_warehouse",
+                            False
+                        )
+                    )
+                )
+            ]
+
+
+            base_status_source = (
+                effective_material_summaries
+                if effective_material_summaries
+                else material_summaries
+            )
+
+
+            # ====================================================
+            # 20260819
+            # 同 order_num、多 material 的串接工序修正
+            #
+            # 例：
+            #   material A / B100 / isStockIn=False
+            #   material B / B108 / isStockIn=True
+            #
+            # A、B 是同一批產品的前後工序，不是兩批產品。
+            # ====================================================
+
+            final_output_summaries = [
+                item
+                for item
+                in base_status_source
+                if bool(
+                    item.get(
+                        "requires_stockin",
+                        False
+                    )
+                )
+            ]
+
+
+            def is_completed_intermediate(
+                item
+            ):
+
+                if bool(
+                    item.get(
+                        "requires_stockin",
+                        False
+                    )
+                ):
+                    return False
+
+                if to_int(
+                    item.get(
+                        "completed_qty"
+                    ),
+                    0
+                ) <= 0:
+                    return False
+
+                if bool(
+                    item.get(
+                        "has_active_process",
+                        False
+                    )
+                ):
+                    return False
+
+                if bool(
+                    item.get(
+                        "has_pending_process_step",
+                        False
+                    )
+                ):
+                    return False
+
+                if bool(
+                    item.get(
+                        "has_waiting_send",
+                        False
+                    )
+                ):
+                    return False
+
+                return True
+
+            '''
+            status_source = [
+                item
+                for item
+                in base_status_source
+                if not is_completed_intermediate(
+                    item
+                )
+            ]
+
+            if not status_source:
+
+                status_source = (
+                    final_output_summaries
+                    if final_output_summaries
+                    else base_status_source
+                )
+            '''
+            #
+            # ====================================================
+            # 整張訂單的狀態來源
+            #
+            # 若已有明確「最終需入庫」material：
+            #
+            #   狀態完全由最終輸出 material 決定。
+            #
+            # 前段 B100 仍保留於 Information 詳情，
+            # 但不再影響整單目前進度。
+            # ====================================================
+            '''
+            if final_output_summaries:
+
+                status_source = (
+                    final_output_summaries
+                )
+
+            else:
+
+                status_source = [
+                    item
+                    for item
+                    in base_status_source
+                    if not is_completed_intermediate(
+                        item
+                    )
+                ]
+
+                if not status_source:
+
+                    status_source = (
+                        base_status_source
+                    )
+            '''
+            # 20260821版
+            # ====================================================
+            # 整張訂單狀態來源
+            #
+            # 原則：
+            #
+            # 1. 只要任何 material 還有真正 active Process，
+            #    整張訂單必須反映該 active material。
+            #
+            # 2. 沒有 active Process 時，
+            #    若存在最終需入庫 material，
+            #    才由 final_output_summaries 決定目前狀態。
+            #
+            # 3. 避免前段工序明明還在加工，
+            #    卻因 final_output material 尚未開始，
+            #    被顯示成「等待加工作業」。
+            # ====================================================
+            '''
+            active_summaries = [
+                item
+                for item
+                in base_status_source
+                if bool(
+                    item.get(
+                        "has_active_process",
+                        False
+                    )
+                )
+            ]
+            '''
+            #
+            # ====================================================
+            # 20260821
+            # Active material
+            #
+            # 不再二次依賴 has_active_process。
+            #
+            # 前面每個 material 已經完成 Batch Status 判斷：
+            #
+            #     batch_status = 4
+            #
+            # 就代表該 material 有真正 active 的加工 Process。
+            #
+            # 直接使用 status == 4 最穩定。
+            # ====================================================
+
+            active_summaries = [
+                item
+                for item
+                in base_status_source
+                if to_int(
+                    item.get(
+                        "status"
+                    ),
+                    0
+                ) == 4
+            ]
+            #
+
+            # ----------------------------------------------------
+            # A. 有真正加工中的 Process
+            #
+            # active 優先權最高。
+            # ----------------------------------------------------
+            if active_summaries:
+
+                status_source = (
+                    active_summaries
+                )
+
+
+            # ----------------------------------------------------
+            # B. 沒有 active，
+            #    才由最終輸出 material 決定整單狀態
+            # ----------------------------------------------------
+            elif final_output_summaries:
+
+                status_source = (
+                    final_output_summaries
+                )
+
+
+            # ----------------------------------------------------
+            # C. 沒有 final output，
+            #    使用一般有效 material
+            # ----------------------------------------------------
+            else:
+
+                status_source = [
+                    item
+                    for item
+                    in base_status_source
+                    if not is_completed_intermediate(
+                        item
+                    )
+                ]
+
+                if not status_source:
+
+                    status_source = (
+                        base_status_source
+                    )
+            #
+
+
+            # ----------------------------------------------------
+            # 訂單層「已完成 / 已入庫」數量來源
+            #
+            # 有 requires_stockin=True：
+            #   只統計最終輸出 material。
+            #
+            # 若有多個 requires_stockin=True：
+            #   視為真正分批最終輸出，仍正常相加。
+            # ----------------------------------------------------
+
+            quantity_source = (
+                final_output_summaries
+                if final_output_summaries
+                else base_status_source
+            )
+
+
+            total_completed = sum(
+                max(
+                    0,
+                    to_int(
+                        item.get(
+                            "completed_qty"
+                        ),
+                        0
+                    )
+                )
+                for item
+                in quantity_source
+            )
+
+
+            total_stockin = sum(
+                max(
+                    0,
+                    to_int(
+                        item.get(
+                            "stockin_qty"
+                        ),
+                        0
+                    )
+                )
+                for item
+                in quantity_source
+            )
+
+
+            batch_statuses = [
+                to_int(
+                    item.get(
+                        "status"
+                    ),
+                    0
+                )
+
+                for item
+                in status_source
+            ]
+
+            #
+            # ====================================================
+            # 20260821 DEBUG
+            # 121200006845 現況進度追蹤
+            # ====================================================
+            if order_num == "121200006845":
+
+                print(
+                    "\n"
+                    "=========================================="
+                )
+
+                print(
+                    "DEBUG PInformation:",
+                    order_num
+                )
+
+                print(
+                    "group_material_ids:",
+                    [
+                        to_int(
+                            m.id,
+                            0
+                        )
+                        for m
+                        in group_materials
+                    ]
+                )
+
+                print(
+                    "material_summaries:"
+                )
+
+                for x in material_summaries:
+
+                    print({
+                        "material_id":
+                            x.get(
+                                "material_id"
+                            ),
+
+                        "status":
+                            x.get(
+                                "status"
+                            ),
+
+                        "has_active_process":
+                            x.get(
+                                "has_active_process"
+                            ),
+
+                        "has_pending_process_step":
+                            x.get(
+                                "has_pending_process_step"
+                            ),
+
+                        "has_entered_process_stage":
+                            x.get(
+                                "has_entered_process_stage"
+                            ),
+
+                        "requires_stockin":
+                            x.get(
+                                "requires_stockin"
+                            ),
+
+                        "completed_qty":
+                            x.get(
+                                "completed_qty"
+                            ),
+
+                        "stockin_qty":
+                            x.get(
+                                "stockin_qty"
+                            ),
+                    })
+
+                print(
+                    "active_summaries:",
+                    [
+                        {
+                            "material_id":
+                                x.get(
+                                    "material_id"
+                                ),
+
+                            "status":
+                                x.get(
+                                    "status"
+                                ),
+                        }
+                        for x
+                        in active_summaries
+                    ]
+                )
+
+                print(
+                    "final_output_summaries:",
+                    [
+                        {
+                            "material_id":
+                                x.get(
+                                    "material_id"
+                                ),
+
+                            "status":
+                                x.get(
+                                    "status"
+                                ),
+                        }
+                        for x
+                        in final_output_summaries
+                    ]
+                )
+
+                print(
+                    "status_source:",
+                    [
+                        {
+                            "material_id":
+                                x.get(
+                                    "material_id"
+                                ),
+
+                            "status":
+                                x.get(
+                                    "status"
+                                ),
+
+                            "active":
+                                x.get(
+                                    "has_active_process"
+                                ),
+                        }
+                        for x
+                        in status_source
+                    ]
+                )
+
+                print(
+                    "batch_statuses:",
+                    batch_statuses
+                )
+
+                print(
+                    "=========================================="
+                    "\n"
+                )
+            #
+
+            # ====================================================
+            # 8-3. 整單狀態
+            # ====================================================
+
+            if batch_statuses:
+
+                order_status = min(
+                    batch_statuses
+                )
+
+            else:
+
+                order_status = to_int(
+                    getattr(
+                        representative,
+                        "show2_ok",
+                        0
+                    ),
+                    0
+                )
+
+
+            # ----------------------------------------------------
+            # 真正還在領料的 batch
+            # ----------------------------------------------------
+
+            prepare_statuses = [
+                to_int(
+                    item.get(
+                        "status"
+                    ),
+                    2
+                )
+
+                for item
+                in status_source
+
+                if bool(
+                    item.get(
+                        "is_still_prepare_stage",
+                        False
+                    )
+                )
+            ]
+
+
+            if prepare_statuses:
+
+                order_status = min(
+                    order_status,
+                    min(
+                        prepare_statuses
+                    )
+                )
+
+
+            # ----------------------------------------------------
+            # 真正已進加工流程，且有下一道工序
+            # ----------------------------------------------------
+            '''
+            if any(
+                (
+                    bool(
+                        item.get(
+                            "has_pending_process_step",
+                            False
+                        )
+                    )
+
+                    and
+
+                    bool(
+                        item.get(
+                            "has_entered_process_stage",
+                            False
+                        )
+                    )
+                )
+
+                for item
+                in status_source
+            ):
+
+                if not any(
+                    bool(
+                        item.get(
+                            "has_active_process",
+                            False
+                        )
+                    )
+
+                    for item
+                    in status_source
+                ):
+
+                    order_status = min(
+                        order_status,
+                        3
+                    )
+            '''
+            #
+            # ----------------------------------------------------
+            # 真正已進加工流程，且仍有待加工工序
+            #
+            # 注意：
+            # status == 4 已代表目前有 active Process，
+            # 不可再被 pending 工序壓回 status=3。
+            # ----------------------------------------------------
+
+            has_order_active = any(
+                to_int(
+                    item.get(
+                        "status"
+                    ),
+                    0
+                ) == 4
+
+                for item
+                in status_source
+            )
+
+
+            has_order_pending = any(
+                (
+                    bool(
+                        item.get(
+                            "has_pending_process_step",
+                            False
+                        )
+                    )
+
+                    and
+
+                    bool(
+                        item.get(
+                            "has_entered_process_stage",
+                            False
+                        )
+                    )
+                )
+
+                for item
+                in status_source
+            )
+
+
+            if (
+                has_order_pending
+                and
+                not has_order_active
+            ):
+
+                order_status = min(
+                    order_status,
+                    3
+                )
+            #
+
+            # ====================================================
+            # 入庫安全判斷
+            # ====================================================
+
+            if (
+                total_completed > 0
+                and
+                total_stockin < total_completed
+                and
+                order_status >= 6
+            ):
+
+                if 7 in batch_statuses:
+
+                    order_status = 7
+
+                else:
+
+                    order_status = 6
+
+
+            # ====================================================
+            # 全部 batch 入庫完成
+            # ====================================================
+
+            all_batches_stockin_done = bool(
+                status_source
+            ) and all(
+                (
+                    to_int(
+                        item.get(
+                            "completed_qty"
+                        ),
+                        0
+                    ) > 0
+
+                    and
+
+                    to_int(
+                        item.get(
+                            "stockin_qty"
+                        ),
+                        0
+                    )
+                    >=
+                    to_int(
+                        item.get(
+                            "completed_qty"
+                        ),
+                        0
+                    )
+
+                    and
+
+                    not bool(
+                        item.get(
+                            "has_active_process",
+                            False
+                        )
+                    )
+
+                    and
+
+                    not bool(
+                        item.get(
+                            "has_waiting_send",
+                            False
+                        )
+                    )
+
+                    and
+
+                    not (
+                        bool(
+                            item.get(
+                                "has_pending_process_step",
+                                False
+                            )
+                        )
+
+                        and
+
+                        bool(
+                            item.get(
+                                "has_entered_process_stage",
+                                False
+                            )
+                        )
+                    )
+
+                    and
+
+                    to_int(
+                        item.get(
+                            "status"
+                        ),
+                        0
+                    ) >= 6
+                )
+
+                for item
+                in (
+                    final_output_summaries
+                    if final_output_summaries
+                    else status_source
+                )
+            )
+
+
+            if all_batches_stockin_done:
+
+                order_status = 8
+
+
+            # ====================================================
+            # 單一 material 差異
+            # ====================================================
+
+            is_single_material_order = (
+                len(
+                    group_materials
+                )
+                ==
+                1
+            )
+
+
+            # 20260819：
+            # 多 material，但只有一個最終入庫 material，
+            # 視為單一產出鏈。
+            is_single_output_chain = (
+                len(
+                    final_output_summaries
+                )
+                ==
+                1
+            )
+
+
+            #accounted_total = (
+            #    total_stockin
+            #    +
+            #    total_scrap
+            #)
+            #
+            accounted_total = (
+                total_stockin
+                +
+                total_scrap
+                +
+                total_external_scrap
+            )
+            #
+
+            unexplained_difference = 0
+
+
+            if (
+                is_single_material_order
+                and
+                req_qty > 0
+            ):
+
+                unexplained_difference = max(
+                    0,
+                    req_qty
+                    -
+                    accounted_total
+                )
+
+
+            # ====================================================
+            # show3
+            # ====================================================
+
+            if (
+                order_status >= 6
+                and
+                total_completed > 0
+            ):
+
+                # 20260819：
+                # 多 material 串接工序、只有一個最終入庫 material。
+                # 顯示訂單總量，但不把前段工序 completed 重複相加。
+                if (
+                    not is_single_material_order
+                    and
+                    is_single_output_chain
+                    and
+                    req_qty > 0
+                ):
+
+                    show3_text = (
+                        f"已入庫 {total_stockin}"
+                        f" / 已完成 {total_completed}"
+                        f" / 訂單 {req_qty}"
+                    )
+
+                    if total_scrap > 0:
+
+                        show3_text += (
+                            f" / 廢品 {total_scrap}"
+                        )
+
+
+                elif (
+                    is_single_material_order
+                    and
+                    req_qty > 0
+                ):
+
+                    if total_scrap > 0:
+
+                        show3_text = (
+                            f"已入庫 {total_stockin}"
+                            f" / 廢品 {total_scrap}"
+                            f" / 訂單 {req_qty}"
+                        )
+
+
+                        if unexplained_difference > 0:
+
+                            show3_text += (
+                                f"（差異 "
+                                f"{unexplained_difference}）"
+                            )
+
+
+                    elif unexplained_difference > 0:
+
+                        show3_text = (
+                            f"已入庫 {total_stockin}"
+                            f" / 已完成 {total_completed}"
+                            f" / 訂單 {req_qty}"
+                            f"（差異 "
+                            f"{unexplained_difference}）"
+                        )
+
+
+                    else:
+
+                        show3_text = (
+                            f"已入庫 {total_stockin}"
+                            f" / 已完成 {total_completed}"
+                        )
+
+
+                else:
+
+                    if total_scrap > 0:
+
+                        show3_text = (
+                            f"已入庫 {total_stockin}"
+                            f" / 廢品 {total_scrap}"
+                            f" / 已完成 {total_completed}"
+                        )
+
+                    else:
+
+                        show3_text = (
+                            f"已入庫 {total_stockin}"
+                            f" / 已完成 {total_completed}"
+                        )
+
+
+            elif (
+                order_status == 5
+                and
+                total_completed > 0
+            ):
+
+                show3_text = (
+                    f"已完成 {total_completed}"
+                    f" / 等待送出"
+                )
+
+
+            # ----------------------------------------------------
+            # 真正領料階段才不顯示加工名稱
+            # ----------------------------------------------------
+
+            elif order_status <= 2:
+
+                show3_text = ""
+
+
+            elif (
+                order_status <= 4
+                and
+                total_completed > 0
+                and
+                req_qty > 0
+            ):
+
+                remaining_qty = max(
+                    0,
+                    req_qty
+                    -
+                    total_completed
+                    -
+                    total_scrap
+                )
+
+
+                show3_text = (
+                    f"已入庫 {total_stockin}"
+                    f" / 已完成 {total_completed}"
+                    f" / 訂單 {req_qty}"
+                )
+
+
+                if total_scrap > 0:
+
+                    show3_text += (
+                        f" / 廢品 {total_scrap}"
+                    )
+
+
+                if remaining_qty > 0:
+
+                    show3_text += (
+                        f"（待加工 "
+                        f"{remaining_qty}）"
+                    )
+
+            #
+            else:
+
+                show3_text = (
+                    current_process_comment
+                    or ""
+                )
+
+                if total_external_scrap > 0:
+
+                    if show3_text:
+
+                        show3_text += (
+                            f" / 外部加工廢品 "
+                            f"{total_external_scrap}"
+                        )
+
+                    else:
+
+                        show3_text = (
+                            f"外部加工廢品 "
+                            f"{total_external_scrap}"
+                        )
+            #
+
+
+            # ====================================================
+            # 領料中人員
+            # ====================================================
+
+            display_open_emp_id = ""
+
+            if order_status == 1:
+
+                for item in material_summaries:
+
+                    if (
+                        to_int(
+                            item.get(
+                                "status"
+                            ),
+                            -1
+                        )
+                        != 1
+                    ):
+                        continue
+
+
+                    m = item[
+                        "material"
+                    ]
+
+
+                    display_open_emp_id = (
+                        safe_str(
+                            getattr(
+                                m,
+                                "isOpenEmpId",
+                                ""
+                            )
+                        ).strip()
+                    )
+
+
+                    if display_open_emp_id:
+                        break
+
+
+            # ====================================================
+            # 現況數量
+            # ====================================================
+
+            if total_stockin > 0:
+
+                display_delivery_qty = (
+                    total_stockin
+                )
+
+
+            elif total_completed > 0:
+
+                display_delivery_qty = (
+                    total_completed
+                )
+
+
+            else:
+
+                display_delivery_qty = (
+                    to_int(
+                        getattr(
+                            representative,
+                            "delivery_qty",
+                            0
+                        ),
+                        0
+                    )
+                )
+
+            #
+            # ====================================================
+            # DEBUG：確認 API 最後真正回傳什麼
+            # ====================================================
+            if order_num == "121200006845":
+
+                print(
+                    "FINAL DEBUG:",
+                    order_num,
+                    "order_status=",
+                    order_status,
+                    "show2_ok=",
+                    status_text(
+                        order_status
+                    )
+                )
+            #
 
             # ====================================================
             # 回傳

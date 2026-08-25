@@ -589,6 +589,7 @@ def count_excel_files():
     })
 
 
+# 20260824版
 # 20260817版
 @excelTable.route("/readAllExcelFilesP", methods=['GET'])
 def read_all_excel_files_p():
@@ -825,11 +826,48 @@ def read_all_excel_files_p():
           print("order_num: ", order_num)
           print("bom_df.empty: ",bom_df.empty)
           print("bom_entries.empty: ",bom_entries.empty)
+          '''
           temp_bom_empty = True if bom_df.empty or bom_entries.empty else False
 
           material_isBom = temp_bom_empty
           material_isTakeOk = temp_bom_empty
           material_isShow = temp_bom_empty
+          '''
+          # 20260824版
+          # ============================================================
+          # BOM 判斷
+          #
+          # temp_bom_empty=True
+          #   → 此訂單沒有真正 BOM 資料
+          #   → isBom=False
+          #   → 不需 PMaterial 領料，直接進 PBegin
+          #
+          # temp_bom_empty=False
+          #   → 此訂單有真正 BOM 資料
+          #   → isBom=True
+          #   → 必須先經 PMaterial 領料
+          # ============================================================
+
+          temp_bom_empty = (
+              bom_df.empty
+              or
+              bom_entries.empty
+          )
+
+          material_isBom = (
+              not temp_bom_empty
+          )
+
+          # 沒有 BOM：
+          # 視為已完成領料，可直接進加工站。
+          material_isTakeOk = (
+              temp_bom_empty
+          )
+
+          material_isShow = (
+              temp_bom_empty
+          )
+          #
 
           #
           # ============================================================
@@ -910,9 +948,30 @@ def read_all_excel_files_p():
             isBom = material_isBom,
             isTakeOk = material_isTakeOk,
             isShow = material_isShow,
-            show1_ok = '2' if material_isBom else '1',
-            show2_ok = '3' if material_isBom else '0',
-            delivery_qty = tempQty if material_isBom else 0,
+            # show1_ok = '2' if material_isBom else '1',
+            # show2_ok = '3' if material_isBom else '0',
+            # delivery_qty = tempQty if material_isBom else 0,
+            # 20260824版
+            # 沒有 BOM → 直接加工站
+            # 有 BOM   → 先停在領料站
+            show1_ok = (
+                '2'
+                if temp_bom_empty
+                else '1'
+            ),
+
+            show2_ok = (
+                '3'
+                if temp_bom_empty
+                else '0'
+            ),
+
+            delivery_qty = (
+                tempQty
+                if temp_bom_empty
+                else 0
+            ),
+            #
           )
           s.add(material)
           s.flush()  # 確保 material.id 可用
@@ -1346,16 +1405,46 @@ def read_all_excel_files_p():
                     is_simultaneously,
 
                 # 整張工單進入加工線的領取數量
-                must_receive_qty=
-                    material_receive_qty,
+                #must_receive_qty=
+                #    material_receive_qty,
 
                 # Excel 此工序的作業數量
+                #must_receive_end_qty=
+                #    process_qty,
+
+                # # 原始工序應完成量, 20260805 add
+                #original_must_receive_end_qty=
+                #    process_qty,
+                #
+                # ------------------------------------------------------------
+                # 20260824
+                #
+                # PBegin「應領取數量」
+                # 必須使用 Excel 工序工作表：
+                # 作業數量 (MEINH)
+                #
+                # material_receive_qty：
+                # 整張工單領料量，例如 2000
+                #
+                # process_qty：
+                # Excel MEINH，例如 540
+                #
+                # 所以：
+                #
+                # must_receive_qty              = 540
+                # must_receive_end_qty          = 540
+                # original_must_receive_end_qty = 540
+                # ------------------------------------------------------------
+
+                must_receive_qty=
+                    process_qty,
+
                 must_receive_end_qty=
                     process_qty,
 
-                # # 原始工序應完成量, 20260805 add
                 original_must_receive_end_qty=
                     process_qty,
+                #
 
                 isShowBomGif=
                     material_isBom,

@@ -414,7 +414,7 @@ export const apiOperation = (operation, path, payload) => {
               path == '/updateAssembleMustReceiveQtyByMaterialID' ||
               path == '/updateAssembleMustReceiveQtyByMaterialIDAndDate' ||
               path == '/sendAssembleToWarehouse' ||
-              path == '/sendProcessToWarehouse' ||
+              //path == '/sendProcessToWarehouse' ||
               path == '/updateAssembleMustReceiveQtyByAssembleID' ||
               path == '/updateAssmbleDataByMaterialID' || path== '/updateProcessDataByMaterialID' ||
               //path == '/createProcess' || path == '/updateModifyMaterialAndBoms'|| path == '/updateAssembleProcessStep' ||
@@ -424,6 +424,12 @@ export const apiOperation = (operation, path, payload) => {
               path == 'updateBomXorReceive') {
             //console.log("res.data:", res.data);
             return res.data.status;
+          }
+
+          // 20260824版
+          if (path == '/sendProcessToWarehouse') {
+            //return res.data.status;
+            return res.data;
           }
 
           if (path == '/updateAssembleProcessStep') {

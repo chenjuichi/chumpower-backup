@@ -965,6 +965,7 @@ def update_assemble_process_step_p():
 """
 
 
+# 20260822版
 # 20260818版
 @updateTableP.route(
     '/updateAssembleProcessStepP',
@@ -1263,6 +1264,7 @@ def update_assemble_process_step_p():
 
                 row.isWarehouseStationShow = False
 
+                '''
                 if is_waiting_send_row:
 
                     # ================================================
@@ -1280,7 +1282,54 @@ def update_assemble_process_step_p():
                     row.total_completed_qty = (
                         final_total_completed_qty
                     )
+                '''
+                # 20260822版
+                if is_waiting_send_row:
 
+                    row.isAssembleStationShow = True
+
+                    # ========================================================
+                    # 20260822
+                    #
+                    # 不要在「加工完成 / PEnd 待送出」時
+                    # 強制修改 isStockIn。
+                    #
+                    # isStockIn 必須保留 Excel / 工序原始設定：
+                    #
+                    # B100-03
+                    #   isStockIn=False
+                    #   → 中間加工
+                    #
+                    # B108-26
+                    #   isStockIn=True
+                    #   → 最終需入庫
+                    #
+                    # 真正按送出時，
+                    # sendProcessToWarehouse() 才依此欄位決定：
+                    #
+                    # False → 解鎖下一階段 PMaterial
+                    # True  → Warehouse
+                    # ========================================================
+
+                    # row.isStockIn = True    # ← 刪掉 / 不可再設定
+
+                    row.completed_qty = (
+                        final_completed_qty
+                    )
+
+                    row.total_completed_qty = (
+                        final_total_completed_qty
+                    )
+
+                    row.total_ask_qty_end = max(
+                        int(
+                            row.total_ask_qty_end
+                            or 0
+                        ),
+                        final_completed_qty,
+                        final_total_completed_qty,
+                    )
+                #
                     row.total_ask_qty_end = max(
                         int(
                             row.total_ask_qty_end
@@ -1616,6 +1665,7 @@ def update_assemble_process_step_p():
         s.close()
 
 
+"""
 @updateTableP.route("/updateAssembleMustReceiveQtyByMaterialIDP", methods=['POST'])
 def update_assembleMustReceiveQty_by_MaterialID_p():
     print("updateAssembleMustReceiveQtyByMaterialIDP....")
@@ -1687,6 +1737,241 @@ def update_assembleMustReceiveQty_by_MaterialID_p():
         }), 500
 
     finally:
+        s.close()
+"""
+
+
+# 20260824版
+@updateTableP.route(
+    "/updateAssembleMustReceiveQtyByMaterialIDP",
+    methods=["POST"]
+)
+def update_assembleMustReceiveQty_by_MaterialID_p():
+
+    print(
+        "updateAssembleMustReceiveQtyByMaterialIDP...."
+    )
+
+    request_data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    print(
+        "[updateAssembleMustReceiveQtyByMaterialIDP] request_data:",
+        request_data
+    )
+
+    material_id = request_data.get(
+        "material_id"
+    )
+
+    record_name = request_data.get(
+        "record_name"
+    )
+
+    record_data = request_data.get(
+        "record_data"
+    )
+
+    # ============================================================
+    # 20260824
+    #
+    # 以下欄位代表 Excel 工序資料的作業數量(MEINH)，
+    # PMaterial 送出流程不可透過此 API 修改。
+    #
+    # 例如：
+    #
+    # PMaterial.delivery_qty = 2000
+    #
+    # Excel MEINH = 540
+    #
+    # P_Assemble.must_receive_qty 必須保持 540。
+    # ============================================================
+
+    protected_fields = {
+        "must_receive_qty",
+        "must_receive_end_qty",
+        "original_must_receive_end_qty",
+    }
+
+    if record_name in protected_fields:
+
+        print(
+            "[updateAssembleMustReceiveQtyByMaterialIDP] "
+            "拒絕修改 MEINH 欄位:",
+            {
+                "material_id":
+                    material_id,
+
+                "record_name":
+                    record_name,
+
+                "record_data":
+                    record_data,
+            }
+        )
+
+        return jsonify({
+            "status": False,
+            "blocked": True,
+            "msg": (
+                f"{record_name} 為 Excel 工序 "
+                "MEINH 保護欄位，不允許由 "
+                "PMaterial 送出流程修改"
+            )
+        }), 400
+
+    # ============================================================
+    # 基本參數
+    # ============================================================
+
+    if not material_id:
+
+        return jsonify({
+            "status": False,
+            "msg":
+                "缺少 material_id"
+        }), 400
+
+    if not record_name:
+
+        return jsonify({
+            "status": False,
+            "msg":
+                "缺少 record_name"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 檢查合法欄位
+        # ========================================================
+
+        valid_columns = [
+            c.key
+            for c
+            in inspect(
+                P_Assemble
+            ).mapper.column_attrs
+        ]
+
+        if record_name not in valid_columns:
+
+            return jsonify({
+                "status": False,
+                "msg":
+                    (
+                        f"'{record_name}' "
+                        "不是 P_Assemble "
+                        "表中的合法欄位"
+                    )
+            }), 400
+
+        # ========================================================
+        # 找 material 的所有 P_Assemble
+        # ========================================================
+
+        assemble_records = (
+            s.query(
+                P_Assemble
+            )
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .all()
+        )
+
+        # ========================================================
+        # 無工序加工單允許略過
+        # ========================================================
+
+        if not assemble_records:
+
+            print(
+                f"material_id={material_id} "
+                "沒有 P_Assemble，略過更新。"
+            )
+
+            return jsonify({
+                "status": True,
+                "skipped": True,
+                "updated_ids": [],
+                "msg":
+                    (
+                        f"material_id={material_id} "
+                        "沒有 P_Assemble，已略過"
+                    )
+            }), 200
+
+        updated_ids = []
+
+        # ========================================================
+        # 更新一般欄位
+        # ========================================================
+
+        for record in assemble_records:
+
+            print(
+                "[before generic update]",
+                {
+                    "id":
+                        record.id,
+
+                    "record_name":
+                        record_name,
+
+                    "old_value":
+                        getattr(
+                            record,
+                            record_name,
+                            None
+                        ),
+
+                    "new_value":
+                        record_data,
+                }
+            )
+
+            setattr(
+                record,
+                record_name,
+                record_data
+            )
+
+            updated_ids.append(
+                int(record.id)
+            )
+
+        s.commit()
+
+        return jsonify({
+            "status": True,
+            "skipped": False,
+            "updated_ids":
+                updated_ids
+        }), 200
+
+    except Exception as e:
+
+        s.rollback()
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "msg":
+                str(e)
+        }), 500
+
+    finally:
+
         s.close()
 
 
@@ -2003,7 +2288,7 @@ def preview_process_abnormal_qty_p():
         s.close()
 
 
-
+"""
 @updateTableP.route("/updateAssmbleDataByMaterialIDP", methods=['POST'])
 def update_assemble_data_by_material_id_p():
   print("updateAssmbleDataByMaterialIDP....")
@@ -2056,6 +2341,1770 @@ def update_assemble_data_by_material_id_p():
   return jsonify({
     'status': return_value
   })
+"""
+
+
+"""
+# 20260824版
+# ================================================================
+# PMaterial 領料完成後，同步本批領料數量到：
+#
+# P_Material.delivery_qty
+#
+# P_Assemble：
+#   must_receive_qty
+#   ask_qty
+#   total_ask_qty
+#   must_receive_end_qty
+#   original_must_receive_end_qty
+#
+# 重要：
+# 不可以再用：
+#
+#   P_Assemble.must_receive_qty == delivery_qty
+#
+# 當查詢條件。
+#
+# 因為 P_Assemble 是 Excel 匯入時建立，
+# must_receive_qty 很可能還是整張訂單數量，例如：
+#
+#   訂單量 = 2000
+#   本次領料 = 500
+#
+# 此時舊條件：
+#
+#   must_receive_qty == 500
+#
+# 根本找不到原本 must_receive_qty=2000 的 P_Assemble。
+# ================================================================
+
+@updateTableP.route(
+    "/updateAssmbleDataByMaterialIDP",
+    methods=["POST"]
+)
+def update_assemble_data_by_material_id_p():
+
+    print("updateAssmbleDataByMaterialIDP....")
+    '''
+    request_data = request.get_json(
+        silent=True
+    ) or {}
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] request_data:",
+        request_data
+    )
+    print(
+        "[updateAssmbleDataByMaterialIDP] parsed:",
+        {
+            "material_id_raw": material_id_raw,
+            "delivery_qty_raw": delivery_qty_raw,
+        }
+    )
+
+    material_id_raw = request_data.get(
+        "material_id"
+    )
+
+    delivery_qty_raw = request_data.get(
+        "delivery_qty"
+    )
+
+    # ------------------------------------------------------------
+    # 原本 API 支援的動態欄位，繼續保留
+    # ------------------------------------------------------------
+
+    record_name1 = request_data.get(
+        "record_name1"
+    )
+    record_data1 = request_data.get(
+        "record_data1"
+    )
+
+    record_name2 = request_data.get(
+        "record_name2"
+    )
+    record_data2 = request_data.get(
+        "record_data2"
+    )
+
+    record_name3 = request_data.get(
+        "record_name3"
+    )
+    record_data3 = request_data.get(
+        "record_data3"
+    )
+
+    record_name4 = request_data.get(
+        "record_name4"
+    )
+    record_data4 = request_data.get(
+        "record_data4"
+    )
+    '''
+    #
+    request_data = request.get_json(
+        silent=True
+    ) or {}
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] request_data:",
+        request_data
+    )
+
+    # ------------------------------------------------------------
+    # 先取得參數
+    # ------------------------------------------------------------
+
+    material_id_raw = request_data.get(
+        "material_id"
+    )
+
+    delivery_qty_raw = request_data.get(
+        "delivery_qty"
+    )
+
+    record_name1 = request_data.get(
+        "record_name1"
+    )
+    record_data1 = request_data.get(
+        "record_data1"
+    )
+
+    record_name2 = request_data.get(
+        "record_name2"
+    )
+    record_data2 = request_data.get(
+        "record_data2"
+    )
+
+    record_name3 = request_data.get(
+        "record_name3"
+    )
+    record_data3 = request_data.get(
+        "record_data3"
+    )
+
+    record_name4 = request_data.get(
+        "record_name4"
+    )
+    record_data4 = request_data.get(
+        "record_data4"
+    )
+
+    # ------------------------------------------------------------
+    # 取得之後才能 print
+    # ------------------------------------------------------------
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] parsed:",
+        {
+            "material_id_raw":
+                material_id_raw,
+
+            "delivery_qty_raw":
+                delivery_qty_raw,
+
+            "record_name1":
+                record_name1,
+
+            "record_data1":
+                record_data1,
+
+            "record_name2":
+                record_name2,
+
+            "record_data2":
+                record_data2,
+        }
+    )
+    #
+
+    # ------------------------------------------------------------
+    # 參數檢查
+    # ------------------------------------------------------------
+
+    try:
+        material_id = int(
+            material_id_raw or 0
+        )
+
+        delivery_qty = int(
+            delivery_qty_raw or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id / delivery_qty 格式錯誤"
+        }), 400
+
+    if material_id <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id 必須大於 0"
+        }), 400
+
+    if delivery_qty <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "領料數量必須大於 0"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 1. 鎖定 P_Material
+        # ========================================================
+
+        material = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id
+                ==
+                material_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    f"找不到 P_Material id={material_id}"
+            }), 404
+
+        # ========================================================
+        # 2. 檢查領料數量
+        #
+        # 不可超過整張工單需求數量。
+        # ========================================================
+
+        material_qty = int(
+            material.material_qty or 0
+        )
+
+        if (
+            material_qty > 0
+            and
+            delivery_qty > material_qty
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        f"領料數量 {delivery_qty} "
+                        f"不可大於訂單數量 {material_qty}"
+                    )
+            }), 400
+
+        # ========================================================
+        # 3. 永久保存「本批實際領料數量」
+        #
+        # 例如：
+        #
+        # material_qty       = 2000
+        # total_delivery_qty = 2000
+        # delivery_qty       = 500
+        #
+        # 不可以再把 delivery_qty 清成 0。
+        # ========================================================
+
+        material.delivery_qty = (
+            delivery_qty
+        )
+
+        # ========================================================
+        # 4. 找目前這個 material 的加工工序
+        #
+        # ★ 修正重點：
+        #
+        # 舊：
+        #
+        # P_Assemble.material_id == material_id
+        # AND
+        # P_Assemble.must_receive_qty == delivery_qty
+        #
+        # 新：
+        #
+        # 只依 material_id 找。
+        #
+        # 並排除：
+        #   已經完成 process_step_code=0
+        #   已送 Warehouse 的資料
+        #
+        # ========================================================
+
+        assemble_records = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .filter(
+                P_Assemble.process_step_code
+                >
+                0
+            )
+            .filter(
+                P_Assemble.isWarehouseStationShow
+                .is_(False)
+            )
+            .order_by(
+                P_Assemble.seq_num.asc(),
+                P_Assemble.id.asc()
+            )
+            .with_for_update()
+            .all()
+        )
+
+        if not assemble_records:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        "找不到尚未完成的 "
+                        f"P_Assemble，material_id={material_id}"
+                    )
+            }), 404
+
+        # ========================================================
+        # 5. 本批領料數量同步到所有尚未加工完成的工序
+        #
+        # 999900006684：
+        #
+        # 原本：
+        # must_receive_qty = 2000
+        # ask_qty          = 0
+        #
+        # 領料 500 後：
+        #
+        # must_receive_qty = 500
+        # ask_qty          = 500
+        # total_ask_qty    = 500
+        #
+        # PBegin 就會正確顯示：
+        #
+        # 領料數量   500
+        # 應領取數量 500
+        # ========================================================
+
+        updated_ids = []
+
+        for asm in assemble_records:
+
+            asm.must_receive_qty = (
+                delivery_qty
+            )
+
+            asm.ask_qty = (
+                delivery_qty
+            )
+
+            asm.total_ask_qty = (
+                delivery_qty
+            )
+
+            # 尚未開始 End 報工前，
+            # 應完成量就是本批投入數量。
+            asm.must_receive_end_qty = (
+                delivery_qty
+            )
+
+            # 若 table 有此欄位，也一起保存原始投入量
+            if hasattr(
+                asm,
+                "original_must_receive_end_qty"
+            ):
+                asm.original_must_receive_end_qty = (
+                    delivery_qty
+                )
+
+            # ----------------------------------------------------
+            # 原 API 動態欄位仍保留
+            # ----------------------------------------------------
+
+            if (
+                record_name1
+                and
+                record_data1 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name1
+                )
+            ):
+                setattr(
+                    asm,
+                    record_name1,
+                    record_data1
+                )
+
+            if (
+                record_name2
+                and
+                record_data2 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name2
+                )
+            ):
+                setattr(
+                    asm,
+                    record_name2,
+                    record_data2
+                )
+
+            if (
+                record_name3
+                and
+                record_data3 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name3
+                )
+            ):
+                setattr(
+                    asm,
+                    record_name3,
+                    record_data3
+                )
+
+            if (
+                record_name4
+                and
+                record_data4 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name4
+                )
+            ):
+                setattr(
+                    asm,
+                    record_name4,
+                    record_data4
+                )
+
+            updated_ids.append(
+                int(asm.id)
+            )
+
+        # ========================================================
+        # 6. commit
+        # ========================================================
+
+        s.commit()
+
+        print(
+            "[updateAssmbleDataByMaterialIDP]",
+            {
+                "material_id":
+                    material_id,
+
+                "order_num":
+                    material.order_num,
+
+                "material_qty":
+                    material_qty,
+
+                "delivery_qty":
+                    delivery_qty,
+
+                "updated_assemble_ids":
+                    updated_ids,
+            }
+        )
+
+        return jsonify({
+            "status": True,
+            "message":
+                "本批領料數量已同步",
+
+            "material_id":
+                material_id,
+
+            "delivery_qty":
+                delivery_qty,
+
+            "updated_assemble_ids":
+                updated_ids,
+        }), 200
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateAssmbleDataByMaterialIDP Error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+    finally:
+
+        s.close()
+"""
+
+
+"""
+# 20260824版
+# ================================================================
+# 加工線 PMaterial 領料完成後：
+#
+#   P_Material.delivery_qty
+#
+# 同步到尚未完成的 P_Assemble：
+#
+#   must_receive_qty
+#   ask_qty
+#   total_ask_qty
+#   must_receive_end_qty
+#   original_must_receive_end_qty（若有）
+#
+# 例：
+#
+# 訂單數量 material_qty = 2000
+# 本批實際領料 delivery_qty = 500
+#
+# PBegin 應顯示：
+#
+#   領料數量     500
+#   應領取數量   500
+#
+# 注意：
+# 不可再使用：
+#
+#   P_Assemble.must_receive_qty == delivery_qty
+#
+# 當查詢條件。
+# ================================================================
+
+@updateTableP.route(
+    "/updateAssmbleDataByMaterialIDP",
+    methods=["POST"]
+)
+def update_assemble_data_by_material_id_p():
+
+    print(
+        "updateAssmbleDataByMaterialIDP...."
+    )
+
+    request_data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] request_data:",
+        request_data
+    )
+
+    # ============================================================
+    # 1. 取得 request
+    # ============================================================
+
+    material_id_raw = request_data.get(
+        "material_id"
+    )
+
+    delivery_qty_raw = request_data.get(
+        "delivery_qty"
+    )
+
+    record_name1 = request_data.get(
+        "record_name1"
+    )
+
+    record_data1 = request_data.get(
+        "record_data1"
+    )
+
+    record_name2 = request_data.get(
+        "record_name2"
+    )
+
+    record_data2 = request_data.get(
+        "record_data2"
+    )
+
+    record_name3 = request_data.get(
+        "record_name3"
+    )
+
+    record_data3 = request_data.get(
+        "record_data3"
+    )
+
+    record_name4 = request_data.get(
+        "record_name4"
+    )
+
+    record_data4 = request_data.get(
+        "record_data4"
+    )
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] parsed:",
+        {
+            "material_id_raw":
+                material_id_raw,
+
+            "delivery_qty_raw":
+                delivery_qty_raw,
+
+            "record_name1":
+                record_name1,
+
+            "record_data1":
+                record_data1,
+
+            "record_name2":
+                record_name2,
+
+            "record_data2":
+                record_data2,
+        }
+    )
+
+    # ============================================================
+    # 2. 參數型別
+    # ============================================================
+
+    try:
+
+        material_id = int(
+            material_id_raw or 0
+        )
+
+        delivery_qty = int(
+            delivery_qty_raw or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id / delivery_qty 格式錯誤"
+        }), 400
+
+    if material_id <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id 必須大於 0"
+        }), 400
+
+    if delivery_qty <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "領料數量必須大於 0"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 3. 鎖定 P_Material
+        # ========================================================
+
+        material = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id
+                ==
+                material_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        "找不到 P_Material，"
+                        f"id={material_id}"
+                    )
+            }), 404
+
+        material_qty = int(
+            material.material_qty
+            or 0
+        )
+
+        # ========================================================
+        # 4. 本批領料不可超過整張工單
+        # ========================================================
+
+        if (
+            material_qty > 0
+            and
+            delivery_qty > material_qty
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        f"領料數量 {delivery_qty} "
+                        f"不可大於訂單數量 "
+                        f"{material_qty}"
+                    )
+            }), 400
+
+        # ========================================================
+        # 5. 保存本批領料數量
+        #
+        # 例如：
+        #
+        # material_qty = 2000
+        # delivery_qty = 500
+        #
+        # material_qty 保留 2000
+        # delivery_qty 改為 500
+        # ========================================================
+
+        material.delivery_qty = (
+            delivery_qty
+        )
+
+        # ========================================================
+        # 6. 找尚未完成的加工列
+        #
+        # ★ 這裡是本次主要修正
+        #
+        # 不再：
+        #
+        #   must_receive_qty == delivery_qty
+        #
+        # 也先不加：
+        #
+        #   isWarehouseStationShow.is_(False)
+        #
+        # 避免舊資料 NULL 被排除。
+        # ========================================================
+
+        assemble_records = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .filter(
+                P_Assemble.process_step_code
+                >
+                0
+            )
+            .order_by(
+                P_Assemble.seq_num.asc(),
+                P_Assemble.id.asc()
+            )
+            .with_for_update()
+            .all()
+        )
+
+        print(
+            "[updateAssmbleDataByMaterialIDP] "
+            "assemble count:",
+            len(assemble_records)
+        )
+
+        if not assemble_records:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        "找不到尚未完成的 "
+                        "P_Assemble，"
+                        f"material_id={material_id}"
+                    )
+            }), 404
+
+        updated_ids = []
+
+        # ========================================================
+        # 7. 同步本批領料量到 P_Assemble
+        # ========================================================
+
+        for asm in assemble_records:
+
+            print(
+                "[before update]",
+                {
+                    "id":
+                        asm.id,
+
+                    "material_id":
+                        asm.material_id,
+
+                    "work_num":
+                        asm.work_num,
+
+                    "process_step_code":
+                        asm.process_step_code,
+
+                    "must_receive_qty":
+                        asm.must_receive_qty,
+
+                    "ask_qty":
+                        asm.ask_qty,
+
+                    "total_ask_qty":
+                        asm.total_ask_qty,
+
+                    "must_receive_end_qty":
+                        asm.must_receive_end_qty,
+                }
+            )
+
+            # ----------------------------------------------------
+            # 本批數量
+            # ----------------------------------------------------
+
+            #asm.must_receive_qty = (
+            #    delivery_qty
+            #)
+
+            asm.ask_qty = (
+                delivery_qty
+            )
+
+            asm.total_ask_qty = (
+                delivery_qty
+            )
+
+            #asm.must_receive_end_qty = (
+            #    delivery_qty
+            #)
+
+            # ----------------------------------------------------
+            # 若 ORM model 有此欄位，就一起同步
+            # ----------------------------------------------------
+            # 20240824版 remove
+            #if hasattr(
+            #    asm,
+            #    "original_must_receive_end_qty"
+            #):
+            #
+            #    asm.original_must_receive_end_qty = (
+            #        delivery_qty
+            #    )
+
+            # ====================================================
+            # 8. 保留原 API 的動態欄位更新
+            #
+            # 你目前前端會送：
+            #
+            # record_name1 = show1_ok
+            # record_data1 = 2
+            #
+            # record_name2 = show2_ok
+            # record_data2 = 3
+            # ====================================================
+
+            if (
+                record_name1
+                and
+                record_data1 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name1
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name1,
+                    record_data1
+                )
+
+            if (
+                record_name2
+                and
+                record_data2 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name2
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name2,
+                    record_data2
+                )
+
+            if (
+                record_name3
+                and
+                record_data3 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name3
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name3,
+                    record_data3
+                )
+
+            if (
+                record_name4
+                and
+                record_data4 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name4
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name4,
+                    record_data4
+                )
+
+            updated_ids.append(
+                int(asm.id)
+            )
+
+            print(
+                "[after update]",
+                {
+                    "id":
+                        asm.id,
+
+                    "must_receive_qty":
+                        asm.must_receive_qty,
+
+                    "ask_qty":
+                        asm.ask_qty,
+
+                    "total_ask_qty":
+                        asm.total_ask_qty,
+
+                    "must_receive_end_qty":
+                        asm.must_receive_end_qty,
+                }
+            )
+
+        # ========================================================
+        # 9. commit
+        # ========================================================
+
+        s.commit()
+
+        # ========================================================
+        # 10. commit 後再次查 DB
+        #
+        # 測試階段建議保留。
+        # 確定正常後可以刪掉這段 print。
+        # ========================================================
+
+        check_rows = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .order_by(
+                P_Assemble.id.asc()
+            )
+            .all()
+        )
+
+        for row in check_rows:
+
+            print(
+                "[after commit]",
+                {
+                    "id":
+                        row.id,
+
+                    "work_num":
+                        row.work_num,
+
+                    "process_step_code":
+                        row.process_step_code,
+
+                    "must_receive_qty":
+                        row.must_receive_qty,
+
+                    "ask_qty":
+                        row.ask_qty,
+
+                    "total_ask_qty":
+                        row.total_ask_qty,
+
+                    "must_receive_end_qty":
+                        row.must_receive_end_qty,
+                }
+            )
+
+        print(
+            "[updateAssmbleDataByMaterialIDP] OK:",
+            {
+                "material_id":
+                    material_id,
+
+                "order_num":
+                    material.order_num,
+
+                "material_qty":
+                    material_qty,
+
+                "delivery_qty":
+                    delivery_qty,
+
+                "updated_assemble_ids":
+                    updated_ids,
+            }
+        )
+
+        return jsonify({
+            "status": True,
+
+            "message":
+                "本批領料數量同步完成",
+
+            "material_id":
+                material_id,
+
+            "order_num":
+                material.order_num,
+
+            "delivery_qty":
+                delivery_qty,
+
+            "updated_assemble_ids":
+                updated_ids,
+        }), 200
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateAssmbleDataByMaterialIDP Error:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message":
+                str(e)
+        }), 500
+
+    finally:
+
+        s.close()
+"""
+
+
+# 20260824版
+# ================================================================
+# PMaterial 領料完成 / 送出後：
+#
+# a = PMaterial 實際領料數量 delivery_qty
+#
+# process_qty =
+# Excel「工序」工作表的「作業數量 (MEINH)」
+# 優先讀：
+#   original_must_receive_end_qty
+# 次選：
+#   must_receive_end_qty
+#
+# PBegin：
+#
+#   領料數量     = a
+#   應領取數量   = b
+#
+#   b = min(a, process_qty)
+#
+# 例如：
+#
+# process_qty = 540
+#
+# a = 500
+#   → b = 500
+#
+# a = 540
+#   → b = 540
+#
+# a = 2000
+#   → b = 540
+#
+# 注意：
+#
+# must_receive_end_qty
+# original_must_receive_end_qty
+#
+# 都是 Excel MEINH 原始值，不可被 delivery_qty 覆蓋。
+# ================================================================
+
+@updateTableP.route(
+    "/updateAssmbleDataByMaterialIDP",
+    methods=["POST"]
+)
+def update_assemble_data_by_material_id_p():
+
+    print(
+        "updateAssmbleDataByMaterialIDP...."
+    )
+
+    request_data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    print(
+        "[updateAssmbleDataByMaterialIDP] request_data:",
+        request_data
+    )
+
+    # ============================================================
+    # 1. Request
+    # ============================================================
+
+    material_id_raw = request_data.get(
+        "material_id"
+    )
+
+    delivery_qty_raw = request_data.get(
+        "delivery_qty"
+    )
+
+    record_name1 = request_data.get(
+        "record_name1"
+    )
+
+    record_data1 = request_data.get(
+        "record_data1"
+    )
+
+    record_name2 = request_data.get(
+        "record_name2"
+    )
+
+    record_data2 = request_data.get(
+        "record_data2"
+    )
+
+    record_name3 = request_data.get(
+        "record_name3"
+    )
+
+    record_data3 = request_data.get(
+        "record_data3"
+    )
+
+    record_name4 = request_data.get(
+        "record_name4"
+    )
+
+    record_data4 = request_data.get(
+        "record_data4"
+    )
+
+    # ============================================================
+    # 2. 型別檢查
+    # ============================================================
+
+    try:
+
+        material_id = int(
+            material_id_raw or 0
+        )
+
+        delivery_qty = int(
+            delivery_qty_raw or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id / delivery_qty 格式錯誤"
+        }), 400
+
+    if material_id <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "material_id 必須大於 0"
+        }), 400
+
+    if delivery_qty <= 0:
+
+        return jsonify({
+            "status": False,
+            "message":
+                "領料數量必須大於 0"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 3. 鎖定 P_Material
+        # ========================================================
+
+        material = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id
+                ==
+                material_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    f"找不到 P_Material id={material_id}"
+            }), 404
+
+        material_qty = int(
+            material.material_qty or 0
+        )
+
+        # ========================================================
+        # 4. PMaterial 領料量不可超過工單數量
+        #
+        # 這裡仍然是用 material_qty，
+        # 不使用 MEINH 當 PMaterial 輸入上限。
+        # ========================================================
+
+        if (
+            material_qty > 0
+            and
+            delivery_qty > material_qty
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        f"領料數量 {delivery_qty} "
+                        f"不可大於訂單數量 "
+                        f"{material_qty}"
+                    )
+            }), 400
+
+        # ========================================================
+        # 5. 保存 PMaterial 實際領料數量
+        # ========================================================
+
+        material.delivery_qty = (
+            delivery_qty
+        )
+
+        # ========================================================
+        # 6. 找尚未完成的 P_Assemble
+        # ========================================================
+
+        assemble_records = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .filter(
+                P_Assemble.process_step_code
+                >
+                0
+            )
+            .order_by(
+                P_Assemble.seq_num.asc(),
+                P_Assemble.id.asc()
+            )
+            .with_for_update()
+            .all()
+        )
+
+        print(
+            "[updateAssmbleDataByMaterialIDP] "
+            "assemble count:",
+            len(assemble_records)
+        )
+
+        if not assemble_records:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    (
+                        "找不到尚未完成的 "
+                        "P_Assemble，"
+                        f"material_id={material_id}"
+                    )
+            }), 404
+
+        updated_ids = []
+
+        qty_results = []
+
+        # ========================================================
+        # 7. 同步數量
+        #
+        # a = delivery_qty
+        #
+        # process_qty =
+        #   original_must_receive_end_qty
+        #   or must_receive_end_qty
+        #
+        # b = min(a, process_qty)
+        # ========================================================
+
+        for asm in assemble_records:
+
+            # ----------------------------------------------------
+            # Excel MEINH
+            # ----------------------------------------------------
+
+            process_qty = int(
+                getattr(
+                    asm,
+                    "original_must_receive_end_qty",
+                    0
+                )
+                or
+                getattr(
+                    asm,
+                    "must_receive_end_qty",
+                    0
+                )
+                or 0
+            )
+
+            # ----------------------------------------------------
+            # 舊資料保護
+            #
+            # 理論上 process_qty 一定要有。
+            # 若沒有，就暫時以 delivery_qty 避免變 0。
+            # ----------------------------------------------------
+
+            if process_qty <= 0:
+
+                process_qty = int(
+                    delivery_qty or 0
+                )
+
+                print(
+                    "[WARN] MEINH 為 0，"
+                    "暫以 delivery_qty 作 fallback:",
+                    {
+                        "material_id":
+                            material_id,
+
+                        "assemble_id":
+                            asm.id,
+
+                        "delivery_qty":
+                            delivery_qty,
+                    }
+                )
+
+            # ----------------------------------------------------
+            # PBegin 應領取數量 b
+            #
+            # b = min(a, process_qty)
+            # ----------------------------------------------------
+
+            begin_must_receive_qty = min(
+                int(delivery_qty or 0),
+                int(process_qty or 0)
+            )
+
+            print(
+                "[before qty update]",
+                {
+                    "material_id":
+                        material_id,
+
+                    "assemble_id":
+                        asm.id,
+
+                    "work_num":
+                        asm.work_num,
+
+                    "delivery_qty_a":
+                        delivery_qty,
+
+                    "process_qty_MEINH":
+                        process_qty,
+
+                    "old_must_receive_qty":
+                        asm.must_receive_qty,
+
+                    "must_receive_end_qty":
+                        asm.must_receive_end_qty,
+
+                    "original_must_receive_end_qty":
+                        getattr(
+                            asm,
+                            "original_must_receive_end_qty",
+                            None
+                        ),
+                }
+            )
+
+            # ====================================================
+            # 實際領料
+            # ====================================================
+
+            asm.ask_qty = (
+                delivery_qty
+            )
+
+            asm.total_ask_qty = (
+                delivery_qty
+            )
+
+            # ====================================================
+            # PBegin 應領取數量
+            #
+            # b = min(a, MEINH)
+            # ====================================================
+
+            asm.must_receive_qty = (
+                begin_must_receive_qty
+            )
+
+            # ====================================================
+            # 絕對不要改 Excel MEINH
+            # ====================================================
+
+            # asm.must_receive_end_qty
+            #
+            # asm.original_must_receive_end_qty
+
+            # ====================================================
+            # 8. 原本動態狀態欄位
+            # ====================================================
+
+            if (
+                record_name1
+                and
+                record_data1 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name1
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name1,
+                    record_data1
+                )
+
+            if (
+                record_name2
+                and
+                record_data2 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name2
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name2,
+                    record_data2
+                )
+
+            if (
+                record_name3
+                and
+                record_data3 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name3
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name3,
+                    record_data3
+                )
+
+            if (
+                record_name4
+                and
+                record_data4 is not None
+                and
+                hasattr(
+                    asm,
+                    record_name4
+                )
+            ):
+
+                setattr(
+                    asm,
+                    record_name4,
+                    record_data4
+                )
+
+            updated_ids.append(
+                int(asm.id)
+            )
+
+            qty_results.append({
+                "assemble_id":
+                    int(asm.id),
+
+                "work_num":
+                    str(
+                        asm.work_num or ""
+                    ),
+
+                "delivery_qty_a":
+                    int(delivery_qty),
+
+                "process_qty":
+                    int(process_qty),
+
+                "must_receive_qty_b":
+                    int(
+                        begin_must_receive_qty
+                    ),
+            })
+
+            print(
+                "[after qty update]",
+                {
+                    "assemble_id":
+                        asm.id,
+
+                    "delivery_qty_a":
+                        delivery_qty,
+
+                    "process_qty_MEINH":
+                        process_qty,
+
+                    "must_receive_qty_b":
+                        asm.must_receive_qty,
+
+                    "ask_qty":
+                        asm.ask_qty,
+
+                    "total_ask_qty":
+                        asm.total_ask_qty,
+
+                    "must_receive_end_qty":
+                        asm.must_receive_end_qty,
+
+                    "original_must_receive_end_qty":
+                        getattr(
+                            asm,
+                            "original_must_receive_end_qty",
+                            None
+                        ),
+                }
+            )
+
+        # ========================================================
+        # 9. Commit
+        # ========================================================
+
+        s.commit()
+
+        # ========================================================
+        # 10. Commit 後確認
+        # ========================================================
+
+        check_rows = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                material_id
+            )
+            .order_by(
+                P_Assemble.id.asc()
+            )
+            .all()
+        )
+
+        for row in check_rows:
+
+            print(
+                "[after commit]",
+                {
+                    "id":
+                        row.id,
+
+                    "work_num":
+                        row.work_num,
+
+                    "must_receive_qty":
+                        row.must_receive_qty,
+
+                    "ask_qty":
+                        row.ask_qty,
+
+                    "total_ask_qty":
+                        row.total_ask_qty,
+
+                    "must_receive_end_qty":
+                        row.must_receive_end_qty,
+
+                    "original_must_receive_end_qty":
+                        getattr(
+                            row,
+                            "original_must_receive_end_qty",
+                            None
+                        ),
+                }
+            )
+
+        print(
+            "[updateAssmbleDataByMaterialIDP] OK:",
+            {
+                "material_id":
+                    material_id,
+
+                "order_num":
+                    material.order_num,
+
+                "material_qty":
+                    material_qty,
+
+                "delivery_qty":
+                    delivery_qty,
+
+                "updated_assemble_ids":
+                    updated_ids,
+
+                "qty_results":
+                    qty_results,
+            }
+        )
+
+        return jsonify({
+            "status": True,
+
+            "message":
+                "PMaterial 領料數量同步完成",
+
+            "material_id":
+                material_id,
+
+            "order_num":
+                material.order_num,
+
+            "delivery_qty":
+                delivery_qty,
+
+            "updated_assemble_ids":
+                updated_ids,
+
+            "qty_results":
+                qty_results,
+        }), 200
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateAssmbleDataByMaterialIDP Error:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message":
+                str(e)
+        }), 500
+
+    finally:
+
+        s.close()
 
 
 """
@@ -2210,6 +4259,7 @@ def send_process_to_warehouse():
 """
 
 
+# 20260822版
 # 20260813版
 @updateTableP.route('/sendProcessToWarehouse', methods=['POST'])
 def send_process_to_warehouse():
@@ -2297,6 +4347,122 @@ def send_process_to_warehouse():
                 "process_type": process_type,
             }
         )
+
+        # 20260822版
+        completed_qty = max(
+            int(row.completed_qty or 0),
+            int(row.total_completed_qty or 0),
+            int(row.total_ask_qty_end or 0),
+        )
+
+        if completed_qty <= 0:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message": "此加工工序尚未完成，不能送出"
+            }), 400
+        #
+
+        #
+        # ============================================================
+        # 20260822
+        # 中間加工 / 最終加工分流
+        #
+        # isStockIn=False
+        #   → 中間加工，例如 B100-03
+        #   → 不進 Warehouse
+        #   → 完成後交棒給下一個 material 的 PMaterial
+        #
+        # isStockIn=True
+        #   → 最終加工，例如 B108-26
+        #   → 送 Warehouse 等待入庫
+        # ============================================================
+
+        requires_stockin = bool(
+            getattr(
+                row,
+                "isStockIn",
+                False
+            )
+        )
+
+
+        # ============================================================
+        # 中間加工工序
+        #
+        # 例如：
+        #
+        # B100-03 / seq=50
+        # isStockIn=False
+        #
+        # PEnd 按送出後：
+        #
+        #   PEnd      → 消失
+        #   Warehouse → 不顯示
+        #   PMaterial → 下一道 B108-26 才可開始領料
+        # ============================================================
+
+        if not requires_stockin:
+
+            row.isAssembleStationShow = False
+            row.isWarehouseStationShow = False
+
+            # 保持原始工序屬性
+            row.isStockIn = False
+
+            row.input_disable = True
+            row.input_end_disable = True
+            row.input_abnormal_disable = True
+
+
+            # --------------------------------------------------------
+            # 前段加工已完成，
+            # 但尚未到成品站。
+            # --------------------------------------------------------
+
+            material.whichStation = 2
+
+            material.show1_ok = 2
+            material.show2_ok = 5
+
+            material.isOpen = False
+            material.isOpenEmpId = ''
+
+            material.hasStarted = False
+            material.startStatus = False
+
+            material.isAssembleStation3TakeOk = False
+
+
+            s.commit()
+
+
+            return jsonify({
+                "status": True,
+
+                "message":
+                    "前段加工已完成，"
+                    "下一階段可進行領料",
+
+                "material_id":
+                    material_id,
+
+                "sent_assemble_id":
+                    row.id,
+
+                "handoff_to_next_material":
+                    True,
+
+                "has_remaining":
+                    False,
+
+                "completed_total":
+                    completed_qty,
+
+            }), 200
+        #
 
         # ============================================================
         # 2. 本次只送出指定完成列
@@ -2696,4 +4862,99 @@ def send_process_to_warehouse():
 
     finally:
         s.close()
+
+
+
+@updateTableP.route("/updateMaterialP", methods=['POST'])
+def update_material_p():
+    print("updateMaterialP....")
+
+    request_data = request.get_json()
+
+    _order_num = request_data.get('order_num')
+    _id = request_data.get('id')
+    _record_name = request_data['record_name']
+    _record_data = request_data['record_data']
+
+    return_value = True  # true: 資料正確, 註冊成功
+    s = Session()
+
+    # 檢查傳入的參數，選擇查詢條件
+    material_record = None
+    #if _order_num is not None:  # 如果傳入了 order_num
+    #    material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
+    #elif _id is not None:  # 如果傳入了 id
+    #    material_record = s.query(P_Material).filter_by(id=_id).first()
+    #
+    if _id is not None:
+        material_record = s.query(P_Material).filter_by(id=_id).first()
+    elif _order_num is not None:
+        material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
+    #
+
+    if material_record is None:
+      return_value = False
+    else:
+      # 動態設置欄位值
+      #if hasattr(material_record, _record_name):
+      #  setattr(material_record, _record_name, _record_data)
+      #  s.commit()
+      #
+      # 20260824版
+      if hasattr(
+          material_record,
+          _record_name
+      ):
+
+          # ============================================
+          # 20260824
+          # 數量欄位統一轉 int
+          # ============================================
+
+          qty_fields = {
+              "delivery_qty",
+              "total_delivery_qty",
+              "material_qty",
+              "assemble_qty",
+              "total_assemble_qty",
+              "allOk_qty",
+              "total_allOk_qty",
+          }
+
+          if _record_name in qty_fields:
+
+              try:
+                  _record_data = int(
+                      _record_data or 0
+                  )
+
+              except (
+                  TypeError,
+                  ValueError,
+              ):
+
+                  s.rollback()
+
+                  return jsonify({
+                      "status": False,
+                      "message":
+                          f"{_record_name} 必須為整數"
+                  }), 400
+
+          setattr(
+              material_record,
+              _record_name,
+              _record_data
+          )
+
+          s.commit()
+      #
+
+    s.close()
+
+    return jsonify({
+      'status': return_value
+    })
+
+
 

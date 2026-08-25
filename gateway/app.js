@@ -662,6 +662,13 @@ io.on('connection', (socket) => {
       socket.broadcast.emit('process-end-completed', payload)
   })
   // 20260730 end
+
+  // 20260824版
+  socket.on('process-material-refresh', (data) => {
+    console.log('process-material-refresh:', data)
+
+    io.emit('process-material-refresh', data)
+  })
 });
 
 // 處理與kuka端溝通 , Socket 事件處理

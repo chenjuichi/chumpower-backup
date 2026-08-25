@@ -940,6 +940,43 @@ onMounted(async () => {
   //await initialize_for_mounted();
 
   await listMaterialsAndAssembles()
+
+      //
+    console.table("test 1",
+      materials_and_assembles.value.map(
+        row => ({
+          index:
+            row.index,
+
+          order_num:
+            row.order_num,
+
+          material_id:
+            row.id,
+
+          assemble_id:
+            row.assemble_id,
+
+          seq_num:
+            row.seq_num,
+
+          work_num:
+            row.work_num,
+
+          process_step_code:
+            row.process_step_code,
+
+          process_id:
+            row.process_id,
+
+          user_id:
+            row.user_id,
+        })
+      )
+    )
+    //
+
+
   //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
   await nextTick()
@@ -1076,7 +1113,7 @@ onBeforeMount(() => {
   pagination.itemsPerPage = currentUser.value.setting_items_per_page;
 
   initAxios();
-  initialize_for_created();
+  //initialize_for_created();
   //initialize();
 });
 
@@ -1631,6 +1668,7 @@ const handleMaterialUpdate = async ()  => {
   console.log("handleMaterialUpdate 被觸發！")
 
   await listMaterialsAndAssembles();
+
   //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
   // 等表格與 <TimerDisplay> 都掛好，ref 才拿得到
@@ -1684,6 +1722,7 @@ const removeMaterialsAndRelationTableFun = async (id) => {
     editDialog.value = false;
 
     await listMaterialsAndAssembles();
+
     //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
     showSnackbar("刪除工單完成!", 'green darken-1');
@@ -1700,6 +1739,7 @@ const initialize = async () => {
 
     // 1) 先撈表格資料
     await listMaterialsAndAssembles();
+
     //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
     // 2) 補上欄位（這會影響渲染）
@@ -1735,6 +1775,7 @@ const initialize = async () => {
 
 const initialize_for_created = async () => {
   await listMaterialsAndAssembles();
+
   //await getMaterialsAndAssembles({ user_id: currentUser.value.empID });
 
   materials_and_assembles.value.map(it => ({

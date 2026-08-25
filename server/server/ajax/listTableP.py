@@ -476,6 +476,135 @@ def list_materials_and_assembles_p():
 """
 
 
+# 20260822版
+def previous_process_handoff_done(
+    session,
+    material
+):
+
+    current_assembles = (
+        session.query(P_Assemble)
+        .filter(
+            P_Assemble.material_id ==
+            material.id
+        )
+        .all()
+    )
+
+    if not current_assembles:
+        return True
+
+    valid_current_seqs = [
+        int(a.seq_num or 0)
+        for a
+        in current_assembles
+        if int(a.seq_num or 0) > 0
+    ]
+
+    if not valid_current_seqs:
+        return True
+
+    current_seq = min(
+        valid_current_seqs
+    )
+
+    # --------------------------------------------------------
+    # 找同 order_num 的前一道加工
+    # --------------------------------------------------------
+    previous_rows = (
+        session.query(
+            P_Assemble,
+            P_Material
+        )
+        .join(
+            P_Material,
+            P_Material.id ==
+            P_Assemble.material_id
+        )
+        .filter(
+            P_Material.order_num ==
+            material.order_num
+        )
+        .filter(
+            P_Material.id !=
+            material.id
+        )
+        .all()
+    )
+
+    previous_rows = [
+        (a, m)
+        for a, m
+        in previous_rows
+        if int(a.seq_num or 0)
+        <
+        current_seq
+    ]
+
+    # 沒有前一道
+    # → 正常第一階段，直接允許
+    if not previous_rows:
+        return True
+
+    # --------------------------------------------------------
+    # 取最接近目前工序的前一道
+    # 50 → 60
+    # --------------------------------------------------------
+    previous_row, _ = max(
+        previous_rows,
+        key=lambda pair:
+            int(pair[0].seq_num or 0)
+    )
+
+    # --------------------------------------------------------
+    # 前一道必須：
+    #
+    # 已完成
+    # 已從 PEnd 消失
+    # 沒進 Warehouse
+    # 且本來就是不入庫中間工序
+    # --------------------------------------------------------
+    return (
+        int(
+            previous_row.process_step_code
+            or 0
+        ) == 0
+
+        and
+
+        max(
+            int(
+                previous_row.completed_qty
+                or 0
+            ),
+            int(
+                previous_row.total_completed_qty
+                or 0
+            )
+        ) > 0
+
+        and
+
+        not bool(
+            previous_row
+            .isAssembleStationShow
+        )
+
+        and
+
+        not bool(
+            previous_row
+            .isWarehouseStationShow
+        )
+
+        and
+
+        not bool(
+            previous_row.isStockIn
+        )
+    )
+
+
 # 20260815版
 @listTableP.route(
     "/listMaterialsAndAssemblesP",
@@ -627,6 +756,9 @@ def list_materials_and_assembles_p():
                     P_Assemble.material_id,
 
                     P_Assemble.must_receive_qty,
+                    # 20260824版 add
+                    P_Assemble.ask_qty,
+                    #
                     P_Assemble.must_receive_end_qty,
                     P_Assemble.total_ask_qty,
 
@@ -1304,23 +1436,51 @@ def list_materials_and_assembles_p():
                             0
                         ),
 
-                    'must_receive_qty':
-                        getattr(
-                            assemble_record,
-                            'must_receive_qty',
-                            0
-                        ),
+                    #'must_receive_qty':
+                    #    getattr(
+                    #        assemble_record,
+                    #        'must_receive_qty',
+                    #        0
+                    #    ),
 
-                    'receive_qty':
-                        getattr(
-                            assemble_record,
-                            'must_receive_qty',
-                            0
-                        ),
+                    #'receive_qty':
+                    #    getattr(
+                    #        assemble_record,
+                    #        'must_receive_qty',
+                    #        0
+                    #    ),
+                    # 20260824版
+                    #'receive_qty':
+                    #    getattr(
+                    #        assemble_record,
+                    #        'ask_qty',
+                    #        0
+                    #    ),
+                    #
 
                     'must_receive_end_qty':
                         assemble_record
                         .must_receive_end_qty,
+
+                    # 20260824版
+                    'must_receive_qty':
+                        int(
+                            getattr(
+                                assemble_record,
+                                'must_receive_qty',
+                                0
+                            ) or 0
+                        ),
+
+                    'receive_qty':
+                        int(
+                            getattr(
+                                assemble_record,
+                                'ask_qty',
+                                0
+                            ) or 0
+                        ),
+                    #
 
                     'delivery_date':
                         material_record
@@ -1453,6 +1613,35 @@ def list_materials_and_assembles_p():
                 _results.append(
                     _object
                 )
+
+        # test
+        # ============================================================
+        # DEBUG：確認後端到底回幾筆
+        # ============================================================
+
+        print("========== PBegin RESULT DEBUG ==========")
+
+        for row in _results:
+            print(
+                "order_num=",
+                row.get("order_num"),
+                "material_id=",
+                row.get("id"),
+                "assemble_id=",
+                row.get("assemble_id"),
+                "step=",
+                row.get("process_step_code"),
+                "row_key=",
+                row.get("row_key"),
+            )
+
+        print(
+            "PBegin result count =",
+            len(_results)
+        )
+
+        print("=========================================")
+        #
 
         # ============================================================
         # 11. 排序
@@ -15441,4 +15630,235 @@ def list_informations_p_filtered():
 
     finally:
         s.close()
+
+
+# 20260823版
+# 20260822版
+@listTableP.route("/listMaterialsP", methods=['GET'])
+def list_materials_p():
+    print("listMaterialsP....")
+
+    s = Session()
+    try:
+        return_value = True
+        _results = []
+
+        rows = (
+            s.query(
+                P_Material.id,
+                P_Material.order_num,
+                P_Material.material_num,
+                P_Material.material_qty,
+                P_Material.delivery_qty,
+                P_Material.total_delivery_qty,
+                P_Material.input_disable,
+                P_Material.material_date,
+                P_Material.material_delivery_date,
+                P_Material.shortage_note,
+                P_Material.material_comment,
+
+                P_Material.isOpen,
+                P_Material.isOpenEmpId,
+                P_Material.hasStarted,
+                P_Material.startStatus,
+
+                P_Material.isBom,
+                P_Material.isTakeOk,
+                P_Material.isBatchFeeding,
+                P_Material.isShow,
+                P_Material.whichStation,
+                P_Material.show1_ok,
+                P_Material.show2_ok,
+                P_Material.show3_ok,
+                P_Material.Incoming0_Abnormal,
+                P_Material.is_copied_from_id,
+            )
+            .filter(P_Material.move_by_process_type == 4)
+            .filter(P_Material.isShow.is_(False))
+            .all()
+        )
+
+        '''
+        print("len:", len(rows))
+
+        for row in rows:
+            cleaned_comment = (row.material_comment or '').strip()
+
+            _object = {
+                'id': row.id,
+                'order_num': row.order_num,                         # 訂單編號
+                'material_num': row.material_num,                   # 物料編號
+                'req_qty': row.material_qty,                        # 需求數量(訂單數量)
+                'delivery_qty': row.delivery_qty,                   # 備料數量
+                'total_delivery_qty': row.total_delivery_qty,       # 應備數量
+                'input_disable': row.input_disable,
+                'date': row.material_date,                          # 建立日期
+                'delivery_date': row.material_delivery_date,        # 交期
+                'shortage_note': row.shortage_note,                 # 缺料註記
+                'comment': cleaned_comment,                         # 說明
+
+                'isOpen': row.isOpen,
+                'isOpenEmpId': row.isOpenEmpId,
+                'hasStarted': row.hasStarted,
+                'startStatus': row.startStatus,
+
+                'isBom': row.isBom,
+
+                'isTakeOk': row.isTakeOk,
+                'isBatchFeeding': row.isBatchFeeding,
+                'isShow': row.isShow,
+                'whichStation': row.whichStation,
+                'show1_ok': row.show1_ok,
+                'show2_ok': row.show2_ok,
+                'show3_ok': row.show3_ok,
+                'Incoming0_Abnormal': (row.Incoming0_Abnormal == ''),
+                'Incoming0_Abnormal_message': row.Incoming0_Abnormal,
+                'is_copied': bool(row.is_copied_from_id and row.is_copied_from_id > 0),
+            }
+
+            _results.append(_object)
+        '''
+        # 20260822版
+        print("len:", len(rows))
+
+        for row in rows:
+            '''
+            # ========================================================
+            # 20260822
+            # 同訂單「前後段加工」交棒限制
+            #
+            # 有 BOM 的後段加工 Material，
+            # 必須等前一道加工：
+            #
+            #   1. 已完成
+            #   2. 已從 PEnd 按送出
+            #   3. 沒有進 Warehouse
+            #   4. 前一道本身為不入庫工序
+            #
+            # 才允許出現在 PMaterial。
+            #
+            # 例如：
+            #
+            # 888800006241
+            #
+            # material A
+            #   seq=50
+            #   B100-03
+            #   isBom=False
+            #   isStockIn=False
+            #
+            #       ↓ PBegin
+            #       ↓ PEnd
+            #       ↓ 按送出
+            #
+            # material B
+            #   seq=60
+            #   B108-26
+            #   isBom=True
+            #
+            # 此時才可在 PMaterial 顯示。
+            # ========================================================
+
+            if bool(
+                getattr(
+                    row,
+                    "isBom",
+                    False
+                )
+            ):
+
+                if not previous_process_handoff_done(
+                    s,
+                    row
+                ):
+                    continue
+            '''
+            #
+            # ========================================================
+            # 20260823
+            # 不論有沒有 BOM，
+            # 只要同 order_num 存在前一道較小 seq 工序，
+            # 就必須等前一道 PEnd 完成並送出後才放行。
+            #
+            # 第一段工序沒有前一道，
+            # previous_process_handoff_done() 會直接回 True。
+            # ========================================================
+
+            if not previous_process_handoff_done(
+                s,
+                row
+            ):
+                continue
+            #
+
+            cleaned_comment = (
+                row.material_comment
+                or ''
+            ).strip()
+
+            _object = {
+                'id': row.id,
+                'order_num': row.order_num,                         # 訂單編號
+                'material_num': row.material_num,                   # 物料編號
+                'req_qty': row.material_qty,                        # 需求數量(訂單數量)
+                'delivery_qty': row.delivery_qty,                   # 備料數量
+                'total_delivery_qty': row.total_delivery_qty,       # 應備數量
+                'input_disable': row.input_disable,
+                'date': row.material_date,                          # 建立日期
+                'delivery_date': row.material_delivery_date,        # 交期
+                'shortage_note': row.shortage_note,                 # 缺料註記
+                'comment': cleaned_comment,                         # 說明
+
+                'isOpen': row.isOpen,
+                'isOpenEmpId': row.isOpenEmpId,
+                'hasStarted': row.hasStarted,
+                'startStatus': row.startStatus,
+
+                'isBom': row.isBom,
+
+                'isTakeOk': row.isTakeOk,
+                'isBatchFeeding': row.isBatchFeeding,
+                'isShow': row.isShow,
+                'whichStation': row.whichStation,
+                'show1_ok': row.show1_ok,
+                'show2_ok': row.show2_ok,
+                'show3_ok': row.show3_ok,
+                'Incoming0_Abnormal': (row.Incoming0_Abnormal == ''),
+                'Incoming0_Abnormal_message': row.Incoming0_Abnormal,
+                'is_copied': bool(row.is_copied_from_id and row.is_copied_from_id > 0),
+            }
+
+            _results.append(_object)
+        #
+
+        temp_len = len(_results)
+        print("listMaterialsP, 總數: ", temp_len)
+
+        if temp_len == 0:
+            return_value = False
+
+        # 根據 order_num 升序，再根據 isTakeOk 排序（True 會排前面）
+        _results.sort(key=lambda x: (x['order_num'] or '', not bool(x['isTakeOk'])))
+
+        return jsonify({
+            'status': return_value,
+            'materials': _results
+        })
+
+    except Exception as e:
+        #import traceback
+        print("listMaterialsP ERROR:", repr(e))
+        traceback.print_exc()
+        try:
+            current_app.logger.exception("listMaterialsP failed")
+        except Exception:
+            pass
+        return jsonify({
+            'status': False,
+            'materials': []
+        }), 200
+
+    finally:
+        s.close()
+
 

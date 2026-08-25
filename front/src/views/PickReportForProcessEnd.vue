@@ -1158,6 +1158,7 @@ onMounted(async () => {
           //  assemble_id: current_assemble_id,
           //  mode: 'manual'
           //});
+          /*
           // 20260813版
           await sendProcessToWarehouse({
             id: current_material_id,
@@ -1173,6 +1174,62 @@ onMounted(async () => {
             process_type:
               Number(rec.process_type || 0),
           })
+          */
+          // ============================================================
+          // 20260824
+          // PEnd 送出
+          //
+          // 前段加工送出成功後：
+          // 通知 PMaterial 自動 refresh。
+          //
+          // 例如：
+          // 作業 50 完成、PEnd 送出
+          //      ↓
+          // PMaterial 自動重抓 /listMaterialsP
+          //      ↓
+          // 作業 60 才立即顯示
+          // ============================================================
+
+          const sendOk = await sendProcessToWarehouse({
+            id: current_material_id,
+            assemble_id: current_assemble_id,
+            mode: 'manual',
+
+            user_id:
+              rec.process_user_id
+              || rec.user_id
+              || currentUser.value?.empID
+              || '',
+
+            process_type:
+              Number(rec.process_type || 0),
+          })
+
+          // ============================================================
+          // 只有後端確定送出成功，才通知其他 PMaterial 畫面
+          // ============================================================
+          if (sendOk) {
+            console.log(
+              '[PEnd] sendProcessToWarehouse success, emit process-material-refresh:',
+              {
+                order_num: rec.order_num,
+                material_id: current_material_id,
+                assemble_id: current_assemble_id,
+              }
+            )
+
+            socket.emit('process-material-refresh', {
+                order_num:
+                  rec.order_num,
+
+                material_id:
+                  current_material_id,
+
+                assemble_id:
+                  current_assemble_id,
+            })
+
+          }
           //
 
           // must_allOk_qty 用收料數（轉數值）
@@ -3462,7 +3519,7 @@ const onClickEnd = async (item) => {
           : "本工序已完成!",
       "green"
     )
-
+    /*
     // ======================================================
     // 9. 最後才送 Socket
     //
@@ -3515,6 +3572,7 @@ const onClickEnd = async (item) => {
         socketError
       )
     }
+    */
   } catch (error) {
     console.error(
       "[onClickEnd] 完成加工失敗:",

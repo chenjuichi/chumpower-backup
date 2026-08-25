@@ -58,6 +58,49 @@ from log_util import setup_logger
 logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 
+# ------------------------------------------------------------------
+
+
+def to_bool(value):
+    """
+    將前端傳入的 boolean / 數字 / 字串
+    安全轉成 Python bool。
+    """
+
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    if isinstance(value, (int, float)):
+        return value != 0
+
+    if isinstance(value, str):
+        value = value.strip().lower()
+
+        if value in (
+            'true',
+            '1',
+            'yes',
+            'y',
+            'on',
+        ):
+            return True
+
+        if value in (
+            'false',
+            '0',
+            'no',
+            'n',
+            'off',
+            '',
+        ):
+            return False
+
+    return False
+
+
 def format_period_time(start_dt, end_dt):
     # 回傳類似 '0:00:04' 的 period_time
     try:
@@ -693,6 +736,8 @@ def update_boms():
 """
 
 
+"""
+# 20260824版
 # 20260822版
 @updateTable.route("/updateBoms", methods=['POST'])
 def update_boms():
@@ -740,7 +785,7 @@ def update_boms():
                     f"Bom id={bom_id} not found"
                 )
                 continue
-
+            '''
             # ----------------------------------------------------
             # receive
             # ----------------------------------------------------
@@ -773,6 +818,34 @@ def update_boms():
                 bom.isPickOK = bool(
                     bom_data['isPickOK']
                 )
+            '''
+            # 20260824版 修正
+            # ------------------------------------------------------------
+            # 一律只更新目前 bom_id 對應的 BOM。
+            # 不可再用 seq_num 更新，否則會污染其他訂單相同 seq_num。
+            # ------------------------------------------------------------
+
+            if 'receive' in bom_data:
+                bom.receive = bool(
+                    bom_data.get('receive')
+                )
+
+            if 'lack' in bom_data:
+                bom.lack = bool(
+                    bom_data.get('lack')
+                )
+
+            if 'lack_bom_qty' in bom_data:
+                bom.lack_bom_qty = int(
+                    bom_data.get('lack_bom_qty')
+                    or 0
+                )
+
+            if 'isPickOK' in bom_data:
+                bom.isPickOK = bool(
+                    bom_data.get('isPickOK')
+                )
+            #
 
         s.commit()
 
@@ -798,6 +871,230 @@ def update_boms():
     return jsonify({
         'status': return_value,
     })
+"""
+
+
+# 20260824版
+@updateTable.route("/updateBoms", methods=['POST'])
+def update_boms():
+
+    print("updateBoms....")
+
+    request_data = request.get_json()
+
+    s = Session()
+
+    try:
+
+        # --------------------------------------------------------
+        # 1. request 統一成 list
+        # --------------------------------------------------------
+        if isinstance(request_data, dict):
+            bom_list = list(
+                request_data.values()
+            )
+
+        elif isinstance(request_data, list):
+            bom_list = request_data
+
+        else:
+            bom_list = []
+
+        # --------------------------------------------------------
+        # 2. 記錄本次真正有修改到的 BOM id
+        # --------------------------------------------------------
+        touched_bom_ids = []
+
+        for bom_data in bom_list:
+
+            if not isinstance(
+                bom_data,
+                dict
+            ):
+                continue
+
+            bom_id = bom_data.get(
+                'id'
+            )
+
+            if not bom_id:
+                continue
+
+            # ----------------------------------------------------
+            # ★ 只能使用 Bom.id 找資料
+            #
+            # 絕對不可：
+            #
+            # .filter(Bom.seq_num == ...)
+            #
+            # 否則不同訂單相同 seq_num
+            # 會一起被修改。
+            # ----------------------------------------------------
+            bom = (
+                s.query(Bom)
+                .filter(
+                    Bom.id == bom_id
+                )
+                .one_or_none()
+            )
+
+            if not bom:
+
+                print(
+                    f"updateBoms: "
+                    f"Bom id={bom_id} not found"
+                )
+
+                continue
+
+            changed = False
+
+            # ----------------------------------------------------
+            # receive
+            # ----------------------------------------------------
+            if 'receive' in bom_data:
+
+                new_value = to_bool(
+                    bom_data.get('receive')
+                )
+
+
+                if bom.receive != new_value:
+
+                    bom.receive = new_value
+
+                    changed = True
+
+            # ----------------------------------------------------
+            # lack
+            # ----------------------------------------------------
+            if 'lack' in bom_data:
+
+                new_value = to_bool(
+                    bom_data.get('lack')
+                )
+
+                if bom.lack != new_value:
+
+                    bom.lack = new_value
+
+                    changed = True
+
+            # ----------------------------------------------------
+            # lack_bom_qty
+            # ----------------------------------------------------
+            if 'lack_bom_qty' in bom_data:
+
+                new_value = int(
+                    bom_data.get(
+                        'lack_bom_qty'
+                    )
+                    or 0
+                )
+
+                if int(
+                    bom.lack_bom_qty
+                    or 0
+                ) != new_value:
+
+                    bom.lack_bom_qty = (
+                        new_value
+                    )
+
+                    changed = True
+
+            # ----------------------------------------------------
+            # isPickOK
+            # ----------------------------------------------------
+            if 'isPickOK' in bom_data:
+
+                new_value = to_bool(
+                    bom_data.get('isPickOK')
+                )
+
+                if bom.isPickOK != new_value:
+
+                    bom.isPickOK = new_value
+
+                    changed = True
+
+            if changed:
+
+                touched_bom_ids.append(
+                    int(bom.id)
+                )
+
+        # --------------------------------------------------------
+        # 3. flush
+        #
+        # 先讓 refresh_root_status()
+        # 查詢時看到剛才的新 BOM 狀態。
+        # --------------------------------------------------------
+        s.flush()
+
+        # --------------------------------------------------------
+        # 4. 找出本次真正被修改到的訂單
+        # --------------------------------------------------------
+        if touched_bom_ids:
+
+            order_nums = [
+                row[0]
+                for row in (
+                    s.query(
+                        Material.order_num
+                    )
+                    .join(
+                        Bom,
+                        Bom.material_id
+                        == Material.id
+                    )
+                    .filter(
+                        Bom.id.in_(
+                            touched_bom_ids
+                        )
+                    )
+                    .distinct()
+                    .all()
+                )
+            ]
+
+            # ----------------------------------------------------
+            # 5. 更新訂單/root 的缺料狀態
+            # ----------------------------------------------------
+            for order_num in order_nums:
+
+                refresh_root_status(
+                    s,
+                    order_num
+                )
+
+        # --------------------------------------------------------
+        # 6. 一次 commit
+        # --------------------------------------------------------
+        s.commit()
+
+        return jsonify({
+            'status': True,
+        })
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBoms Error:",
+            repr(e)
+        )
+
+        return jsonify({
+            'status': False,
+            'message': str(e),
+        }), 500
+
+    finally:
+
+        s.close()
+
 
 @updateTable.route("/updateBomsInMaterial", methods=['POST'])
 def update_bom(material_id):
@@ -4399,48 +4696,6 @@ def update_material():
 
     finally:
         s.close()
-
-
-@updateTable.route("/updateMaterialP", methods=['POST'])
-def update_material_p():
-    print("updateMaterialP....")
-
-    request_data = request.get_json()
-
-    _order_num = request_data.get('order_num')
-    _id = request_data.get('id')
-    _record_name = request_data['record_name']
-    _record_data = request_data['record_data']
-
-    return_value = True  # true: 資料正確, 註冊成功
-    s = Session()
-
-    # 檢查傳入的參數，選擇查詢條件
-    material_record = None
-    #if _order_num is not None:  # 如果傳入了 order_num
-    #    material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
-    #elif _id is not None:  # 如果傳入了 id
-    #    material_record = s.query(P_Material).filter_by(id=_id).first()
-    #
-    if _id is not None:
-        material_record = s.query(P_Material).filter_by(id=_id).first()
-    elif _order_num is not None:
-        material_record = s.query(P_Material).filter_by(order_num=_order_num).first()
-    #
-
-    if material_record is None:
-      return_value = False
-    else:
-      # 動態設置欄位值
-      if hasattr(material_record, _record_name):
-        setattr(material_record, _record_name, _record_data)
-        s.commit()
-
-    s.close()
-
-    return jsonify({
-      'status': return_value
-    })
 
 
 @updateTable.route("/updateAssemble", methods=['POST'])

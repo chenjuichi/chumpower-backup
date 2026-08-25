@@ -1526,26 +1526,13 @@ onMounted(async () => {
         });
         console.log('步驟2-2...');
 
-        // ============================================================
-        // 20260824
-        // 不更新 P_Assemble.must_receive_qty。
-        //
-        // must_receive_qty：
-        // Excel「工序」工作表的「作業數量 (MEINH)」
-        //
-        // delivery_qty：
-        // PMaterial 使用者實際領料數量
-        //
-        // 兩者完全獨立，PMaterial 送出時禁止覆蓋 MEINH。
-        // ============================================================
-        console.log(
-          '[PMaterial] 保留 Excel MEINH，不修改 must_receive_qty',
-          {
-            order_num: m.order_num,
-            material_id: m.id,
-            delivery_qty: m.delivery_qty,
-          }
-        );
+        // 2-2-a. 記錄應領取數量（用 total_delivery_qty）
+        await updateAssembleMustReceiveQtyByMaterialID({
+          material_id: m.id,
+          record_name: 'must_receive_qty',
+          record_data: m.total_delivery_qty,
+        });
+        console.log('步驟2-2-a...');
 
         // 2-3. 顯示此筆為可顯示
         await updateMaterial({
@@ -2872,24 +2859,139 @@ const callForklift = async () => {
       //   record_data: m.total_delivery_qty,
       // });
       //
-      // ============================================================
-      // 20260824
-      // 不更新 P_Assemble.must_receive_qty。
-      //
-      // must_receive_qty：Excel 工序工作表的 MEINH
-      // delivery_qty：PMaterial 使用者實際領料數量
-      //
-      // callForklift() 送出時只保留 delivery_qty，
-      // 不可再把 delivery_qty / total_delivery_qty 寫進 must_receive_qty。
-      // ============================================================
+      // ------------------------------------------------------------
+      // 2-2-a. 記錄加工應領數量
+      // ------------------------------------------------------------
+      /*
+      const mustReceiveQty = Number(
+        m.total_delivery_qty ||
+        m.delivery_qty ||
+        m.material_qty ||
+        m.req_qty ||
+        0
+      )
+      */
+      // 20260824版
+      const mustReceiveQty = Number(
+        m.delivery_qty || 0
+      )
+
+      if (
+        !Number.isFinite(mustReceiveQty) ||
+        mustReceiveQty <= 0
+      ) {
+        throw new Error(
+          `工單 ${m.order_num} 的應領數量不正確：` +
+          `${mustReceiveQty}`
+        )
+      }
+
+      // ------------------------------------------------------------
+      // 更新 must_receive_qty
+      // ------------------------------------------------------------
+      const mustQtyResult =
+        await updateAssembleMustReceiveQtyByMaterialID({
+          material_id:
+            Number(m.id),
+
+          record_name:
+            'must_receive_qty',
+
+          record_data:
+            mustReceiveQty,
+        })
+
+      const mustQtyData =
+        mustQtyResult?.data ??
+        mustQtyResult ??
+        {}
+
       console.log(
-        '[callForklift] 保留 Excel MEINH，不修改 must_receive_qty',
+        '[callForklift] must_receive_qty result',
         {
-          order_num: m.order_num,
-          material_id: m.id,
-          delivery_qty: m.delivery_qty,
+          raw:
+            mustQtyResult,
+
+          parsed:
+            mustQtyData,
         }
       )
+
+      // 只有明確回傳 false 才判定失敗
+      if (
+        mustQtyData === false ||
+        mustQtyData?.status === false ||
+        mustQtyData?.success === false
+      ) {
+        throw new Error(
+          mustQtyData?.message ||
+          mustQtyData?.msg ||
+          `工單 ${m.order_num} 更新 must_receive_qty 失敗`
+        )
+      }
+
+      /*
+      // ------------------------------------------------------------
+      // 更新 must_receive_end_qty
+      // ------------------------------------------------------------
+      const mustEndQtyResult =
+        await updateAssembleMustReceiveQtyByMaterialID({
+          material_id:
+            Number(m.id),
+
+          record_name:
+            'must_receive_end_qty',
+
+          record_data:
+            mustReceiveQty,
+        })
+
+      const mustEndQtyData =
+        mustEndQtyResult?.data ??
+        mustEndQtyResult ??
+        {}
+
+      console.log(
+        '[callForklift] must_receive_end_qty result',
+        {
+          raw:
+            mustEndQtyResult,
+
+          parsed:
+            mustEndQtyData,
+        }
+      )
+
+      if (
+        mustEndQtyData === false ||
+        mustEndQtyData?.status === false ||
+        mustEndQtyData?.success === false
+      ) {
+        throw new Error(
+          mustEndQtyData?.message ||
+          mustEndQtyData?.msg ||
+          `工單 ${m.order_num} 更新 must_receive_end_qty 失敗`
+        )
+      }
+
+      console.log(
+        '[callForklift] 加工數量更新完成',
+        {
+          material_id:
+            m.id,
+
+          order_num:
+            m.order_num,
+
+          must_receive_qty:
+            mustReceiveQty,
+
+          must_receive_end_qty:
+            mustReceiveQty,
+        }
+      )
+      */
+      console.log('步驟2-2-a...')
 
       // 2-3. 讓此筆在看板上顯示
       await updateMaterial({

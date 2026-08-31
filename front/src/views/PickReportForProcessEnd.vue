@@ -3248,6 +3248,42 @@ const onClickEnd = async (item) => {
     // ======================================================
     // 4. 計算是否還有剩餘數量
     // ======================================================
+
+    // 20260827版
+    console.log(
+      "[PEnd difference DEBUG]",
+      {
+        order_num: item.order_num,
+        material_id: materialId,
+        assemble_id: assembleId,
+
+        must_receive_qty:
+          item.must_receive_qty,
+
+        must_receive_end_qty:
+          item.must_receive_end_qty,
+
+        display_must_receive_end_qty:
+          item.display_must_receive_end_qty,
+
+        ask_qty:
+          item.ask_qty,
+
+        total_completed_qty_num:
+          item.total_completed_qty_num,
+
+        completedQty,
+        abnormalQty,
+        mustReceiveQty,
+
+        difference:
+          mustReceiveQty -
+          completedQty -
+          abnormalQty,
+      }
+    )
+    //
+
     const difference =
       mustReceiveQty -
       completedQty -
@@ -3280,6 +3316,7 @@ const onClickEnd = async (item) => {
     // 20260813版
     let remainingAssembleId = 0
 
+    /*
     if (difference > 0) {
       const copyResp =
         await copyAssembleForDifference({
@@ -3319,6 +3356,49 @@ const onClickEnd = async (item) => {
         }
       )
     }
+    */
+    // 20260827版
+    const copyResp =
+      await copyAssembleForDifference({
+        copy_id:
+          assembleId,
+
+        completed_qty:
+          completedQty,
+
+        abnormal_qty:
+          abnormalQty,
+
+        // 僅供 debug，
+        // 後端不得把這個當真正剩餘量
+        frontend_difference:
+          difference,
+      })
+
+    const copyData =
+      copyResp?.data ?? copyResp
+
+    const remainingQty =
+      Number(
+        copyData?.remaining_qty || 0
+      )
+
+    remainingAssembleId =
+      Number(
+        copyData?.assemble_data?.[0] || 0
+      )
+
+    console.log(
+      "[partial end backend result]",
+      {
+        frontendDifference:
+          difference,
+
+        remainingQty,
+
+        remainingAssembleId,
+      }
+    )
     //
 
     // ======================================================

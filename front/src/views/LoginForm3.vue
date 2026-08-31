@@ -77,7 +77,7 @@
           </v-icon>
         </div>
         <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2026-08-24-3' }}
+          {{ 'Build 2026-08-30' }}
         </span>
       </div>
   </div>

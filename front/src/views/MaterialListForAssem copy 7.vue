@@ -1109,24 +1109,102 @@ const modify_boms = ref([]);
 const modify_file_name = ref('');
 
 const selectedItems = ref([]);      // 儲存選擇的項目 (基於 id)
-//
-// ============================================================
-// 20260826
-// AGV 本次運送任務固定 material ids
-//
-// 不能直接依賴 selectedItems，因為 selectedItems 是 UI 狀態，
-// refresh / socket refresh / table redraw 都可能改變。
-// ============================================================
-const activeAgvMaterialIds = ref([]);
-
-const ACTIVE_AGV_IDS_KEY = 'activeAgvMaterialIds';
-//
-
 const selectedOrderNums = ref([]);  // 儲存選擇的項目 (基於 orderNum)
 const inputValueForItems = ref([]); // 儲存輸入的值
 
+// ============================================================
+// 20260826 AGV 任務快照
+// selectedItems 是 UI checkbox 狀態，refresh / fetchMaterials 可能改變。
+// 一旦叫車，本次 AGV 必須固定使用送出當下的 material ids。
+// ============================================================
+const activeAgvMaterialIds = ref([]);
+const ACTIVE_AGV_IDS_KEY = 'activeAgvMaterialIds';
+
+const saveActiveAgvMaterialIds = (ids = []) => {
+  const cleanIds = [
+    ...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map(Number)
+        .filter(id => id > 0)
+    )
+  ];
+
+  activeAgvMaterialIds.value = cleanIds;
+
+  if (cleanIds.length > 0) {
+    localStorage.setItem(ACTIVE_AGV_IDS_KEY, JSON.stringify(cleanIds));
+  } else {
+    localStorage.removeItem(ACTIVE_AGV_IDS_KEY);
+  }
+};
+
+const getActiveAgvMaterialIds = () => {
+  if (
+    Array.isArray(activeAgvMaterialIds.value) &&
+    activeAgvMaterialIds.value.length > 0
+  ) {
+    return [...activeAgvMaterialIds.value];
+  }
+
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(ACTIVE_AGV_IDS_KEY) || '[]'
+    );
+
+    if (Array.isArray(saved) && saved.length > 0) {
+      const cleanIds = [
+        ...new Set(
+          saved
+            .map(Number)
+            .filter(id => id > 0)
+        )
+      ];
+
+      activeAgvMaterialIds.value = cleanIds;
+      return [...cleanIds];
+    }
+  } catch (err) {
+    console.warn('[AGV] restore activeAgvMaterialIds failed:', err);
+  }
+
+  return [];
+};
+
+const clearActiveAgvMaterialIds = () => {
+  console.log('[AGV] clear active task:', activeAgvMaterialIds.value);
+  activeAgvMaterialIds.value = [];
+  localStorage.removeItem(ACTIVE_AGV_IDS_KEY);
+};
+
 const app_user_id = 'user_chumpower';
 const clientAppName = 'MaterialListForAssem';
+
+// ============================================================
+// 20260826 v2
+// 每個瀏覽器分頁固定一個 client id。
+// 用 sessionStorage：同一分頁 refresh 後仍維持相同，
+// 不同分頁則各自獨立，避免自己送出的 socket refresh 又刷新自己。
+// ============================================================
+const schedulingClientId = (() => {
+  const key = 'MaterialListForAssemClientId';
+
+  let id = sessionStorage.getItem(key);
+
+  if (!id) {
+    if (
+      typeof crypto !== 'undefined' &&
+      typeof crypto.randomUUID === 'function'
+    ) {
+      id = crypto.randomUUID();
+    } else {
+      id = `mlfa-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    sessionStorage.setItem(key, id);
+  }
+
+  return id;
+})();
 // 初始化Socket連接
 const { socket, setupSocketConnection } = useSocketio(socket_server_ip.value, app_user_id, clientAppName);
 
@@ -1250,11 +1328,6 @@ watch(show_dropdown, (open) => {
     transitionName.value = 'slide-next'
   }
 })
-// 20260826版 remove
-//watch(materials, (mItems) => {
-//    if (materials.value.length==0)
-//      selectedItems.value = [];
-//});
 
 // 監視 selectedItems 的變化，並將其儲存到 localStorage
 watch(selectedItems, (newItems) => {
@@ -1589,6 +1662,13 @@ onMounted(async () => {
     selectedItems.value = JSON.parse(savedItems);
   }
 
+  // 20260826：若 refresh 時仍有 AGV 任務，恢復任務鎖定。
+  const restoredAgvIds = getActiveAgvMaterialIds();
+  if (restoredAgvIds.length > 0) {
+    isCallAGV.value = true;
+    console.log('[AGV] refresh 後恢復任務:', restoredAgvIds);
+  }
+
   // 自動 focus
   if (barcodeInput.value) {
     barcodeInput.value.focus();
@@ -1600,23 +1680,14 @@ onMounted(async () => {
   try {
     await setupSocketConnection();
 
-    //socket.value.on('station1_error', async () => {
-    //  console.log("receive station1_error socket...");
-    //  activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
-    //});
-    // 20260826版
     socket.value.on('station1_error', async () => {
-        console.log('receive station1_error socket...');
-        console.log('station1_error:', new Date());
-
-
-        activeColor.value = 'green';
-
-        isCallAGV.value = false;
-
-        clearActiveAgvMaterialIds();
+      console.log('receive station1_error socket...');
+      activeColor.value = 'green';
+      order_num_on_agv_blink.value = '';
+      isCallAGV.value = false;
+      clearActiveAgvMaterialIds();
+      showSnackbar('AGV 任務異常，已解除本次送料任務', 'red accent-2');
     });
-    //
 
     socket.value.on('station1_loading_ready', async(data) => {
 
@@ -1624,24 +1695,13 @@ onMounted(async () => {
 
     socket.value.on('station1_agv_start', async () => {
       console.log('AGV 運行任務開始，press Start按鍵, 收到 station1_agv_start 訊息');
-      console.log('station1_agv_start:', new Date());
 
-      //const selectedIds = Array.isArray(selectedItems.value) ? [...selectedItems.value] : [];
-      //if (selectedIds.length === 0) {
-      //  console.warn('station1_agv_start: 沒有選取任何項目');
-      //  return;
-      //}
-      // 20260826版
-      const selectedIds =
-          getActiveAgvMaterialIds();
-
+      const selectedIds = getActiveAgvMaterialIds();
+      console.log('[station1_agv_start] active AGV ids:', selectedIds);
       if (selectedIds.length === 0) {
-          console.warn(
-              'station1_agv_start：找不到本次 AGV 任務 material ids'
-          );
-          return;
+        console.warn('station1_agv_start：找不到本次 AGV 任務 material ids');
+        return;
       }
-      //
 
       activeColor.value='yellow';  // 物料進站
 
@@ -1661,29 +1721,18 @@ onMounted(async () => {
 
     socket.value.on('station1_agv_begin', async () => {
       console.log('AGV暫停, 收到 station1_agv_begin 訊息');
-      console.log('station1_agv_begin:', new Date());
 
       // 記錄 agv 在站與站之間運行開始時間（確保是 Date 物件）
       agv2StartTime.value = new Date();
       console.log('AGV Start time:', agv2StartTime.value);
 
-      // 取出乾淨的 id 陣列
-      //const selectedIds = Array.isArray(selectedItems.value) ? [...selectedItems.value] : [];
-      //if (selectedIds.length === 0) {
-      //  console.warn('沒有選取任何項目');
-      //  return;
-      //}
-      // 20260826版
-      const selectedIds =
-          getActiveAgvMaterialIds();
-
+      // 20260826：AGV 執行中一律使用叫車當下的任務快照
+      const selectedIds = getActiveAgvMaterialIds();
+      console.log('[station1_agv_begin] active AGV ids:', selectedIds);
       if (selectedIds.length === 0) {
-          console.warn(
-              'station1_agv_begin：找不到本次 AGV 任務 material ids'
-          );
-          return;
+        console.warn('station1_agv_begin：找不到本次 AGV 任務 material ids');
+        return;
       }
-      //
 
       let successCount = 0;
 
@@ -1720,7 +1769,6 @@ onMounted(async () => {
     //以下待確認
     socket.value.on('station2_agv_end', async (data) => {
       console.log('AGV 運行結束，已到達組裝區, 收到 station2_agv_end 訊息, material table id:', data);
-      console.log('station2_agv_end:', new Date());
 
       // 記錄agv在站與站之間運行結束時間
       agv2EndTime.value = new Date();  // 使用 Date 來記錄當時時間
@@ -1744,31 +1792,15 @@ onMounted(async () => {
       //
 
       let payload = {};
-      //console.log("selectedItems.value:", selectedItems.value);
-      //
-      //const selectedIds = Array.isArray(selectedItems.value)
-      //  ? [...selectedItems.value]
-      //  : [];
-      //if (selectedIds.length === 0) {
-      //  console.warn('station2_agv_end：沒有選取任何項目');
-      //  return;
-      //}
-      // 20260826版
-      const selectedIds =
-          getActiveAgvMaterialIds();
 
-      console.log(
-          '[station2_agv_end] AGV task ids:',
-          selectedIds
-      );
+      // 20260826：AGV 到達組裝區時仍使用同一批固定 ids
+      const selectedIds = getActiveAgvMaterialIds();
+      console.log('[station2_agv_end] active AGV ids:', selectedIds);
 
       if (selectedIds.length === 0) {
-          console.warn(
-              'station2_agv_end：找不到本次 AGV 任務 material ids'
-          );
-          return;
+        console.warn('station2_agv_end：找不到本次 AGV 任務 material ids');
+        return;
       }
-      //
 
       // 步驟1：把 material/assemble 的顯示狀態先統一到「組裝站/未組裝/等待組裝中」
       for (const id of selectedIds) {
@@ -1901,25 +1933,25 @@ onMounted(async () => {
         material_ids: selectedIds,
       });
       //
+      // 20260826：AGV 真正送達後才清除本次任務
       selectedItems.value = [];
-      if (localStorage.getItem('selectedItems')) {
-        localStorage.removeItem('selectedItems');
-      }
-      //待待
-      //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
+      selectedOrderNums.value = [];
+      localStorage.removeItem('selectedItems');
+      clearActiveAgvMaterialIds();
+      isCallAGV.value = false;
+
       await fetchMaterials();
-      // 🔥 刷新完資料後 → 回到閒置狀態
-      activeColor.value = 'green';   // 預設亮綠燈
+
+      // 刷新完資料後回到區域閒置
+      activeColor.value = 'green';
+      console.log('[station2_agv_end] AGV task completed');
     }); // end socket loop
 
     socket.value.on('station2_trans_end', async (data) => {
       console.log("收到 station2_trans_end訊息...", data);
-      console.log('station2_trans_end:', new Date());
 
       // 送出事件
       socket.value.emit('station2_trans_over');
-      console.log('station2_trans_over:', new Date());
-
       console.log('送出 station2_trans_over 訊息...');
 
       // 記錄 forklift 在站與站之間運行結束時間
@@ -2090,7 +2122,6 @@ onMounted(async () => {
 
     socket.value.on('station1_agv_ready', async () => {
       console.log('AGV 已在備料區裝卸站, 收到 station1_agv_ready 訊息...');
-      console.log('station1_agv_ready:', new Date());
 
       order_num_on_agv_blink.value = '';
 
@@ -2117,23 +2148,13 @@ onMounted(async () => {
           return;
       }
 
-      // 取出乾淨的 id 陣列
-      //const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
-      //if (selectedIds.length === 0) {
-      //  console.warn('沒有選取任何項目');
-      //  return;
-      //}
-      // 20260826版
-      const selectedIds =
-          getActiveAgvMaterialIds();
-
+      // 20260826：使用叫車當下固定的 material ids
+      const selectedIds = getActiveAgvMaterialIds();
+      console.log('[station1_agv_ready] active AGV ids:', selectedIds);
       if (selectedIds.length === 0) {
-          console.warn(
-              'station1_agv_ready：找不到本次 AGV 任務 material ids'
-          );
-          return;
+        console.warn('station1_agv_ready：找不到本次 AGV 任務 material ids');
+        return;
       }
-      //
 
       // 逐筆寫入 Process：AGV1-1（備料區等待）
       let successCount = 0;
@@ -3703,20 +3724,6 @@ const onClickTrans = async () => {
 const callForklift = async () => {
   console.log("callForklift()...");
 
-  //
-  // ============================================================
-  // 20260830
-  // 已改用手動推車，此批資料不再屬於 AGV 任務。
-  //
-  // 防止舊的 station1_agv_ready Socket 到達後，
-  // 又替本次堆高機送料建立：
-  // process_type=19「等待AGV(備料區)」。
-  // ============================================================
-  clearActiveAgvMaterialIds();
-
-  isCallAGV.value = false;
-  //
-
   // 防重複呼叫 + 基本檢查
   const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
   if (selectedIds.length === 0) {
@@ -3906,88 +3913,78 @@ const callForklift = async () => {
 };
 
 const callAGV = async () => {
-  console.log("callAGV()...");
+  console.log('callAGV()...');
 
-  // 乾淨的 id 陣列（去重）
-  const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
-
-  // 20260826版 add
-  if (selectedIds.length === 0) {
-      showSnackbar(
-          '請選擇送料的工單!',
-          'red accent-2'
-      );
-      return;
-  }
-
-  // ★ 20260826
-  // 從這一刻開始，這次 AGV 任務固定使用這批 ids
-  saveActiveAgvMaterialIds(selectedIds);
-
-  console.log(
-      '[AGV] 本次送料 material ids:',
-      getActiveAgvMaterialIds()
-  );
-  //
+  const selectedIds = Array.isArray(selectedItems.value)
+    ? [
+        ...new Set(
+          selectedItems.value
+            .map(Number)
+            .filter(id => id > 0)
+        )
+      ]
+    : [];
 
   if (selectedIds.length === 0) {
     showSnackbar('請選擇送料的工單!', 'red accent-2');
     return;
   }
+
   if (isCallAGV.value) {
-    showSnackbar('請不要重複按鍵!', 'red accent-2');
+    showSnackbar('AGV 任務執行中，請不要重複按鍵!', 'red accent-2');
     return;
   }
 
+  // 20260826：叫車瞬間固定本次 AGV 任務 material ids
+  saveActiveAgvMaterialIds(selectedIds);
+  console.log('[callAGV] 固定本次 AGV material ids:', getActiveAgvMaterialIds());
+
   isCallAGV.value = true;
+
   try {
-    // AGV 自動送料模式：先查 AGV 狀態
     if (toggle_exclusive.value === 2) {
       await getAGV({ agv_id: 1 });
-      console.log('hello, 備料區叫車, AGV 狀態:', currentAGV.value);
-      // 若要強制攔截忙碌狀態，可取消下面註解
-      // if (currentAGV.value?.status !== 0) {
-      //   const stationMap = {1: '備料區', 2: '組裝區', 3: '成品區'};
-      //   const buf = stationMap[currentAGV.value?.station] || '未知區域';
-      //   showSnackbar(`${buf}已經叫車，AGV 目前忙碌中...`, 'red accent-2');
-      //   return;
-      // }
+      console.log('備料區叫車，AGV 狀態:', currentAGV.value);
     }
 
-    // 送出叫車事件（真的帶 payload）
     socket.value.emit('station1_call', {
       items: selectedIds,
-      orderNums: Array.isArray(selectedOrderNums.value) ? [...selectedOrderNums.value] : [],
+      orderNums: Array.isArray(selectedOrderNums.value)
+        ? [...selectedOrderNums.value]
+        : [],
     });
-    console.log('送出 station1_call 訊息...');
-    console.log('station1_call:', new Date());
+    console.log('送出 station1_call:', selectedIds);
 
-    // UI 先切到等待狀態
     order_num_on_agv_blink.value = '叫車進站中...';
-    activeColor.value = 'red'; // 等待運輸
+    activeColor.value = 'red';
 
-    // 記錄等待 agv 到站開始時間
     agv1StartTime.value = new Date();
     console.log('AGV Start time:', agv1StartTime.value);
 
-    // 逐筆更新「等待 AGV」狀態 + 相關 Process 欄位
     let successCount = 0;
+
     for (const id of selectedIds) {
       try {
         await updateMaterial({
           id,
-          record_name: 'show3_ok', // 看板欄位
-          record_data: 1,          // 1: 等待 agv
+          record_name: 'show3_ok',
+          record_data: 1,
         });
 
-        const m = materials.value.find(x => x.id == id);
-        //if (!m) continue;
+        const m = materials.value.find(
+          x => Number(x.id) === Number(id)
+        );
+
+        if (!m) {
+          console.warn('[callAGV] 找不到 material:', id);
+          continue;
+        }
 
         await updateProcessDataByMaterialID({
           material_id: id,
           seq: 2,
           record_name1: 'process_work_time_qty',
-          record_data1: m.delivery_qty,
+          record_data1: Number(m.delivery_qty || 0),
         });
 
         successCount++;
@@ -3996,65 +3993,37 @@ const callAGV = async () => {
       }
     }
 
-    // 至少一筆成功才把 AGV 設為忙碌（避免空跑）
-    if (successCount > 0) {
-      await updateAGV({
-        id: 1,
-        status: 1,  // 忙碌/等待
-        station: 1, // 備料區
-      });
-
-      /*
-      socket.value?.emit('material-delivered-callAGV', {
-        source: 'MaterialListForAssem',
-        reason: 'waiting_agv',
-        material_ids: selectedIds,
-        order_nums: Array.isArray(selectedOrderNums.value) ? [...selectedOrderNums.value] : [],
-      });
-      */
-      // 20260826版
-      socket.value?.emit('material-delivered-callAGV', {
-          source: 'MaterialListForAssem',
-          reason: 'waiting_agv',
-
-          // 20260826 add
-          client_id: schedulingClientId,
-
-          material_ids: selectedIds,
-          order_nums: Array.isArray(selectedOrderNums.value)
-              ? [...selectedOrderNums.value]
-              : [],
-      });
-      //
-
-    } else {
-      showSnackbar('沒有任何工單更新成功，未變更 AGV 狀態', 'red accent-2');
+    if (successCount <= 0) {
+      throw new Error('沒有任何工單成功更新為等待 AGV');
     }
+
+    await updateAGV({
+      id: 1,
+      status: 1,
+      station: 1,
+    });
+
+    socket.value?.emit('material-delivered-callAGV', {
+      source: 'MaterialListForAssem',
+      reason: 'waiting_agv',
+      client_id: schedulingClientId,
+      material_ids: selectedIds,
+      order_nums: Array.isArray(selectedOrderNums.value)
+        ? [...selectedOrderNums.value]
+        : [],
+    });
+
+    console.log('[callAGV] AGV 任務建立完成:', selectedIds);
+
+    // 此處不可清 selectedItems / activeAgvMaterialIds / isCallAGV。
+    // 必須等 station2_agv_end 真正送達後才解除。
   } catch (e) {
-    //console.error('叫車流程例外：', e);
-    //showSnackbar('叫車流程執行失敗，請稍後再試', 'red accent-2');
-    // 20260826版
-    console.error(
-        '叫車流程例外：',
-        e
-    );
+    console.error('叫車流程例外：', e);
+    showSnackbar('叫車流程執行失敗，請稍後再試', 'red accent-2');
 
-    showSnackbar(
-        '叫車流程執行失敗，請稍後再試',
-        'red accent-2'
-    );
-
-    // 只有叫車失敗才解鎖
     isCallAGV.value = false;
-
     clearActiveAgvMaterialIds();
-    //
-  // 20260826版 remove
-  //} finally {
-  //  // 無論成功失敗都解鎖，避免按鈕被卡住
-  //  isCallAGV.value = false;
   }
-
 };
 
 const readAllExcelFun = async () => {
@@ -4355,102 +4324,6 @@ const onBomReceiveChanged = async () => {
     );
   }
 };
-
-//
-// ============================================================
-// 20260826
-// AGV 本次運送任務固定 material ids
-//
-// 不能直接依賴 selectedItems，因為 selectedItems 是 UI 狀態，
-// refresh / socket refresh / table redraw 都可能改變。
-// ============================================================
-const saveActiveAgvMaterialIds = (ids = []) => {
-    const cleanIds = [
-        ...new Set(
-            (Array.isArray(ids) ? ids : [])
-                .map(Number)
-                .filter(id => id > 0)
-        )
-    ];
-
-    activeAgvMaterialIds.value = cleanIds;
-
-    if (cleanIds.length > 0) {
-        localStorage.setItem(
-            ACTIVE_AGV_IDS_KEY,
-            JSON.stringify(cleanIds)
-        );
-    } else {
-        localStorage.removeItem(
-            ACTIVE_AGV_IDS_KEY
-        );
-    }
-};
-
-const getActiveAgvMaterialIds = () => {
-    if (
-        Array.isArray(activeAgvMaterialIds.value) &&
-        activeAgvMaterialIds.value.length > 0
-    ) {
-        return [...activeAgvMaterialIds.value];
-    }
-
-    try {
-        const saved = JSON.parse(
-            localStorage.getItem(
-                ACTIVE_AGV_IDS_KEY
-            ) || '[]'
-        );
-
-        if (Array.isArray(saved) && saved.length > 0) {
-            activeAgvMaterialIds.value = [
-                ...new Set(
-                    saved
-                        .map(Number)
-                        .filter(id => id > 0)
-                )
-            ];
-
-            return [...activeAgvMaterialIds.value];
-        }
-    } catch (err) {
-        console.warn(
-            'restore active AGV ids failed:',
-            err
-        );
-    }
-
-    return [];
-};
-
-const clearActiveAgvMaterialIds = () => {
-    activeAgvMaterialIds.value = [];
-    localStorage.removeItem(
-        ACTIVE_AGV_IDS_KEY
-    );
-};
-//
-
-// ============================================================
-// 本瀏覽器頁面的 Socket Client ID
-// 用來判斷 socket 廣播是不是自己發出的
-// ============================================================
-const schedulingClientId =
-  sessionStorage.getItem(
-    'materialListSocketClientId'
-  ) ||
-  (
-    Date.now().toString(36) +
-    '-' +
-    Math.random()
-      .toString(36)
-      .substring(2, 10)
-  );
-
-sessionStorage.setItem(
-  'materialListSocketClientId',
-  schedulingClientId
-);
 
 </script>
 

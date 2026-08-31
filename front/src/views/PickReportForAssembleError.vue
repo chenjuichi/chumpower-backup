@@ -799,6 +799,8 @@ const userId = computed(() => currentUser.value?.empID ?? '')
  * 實作上：我們僅作「預覽」，真正寫入 form.msg 的動作在 watch 內自動同步，
  * 但若使用者手動改 msg，我們也保留（只要他有輸入，就以手動為主）。
  */
+
+/*
 const composedMsg = computed(() => {
   const qty = Number(causeDlg.form.qty)
   const arr = Array.isArray(causeDlg.form.err_msg)
@@ -806,7 +808,12 @@ const composedMsg = computed(() => {
     : (causeDlg.form.err_msg ? [causeDlg.form.err_msg] : [])
 
   const arr2 = arr.filter(Boolean)
-  const result = arr2.map(s => s.replace(/\(.*\)/, ''))
+  //const result = arr2.map(s => s.replace(/\(.*\)/, ''))
+  // 20260826版
+  const result = arr2.map(s =>
+    String(s).replace(/\(\d+\)\s*$/, '')
+  )
+  //
   const errPart = result.filter(Boolean).join('、')
 
   if (qty > 0 && errPart) return `${qty}x${errPart}`
@@ -814,6 +821,45 @@ const composedMsg = computed(() => {
   if (errPart) return errPart
   return ''
 })
+*/
+// 20260826版
+const composedMsg = computed(() => {
+  const qty = Number(causeDlg.form.qty)
+
+  const arr = Array.isArray(causeDlg.form.err_msg)
+    ? causeDlg.form.err_msg
+    : (causeDlg.form.err_msg
+        ? [causeDlg.form.err_msg]
+        : [])
+
+  const arr2 = arr.filter(Boolean)
+
+  // 只移除最後一組括號，例如：
+  // 驗不起來(高點不同，對點)(M02036)
+  // → 驗不起來(高點不同，對點)
+  const result = arr2.map(s =>
+    String(s).replace(/\([^()]+\)\s*$/, '')
+  )
+
+  const errPart = result
+    .filter(Boolean)
+    .join('、')
+
+  if (qty > 0 && errPart) {
+    return `${qty}x${errPart}`
+  }
+
+  if (qty > 0) {
+    return `${qty}x`
+  }
+
+  if (errPart) {
+    return errPart
+  }
+
+  return ''
+})
+//
 
 const containerStyle = computed(() => ({
   bottom: props.showFooter ? '60px' : '0'

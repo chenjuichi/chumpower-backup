@@ -1551,8 +1551,7 @@ const selectedFile = ref(null); 						                // 儲存已選擇檔案�
 const downloadFilePath = ref('');
 const selectedFileName = ref('');						                // 用於追蹤目前選取的檔案名稱
 
-// 20260830：checkbox v-model 使用 boolean，避免初始化時 "OFF" -> 0 觸發重複查詢
-const switchValue = ref(false);
+const switchValue = ref("OFF");
 //const switchValue_string = ref("顯示訂單編號");
 const switchValue_string = ref("只顯示未完成訂單編號");
 
@@ -2320,15 +2319,27 @@ const initialize = async () => {
   }
 };
 */
-// 20260830 cancel 修正版
+// 20260830版
 const initialize = async () => {
   try {
     console.log("initialize()...")
 
-    // switchValue 初始值已經是 false。
-    // 這裡不要再次指定 switchValue，避免觸發 watcher。
-    // /listInformations 統一由 runQuery() 執行。
-    await runQuery()
+    switchValue.value = 0
+
+    const response = await listInformations({
+      only_unfinished:
+        switchValue.value ? 1 : 0,
+
+      page: page.value,
+      limit: limit.value,
+      offset: offset.value,
+    })
+
+    if (response) {
+      applyListInformationsResponse(
+        response
+      )
+    }
 
     await listWorkingOrderStatus()
 

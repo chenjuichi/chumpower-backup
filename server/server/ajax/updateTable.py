@@ -3256,6 +3256,7 @@ def update_assemble_process_step():
         s.close()
 
 
+# 20260826版
 # 20260724版
 @updateTable.route('/sendAssembleToWarehouse', methods=['POST'])
 def send_assemble_to_warehouse():
@@ -3581,15 +3582,45 @@ def send_assemble_to_warehouse():
             #
             # 不可將兩筆都覆寫成 material 總數量 72。
             # --------------------------------------------------------
-            row_effective_qty = max(
-                safe_int(row.completed_qty),
-                safe_int(row.total_completed_qty),
-                safe_int(row.allOk_qty),
-                safe_int(row.must_receive_end_qty),
-                safe_int(row.ask_qty),
-                safe_int(row.must_receive_qty),
-                0,
+            #row_effective_qty = max(
+            #    safe_int(row.completed_qty),
+            #    safe_int(row.total_completed_qty),
+            #    safe_int(row.allOk_qty),
+            #    safe_int(row.must_receive_end_qty),
+            #    safe_int(row.ask_qty),
+            #    safe_int(row.must_receive_qty),
+            #    0,
+            #)
+            #
+            row_effective_qty = safe_int(
+                row.completed_qty
             )
+
+            if row_effective_qty <= 0:
+                row_effective_qty = safe_int(
+                    row.total_completed_qty
+                )
+
+            if row_effective_qty <= 0:
+                row_effective_qty = safe_int(
+                    row.allOk_qty
+                )
+
+            if row_effective_qty <= 0:
+                row_effective_qty = safe_int(
+                    row.must_receive_end_qty
+                )
+
+            if row_effective_qty <= 0:
+                row_effective_qty = safe_int(
+                    row.must_receive_qty
+                )
+
+            #if row_effective_qty <= 0:
+            #    raise ValueError(
+            #        f"assemble_id={row.id} 沒有有效完成數量"
+            #    )
+            #
 
             if row_effective_qty <= 0:
                 raise ValueError(
@@ -3627,6 +3658,7 @@ def send_assemble_to_warehouse():
 
             row.update_time = now_str
 
+        '''
         # ------------------------------------------------------------
         # 7. material 正式抵達成品區，等待入庫
         # ------------------------------------------------------------
@@ -3651,11 +3683,158 @@ def send_assemble_to_warehouse():
         material.must_allOk_qty = (
             effective_completed_qty
         )
+        '''
+        #
+        # ------------------------------------------------------------
+        # 7. 20260826版
+        #
+        # material 狀態不能只看「本次有沒有送 Warehouse」，
+        # 必須確認同 material 是否還有完成列留在 End。
+        #
+        # 例如：
+        #
+        #   B110 正常    15  ← 還在 End
+        #   B110 異常     5  ← 本次送 Warehouse
+        #
+        # 此時：
+        #   assemble 5 進 Warehouse
+        #   assemble 15 繼續留 End
+        #
+        # material 不可以整張直接切成 Warehouse-only 狀態。
+        # ------------------------------------------------------------
+
+        s.flush()
+
+        remaining_end_rows = (
+            s.query(Assemble.id)
+            .filter(
+                Assemble.material_id == material_id,
+
+                Assemble.process_step_code == 0,
+
+                Assemble.completed_qty > 0,
+
+                Assemble.isAssembleStationShow.is_(True),
+
+                Assemble.isWarehouseStationShow.is_(False),
+
+                Assemble.show2_ok.in_([9, 10]),
+
+                or_(
+                    Assemble.reason.is_(None),
+                    Assemble.reason != 'B110_DONE_COPY'
+                )
+            )
+            .first()
+        )
+
+        has_remaining_end = (
+            remaining_end_rows is not None
+        )
+
+
+        if has_remaining_end:
+
+            # --------------------------------------------------------
+            # 還有其他完成列停在 End
+            #
+            # material 必須繼續代表：
+            #   尚有組裝區待送出資料
+            #
+            # 不可整張切成 Warehouse。
+            # --------------------------------------------------------
+            material.isAssembleStationShow = True
+
+            # 已經有部分資料到成品區，
+            # 但 material 本身仍有 End pending。
+            material.isAssembleStation3TakeOk = False
+
+            material.whichStation = 2
+
+            material.show1_ok = 3
+            material.show2_ok = 9
+            material.show3_ok = 9
+
+        else:
+
+            # --------------------------------------------------------
+            # 所有 End 待送出列都已離開 End
+            # 才正式把 material 移到成品區。
+            # --------------------------------------------------------
+            material.isAssembleStationShow = False
+            material.isAssembleStation3TakeOk = True
+
+            material.whichStation = 3
+
+            material.show1_ok = 3
+            material.show2_ok = 10
+            material.show3_ok = 11
+
+
+        # ------------------------------------------------------------
+        # material 的完成量不能只記「這一次送出的量」。
+        #
+        # 第一次送 5：
+        #   warehouse_total = 5
+        #
+        # 第二次送 15：
+        #   warehouse_total = 20
+        # ------------------------------------------------------------
+        warehouse_qty = (
+            s.query(
+                func.coalesce(
+                    func.sum(
+                        Assemble.completed_qty
+                    ),
+                    0
+                )
+            )
+            .filter(
+                Assemble.material_id == material_id,
+
+                Assemble.process_step_code == 0,
+
+                Assemble.isWarehouseStationShow.is_(True),
+
+                Assemble.completed_qty > 0,
+
+                or_(
+                    Assemble.reason.is_(None),
+                    Assemble.reason != 'B110_DONE_COPY'
+                )
+            )
+            .scalar()
+            or 0
+        )
+
+        warehouse_qty = safe_int(
+            warehouse_qty
+        )
+
+
+        #material.assemble_qty = warehouse_qty
+        #material.total_assemble_qty = warehouse_qty
+        #material.must_allOk_qty = warehouse_qty
+        #
+        # 20260826版
+        material.assemble_qty = warehouse_qty
+        material.total_assemble_qty = warehouse_qty
+
+        # 應入庫總量不可因「部分送出」而縮小
+        material.must_allOk_qty = max(
+            safe_int(material.must_allOk_qty),
+            safe_int(material.delivery_qty),
+            safe_int(material.material_qty),
+            warehouse_qty,
+        )
+        #
 
         # 注意：
         # 此時還只是等待入庫，
-        # 不可設定 material.total_allOk_qty
-        # 也不可設定 material.isAllOk=True
+        # 不可設定：
+        #
+        # material.total_allOk_qty
+        # material.isAllOk = True
 
         # 釋放 Begin / End 操作鎖
         material.isOpen = False
@@ -4847,46 +5026,6 @@ def update_material_record():
   })
 
 
-@updateTable.route("/updateMaterialRecordP", methods=['POST'])
-def update_material_record_p():
-  print("updateMaterialRecordP....")
-
-  request_data = request.get_json()
-
-  _order_num = request_data.get('order_num')
-  _id = request_data.get('id')
-
-  _show1_ok = request_data['show1_ok']
-  _show2_ok = request_data['show2_ok']
-  _show3_ok = request_data['show3_ok']
-  #_whichStation = request_data['whichStation']
-
-  s = Session()
-
-  if _order_num is not None:  # 如果傳入了 order_num
-    s.query(P_Material).filter(P_Material.order_num == _order_num).update({
-      "show1_ok": _show1_ok,
-      "show2_ok": _show2_ok,
-      "show3_ok": _show3_ok,
-      #"whichStation": _whichStation,
-    })
-  elif _id is not None:  # 如果傳入了 id
-    s.query(P_Material).filter(P_Material.id == _id).update({
-      "show1_ok": _show1_ok,
-      "show2_ok": _show2_ok,
-      "show3_ok": _show3_ok,
-      #"whichStation": _whichStation,
-    })
-
-  s.commit()
-
-  s.close()
-
-  return jsonify({
-    'status': True
-  })
-
-
 @updateTable.route("/updatePermissions", methods=['POST'])
 def update_permissions():
   print("updatePermissions....")
@@ -5055,6 +5194,7 @@ def update_assemble_alarm_message():
         s.close()
 
 
+"""
 @updateTable.route("/updateBomXorReceive", methods=["POST"])
 def update_bom_xor_receive():
     print("updateBomXorReceive....")
@@ -5148,6 +5288,493 @@ def update_bom_xor_receive():
       'status': True,
       'message': "Updated successfully."
     })
+"""
+
+@updateTable.route(
+    "/updateBomXorReceive",
+    methods=["POST"]
+)
+def update_bom_xor_receive():
+
+    print("updateBomXorReceive....")
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    copied_id = data.get(
+        "copied_material_id"
+    )
+
+    print(
+        "copied_id:",
+        copied_id
+    )
+
+    if copied_id is None:
+        return jsonify({
+            "status": False,
+            "message":
+                "missing copied_material_id"
+        }), 400
+
+    try:
+        copied_id = int(
+            copied_id
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid copied_material_id"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ============================================================
+        # 1. 找 copy material
+        # ============================================================
+
+        copied_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == copied_id
+            )
+            .first()
+        )
+
+        if (
+            copied_material is None
+            or not
+            copied_material.is_copied_from_id
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Invalid copied material "
+                    "or missing source ID"
+            }), 400
+
+        print(
+            "copied_material:",
+            copied_material
+        )
+
+        source_id = int(
+            copied_material
+            .is_copied_from_id
+        )
+
+
+        # ============================================================
+        # 2. 找 source / parent material
+        # ============================================================
+
+        source_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == source_id
+            )
+            .first()
+        )
+
+        if source_material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material not found"
+            }), 404
+
+        print(
+            "source_material:",
+            source_material
+        )
+
+
+        order_num = str(
+            source_material.order_num
+            or ""
+        ).strip()
+
+        if not order_num:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material "
+                    "has no order_num"
+            }), 400
+
+
+        # ============================================================
+        # 3. 原有 XOR BOM 同步
+        #
+        # 注意：
+        # 這段只處理 source / copy
+        # 具有相同 seq_num 的 BOM。
+        #
+        # 不可以再用 updated 作為後面
+        # 是否執行併單完成判斷的條件。
+        # ============================================================
+
+        source_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                source_material._bom
+                or []
+            )
+        }
+
+        copied_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                copied_material._bom
+                or []
+            )
+        }
+
+        updated = False
+
+        for (
+            seq_num,
+            source_bom
+        ) in source_boms.items():
+
+            if (
+                seq_num
+                not in copied_boms
+            ):
+                continue
+
+            copied_bom = (
+                copied_boms[
+                    seq_num
+                ]
+            )
+
+            source_receive = bool(
+                source_bom.receive
+            )
+
+            copied_receive = bool(
+                copied_bom.receive
+            )
+
+            xor_result = (
+                int(
+                    source_receive
+                )
+                ^
+                int(
+                    copied_receive
+                )
+            )
+
+            if xor_result == 1:
+
+                # ----------------------------------------------------
+                # copy 與 source 其中一邊已到料，
+                # 將 source BOM 視為已補齊。
+                # ----------------------------------------------------
+
+                source_bom.receive = True
+
+                source_material\
+                    .isLackMaterial = 99
+
+                copied_material\
+                    .isLackMaterial = 0
+
+                updated = True
+
+
+        # ============================================================
+        # 4. 20260827
+        # 整張 order 的即時缺料判斷
+        #
+        # ★ 不可以放在：
+        #
+        #     if updated:
+        #
+        # 裡面。
+        #
+        # 因為 source / copy BOM 可能：
+        #
+        # source:
+        #   seq 3
+        #
+        # copy:
+        #   seq 1, 2
+        #
+        # 完全沒有相同 seq_num，
+        # updated 會是 False，
+        # 但整張訂單其實已經全部到齊。
+        # ============================================================
+
+        # flush XOR 修改，
+        # 讓下面查詢可取得最新 receive 狀態。
+        s.flush()
+
+
+        still_lack = (
+            s.query(
+                Bom.id
+            )
+            .join(
+                Material,
+                Material.id
+                == Bom.material_id
+            )
+            .filter(
+                Material.order_num
+                == order_num
+            )
+            .filter(
+                or_(
+                    Bom.receive
+                    .is_(False),
+
+                    Bom.receive
+                    .is_(None),
+                )
+            )
+            .first()
+        )
+
+
+        order_all_ready = (
+            still_lack is None
+        )
+
+
+        print(
+            "[updateBomXorReceive] "
+            "order status:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "copied_id":
+                    copied_material.id,
+
+                "xor_updated":
+                    updated,
+
+                "order_all_ready":
+                    order_all_ready,
+            }
+        )
+
+
+        # ============================================================
+        # 5. 更新 root 缺料 / 狀態
+        #
+        # 即使 updated=False，
+        # 也必須重新計算。
+        # ============================================================
+
+        refresh_root_shortage_note(
+            s,
+            order_num
+        )
+
+        refresh_root_status(
+            s,
+            order_num
+        )
+
+
+        # ============================================================
+        # 6. 整張併單 BOM 已全部到齊
+        #
+        # source 保留在 Begin。
+        #
+        # copied material 是補料 child，
+        # 完成後從 Material 畫面收掉。
+        # ============================================================
+
+        if order_all_ready:
+
+            # --------------------------------------------------------
+            # source / parent：
+            # 缺料正式解除
+            # --------------------------------------------------------
+
+            source_material\
+                .isLackMaterial = 99
+
+            source_material\
+                .shortage_note = ""
+
+
+            # --------------------------------------------------------
+            # copied / child：
+            # 補料任務完成，不再留在 Material
+            # --------------------------------------------------------
+
+            copied_material\
+                .isLackMaterial = 99
+
+            copied_material\
+                .shortage_note = ""
+
+            copied_material\
+                .isShow = False
+
+            copied_material\
+                .isOpen = False
+
+            copied_material\
+                .isOpenEmpId = ""
+
+            copied_material\
+                .hasStarted = False
+
+            copied_material\
+                .startStatus = 1
+
+            copied_material\
+                .isAssembleStationShow = False
+
+            copied_material\
+                .isAssembleStation1TakeOk = False
+
+            copied_material\
+                .isAssembleStation2TakeOk = False
+
+            copied_material\
+                .isAssembleStation3TakeOk = False
+
+            copied_material\
+                .process_step_enable = 0
+
+
+            print(
+                "[updateBomXorReceive] "
+                "copy closed:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_id":
+                        source_material.id,
+
+                    "copied_id":
+                        copied_material.id,
+                }
+            )
+
+
+        # ============================================================
+        # 7. 還有缺料
+        #
+        # copy 繼續留在 Material，
+        # Begin +工序應維持 disable。
+        # ============================================================
+
+        else:
+
+            print(
+                "[updateBomXorReceive] "
+                "order still shortage:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_id":
+                        source_material.id,
+
+                    "copied_id":
+                        copied_material.id,
+                }
+            )
+
+
+        # ============================================================
+        # 8. commit
+        # ============================================================
+
+        s.commit()
+
+
+        return jsonify({
+            "status": True,
+
+            "message":
+                "Updated successfully.",
+
+            "order_num":
+                order_num,
+
+            "source_material_id":
+                source_material.id,
+
+            "copied_material_id":
+                copied_material.id,
+
+            "xor_updated":
+                updated,
+
+            "order_all_ready":
+                order_all_ready,
+
+            "copy_closed":
+                bool(
+                    order_all_ready
+                ),
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBomXorReceive ERROR:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+
+    finally:
+
+        s.close()
 
 
 @updateTable.route("/updateBomXorReceiveP", methods=["POST"])

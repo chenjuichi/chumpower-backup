@@ -645,6 +645,8 @@ def create_process_p():
         session.close()
 
 
+"""
+# 20260827版
 # 20260813版
 @createTableP.route("/copyAssembleForDifferenceP", methods=['POST'])
 def copy_assemble_for_difference_p():
@@ -656,10 +658,213 @@ def copy_assemble_for_difference_p():
   _must_qty = request_data.get('must_receive_qty')
   _pre_must_qty = request_data.get('pre_must_receive_qty')
 
-  #print("_copy_id, _must_qty", _copy_id, _must_qty)
+  #
+  # ============================================================
+  # 20260827
+  # 以「訂單 + 加工工序」計算真正剩餘量
+  #
+  # 同一 order_num 可能有多個 P_Material，
+  # 但 Excel MEINH 是這張訂單這道工序的總加工需求，
+  # 不可以每一個 material 都重新從 MEINH 開始扣。
+  # ============================================================
 
   return_value = True
   s = Session()
+
+  # ============================================================
+  # 1. 先取得目前實際結束的 P_Assemble
+  # ============================================================
+  source_assemble = (
+      s.query(P_Assemble)
+      .filter(
+          P_Assemble.id == _copy_id
+      )
+      .one_or_none()
+  )
+
+  if source_assemble is None:
+      s.close()
+
+      return jsonify({
+          'status': False,
+          'message':
+              f'找不到 P_Assemble id={_copy_id}',
+          'assemble_data': [],
+          'remaining_qty': 0,
+      }), 404
+
+  # ============================================================
+  # 2. 取得 P_Material
+  # ============================================================
+  material_record = (
+      s.query(P_Material)
+      .filter(
+          P_Material.id ==
+          source_assemble.material_id
+      )
+      .one_or_none()
+  )
+
+  if material_record is None:
+      s.close()
+
+      return jsonify({
+          'status': False,
+          'message':
+              f'找不到 P_Material id='
+              f'{source_assemble.material_id}',
+          'assemble_data': [],
+          'remaining_qty': 0,
+      }), 404
+
+
+  # ============================================================
+  # 3. 再取得訂單 / 工序
+  # ============================================================
+  order_num = str(
+      material_record.order_num or ''
+  ).strip()
+
+  work_num = str(
+      source_assemble.work_num or ''
+  ).strip()
+
+  seq_num = str(
+      source_assemble.seq_num or ''
+  ).strip()
+
+  # ------------------------------------------------------------
+  # 1. 找這張訂單、同一道工序的原始需求量
+  #
+  # 只看 root row：
+  # is_copied_from_id IS NULL
+  #
+  # 多個 material 可能各自都有 181，
+  # 所以不能 SUM，要取 MAX。
+  # ------------------------------------------------------------
+  target_qty = (
+      s.query(
+          func.max(
+              func.coalesce(
+                  P_Assemble.original_must_receive_end_qty,
+                  P_Assemble.must_receive_end_qty,
+                  0
+              )
+          )
+      )
+      .join(
+          P_Material,
+          P_Material.id ==
+          P_Assemble.material_id
+      )
+      .filter(
+          P_Material.order_num == order_num,
+          P_Assemble.work_num == work_num,
+          P_Assemble.is_copied_from_id.is_(None),
+      )
+      .scalar()
+  )
+
+  target_qty = int(
+      target_qty or 0
+  )
+
+  # 舊資料 original_must_receive_end_qty 可能沒有值
+  if target_qty <= 0:
+      target_qty = int(
+          source_assemble
+          .original_must_receive_end_qty
+          or source_assemble
+          .must_receive_end_qty
+          or source_assemble
+          .must_receive_qty
+          or 0
+      )
+
+  # ------------------------------------------------------------
+  # 2. 同訂單 + 同工序，累計真正已完成量
+  #
+  # 只能 SUM completed_qty，
+  # 不可 SUM total_completed_qty，
+  # 因為 total_completed_qty 是累計欄位，
+  # 再加會重複計算。
+  # ------------------------------------------------------------
+  total_completed = (
+      s.query(
+          func.coalesce(
+              func.sum(
+                  P_Assemble.completed_qty
+              ),
+              0
+          )
+      )
+      .join(
+          P_Material,
+          P_Material.id ==
+          P_Assemble.material_id
+      )
+      .filter(
+          P_Material.order_num == order_num,
+          P_Assemble.work_num == work_num,
+      )
+      .scalar()
+  )
+
+  total_completed = int(
+      total_completed or 0
+  )
+
+  # ------------------------------------------------------------
+  # 3. 同訂單同工序累計廢料
+  # ------------------------------------------------------------
+  total_abnormal = (
+      s.query(
+          func.coalesce(
+              func.sum(
+                  P_Assemble.abnormal_qty
+              ),
+              0
+          )
+      )
+      .join(
+          P_Material,
+          P_Material.id ==
+          P_Assemble.material_id
+      )
+      .filter(
+          P_Material.order_num == order_num,
+          P_Assemble.work_num == work_num,
+      )
+      .scalar()
+  )
+
+  total_abnormal = int(
+      total_abnormal or 0
+  )
+
+  # ------------------------------------------------------------
+  # 4. 真正剩餘量
+  # ------------------------------------------------------------
+  remaining_qty = max(
+      target_qty
+      - total_completed
+      - total_abnormal,
+      0
+  )
+
+  print(
+      "[copyAssembleForDifferenceP remaining]",
+      {
+          "order_num": order_num,
+          "work_num": work_num,
+          "target_qty": target_qty,
+          "total_completed": total_completed,
+          "total_abnormal": total_abnormal,
+          "frontend_difference": _must_qty,
+          "remaining_qty": remaining_qty,
+      }
+  )
+  #
 
   # 根據 copy_id 尋找現有的 Material 資料
   #exist = s.query(Assemble).filter_by(id = _copy_id).first()
@@ -727,6 +932,8 @@ def copy_assemble_for_difference_p():
       #Assemble.process_step_code <= source_assemble.process_step_code
   ).all()
   '''
+
+  '''
   k = _copy_id
   h = k + 1
   m = k + 2  # 若之後也要用，可以一起放進 IN
@@ -743,6 +950,33 @@ def copy_assemble_for_difference_p():
      .all()
   )
   print("matching_assembles:",matching_assembles)
+  '''
+  # 20260827版
+  # ------------------------------------------------------------
+  # 部分完成時，只複製目前實際結束的 P_Assemble。
+  #
+  # 不可以用 copy_id + 1 判斷另一道工序，
+  # 因為資料表 id 只是流水號，不能代表工序關係。
+  # ------------------------------------------------------------
+  matching_assembles = [
+      source_assemble
+  ]
+
+  print(
+      "matching_assembles:",
+      [
+          (
+              r.id,
+              r.work_num,
+              r.process_step_code,
+              r.must_receive_qty,
+              r.must_receive_end_qty,
+              r.completed_qty,
+          )
+          for r in matching_assembles
+      ]
+  )
+  #
 
   # 2-1. 先更新這些舊紀錄的 must_receive_end_qty = pre_must_receive_qty
   #      （如果 pre_must_receive_qty 有帶進來）
@@ -761,7 +995,7 @@ def copy_assemble_for_difference_p():
   new_ids = []
   for record in matching_assembles:
     #abnormal_field=False
-    """
+    '''
     if record.work_num == 'B109':
       process_step_code =3
       ok2=3
@@ -778,14 +1012,14 @@ def copy_assemble_for_difference_p():
       # 如果不是這三種工作中心，就略過，不新增
       print("skip record.id =", record.id, "work_num =", record.work_num)
       continue
-    """
+    '''
     #code_to_assembleStep = read_all_p_part_process_code_p()
     #process_step_code = code_to_assembleStep
     process_step_code = record.process_step_code
     ok2 = 0
     ok3 = 0
 
-    """
+    '''
     if record.work_num == 'B109':
         process_step_code = 3
         ok2 = 3
@@ -802,7 +1036,7 @@ def copy_assemble_for_difference_p():
         # 如果不是這三種工作中心，就略過，不新增
         print("skip record.id =", record.id, "work_num =", record.work_num)
         continue
-    """
+    '''
     abnormal_field=False
 
     new_record = P_Assemble(
@@ -863,6 +1097,935 @@ def copy_assemble_for_difference_p():
   return jsonify({
     'assemble_data': new_ids,
   })
+"""
+
+
+# 20260827版
+@createTableP.route(
+    "/copyAssembleForDifferenceP",
+    methods=['POST']
+)
+def copy_assemble_for_difference_p():
+
+    print("copyAssembleForDifferenceP....")
+
+    request_data = (
+        request.get_json(silent=True)
+        or {}
+    )
+
+    # ============================================================
+    # 0. Request
+    # ============================================================
+
+    try:
+        _copy_id = int(
+            request_data.get(
+                'copy_id'
+            )
+            or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        _copy_id = 0
+
+    # ------------------------------------------------------------
+    # 舊前端仍可能傳這些欄位。
+    #
+    # frontend_difference：
+    #   只留作 debug，不再當真正剩餘量。
+    #
+    # pre_must_receive_qty：
+    #   目前前端代表「本次完成數量」。
+    # ------------------------------------------------------------
+
+    _frontend_difference = (
+        request_data.get(
+            'frontend_difference'
+        )
+    )
+
+    # 相容目前舊版前端
+    if _frontend_difference is None:
+        _frontend_difference = (
+            request_data.get(
+                'must_receive_qty'
+            )
+        )
+
+    _pre_must_qty = (
+        request_data.get(
+            'pre_must_receive_qty'
+        )
+    )
+
+    _completed_qty_from_front = (
+        request_data.get(
+            'completed_qty'
+        )
+    )
+
+    _abnormal_qty_from_front = (
+        request_data.get(
+            'abnormal_qty'
+        )
+    )
+
+    if _copy_id <= 0:
+        return jsonify({
+            'status': False,
+            'message':
+                'copy_id 不正確',
+            'assemble_data': [],
+            'remaining_qty': 0,
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ========================================================
+        # 1. 取得目前 P_Assemble
+        # ========================================================
+
+        source_assemble = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.id
+                ==
+                _copy_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if source_assemble is None:
+
+            s.rollback()
+
+            return jsonify({
+                'status': False,
+                'message':
+                    f'找不到 P_Assemble '
+                    f'id={_copy_id}',
+                'assemble_data': [],
+                'remaining_qty': 0,
+            }), 404
+
+        # ========================================================
+        # 2. 取得目前 P_Material
+        # ========================================================
+
+        material_record = (
+            s.query(P_Material)
+            .filter(
+                P_Material.id
+                ==
+                source_assemble.material_id
+            )
+            .one_or_none()
+        )
+
+        if material_record is None:
+
+            s.rollback()
+
+            return jsonify({
+                'status': False,
+                'message':
+                    '找不到 P_Material '
+                    f'id={source_assemble.material_id}',
+                'assemble_data': [],
+                'remaining_qty': 0,
+            }), 404
+
+        order_num = str(
+            material_record.order_num
+            or ''
+        ).strip()
+
+        work_num = str(
+            source_assemble.work_num
+            or ''
+        ).strip()
+
+        seq_num = str(
+            source_assemble.seq_num
+            or ''
+        ).strip()
+
+        # ========================================================
+        # 3. 本次完成量
+        #
+        # 優先：
+        #   completed_qty_from_front
+        #   pre_must_receive_qty
+        #   source.completed_qty
+        #
+        # 只用於：
+        #   將完成的舊 row
+        #   must_receive_end_qty 改成本批實際完成量。
+        #
+        # 真正跨批累計仍以 DB SUM(completed_qty) 為準。
+        # ========================================================
+
+        try:
+            current_completed_qty = int(
+                _completed_qty_from_front
+                if _completed_qty_from_front
+                is not None
+                else (
+                    _pre_must_qty
+                    if _pre_must_qty
+                    is not None
+                    else (
+                        source_assemble
+                        .completed_qty
+                        or 0
+                    )
+                )
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            current_completed_qty = int(
+                source_assemble
+                .completed_qty
+                or 0
+            )
+
+        current_completed_qty = max(
+            current_completed_qty,
+            0
+        )
+
+        # ========================================================
+        # 4. 找這張訂單、同一道工序的 Excel 原始需求量
+        #
+        # 例如：
+        #
+        # 121200006710
+        # B103-01
+        # Excel MEINH = 181
+        #
+        # 同 order_num 可能有多個 P_Material，
+        # 所以不能 SUM 原始需求量。
+        #
+        # 使用 MAX。
+        # ========================================================
+
+        target_qty = (
+            s.query(
+                func.max(
+                    func.coalesce(
+                        P_Assemble
+                        .original_must_receive_end_qty,
+
+                        P_Assemble
+                        .must_receive_end_qty,
+
+                        0
+                    )
+                )
+            )
+            .join(
+                P_Material,
+                P_Material.id
+                ==
+                P_Assemble.material_id
+            )
+            .filter(
+                P_Material.order_num
+                ==
+                order_num,
+
+                P_Assemble.work_num
+                ==
+                work_num,
+
+                P_Assemble.seq_num
+                ==
+                source_assemble.seq_num,
+
+                # 原始 row 優先作為
+                # Excel MEINH 的來源
+                P_Assemble
+                .is_copied_from_id
+                .is_(None),
+            )
+            .scalar()
+        )
+
+        target_qty = int(
+            target_qty
+            or 0
+        )
+
+        # --------------------------------------------------------
+        # 舊資料 fallback
+        # --------------------------------------------------------
+
+        if target_qty <= 0:
+
+            target_qty = int(
+                source_assemble
+                .original_must_receive_end_qty
+                or
+                source_assemble
+                .must_receive_end_qty
+                or
+                source_assemble
+                .must_receive_qty
+                or 0
+            )
+
+        if target_qty <= 0:
+
+            s.rollback()
+
+            return jsonify({
+                'status': False,
+                'message':
+                    f'工單 {order_num} '
+                    f'工序 {work_num} '
+                    '找不到有效應完成數量',
+                'assemble_data': [],
+                'remaining_qty': 0,
+            }), 400
+
+        # ========================================================
+        # 5. 同訂單 + 同工序累計完成數量
+        #
+        # ★ 只能 SUM completed_qty
+        #
+        # 不可 SUM total_completed_qty，
+        # 因為 total_completed_qty 本身就是累計，
+        # 再 SUM 會重複。
+        # ========================================================
+
+        total_completed = (
+            s.query(
+                func.coalesce(
+                    func.sum(
+                        P_Assemble
+                        .completed_qty
+                    ),
+                    0
+                )
+            )
+            .join(
+                P_Material,
+                P_Material.id
+                ==
+                P_Assemble.material_id
+            )
+            .filter(
+                P_Material.order_num
+                ==
+                order_num,
+
+                P_Assemble.work_num
+                ==
+                work_num,
+
+                P_Assemble.seq_num
+                ==
+                source_assemble.seq_num,
+            )
+            .scalar()
+        )
+
+        total_completed = int(
+            total_completed
+            or 0
+        )
+
+        # ========================================================
+        # 6. 同訂單 + 同工序累計廢料
+        # ========================================================
+
+        total_abnormal = (
+            s.query(
+                func.coalesce(
+                    func.sum(
+                        P_Assemble
+                        .abnormal_qty
+                    ),
+                    0
+                )
+            )
+            .join(
+                P_Material,
+                P_Material.id
+                ==
+                P_Assemble.material_id
+            )
+            .filter(
+                P_Material.order_num
+                ==
+                order_num,
+
+                P_Assemble.work_num
+                ==
+                work_num,
+
+                P_Assemble.seq_num
+                ==
+                source_assemble.seq_num,
+            )
+            .scalar()
+        )
+
+        total_abnormal = int(
+            total_abnormal
+            or 0
+        )
+
+        # ========================================================
+        # 7. 真正剩餘數量
+        #
+        # Excel MEINH
+        # - 同訂單同工序累計完成
+        # - 同訂單同工序累計廢料
+        # ========================================================
+
+        remaining_qty = max(
+            target_qty
+            -
+            total_completed
+            -
+            total_abnormal,
+            0
+        )
+
+        print(
+            "[copyAssembleForDifferenceP remaining]",
+            {
+                'copy_id':
+                    _copy_id,
+
+                'material_id':
+                    source_assemble.material_id,
+
+                'order_num':
+                    order_num,
+
+                'work_num':
+                    work_num,
+
+                'seq_num':
+                    seq_num,
+
+                'target_qty':
+                    target_qty,
+
+                'current_completed_qty':
+                    current_completed_qty,
+
+                'total_completed':
+                    total_completed,
+
+                'total_abnormal':
+                    total_abnormal,
+
+                'frontend_difference':
+                    _frontend_difference,
+
+                'remaining_qty':
+                    remaining_qty,
+            }
+        )
+
+        # ========================================================
+        # 8. 已完成的 source row：
+        #
+        # must_receive_end_qty
+        # 改成本批實際完成數量。
+        #
+        # original_must_receive_end_qty
+        # 永遠保留 Excel MEINH。
+        # ========================================================
+
+        if current_completed_qty > 0:
+
+            source_assemble.must_receive_end_qty = (
+                current_completed_qty
+            )
+
+        # 舊資料 original 可能為 0
+        if int(
+            source_assemble
+            .original_must_receive_end_qty
+            or 0
+        ) <= 0:
+
+            source_assemble.original_must_receive_end_qty = (
+                target_qty
+            )
+
+        # ========================================================
+        # 9. 同訂單同工序已全部完成
+        #
+        # ★ 不可以再建立 child P_Assemble
+        # ========================================================
+
+        if remaining_qty <= 0:
+
+            print(
+                "[copyAssembleForDifferenceP]",
+                {
+                    'order_num':
+                        order_num,
+
+                    'work_num':
+                        work_num,
+
+                    'target_qty':
+                        target_qty,
+
+                    'total_completed':
+                        total_completed,
+
+                    'total_abnormal':
+                        total_abnormal,
+
+                    'remaining_qty':
+                        remaining_qty,
+
+                    'action':
+                        'NO COPY',
+                }
+            )
+
+            s.commit()
+
+            return jsonify({
+                'status': True,
+
+                'assemble_data': [],
+
+                'remaining_qty':
+                    0,
+
+                'all_completed':
+                    True,
+
+                'target_qty':
+                    target_qty,
+
+                'total_completed_qty':
+                    total_completed,
+
+                'total_abnormal_qty':
+                    total_abnormal,
+            })
+
+        # ========================================================
+        # 10. 防止重複建立同一剩餘 child
+        #
+        # 使用：
+        # parent id
+        # + 同工序
+        # + completed_qty=0
+        # + 尚未送 Warehouse
+        #
+        # 若前端重複送出，不再建立第二筆。
+        # ========================================================
+
+        existing_child = (
+            s.query(P_Assemble)
+            .filter(
+                P_Assemble.material_id
+                ==
+                source_assemble.material_id,
+
+                P_Assemble.is_copied_from_id
+                ==
+                source_assemble.id,
+
+                P_Assemble.work_num
+                ==
+                source_assemble.work_num,
+
+                P_Assemble.seq_num
+                ==
+                source_assemble.seq_num,
+
+                P_Assemble.process_step_code
+                >
+                0,
+
+                func.coalesce(
+                    P_Assemble.completed_qty,
+                    0
+                )
+                ==
+                0,
+
+                or_(
+                    P_Assemble
+                    .isWarehouseStationShow
+                    .is_(False),
+
+                    P_Assemble
+                    .isWarehouseStationShow
+                    .is_(None),
+                ),
+            )
+            .order_by(
+                P_Assemble.id.desc()
+            )
+            .first()
+        )
+
+        if existing_child is not None:
+
+            # ----------------------------------------------------
+            # 若已存在 child，
+            # 同步成目前最新 remaining_qty。
+            # ----------------------------------------------------
+
+            existing_child.must_receive_qty = (
+                remaining_qty
+            )
+
+            existing_child.must_receive_end_qty = (
+                remaining_qty
+            )
+
+            existing_child.original_must_receive_end_qty = (
+                target_qty
+            )
+
+            existing_child.total_completed_qty = (
+                total_completed
+            )
+
+            existing_child.total_ask_qty_end = (
+                total_completed
+            )
+
+            s.commit()
+
+            print(
+                "[copyAssembleForDifferenceP]",
+                "reuse existing child:",
+                existing_child.id
+            )
+
+            return jsonify({
+                'status': True,
+
+                'assemble_data': [
+                    int(
+                        existing_child.id
+                    )
+                ],
+
+                'remaining_qty':
+                    remaining_qty,
+
+                'all_completed':
+                    False,
+
+                'reused':
+                    True,
+
+                'target_qty':
+                    target_qty,
+
+                'total_completed_qty':
+                    total_completed,
+
+                'total_abnormal_qty':
+                    total_abnormal,
+            })
+
+        # ========================================================
+        # 11. 領取數量
+        #
+        # 畫面上的領取量沿用原始加工單。
+        # ========================================================
+
+        original_ask_qty = max(
+            int(
+                source_assemble.ask_qty
+                or 0
+            ),
+
+            int(
+                source_assemble.total_ask_qty
+                or 0
+            ),
+
+            int(
+                getattr(
+                    material_record,
+                    'material_qty',
+                    0
+                )
+                or 0
+            ),
+        )
+
+        # ========================================================
+        # 12. 只複製目前這一筆
+        #
+        # ★ 不可以再使用：
+        #
+        # copy_id + 1
+        #
+        # DB id 是流水號，
+        # 不代表下一道工序。
+        # ========================================================
+
+        record = source_assemble
+
+        process_step_code = int(
+            record.process_step_code
+            or 0
+        )
+
+        # --------------------------------------------------------
+        # 如果前面已經有人先把 source step 改成 0，
+        # 可從 P_Part 重新取得加工 step。
+        # --------------------------------------------------------
+
+        if process_step_code <= 0:
+
+            part_record = (
+                s.query(P_Part)
+                .filter(
+                    P_Part.part_code
+                    ==
+                    record.work_num
+                )
+                .first()
+            )
+
+            if part_record is not None:
+
+                process_step_code = int(
+                    part_record
+                    .process_step_code
+                    or 0
+                )
+
+        if process_step_code <= 0:
+
+            s.rollback()
+
+            return jsonify({
+                'status': False,
+                'message':
+                    f'工序 {work_num} '
+                    '找不到有效 process_step_code',
+                'assemble_data': [],
+                'remaining_qty':
+                    remaining_qty,
+            }), 400
+
+        # ========================================================
+        # 13. 建立真正剩餘 row
+        # ========================================================
+
+        new_record = P_Assemble(
+
+            material_id=
+                record.material_id,
+
+            material_num=
+                record.material_num,
+
+            material_comment=
+                record.material_comment,
+
+            seq_num=
+                record.seq_num,
+
+            work_num=
+                record.work_num,
+
+            process_step_code=
+                process_step_code,
+
+            # ----------------------------------------------------
+            # ★ 真正剩餘數量
+            # ----------------------------------------------------
+
+            must_receive_qty=
+                remaining_qty,
+
+            must_receive_end_qty=
+                remaining_qty,
+
+            # Excel 原始工序 MEINH
+            original_must_receive_end_qty=
+                target_qty,
+
+            input_disable=
+                False,
+
+            input_end_disable=
+                False,
+
+            input_abnormal_disable=
+                False,
+
+            completed_qty=
+                0,
+
+            # ----------------------------------------------------
+            # ★ 正式跨批累計完成量
+            # ----------------------------------------------------
+
+            total_completed_qty=
+                total_completed,
+
+            total_ask_qty_end=
+                total_completed,
+
+            # ----------------------------------------------------
+            # 領取數量維持原工單
+            # ----------------------------------------------------
+
+            ask_qty=
+                original_ask_qty,
+
+            total_ask_qty=
+                original_ask_qty,
+
+            update_time=
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+
+            is_copied_from_id=
+                record.id,
+
+            show2_ok=
+                0,
+
+            show3_ok=
+                0,
+
+            isShowBomGif=
+                record.isShowBomGif,
+
+            # ----------------------------------------------------
+            # ★ 必須沿用來源工序
+            #
+            # 如果來源 B103-01 是最後需入庫工序，
+            # 剩餘 child 做完也必須可送 Warehouse。
+            # ----------------------------------------------------
+
+            isStockIn=
+                record.isStockIn,
+
+            isSimultaneously=
+                record.isSimultaneously,
+        )
+
+        s.add(
+            new_record
+        )
+
+        s.flush()
+
+        new_id = int(
+            new_record.id
+        )
+
+        print(
+            "[copyAssembleForDifferenceP]",
+            {
+                'new_id':
+                    new_id,
+
+                'parent_id':
+                    record.id,
+
+                'remaining_qty':
+                    remaining_qty,
+
+                'target_qty':
+                    target_qty,
+
+                'total_completed':
+                    total_completed,
+
+                'isStockIn':
+                    bool(
+                        new_record.isStockIn
+                    ),
+            }
+        )
+
+        s.commit()
+
+        # ========================================================
+        # 14. Return
+        # ========================================================
+
+        return jsonify({
+            'status': True,
+
+            'assemble_data': [
+                new_id
+            ],
+
+            'remaining_qty':
+                remaining_qty,
+
+            'all_completed':
+                False,
+
+            'reused':
+                False,
+
+            'target_qty':
+                target_qty,
+
+            'total_completed_qty':
+                total_completed,
+
+            'total_abnormal_qty':
+                total_abnormal,
+        })
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "copyAssembleForDifferenceP Error:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            'status': False,
+
+            'message':
+                str(e),
+
+            'assemble_data':
+                [],
+
+            'remaining_qty':
+                0,
+        }), 500
+
+    finally:
+
+        s.close()
+    #
 
 
 @createTableP.route("/copyNewAssembleP", methods=['POST'])

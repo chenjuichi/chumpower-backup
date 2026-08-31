@@ -1344,6 +1344,7 @@ def move_assemble_to_warehouse(
 # ------------------------------------------------------------------
 
 
+"""
 def get_next_release_batch_no_batch(session, material_id):
     max_no = (
         session.query(func.coalesce(func.max(Assemble.release_batch_no), 0))
@@ -1353,8 +1354,76 @@ def get_next_release_batch_no_batch(session, material_id):
     ) or 0
 
     return int(max_no) + 1
+"""
 
 
+# 20260830版
+def get_next_release_batch_no_batch(
+    session,
+    material_id
+):
+
+    max_no = (
+        session.query(
+            func.coalesce(
+                func.max(
+                    Assemble.release_batch_no
+                ),
+                0
+            )
+        )
+
+        .filter(
+            Assemble.material_id
+            == material_id
+        )
+
+        .filter(
+            Assemble.work_num
+            == 'B110'
+        )
+
+        # 只計真正由 B109 釋放出來的 B110 batch
+        .filter(
+            Assemble.reason
+            == 'B109_RELEASE_BATCH'
+        )
+
+        .filter(
+            Assemble.release_batch_no
+            > 0
+        )
+
+        .scalar()
+    ) or 0
+
+
+    next_no = int(
+        max_no
+    ) + 1
+
+
+    print(
+        "[NEXT B110 RELEASE BATCH]",
+        {
+            "material_id":
+                material_id,
+
+            "max_no":
+                int(
+                    max_no or 0
+                ),
+
+            "next_no":
+                next_no,
+        }
+    )
+
+
+    return next_no
+
+
+"""
 def calc_b109_releasable_qty_batch(session, material_id):
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
@@ -1496,8 +1565,536 @@ def calc_b109_releasable_qty_batch(session, material_id):
         "release_qty": release_qty,
         "message": "ok",
     }
+"""
 
 
+# 20260830版
+def calc_b109_releasable_qty_batch(session, material_id):
+
+    # ============================================================
+    # B109 -> B110 可釋放數量計算
+    #
+    # 核心規則：
+    #
+    #   可釋放累計量
+    #       =
+    #   所有正常 B109 工序中，
+    #   最小的累計完成量
+    #
+    #   本次 release_qty
+    #       =
+    #   min_done_qty
+    #       -
+    #   已建立的 B109_RELEASE_BATCH 累計量
+    #
+    #
+    # 例如：
+    #
+    #   a1 完成 28
+    #   a2 完成 28
+    #
+    #   min_done_qty = 28
+    #
+    # 第一次：
+    #   released_total = 0
+    #   release_qty = 28
+    #
+    # 第二次 API 又進來：
+    #   released_total = 28
+    #   release_qty = 0
+    #
+    # → 不可再建立第二個 28
+    # ============================================================
+
+
+    # ------------------------------------------------------------
+    # 1. Material
+    # ------------------------------------------------------------
+
+    material = (
+        session.query(Material)
+        .filter(
+            Material.id == material_id
+        )
+        .first()
+    )
+
+    if not material:
+
+        return {
+            "ok": False,
+            "release_qty": 0,
+            "min_done_qty": 0,
+            "released_total": 0,
+            "message": "material not found",
+        }
+
+
+    # ------------------------------------------------------------
+    # 2. 取得有勾選的正常 B109 組裝工序
+    # ------------------------------------------------------------
+
+    process_steps = (
+        material.process_steps
+        or default_process_steps()
+    )
+
+
+    assemble_step_ids = [
+
+        int(
+            x.get("id")
+        )
+
+        for x
+        in (
+            process_steps.get(
+                "assemble"
+            )
+            or []
+        )
+
+        if (
+            x.get("checked")
+            and
+            not x.get(
+                "deleted",
+                False
+            )
+            and
+            x.get("id")
+            is not None
+        )
+    ]
+
+
+    if not assemble_step_ids:
+
+        return {
+            "ok": False,
+            "release_qty": 0,
+            "min_done_qty": 0,
+            "released_total": 0,
+            "message": "no B109 assemble steps",
+        }
+
+
+    # ============================================================
+    # 3. 計算每一個 B109 schedule 的真正累計完成量
+    # ============================================================
+
+    done_qty_list = []
+
+
+    for sid in assemble_step_ids:
+
+        # --------------------------------------------------------
+        # 只抓正常 B109 工序
+        #
+        # 不可把這些衍生 row 再算進完成量：
+        #
+        #   異常返工
+        #   B109_DIRECT_WAIT_SEND
+        #   B109_DONE_COPY
+        #
+        # 否則：
+        #
+        #   原始 B109 = 28
+        #   DONE_COPY = 28
+        #
+        # 會錯算成 56。
+        # --------------------------------------------------------
+
+        rows = (
+            session.query(Assemble)
+
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+
+            .filter(
+                Assemble.work_num
+                == 'B109'
+            )
+
+            .filter(
+                Assemble.schedule_id
+                == sid
+            )
+
+            .filter(
+                or_(
+                    Assemble.reason.is_(None),
+
+                    ~Assemble.reason.in_(
+                        [
+                            '異常返工',
+                            'B109_DIRECT_WAIT_SEND',
+                            'B109_DONE_COPY',
+                        ]
+                    )
+                )
+            )
+
+            .order_by(
+                Assemble.id.asc()
+            )
+
+            .all()
+        )
+
+
+        if not rows:
+
+            done_qty_list.append(
+                0
+            )
+
+            continue
+
+
+        # --------------------------------------------------------
+        # 同一個 schedule_id 正常情況通常只有一個原始 row。
+        #
+        # 若舊資料真的存在多個正常 row，
+        # 這裡仍可逐 row 加總它們自己的 Process 完成量。
+        # --------------------------------------------------------
+
+        total_done = 0
+
+
+        for r in rows:
+
+            # ----------------------------------------------------
+            # 優先以已結束的 Process(type=21) 實際完成數量為準
+            #
+            # 注意：
+            # 不再限定 has_started=True。
+            #
+            # FULL END 後程式會：
+            #
+            #   has_started = False
+            #
+            # 所以如果保留：
+            #
+            #   Process.has_started.is_(True)
+            #
+            # 已完成 Process 反而會查不到。
+            # ----------------------------------------------------
+
+            process_done = (
+                session.query(
+                    func.coalesce(
+                        func.sum(
+                            Process.process_work_time_qty
+                        ),
+                        0
+                    )
+                )
+
+                .filter(
+                    Process.material_id
+                    == material_id
+                )
+
+                .filter(
+                    Process.assemble_id
+                    == r.id
+                )
+
+                .filter(
+                    Process.process_type
+                    == 21
+                )
+
+                .filter(
+                    Process.end_time.isnot(
+                        None
+                    )
+                )
+
+                .filter(
+                    Process.end_time
+                    != ''
+                )
+
+                .scalar()
+            ) or 0
+
+
+            # ----------------------------------------------------
+            # 取這一個 B109 row 真正累計完成量
+            #
+            # 不可以：
+            #
+            # completed_qty + total_completed_qty
+            #
+            # 因為 total_completed_qty 通常已經包含歷史完成量。
+            # ----------------------------------------------------
+
+            row_done = max(
+
+                int(
+                    process_done or 0
+                ),
+
+                int(
+                    r.total_completed_qty
+                    or 0
+                ),
+
+                int(
+                    r.allOk_qty
+                    or 0
+                ),
+
+                int(
+                    r.completed_qty
+                    or 0
+                ),
+
+                0
+            )
+
+
+            total_done += (
+                row_done
+            )
+
+
+        done_qty_list.append(
+            total_done
+        )
+
+
+    # ============================================================
+    # 4. B109 可以共同往 B110 釋放到哪裡
+    #
+    # 例如：
+    #
+    # a1 = 28
+    # a2 = 28
+    #
+    # → 28
+    #
+    # a1 = 28
+    # a2 = 20
+    #
+    # → 20
+    # ============================================================
+
+    min_done_qty = (
+        min(
+            done_qty_list
+        )
+        if done_qty_list
+        else 0
+    )
+
+
+    # ============================================================
+    # 5. 計算已經釋放到 B110 的數量
+    #
+    # 非常重要：
+    #
+    # 每一個 release_batch_no
+    # 只能算一次。
+    #
+    #
+    # 例如：
+    #
+    # batch 1：
+    #
+    #   b1 = 28
+    #   b2 = 28
+    #
+    # 是代表：
+    #
+    #   已釋放 28
+    #
+    # 不是：
+    #
+    #   28 + 28 = 56
+    # ============================================================
+
+    released_batches = (
+        session.query(
+
+            Assemble.release_batch_no,
+
+            func.max(
+                func.coalesce(
+                    Assemble.ask_qty,
+                    0
+                )
+            ).label(
+                "batch_qty"
+            )
+        )
+
+        .filter(
+            Assemble.material_id
+            == material_id
+        )
+
+        .filter(
+            Assemble.work_num
+            == 'B110'
+        )
+
+        .filter(
+            Assemble.reason
+            == 'B109_RELEASE_BATCH'
+        )
+
+        # --------------------------------------------------------
+        # release batch 必須是真正建立出來的 batch
+        # --------------------------------------------------------
+
+        .filter(
+            Assemble.release_batch_no
+            > 0
+        )
+
+        .filter(
+            Assemble.schedule_id.isnot(
+                None
+            )
+        )
+
+        .filter(
+            Assemble.schedule_id
+            > 0
+        )
+
+        .filter(
+            Assemble.ask_qty
+            > 0
+        )
+
+        .group_by(
+            Assemble.release_batch_no
+        )
+
+        .order_by(
+            Assemble.release_batch_no.asc()
+        )
+
+        .all()
+    )
+
+
+    released_total = 0
+
+
+    for (
+        batch_no,
+        qty
+    ) in released_batches:
+
+        released_total += int(
+            qty or 0
+        )
+
+
+    # ============================================================
+    # 6. 本次真正可以再釋放多少
+    # ============================================================
+
+    release_qty = max(
+
+        int(
+            min_done_qty or 0
+        )
+        -
+        int(
+            released_total or 0
+        ),
+
+        0
+    )
+
+
+    # ============================================================
+    # DEBUG
+    # ============================================================
+
+    print(
+        "[CALC B109 RELEASE]",
+        {
+            "material_id":
+                material_id,
+
+            "assemble_step_ids":
+                assemble_step_ids,
+
+            "done_qty_list":
+                done_qty_list,
+
+            "min_done_qty":
+                min_done_qty,
+
+            "released_batches":
+                [
+                    {
+                        "batch_no":
+                            int(
+                                batch_no or 0
+                            ),
+
+                        "qty":
+                            int(
+                                qty or 0
+                            ),
+                    }
+
+                    for (
+                        batch_no,
+                        qty
+                    )
+                    in released_batches
+                ],
+
+            "released_total":
+                released_total,
+
+            "release_qty":
+                release_qty,
+        }
+    )
+
+
+    # ============================================================
+    # 7. return
+    # ============================================================
+
+    return {
+
+        "ok":
+            True,
+
+        "min_done_qty":
+            int(
+                min_done_qty or 0
+            ),
+
+        "released_total":
+            int(
+                released_total or 0
+            ),
+
+        "release_qty":
+            int(
+                release_qty or 0
+            ),
+
+        "message":
+            "ok",
+    }
+
+
+"""
 def create_b110_batch_rows_batch(session, material_id, release_qty):
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
@@ -1624,8 +2221,626 @@ def create_b110_batch_rows_batch(session, material_id, release_qty):
         created_ids.append(row.id)
 
     return created_ids
+"""
 
 
+# 20260830版
+def create_b110_batch_rows_batch(
+    session,
+    material_id,
+    release_qty
+):
+
+    # ============================================================
+    # B109 -> B110 建立新 release batch
+    #
+    # 規則：
+    #
+    # 1. release_qty 必須 > 0
+    #
+    # 2. 只關閉原始 B110 template：
+    #       release_batch_no = 0
+    #
+    #    不可誤關：
+    #       B109_RELEASE_BATCH
+    #       B110_DONE_COPY
+    #       異常返工
+    #
+    # 3. 同一次 release：
+    #       b1 / b2 / b3
+    #    必須使用同一個 release_batch_no
+    #
+    # 4. 每個 checked B110 schedule_id
+    #    只建立一筆。
+    #
+    # 5. 此函式本身再次鎖 Material，
+    #    防止未來被其他 API 直接呼叫時產生重複 batch_no。
+    # ============================================================
+
+    release_qty = int(
+        release_qty or 0
+    )
+
+    if release_qty <= 0:
+
+        print(
+            "[CREATE B110 BATCH] "
+            "release_qty <= 0",
+            {
+                "material_id":
+                    material_id,
+
+                "release_qty":
+                    release_qty,
+            }
+        )
+
+        return []
+
+
+    # ------------------------------------------------------------
+    # 1. 鎖 Material
+    # ------------------------------------------------------------
+
+    material = (
+        session.query(Material)
+        .filter(
+            Material.id == material_id
+        )
+        .with_for_update()
+        .first()
+    )
+
+
+    if not material:
+
+        return []
+
+
+    # ------------------------------------------------------------
+    # 2. 取得有勾選的 B110 檢驗工序
+    # ------------------------------------------------------------
+
+    process_steps = (
+        material.process_steps
+        or default_process_steps()
+    )
+
+
+    check_step_ids = [
+
+        int(
+            x.get("id")
+        )
+
+        for x
+        in (
+            process_steps.get("check")
+            or []
+        )
+
+        if (
+            x.get("checked")
+            and
+            not x.get(
+                "deleted",
+                False
+            )
+            and
+            x.get("id")
+            is not None
+        )
+    ]
+
+
+    # 去除重複 schedule_id
+    check_step_ids = list(
+        dict.fromkeys(
+            check_step_ids
+        )
+    )
+
+
+    if not check_step_ids:
+
+        return []
+
+
+    # ------------------------------------------------------------
+    # 3. 找原始 B110 template
+    #
+    # 優先：
+    #   work_num = B110
+    #   release_batch_no = 0
+    #   非異常返工
+    #
+    # 不要抓已經 release 出來的 B110 當 template。
+    # ------------------------------------------------------------
+
+    template = (
+        session.query(Assemble)
+
+        .filter(
+            Assemble.material_id
+            == material_id
+        )
+
+        .filter(
+            Assemble.work_num
+            == 'B110'
+        )
+
+        .filter(
+            func.coalesce(
+                Assemble.release_batch_no,
+                0
+            ) == 0
+        )
+
+        .filter(
+            or_(
+                Assemble.reason.is_(None),
+                Assemble.reason == ''
+            )
+        )
+
+        .order_by(
+            Assemble.id.asc()
+        )
+
+        .first()
+    )
+
+
+    # ------------------------------------------------------------
+    # 舊資料防呆：
+    # 若找不到正常 B110 template，
+    # 才退回找最早一筆 B110。
+    # ------------------------------------------------------------
+
+    if not template:
+
+        template = (
+            session.query(Assemble)
+
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+
+            .filter(
+                Assemble.work_num
+                == 'B110'
+            )
+
+            .filter(
+                Assemble.reason
+                != '異常返工'
+            )
+
+            .order_by(
+                Assemble.id.asc()
+            )
+
+            .first()
+        )
+
+
+    # ------------------------------------------------------------
+    # 再找不到，最後才使用最早 Assemble
+    # ------------------------------------------------------------
+
+    if not template:
+
+        template = (
+            session.query(Assemble)
+
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+
+            .order_by(
+                Assemble.id.asc()
+            )
+
+            .first()
+        )
+
+
+    if not template:
+
+        return []
+
+
+    # ============================================================
+    # 4. 關閉「原始正常 B110 template」
+    #
+    # 非常重要：
+    #
+    # 只處理：
+    #   release_batch_no = 0
+    #   reason NULL / ''
+    #
+    # 不可使用：
+    #
+    #   reason != 'B109_RELEASE_BATCH'
+    #
+    # 因為那會把：
+    #   異常返工
+    #   B110_DONE_COPY
+    #
+    # 也一起關掉。
+    # ============================================================
+
+    old_b110_rows = (
+        session.query(Assemble)
+
+        .filter(
+            Assemble.material_id
+            == material_id
+        )
+
+        .filter(
+            Assemble.work_num
+            == 'B110'
+        )
+
+        .filter(
+            func.coalesce(
+                Assemble.release_batch_no,
+                0
+            ) == 0
+        )
+
+        .filter(
+            or_(
+                Assemble.reason.is_(None),
+                Assemble.reason == ''
+            )
+        )
+
+        .with_for_update()
+
+        .all()
+    )
+
+
+    for r in old_b110_rows:
+
+        r.process_step_code = 0
+
+        r.isAssembleStationShow = False
+        r.isWarehouseStationShow = False
+
+        r.input_disable = True
+        r.input_end_disable = True
+        r.input_abnormal_disable = True
+        r.input_allOk_disable = True
+
+        r.currentStartTime = None
+        r.currentEndTime = None
+
+        r.show1_ok = 1
+        r.show2_ok = 7
+        r.show3_ok = 7
+
+
+    # ============================================================
+    # 5. 產生新的 release_batch_no
+    #
+    # Material 已經 with_for_update，
+    # 所以同一 material 的 transaction
+    # 不會同時取得相同 next batch_no。
+    # ============================================================
+
+    batch_no = (
+        get_next_release_batch_no_batch(
+            session,
+            material_id
+        )
+    )
+
+
+    batch_no = int(
+        batch_no or 0
+    )
+
+
+    if batch_no <= 0:
+
+        print(
+            "[CREATE B110 BATCH] "
+            "invalid batch_no",
+            {
+                "material_id":
+                    material_id,
+
+                "batch_no":
+                    batch_no,
+            }
+        )
+
+        return []
+
+
+    # ============================================================
+    # 6. 最後一道 batch 內防重複
+    #
+    # 理論上新 batch_no 尚不存在。
+    #
+    # 但若舊資料／異常 transaction 已經有相同 batch_no +
+    # schedule_id，就不要再次建立。
+    # ============================================================
+
+    existing_rows = (
+        session.query(Assemble)
+
+        .filter(
+            Assemble.material_id
+            == material_id
+        )
+
+        .filter(
+            Assemble.work_num
+            == 'B110'
+        )
+
+        .filter(
+            Assemble.reason
+            == 'B109_RELEASE_BATCH'
+        )
+
+        .filter(
+            Assemble.release_batch_no
+            == batch_no
+        )
+
+        .all()
+    )
+
+
+    existing_schedule_ids = {
+        int(
+            r.schedule_id or 0
+        )
+        for r in existing_rows
+    }
+
+
+    # ============================================================
+    # 7. 建立 b1 / b2 / b3
+    # ============================================================
+
+    created_ids = []
+
+
+    for sid in check_step_ids:
+
+        # --------------------------------------------------------
+        # 同一 batch + schedule_id 不可重複
+        # --------------------------------------------------------
+
+        if sid in existing_schedule_ids:
+
+            print(
+                "[CREATE B110 BATCH] "
+                "skip duplicated schedule",
+                {
+                    "material_id":
+                        material_id,
+
+                    "batch_no":
+                        batch_no,
+
+                    "schedule_id":
+                        sid,
+                }
+            )
+
+            continue
+
+
+        row = Assemble(
+
+            material_id=
+                material.id,
+
+            material_num=
+                material.material_num,
+
+            material_comment=
+                material.material_comment,
+
+
+            # ----------------------------------------------------
+            # 目前實際工序識別主要使用 schedule_id。
+            # seq_num 保留 template 原值。
+            # ----------------------------------------------------
+
+            seq_num=(
+                getattr(
+                    template,
+                    'seq_num',
+                    10
+                )
+                if template
+                else 10
+            ),
+
+
+            work_num='B110',
+
+            process_step_code=2,
+
+
+            # ----------------------------------------------------
+            # 此 batch 應完成數量
+            # ----------------------------------------------------
+
+            must_receive_qty=
+                release_qty,
+
+            ask_qty=
+                release_qty,
+
+            total_ask_qty=
+                release_qty,
+
+            total_ask_qty_end=0,
+
+            must_receive_end_qty=
+                release_qty,
+
+
+            abnormal_qty=0,
+
+
+            user_id=(
+                getattr(
+                    template,
+                    'user_id',
+                    ''
+                )
+                if template
+                else ''
+            ),
+
+            writer_id=(
+                getattr(
+                    template,
+                    'writer_id',
+                    None
+                )
+                if template
+                else None
+            ),
+
+            write_date=(
+                getattr(
+                    template,
+                    'write_date',
+                    None
+                )
+                if template
+                else None
+            ),
+
+
+            good_qty=0,
+            total_good_qty=0,
+
+            non_good_qty=0,
+            meinh_qty=0,
+
+
+            completed_qty=0,
+            total_completed_qty=0,
+            allOk_qty=0,
+
+
+            reason=
+                'B109_RELEASE_BATCH',
+
+            confirm_comment='',
+
+            is_assemble_ok=0,
+
+
+            currentStartTime=None,
+            currentEndTime=None,
+
+
+            input_disable=False,
+            input_end_disable=False,
+
+            input_allOk_disable=True,
+
+            input_abnormal_disable=False,
+
+
+            isAssembleStationShow=True,
+
+            isWarehouseStationShow=False,
+
+
+            alarm_enable=True,
+            alarm_message='',
+
+
+            isAssembleFirstAlarm=True,
+
+            isAssembleFirstAlarm_message='',
+
+            isAssembleFirstAlarm_qty=0,
+
+
+            whichStation=2,
+
+            show1_ok=1,
+            show2_ok=5,
+            show3_ok=5,
+
+
+            schedule_id=sid,
+
+
+            # release batch 本身不是異常 copy，
+            # 目前維持 None。
+            is_copied_from_id=None,
+
+
+            release_batch_no=
+                batch_no,
+        )
+
+
+        session.add(
+            row
+        )
+
+        session.flush()
+
+
+        created_ids.append(
+            row.id
+        )
+
+
+        existing_schedule_ids.add(
+            sid
+        )
+
+
+    # ============================================================
+    # DEBUG
+    # ============================================================
+
+    print(
+        "[CREATE B110 RELEASE BATCH]",
+        {
+            "material_id":
+                material_id,
+
+            "release_qty":
+                release_qty,
+
+            "batch_no":
+                batch_no,
+
+            "check_step_ids":
+                check_step_ids,
+
+            "created_ids":
+                created_ids,
+        }
+    )
+
+
+    return created_ids
+
+
+"""
 def release_b109_to_b110_batch(session, material_id):
     calc = calc_b109_releasable_qty_batch(session, material_id)
 
@@ -1663,6 +2878,352 @@ def release_b109_to_b110_batch(session, material_id):
         "released_total": calc.get("released_total", 0),
         "message": "B109 released new B110 batch",
     }
+"""
+
+
+# 20260830版
+def release_b109_to_b110_batch(session, material_id):
+
+    # ============================================================
+    # 20260830
+    # B109 -> B110 增量釋放
+    #
+    # 防止：
+    #
+    #   B109 已完成 28
+    #
+    #   第一次：
+    #       released_total = 0
+    #       release_qty    = 28
+    #       → 建立 batch 1
+    #
+    #   第二次 API 又進來：
+    #       DB 已經有 batch 1 = 28
+    #       min_done_qty   = 28
+    #
+    #       28 - 28 = 0
+    #
+    #       → 不得再建立 batch 2
+    #
+    # 注意：
+    # 一個 release_batch_no 可能有 b1 / b2 / b3 多筆 B110，
+    # 所以不能直接 SUM(B110.must_receive_qty)，
+    # 否則：
+    #
+    #   batch 1 qty=28
+    #   b1=28
+    #   b2=28
+    #
+    # 會錯算成 56。
+    #
+    # 必須：
+    #   每個 release_batch_no 只計一次 qty，
+    #   再把各 batch 加總。
+    # ============================================================
+
+    try:
+
+        # ------------------------------------------------------------
+        # 1. 鎖 Material
+        #
+        # 即使外層 updateAssembleProcessStep() 已經鎖過，
+        # 這裡仍保留防呆。
+        #
+        # 若未來其他 API 直接呼叫此 helper，
+        # 也能避免同一 material 同時 release。
+        # ------------------------------------------------------------
+
+        material_record = (
+            session.query(Material)
+            .filter(
+                Material.id == material_id
+            )
+            .with_for_update()
+            .first()
+        )
+
+        if not material_record:
+
+            return {
+                "released": False,
+                "release_qty": 0,
+                "created_ids": [],
+                "min_done_qty": 0,
+                "released_total": 0,
+                "message": (
+                    f"material_id={material_id} not found"
+                ),
+            }
+
+
+        # ------------------------------------------------------------
+        # 2. 計算目前 B109 可以釋放到哪裡
+        # ------------------------------------------------------------
+
+        calc = calc_b109_releasable_qty_batch(
+            session,
+            material_id
+        )
+
+
+        if not calc.get("ok"):
+
+            return {
+                "released": False,
+                "release_qty": 0,
+                "created_ids": [],
+                "min_done_qty":
+                    int(
+                        calc.get(
+                            "min_done_qty",
+                            0
+                        ) or 0
+                    ),
+                "released_total":
+                    int(
+                        calc.get(
+                            "released_total",
+                            0
+                        ) or 0
+                    ),
+                "message":
+                    calc.get(
+                        "message",
+                        ""
+                    ),
+            }
+
+
+        # ------------------------------------------------------------
+        # 3. B109 目前真正可釋放累計量
+        #
+        # 例如：
+        #   a1 = 28
+        #
+        # min_done_qty = 28
+        # ------------------------------------------------------------
+
+        min_done_qty = int(
+            calc.get(
+                "min_done_qty",
+                0
+            ) or 0
+        )
+
+
+        # ============================================================
+        # 4. 重新從 DB 計算「已經釋放多少」
+        #
+        # 不完全相信 calc.released_total。
+        #
+        # reason = B109_RELEASE_BATCH
+        #
+        # 每一個 release_batch_no 只取一次 qty。
+        # ============================================================
+
+        released_batch_rows = (
+            session.query(
+                Assemble.release_batch_no,
+
+                func.max(
+                    func.coalesce(
+                        Assemble.must_receive_qty,
+                        0
+                    )
+                ).label(
+                    "batch_qty"
+                )
+            )
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+            .filter(
+                Assemble.work_num
+                == "B110"
+            )
+            .filter(
+                Assemble.reason
+                == "B109_RELEASE_BATCH"
+            )
+            .filter(
+                Assemble.release_batch_no
+                > 0
+            )
+            .group_by(
+                Assemble.release_batch_no
+            )
+            .all()
+        )
+
+
+        released_total = 0
+
+
+        for (
+            batch_no,
+            batch_qty
+        ) in released_batch_rows:
+
+            released_total += int(
+                batch_qty or 0
+            )
+
+
+        # ============================================================
+        # 5. 真正本次增量
+        #
+        # 本次 release =
+        #
+        #   B109 可釋放累計
+        #       -
+        #   B110 已釋放累計
+        # ============================================================
+
+        release_qty = max(
+            min_done_qty
+            - released_total,
+            0
+        )
+
+
+        print(
+            "[B109 -> B110 RELEASE CHECK]",
+            {
+                "material_id":
+                    material_id,
+
+                "calc_release_qty":
+                    int(
+                        calc.get(
+                            "release_qty",
+                            0
+                        ) or 0
+                    ),
+
+                "min_done_qty":
+                    min_done_qty,
+
+                "db_released_total":
+                    released_total,
+
+                "real_release_qty":
+                    release_qty,
+
+                "existing_batches":
+                    [
+                        {
+                            "batch_no":
+                                int(
+                                    batch_no or 0
+                                ),
+
+                            "qty":
+                                int(
+                                    batch_qty or 0
+                                ),
+                        }
+                        for (
+                            batch_no,
+                            batch_qty
+                        )
+                        in released_batch_rows
+                    ],
+            }
+        )
+
+
+        # ============================================================
+        # 6. 沒有新的數量可以釋放
+        #
+        # 很重要：
+        #
+        # 第二次 API 若又進來，
+        #
+        #   min_done_qty  = 28
+        #   released_total = 28
+        #
+        # → release_qty = 0
+        #
+        # 直接 return，
+        # 不建立第二個 batch。
+        # ============================================================
+
+        if release_qty <= 0:
+
+            return {
+                "released": False,
+                "release_qty": 0,
+                "created_ids": [],
+                "min_done_qty":
+                    min_done_qty,
+                "released_total":
+                    released_total,
+                "message":
+                    "no new B110 batch to release",
+            }
+
+
+        # ============================================================
+        # 7. 建立新的 B110 batch
+        # ============================================================
+
+        created_ids = (
+            create_b110_batch_rows_batch(
+                session=session,
+                material_id=material_id,
+                release_qty=release_qty,
+            )
+        )
+
+
+        # ------------------------------------------------------------
+        # create helper 防呆
+        # ------------------------------------------------------------
+
+        if not created_ids:
+
+            return {
+                "released": False,
+                "release_qty": 0,
+                "created_ids": [],
+                "min_done_qty":
+                    min_done_qty,
+                "released_total":
+                    released_total,
+                "message":
+                    "B110 batch row was not created",
+            }
+
+
+        # ============================================================
+        # 8. 成功
+        # ============================================================
+
+        return {
+            "released": True,
+            "release_qty":
+                release_qty,
+            "created_ids":
+                created_ids,
+            "min_done_qty":
+                min_done_qty,
+            "released_total":
+                released_total
+                + release_qty,
+            "message":
+                "B109 released new B110 batch",
+        }
+
+
+    except Exception as e:
+
+        print(
+            "release_b109_to_b110_batch ERROR:",
+            repr(e)
+        )
+
+        raise
 
 
 def pick_user_list(bucket, pt: str, mid: str):

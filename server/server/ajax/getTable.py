@@ -41,20 +41,21 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 
 # ------------------------------------------------------------------
 
+
+
 # 20260818版 add
 def is_material_end_finished(
     s,
     material_id
 ):
-    """
-    判斷一個缺料分批 material 是否已完成 End，
-    並正式進入 waiting_send。
 
-    注意：
-    不是只看 B109 completed_qty。
-    也不是只看 material.whichStation。
-    必須真的存在完成的 B110 waiting_send。
-    """
+    # 判斷一個缺料分批 material 是否已完成 End，
+    # 並正式進入 waiting_send。
+    #
+    # 注意：
+    # 不是只看 B109 completed_qty。
+    # 也不是只看 material.whichStation。
+    # 必須真的存在完成的 B110 waiting_send。
 
     row = (
         s.query(Assemble.id)
@@ -83,6 +84,99 @@ def is_material_end_finished(
 
     return row is not None
 
+
+"""
+# 20260825版
+def is_material_end_finished(
+    s,
+    material_id
+):
+
+    # 判斷缺料分批 material 是否已經完成 End。
+    #
+    # End 完成包含：
+    # 1. 目前仍停在 waiting_send
+    # 2. 已經送到 Warehouse
+    # 3. 已經完成成品入庫
+    #
+    # 注意：
+    # 已送 Warehouse / 已入庫後，
+    # isAssembleStationShow 可能已經變 False，
+    # 所以不能只靠 waiting_send 判斷。
+
+    material_id = int(material_id or 0)
+
+    if material_id <= 0:
+        return False
+
+    # --------------------------------------------------------
+    # 1. 目前仍在 End waiting_send
+    # --------------------------------------------------------
+    waiting_send_exists = (
+        s.query(Assemble.id)
+        .filter(
+            Assemble.material_id == material_id,
+
+            Assemble.work_num == 'B110',
+
+            Assemble.process_step_code == 0,
+
+            Assemble.completed_qty > 0,
+
+            Assemble.isAssembleStationShow.is_(True),
+
+            Assemble.show2_ok.in_([9, 10]),
+        )
+        .first()
+        is not None
+    )
+
+    if waiting_send_exists:
+        return True
+
+    # --------------------------------------------------------
+    # 2. 已經離開 End、進入 Warehouse
+    #
+    # 已經送出就代表 End 一定完成過。
+    # --------------------------------------------------------
+    warehouse_exists = (
+        s.query(Assemble.id)
+        .filter(
+            Assemble.material_id == material_id,
+
+            Assemble.work_num == 'B110',
+
+            Assemble.isWarehouseStationShow.is_(True),
+        )
+        .first()
+        is not None
+    )
+
+    if warehouse_exists:
+        return True
+
+    # --------------------------------------------------------
+    # 3. 已經成品入庫
+    #
+    # process_type = 31
+    # 代表已經比 End 更後面。
+    # --------------------------------------------------------
+    stockin_exists = (
+        s.query(Process.id)
+        .filter(
+            Process.material_id == material_id,
+
+            Process.process_type == 31,
+        )
+        .first()
+        is not None
+    )
+
+    if stockin_exists:
+        return True
+
+    return False
+"""
 
 def is_order_bom_all_ready(
     session,
@@ -3224,6 +3318,7 @@ def update_process_begin():
     )
 
 
+"""
 @getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
 def toggle_process_begin():
     print("dialog2ToggleProcessBegin API....")
@@ -3293,6 +3388,275 @@ def toggle_process_begin():
         has_started=bool(getattr(log, "has_started", False)),
     )
     s.close()
+    return result
+"""
+
+
+# 20260830版
+@getTable.route("/dialog2ToggleProcessBegin", methods=['POST'])
+def toggle_process_begin():
+
+    print("dialog2ToggleProcessBegin API....")
+
+    data = request.json
+
+    process_id = data["process_id"]
+    want_pause = bool(data["is_paused"])
+
+    # 20260830
+    # 前端第一次真正按「開始」時才會傳 True
+    start_from_button = bool(
+        data.get("start_from_button", False)
+    )
+
+    s = Session()
+
+    q = (
+        s.query(Process)
+        .filter_by(id=process_id)
+        .with_for_update()
+    )
+
+    log = q.one_or_none()
+
+    if not log:
+        s.close()
+        return jsonify(
+            success=False,
+            message="process not found"
+        ), 404
+
+    if log.end_time not in (None, ""):
+        s.close()
+        return jsonify(
+            success=False,
+            message="process already closed"
+        ), 400
+
+    now_tpe_aw = datetime.now(TPE).replace(
+        microsecond=0
+    )
+    now_tpe_str = now_tpe_aw.strftime(FMT)
+
+    if want_pause:
+
+        # ====================================================
+        # 要暫停
+        # ====================================================
+
+        if not log.is_pause:
+
+            log.is_pause = True
+
+            log.pause_started_at = (
+                now_tpe_aw.replace(tzinfo=None)
+            )
+
+        else:
+
+            if not log.pause_started_at:
+
+                log.pause_started_at = (
+                    now_tpe_aw.replace(tzinfo=None)
+                )
+
+    else:
+
+        # ====================================================
+        # 要開始 / 恢復
+        # ====================================================
+
+        if log.is_pause:
+
+            if log.pause_started_at:
+
+                ps = log.pause_started_at
+
+                ps_aw = (
+                    ps
+                    if ps.tzinfo
+                    else ps.replace(tzinfo=TPE)
+                )
+
+                delta = int(
+                    (
+                        now_tpe_aw
+                        - ps_aw
+                    ).total_seconds()
+                )
+
+                log.pause_time = (
+                    int(log.pause_time or 0)
+                    + max(0, delta)
+                )
+
+            log.pause_started_at = None
+            log.is_pause = False
+
+        # ====================================================
+        # 20260830
+        #
+        # 第一次真正按下「開始」，
+        # 且這一筆是組裝 process_type=21：
+        #
+        # 如果前面的
+        #   2 = AGV 備料區 -> 組裝區
+        #   5 = 堆高機 備料區 -> 組裝區
+        #
+        # 還存在 end_time=NULL，
+        # 表示搬運紀錄沒有正常收尾。
+        #
+        # 既然組裝已經真正開始，
+        # 貨物邏輯上一定已經抵達組裝區，
+        # 所以在這裡自動關閉舊搬運 Process。
+        #
+        # 注意：
+        # 1. 只允許 start_from_button=True
+        # 2. 只允許第一次開始
+        # 3. restore / refresh 不處理
+        # 4. 暫停後 resume 不重複處理
+        # ====================================================
+
+        is_first_real_start = (
+            start_from_button
+            and not bool(
+                getattr(
+                    log,
+                    "has_started",
+                    False
+                )
+            )
+        )
+
+        if (
+            is_first_real_start
+            and int(
+                getattr(
+                    log,
+                    "process_type",
+                    0
+                ) or 0
+            ) == 21
+        ):
+
+            old_move_logs = (
+                s.query(Process)
+                .filter(
+                    Process.material_id
+                    == log.material_id,
+
+                    Process.process_type.in_(
+                        [2, 5]
+                    ),
+
+                    Process.end_time.is_(None),
+
+                    Process.id != log.id,
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for move_log in old_move_logs:
+
+                print(
+                    "[dialog2ToggleProcessBegin] "
+                    "close stale move process:",
+                    "material_id=",
+                    log.material_id,
+                    "process_id=",
+                    move_log.id,
+                    "process_type=",
+                    move_log.process_type,
+                )
+
+                # --------------------------------------------
+                # 先計算搬運截至目前的實際時間
+                # --------------------------------------------
+                try:
+                    move_live = (
+                        _live_elapsed_seconds(
+                            move_log
+                        )
+                    )
+
+                    move_log.elapsedActive_time = int(
+                        move_live or 0
+                    )
+
+                except Exception as ex:
+
+                    print(
+                        "calc stale move elapsed "
+                        "failed:",
+                        ex
+                    )
+
+                # --------------------------------------------
+                # 組裝真正開始的時間，
+                # 就視為搬運最晚的結束時間
+                # --------------------------------------------
+                move_log.end_time = now_tpe_str
+
+                try:
+                    move_log.has_started = False
+                except AttributeError:
+                    pass
+
+                move_log.is_pause = True
+                move_log.pause_started_at = None
+
+        # ====================================================
+        # 原本第一次開始 Process 的邏輯
+        # ====================================================
+
+        if not getattr(
+            log,
+            "has_started",
+            False
+        ):
+
+            try:
+                log.has_started = True
+            except AttributeError:
+                pass
+
+            if not log.begin_time:
+                log.begin_time = now_tpe_str
+
+    # ========================================================
+    # 用 live 當唯一真相
+    # ========================================================
+
+    live = _live_elapsed_seconds(log)
+
+    log.elapsedActive_time = int(live)
+
+    s.commit()
+
+    result = jsonify(
+        success=True,
+        is_paused=bool(log.is_pause),
+        elapsed_time=int(live),
+        pause_time=int(
+            log.pause_time or 0
+        ),
+        pause_started_at=(
+            log.pause_started_at.isoformat()
+            if log.pause_started_at
+            else None
+        ),
+        has_started=bool(
+            getattr(
+                log,
+                "has_started",
+                False
+            )
+        ),
+    )
+
+    s.close()
+
     return result
 
 
@@ -7666,6 +8030,7 @@ def get_processes_by_order_num():
 """
 
 
+# 20260831版
 # 20260820版
 # 20260819版
 # 20260817版
@@ -9901,12 +10266,14 @@ def get_processes_by_order_num():
                     "begin_time":
                         record.begin_time,
 
-                    "end_time": (
-                        record.end_time
-                        if record_process_type
-                        != 31
-                        else ""
-                    ),
+                    #"end_time": (
+                    #    record.end_time
+                    #    if record_process_type
+                    #    != 31
+                    #    else ""
+                    #),
+                    # 20260831版
+                    "end_time": record.end_time,
 
                     "period_time": (
                         (
@@ -10329,6 +10696,8 @@ def get_abnormal_causes_by_history():
         continue
 
 
+"""
+# 20260826版
 # 20260810版
 @getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
 def get_Warehouse_For_assemble_by_history():
@@ -11839,11 +12208,2807 @@ def get_Warehouse_For_assemble_by_history():
                 for material in order_materials
             )
 
+            '''
             if not is_lack_batch_order:
                 merged_warehouse_results.extend(
                     order_rows
                 )
                 continue
+            '''
+            #
+            # ============================================================
+            # 20260826
+            # 一般組裝工單：
+            #
+            # Warehouse 改為 order_num level 顯示。
+            #
+            # 同 order_num 已經送到 Warehouse 的 assemble：
+            #
+            #   正常 15
+            #   異常  5
+            #
+            # 顯示：
+            #
+            #   999900019978   到庫數量 20
+            #
+            # 若目前只送 5：
+            #
+            #   999900019978   到庫數量 5
+            #
+            # 注意：
+            # 缺料分批工單不可走這裡，
+            # 因為缺料 copy 是 BOM 拆批，不是成品數量拆批。
+            # ============================================================
+            if not is_lack_batch_order:
+
+                representative = dict(
+                    order_rows[0]
+                )
+
+                # --------------------------------------------------------
+                # 本次已經真正抵達 Warehouse 的 assemble 完成量
+                # --------------------------------------------------------
+                warehouse_arrival_qty = sum(
+                    _safe_int(
+                        row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                )
+
+                # --------------------------------------------------------
+                # 原訂單應完成量
+                #
+                # 同 order_num 不 SUM material_qty。
+                # 優先取 root / 最大需求量。
+                # --------------------------------------------------------
+                order_req_qty = max(
+                    [
+                        _safe_int(
+                            row.get(
+                                "req_qty"
+                            ),
+                            0
+                        )
+                        for row in order_rows
+                    ]
+                    or [0]
+                )
+
+                # --------------------------------------------------------
+                # 已入庫量
+                #
+                # 這裡是 process_type=31 的真正入庫數量。
+                # --------------------------------------------------------
+                total_stockin_qty = sum(
+                    _safe_int(
+                        row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                )
+
+                # --------------------------------------------------------
+                # 不可讓到庫量超過訂單需求
+                # --------------------------------------------------------
+                if order_req_qty > 0:
+
+                    warehouse_arrival_qty = min(
+                        warehouse_arrival_qty,
+                        order_req_qty
+                    )
+
+                    total_stockin_qty = min(
+                        total_stockin_qty,
+                        order_req_qty
+                    )
+
+
+                # --------------------------------------------------------
+                # Warehouse 尚可入庫數量
+                #
+                # 注意：
+                # 到庫 20、已入庫 0 → 可入庫 20
+                # --------------------------------------------------------
+                remain_stockin_qty = max(
+                    0,
+                    warehouse_arrival_qty
+                    - total_stockin_qty
+                )
+
+
+                # --------------------------------------------------------
+                # 保留真正來源 assemble
+                #
+                # createProduct() 後面會需要。
+                # --------------------------------------------------------
+                group_material_ids = sorted({
+                    _safe_int(
+                        row.get("id"),
+                        0
+                    )
+                    for row in order_rows
+                    if _safe_int(
+                        row.get("id"),
+                        0
+                    ) > 0
+                })
+
+
+                group_assemble_ids = sorted({
+                    _safe_int(
+                        row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                    if _safe_int(
+                        row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    ) > 0
+                })
+
+
+                stockin_targets = []
+
+                for row in order_rows:
+
+                    row_delivery_qty = _safe_int(
+                        row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+
+                    row_stockin_qty = _safe_int(
+                        row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+
+                    row_remain_qty = max(
+                        0,
+                        row_delivery_qty
+                        - row_stockin_qty
+                    )
+
+                    stockin_targets.append({
+                        "material_id":
+                            _safe_int(
+                                row.get("id"),
+                                0
+                            ),
+
+                        "assemble_id":
+                            _safe_int(
+                                row.get(
+                                    "assemble_id"
+                                ),
+                                0
+                            ),
+
+                        "process_id":
+                            _safe_int(
+                                row.get(
+                                    "process_id"
+                                ),
+                                0
+                            ),
+
+                        "delivery_qty":
+                            row_delivery_qty,
+
+                        "allOk_qty":
+                            row_remain_qty,
+                    })
+
+
+                representative.update({
+
+                    # ----------------------------------------------------
+                    # 一般訂單的 Warehouse order-level 合併
+                    # ----------------------------------------------------
+                    "is_order_merged":
+                        True,
+
+                    "is_order_level_warehouse":
+                        True,
+
+                    "is_merged_shortage_order":
+                        False,
+
+                    # ----------------------------------------------------
+                    # 顯示數量
+                    # ----------------------------------------------------
+                    "delivery_qty":
+                        warehouse_arrival_qty,
+
+                    "req_qty":
+                        order_req_qty,
+
+                    "total_allOk_qty":
+                        total_stockin_qty,
+
+                    "must_allOk_qty":
+                        remain_stockin_qty,
+
+                    "remain_stockin_qty":
+                        remain_stockin_qty,
+
+                    # 入庫欄位仍然讓使用者輸入
+                    "allOk_qty":
+                        0,
+
+                    # ----------------------------------------------------
+                    # backing rows
+                    # ----------------------------------------------------
+                    "material_ids":
+                        group_material_ids,
+
+                    "group_material_ids":
+                        group_material_ids,
+
+                    "group_assemble_ids":
+                        group_assemble_ids,
+
+                    "stockin_targets":
+                        stockin_targets,
+                })
+
+
+                can_input_stockin = (
+                    not history_flag
+                    and remain_stockin_qty > 0
+                )
+
+
+                representative[
+                    "input_allOk_disable"
+                ] = not can_input_stockin
+
+                representative[
+                    "allOk_disable"
+                ] = not can_input_stockin
+
+
+                merged_warehouse_results.append(
+                    representative
+                )
+
+                continue
+            #
+
+            '''
+            all_material_ids = {
+                _safe_int(material.id, 0)
+                for material in order_materials
+                if _safe_int(material.id, 0) > 0
+            }
+            '''
+            #
+            # --------------------------------------------------------
+            # 20260817
+            # 缺料分批只要求最後 leaf material 已到 Warehouse。
+            #
+            # parent 已被 child 接續後，不需要再次自己進 Warehouse。
+            # --------------------------------------------------------
+
+            parent_material_ids = {
+                _safe_int(
+                    getattr(
+                        material,
+                        "is_copied_from_id",
+                        0
+                    ),
+                    0
+                )
+                for material in order_materials
+                if _safe_int(
+                    getattr(
+                        material,
+                        "is_copied_from_id",
+                        0
+                    ),
+                    0
+                ) > 0
+            }
+
+
+            all_material_ids = {
+                _safe_int(
+                    material.id,
+                    0
+                )
+                for material in order_materials
+                if (
+                    _safe_int(
+                        material.id,
+                        0
+                    ) > 0
+
+                    and
+
+                    _safe_int(
+                        material.id,
+                        0
+                    )
+                    not in parent_material_ids
+                )
+            }
+            #
+
+            # --------------------------------------------------------
+            # 3. 目前 Warehouse results 中有哪些 material
+            # --------------------------------------------------------
+            warehouse_material_ids = {
+                _safe_int(
+                    row.get("id"),
+                    0
+                )
+                for row in order_rows
+                if _safe_int(
+                    row.get("id"),
+                    0
+                ) > 0
+            }
+
+            # --------------------------------------------------------
+            # 4. 是否全部 material 都已經到 Warehouse
+            # --------------------------------------------------------
+            all_batches_in_warehouse = (
+                bool(all_material_ids)
+                and all_material_ids
+                .issubset(
+                    warehouse_material_ids
+                )
+            )
+
+            print(
+                "[Warehouse][LackMerge]",
+                {
+                    "order_num":
+                        order_num,
+
+                    "all_material_ids":
+                        sorted(
+                            all_material_ids
+                        ),
+
+                    "warehouse_material_ids":
+                        sorted(
+                            warehouse_material_ids
+                        ),
+
+                    "all_batches_in_warehouse":
+                        all_batches_in_warehouse,
+                }
+            )
+
+            # --------------------------------------------------------
+            # 尚未全部到 Warehouse
+            # → 保持原本多筆
+            # --------------------------------------------------------
+            if not all_batches_in_warehouse:
+
+                for row in order_rows:
+                    row[
+                        "is_lack_batch_order"
+                    ] = True
+
+                    row[
+                        "is_order_merged"
+                    ] = False
+
+                merged_warehouse_results.extend(
+                    order_rows
+                )
+
+                continue
+
+            # ========================================================
+            # 5. 全部到 Warehouse
+            # → 合併成一筆
+            # ========================================================
+            '''
+            representative = dict(
+                order_rows[0]
+            )
+
+            total_delivery_qty = sum(
+                _safe_int(
+                    row.get(
+                        "delivery_qty"
+                    ),
+                    0
+                )
+                for row in order_rows
+            )
+            '''
+            #
+            representative = dict(
+                order_rows[0]
+            )
+
+            # ========================================================
+            # 缺料分批是 BOM 拆批，不是成品數量拆批。
+            #
+            # 78 / 85 / 111 各自 delivery_qty=10，
+            # 三筆合起來代表同一張完整 BOM 的 10 件成品。
+            #
+            # 所以：
+            # max(10, 10, 10) = 10
+            #
+            # 不可使用 sum() 得到 30。
+            # ========================================================
+            total_delivery_qty = max(
+                [
+                    _safe_int(
+                        row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                ]
+                or [0]
+            )
+            #
+
+            total_allOk_qty = sum(
+                _safe_int(
+                    row.get(
+                        "total_allOk_qty"
+                    ),
+                    0
+                )
+                for row in order_rows
+            )
+
+            total_remain_qty = sum(
+                _safe_int(
+                    row.get(
+                        "remain_stockin_qty",
+                        row.get(
+                            "must_allOk_qty",
+                            0
+                        )
+                    ),
+                    0
+                )
+                for row in order_rows
+            )
+
+            stockin_targets = []
+
+            for row in order_rows:
+
+                remain_qty = _safe_int(
+                    row.get(
+                        "remain_stockin_qty",
+                        row.get(
+                            "must_allOk_qty",
+                            0
+                        )
+                    ),
+                    0
+                )
+
+                stockin_targets.append({
+                    "material_id":
+                        _safe_int(
+                            row.get("id"),
+                            0
+                        ),
+
+                    "assemble_id":
+                        _safe_int(
+                            row.get(
+                                "assemble_id"
+                            ),
+                            0
+                        ),
+
+                    "process_id":
+                        _safe_int(
+                            row.get(
+                                "process_id"
+                            ),
+                            0
+                        ),
+
+                    "delivery_qty":
+                        _safe_int(
+                            row.get(
+                                "delivery_qty"
+                            ),
+                            0
+                        ),
+
+                    "allOk_qty":
+                        remain_qty,
+                })
+
+            representative.update({
+
+                "is_lack_batch_order":
+                    True,
+
+                "is_order_merged":
+                    True,
+
+                "all_batches_waiting_warehouse":
+                    True,
+
+                "batch_count":
+                    len(
+                        all_material_ids
+                    ),
+
+                "material_ids":
+                    sorted(
+                        all_material_ids
+                    ),
+
+                # ==========================================
+                # 合併後數量
+                # ==========================================
+                "delivery_qty":
+                    total_delivery_qty,
+
+                "total_allOk_qty":
+                    total_allOk_qty,
+
+                "must_allOk_qty":
+                    total_remain_qty,
+
+                "remain_stockin_qty":
+                    total_remain_qty,
+
+                # 入庫欄位初始不要自動填入
+                "allOk_qty":
+                    0,
+
+                "stockin_targets":
+                    stockin_targets,
+
+                # ==========================================================
+                # createProduct() 合併入庫所需欄位
+                # ==========================================================
+                "is_merged_shortage_order": True,
+
+                "group_material_ids": sorted(
+                    all_material_ids
+                ),
+
+                "group_assemble_ids": [
+                    _safe_int(
+                        target.get("assemble_id"),
+                        0
+                    )
+                    for target in stockin_targets
+                    if _safe_int(
+                        target.get("assemble_id"),
+                        0
+                    ) > 0
+                ],
+            })
+
+            merged_warehouse_results.append(
+                representative
+            )
+
+        results = (
+            merged_warehouse_results
+            + other_results
+        )
+        #
+
+        # ------------------------------------------------------------
+        # 7. 重建 index
+        # ------------------------------------------------------------
+        results.sort(
+            key=lambda x: (
+                x.get("material_num") or "",
+                x.get("order_num") or "",
+            ),
+            reverse=True
+        )
+
+        for idx, row in enumerate(
+            results,
+            start=1
+        ):
+            row["index"] = idx
+        #
+
+        results.sort(key=lambda x: (x["material_num"] or ""), reverse=True)
+
+        return jsonify({
+            "status": len(results) > 0,
+            "warehouse_for_assemble": results
+        })
+    finally:
+        s.close()
+"""
+
+
+# 20260831版
+# 20260826版
+# 20260810版
+@getTable.route("/getWarehouseForAssembleByHistory", methods=['POST'])
+def get_Warehouse_For_assemble_by_history():
+    print("getWarehouseForAssembleByHistory...")
+
+    data = request.json
+    raw_history_flag = data.get('history_flag', False)
+    if isinstance(raw_history_flag, str):
+      history_flag = raw_history_flag.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+    else:
+      history_flag = bool(raw_history_flag)
+    #print("history_flag:", history_flag)
+
+    def to_int(v, default=0):
+      try:
+          return int(v)
+      except Exception:
+          return default
+
+    def g(obj, name, default=None):
+      return getattr(obj, name, default) if obj is not None else default
+
+    s = Session()
+    try:
+        # ------------------------------------------------------------
+        # 組裝線：
+        # 每個 assemble 取最新一筆已完成 process。
+        #
+        # 注意：
+        # Warehouse 待入庫列可能是 B109_DIRECT_WAIT_SEND，
+        # 該列本身不一定有 process 21/22/23/31。
+        #
+        # 因此必須使用 OUTER JOIN，不能使用 INNER JOIN，
+        # 否則 isWarehouseStationShow=True 的待入庫列會被排除。
+        # ------------------------------------------------------------
+        assemble_latest_proc_subq = (
+            s.query(
+                Process.assemble_id.label(
+                    "assemble_id"
+                ),
+                func.max(Process.id).label(
+                    "max_pid"
+                )
+            )
+            .filter(
+                Process.end_time.isnot(None)
+            )
+            .filter(
+                Process.end_time != ''
+            )
+            .filter(
+                Process.process_type.in_(
+                    [21, 22, 23, 31]
+                )
+            )
+            .group_by(
+                Process.assemble_id
+            )
+            .subquery()
+        )
+
+        q = (s.query(Material, Assemble, Process)
+            .join(
+                Assemble,
+                Assemble.material_id
+                == Material.id
+            )
+            .outerjoin(
+                assemble_latest_proc_subq,
+                assemble_latest_proc_subq.c.assemble_id
+                == Assemble.id
+            )
+            .outerjoin(
+                Process,
+                Process.id
+                == assemble_latest_proc_subq.c.max_pid
+            )
+        )
+
+        # ------------------------------------------------------------
+        # 僅先取得可能需要顯示的組裝列
+        #
+        # history_flag=False：
+        #   Warehouse 待入庫列
+        #
+        # history_flag=True：
+        #   已送到 Warehouse 或已入庫歷史列
+        # ------------------------------------------------------------
+        if history_flag:
+            q = q.filter(
+                or_(
+                    Assemble.isWarehouseStationShow
+                    .is_(True),
+
+                    Material.isAllOk
+                    .is_(True)
+                )
+            )
+        else:
+            q = q.filter(
+                Assemble.process_step_code == 0,
+
+                Assemble.isWarehouseStationShow
+                .is_(True),
+                # 20260831版 remove
+                #or_(
+                #    Material.isAllOk.is_(False),
+                #    Material.isAllOk.is_(None)
+                #)
+            )
+        #
+        # ------------------------------------------------------------
+        # 加工線 Warehouse 查詢
+        #
+        # P_Assemble 的待入庫狀態才是顯示依據。
+        # P_Process 只作為補充資料，因此必須 OUTER JOIN。
+        # ------------------------------------------------------------
+        p_assemble_latest_proc_subq = (
+            s.query(
+                P_Process.material_id.label(
+                    "material_id"
+                ),
+                P_Process.assemble_id.label(
+                    "assemble_id"
+                ),
+                func.max(
+                    P_Process.id
+                ).label(
+                    "max_pid"
+                )
+            )
+            .filter(
+                P_Process.assemble_id.isnot(None)
+            )
+            .filter(
+                P_Process.assemble_id > 0
+            )
+            .group_by(
+                P_Process.material_id,
+                P_Process.assemble_id,
+            )
+            .subquery()
+        )
+
+        p_q = (
+            s.query(
+                P_Material,
+                P_Assemble,
+                P_Process
+            )
+            .join(
+                P_Assemble,
+                P_Assemble.material_id ==
+                P_Material.id
+            )
+
+            # 最新 Process 只作為補充，不可用 inner join
+            .outerjoin(
+                p_assemble_latest_proc_subq,
+                and_(
+                    p_assemble_latest_proc_subq
+                    .c.material_id ==
+                    P_Assemble.material_id,
+
+                    p_assemble_latest_proc_subq
+                    .c.assemble_id ==
+                    P_Assemble.id,
+                )
+            )
+            .outerjoin(
+                P_Process,
+                P_Process.id ==
+                p_assemble_latest_proc_subq
+                .c.max_pid
+            )
+        )
+
+        if history_flag:
+            # 加工線已入庫歷史
+            p_q = p_q.filter(
+                or_(
+                    P_Material.isAllOk.is_(True),
+
+                    and_(
+                        P_Assemble.isStockIn.is_(True),
+                        P_Assemble
+                        .isWarehouseStationShow
+                        .is_(True),
+                    )
+                )
+            )
+        else:
+            # 加工線待入庫
+            p_q = p_q.filter(
+                P_Assemble.isStockIn.is_(True),
+
+                P_Assemble
+                .isWarehouseStationShow
+                .is_(True),
+
+                or_(
+                    P_Material.isAllOk.is_(False),
+                    P_Material.isAllOk.is_(None),
+                )
+            )
+        #
+
+        rows = []
+        rows.extend([(m, a, p, "assemble") for (m, a, p) in q.all()])
+
+        #
+        process_rows = p_q.all()
+        # debug用
+        print("[Warehouse][P rows]", [
+            {
+                "material_id": int(m.id or 0),
+                "order_num": m.order_num,
+                "material_isAllOk": bool(m.isAllOk),
+                "assemble_id": int(a.id or 0),
+                "work_num": a.work_num,
+                "isStockIn": bool(a.isStockIn),
+                "isWarehouseStationShow": bool(a.isWarehouseStationShow),
+                "completed_qty": int(a.completed_qty or 0),
+                "total_completed_qty": int(a.total_completed_qty or 0),
+                "process_id": (int(p.id or 0) if p else 0),
+                "process_qty": (int(p.process_work_time_qty or 0) if p else 0),
+            }
+            for m, a, p
+            in process_rows
+        ])
+
+        rows.extend([
+            (m, a, p, "process")
+            for (m, a, p)
+            in process_rows
+        ])
+        #
+        #rows.extend([(m, a, p, "process") for (m, a, p) in p_q.all()])
+        print("rows:", len(rows))
+
+        seen = set()
+        results = []
+        index = 0
+
+        for m, a, p, line in rows:
+            key = (line, g(m, "id"), g(a, "id"))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if line == "process":
+                isStockIn = bool(g(a, "isStockIn", 0))
+            else:
+                # 組裝線沒有 isStockIn 欄位，待入庫主要看 isWarehouseStationShow
+                isStockIn = True
+
+            isWarehouseStationShow = bool(g(a, "isWarehouseStationShow", 0))
+            isAllOk = bool(g(m, "isAllOk", 0))
+
+            abn_qty = int(g(a, "abnormal_qty", 0) or 0)
+            a_allok = int(g(a, "completed_qty", 0) or 0)
+
+            # 報廢拆單筆跳過
+            if abn_qty > 0 and a_allok == 0:
+                continue
+
+            if history_flag:
+                # 歷史紀錄
+                if line == "assemble":
+                    # 已送達 Warehouse 或已完成入庫都可顯示
+                    if (not isWarehouseStationShow and not isAllOk):
+                        continue
+            else:
+                # 待入庫
+                '''
+                if line == "assemble":
+                    # 組裝線：只要已送到倉儲待入庫就顯示
+                    if not isWarehouseStationShow:
+                        continue
+                    if isAllOk:
+                        continue
+                '''
+                #
+                if line == "assemble":
+
+                    if not isWarehouseStationShow:
+                        continue
+
+                    # 20260831
+                    # 不再使用 Material.isAllOk 排除 Warehouse。
+                    #
+                    # 是否還能入庫，後面統一依：
+                    #
+                    # delivery_qty
+                    # total_allOk_qty
+                    # remain_allOk_qty
+                    #
+                    # 判斷。
+                #
+
+                else:
+                    # 加工線待入庫
+                    # 必須：需要入庫 + 已送到成品區
+                    if not isStockIn:
+                        continue
+                    if not isWarehouseStationShow:
+                        continue
+
+            cleaned_comment = (g(m, "material_comment", "") or "").strip()
+            material_id = g(m, "id")
+            assemble_id = g(a, "id")
+
+            ProcessCls = (
+                Process
+                if line == "assemble"
+                else P_Process
+            )
+
+            '''
+            if line == "assemble":
+                # 組裝線以整個 material 的入庫量累計，
+                # 避免 process_type=31 掛在其他 assemble_id 時漏算。
+                total_allOk_qty = (s.query(
+                        func.coalesce(
+                            func.sum(
+                                Process.process_work_time_qty
+                            ),
+                            0
+                        )
+                    )
+                    .filter(Process.material_id == material_id)
+                    # 20260831版 remove
+                    #.filter(Process.assemble_id == assemble_id)
+                    .filter(Process.process_type == 31)
+                    .filter(Process.end_time.isnot(None))
+                    .scalar()
+                ) or 0
+                #
+                total_allOk_qty = to_int(
+                    total_allOk_qty,
+                    0
+                )
+            '''
+            #
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # 20260831 修正
+                #
+                # Warehouse 每一筆 assemble 必須只扣除
+                # 「自己 assemble_id 已經入庫的數量」。
+                #
+                # 例如：
+                #
+                #   assemble 341 異常返工 5 → 已入庫 5
+                #   assemble 327 正常完成 15 → 尚未入庫
+                #
+                # 327 可入庫必須：
+                #
+                #   15 - 0 = 15
+                #
+                # 不可使用整個 material 的已入庫量：
+                #
+                #   15 - 5 = 10   <-- 錯誤
+                # ------------------------------------------------------------
+                total_allOk_qty = (
+                    s.query(
+                        func.coalesce(
+                            func.sum(
+                                Process.process_work_time_qty
+                            ),
+                            0
+                        )
+                    )
+                    .filter(
+                        Process.material_id == material_id
+                    )
+                    .filter(
+                        Process.assemble_id == assemble_id
+                    )
+                    .filter(
+                        Process.process_type == 31
+                    )
+                    .filter(
+                        Process.end_time.isnot(None)
+                    )
+                    .scalar()
+                ) or 0
+
+                total_allOk_qty = to_int(
+                    total_allOk_qty,
+                    0
+                )
+            #
+
+            else:
+                total_allOk_qty = (
+                    sum_process_work_qty(
+                        s,
+                        ProcessCls,
+                        material_id,
+                        assemble_id,
+                        process_type=31
+                    )
+                )
+
+            # end if-else line == "assemble"
+            '''
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # Warehouse 每筆獨立顯示。
+                #
+                # 正常列 62 顯示 62；
+                # 異常返工列 10 顯示 10。
+                #
+                # 不再以 root + child 合併計算。
+                # ------------------------------------------------------------
+
+                process_qty = to_int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ),
+                    0
+                )
+
+                completed_qty = to_int(
+                    g(
+                        a,
+                        "completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                all_ok_qty = to_int(
+                    g(
+                        a,
+                        "allOk_qty",
+                        0
+                    ),
+                    0
+                )
+
+                total_completed_qty = to_int(
+                    g(
+                        a,
+                        "total_completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                # 只取目前這一筆 assemble 的實際完成量
+                delivery_qty = max(
+                    process_qty,
+                    completed_qty,
+                    all_ok_qty,
+                    total_completed_qty,
+                )
+            '''
+            #
+            if line == "assemble":
+                # ------------------------------------------------------------
+                # Warehouse 每筆 assemble 獨立計算到庫數量。
+                #
+                # assemble 欄位已經是 End 實際送出的數量時，
+                # 必須優先使用 assemble.completed_qty。
+                #
+                # 不可與舊 Process 數量取 max：
+                #   Process 原始檢驗量 = 72
+                #   扣除異常後正常量 = 62
+                #   Warehouse 應顯示 62，不是 72。
+                # ------------------------------------------------------------
+
+                completed_qty = to_int(
+                    g(
+                        a,
+                        "completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                total_completed_qty = to_int(
+                    g(
+                        a,
+                        "total_completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                all_ok_qty = to_int(
+                    g(
+                        a,
+                        "allOk_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_end_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_end_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_qty",
+                        0
+                    ),
+                    0
+                )
+
+                process_qty = to_int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ),
+                    0
+                )
+
+                # ------------------------------------------------------------
+                # 數量優先順序
+                #
+                # 1. 本筆 assemble 實際完成量
+                # 2. assemble 累計完成量
+                # 3. assemble 應完成量
+                # 4. 舊資料才 fallback 至 Process
+                # ------------------------------------------------------------
+                if completed_qty > 0:
+                    delivery_qty = completed_qty
+
+                elif total_completed_qty > 0:
+                    delivery_qty = total_completed_qty
+
+                elif all_ok_qty > 0:
+                    delivery_qty = all_ok_qty
+
+                elif must_receive_end_qty > 0:
+                    delivery_qty = must_receive_end_qty
+
+                elif must_receive_qty > 0:
+                    delivery_qty = must_receive_qty
+
+                else:
+                    delivery_qty = process_qty
+            else:
+                # --------------------------------------------------------
+                # 加工線待入庫數量
+                #
+                # 優先使用 P_Assemble 的完工數量。
+                # P_Process 只作為舊資料 fallback。
+                # --------------------------------------------------------
+                completed_qty = to_int(
+                    g(
+                        a,
+                        "completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                total_completed_qty = to_int(
+                    g(
+                        a,
+                        "total_completed_qty",
+                        0
+                    ),
+                    0
+                )
+
+                total_ask_qty_end = to_int(
+                    g(
+                        a,
+                        "total_ask_qty_end",
+                        0
+                    ),
+                    0
+                )
+
+                all_ok_qty = to_int(
+                    g(
+                        a,
+                        "allOk_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_end_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_end_qty",
+                        0
+                    ),
+                    0
+                )
+
+                must_receive_qty = to_int(
+                    g(
+                        a,
+                        "must_receive_qty",
+                        0
+                    ),
+                    0
+                )
+
+                process_qty = to_int(
+                    g(
+                        p,
+                        "process_work_time_qty",
+                        0
+                    ),
+                    0
+                )
+
+                if completed_qty > 0:
+                    delivery_qty = completed_qty
+
+                elif total_completed_qty > 0:
+                    delivery_qty = (
+                        total_completed_qty
+                    )
+
+                elif total_ask_qty_end > 0:
+                    delivery_qty = (
+                        total_ask_qty_end
+                    )
+
+                elif all_ok_qty > 0:
+                    delivery_qty = all_ok_qty
+
+                elif must_receive_end_qty > 0:
+                    delivery_qty = (
+                        must_receive_end_qty
+                    )
+
+                elif must_receive_qty > 0:
+                    delivery_qty = (
+                        must_receive_qty
+                    )
+
+                else:
+                    delivery_qty = process_qty
+
+            # end if-else line =="assemble" else
+
+            # Warehouse 待入庫資料不應出現應入庫量為0
+            if (
+                not history_flag
+                and delivery_qty <= 0
+            ):
+                print(
+                    "[Warehouse] skip zero delivery qty:",
+                    {
+                        "material_id":
+                            material_id,
+                        "assemble_id":
+                            assemble_id,
+                        "order_num":
+                            g(m, "order_num", ""),
+                        "work_num":
+                            g(a, "work_num", ""),
+                        "reason":
+                            g(a, "reason", ""),
+                    }
+                )
+                continue
+            # end if
+
+            remain_allOk_qty = max(0, delivery_qty - int(total_allOk_qty or 0))
+
+            can_input_stockin = (
+                not history_flag
+                and remain_allOk_qty > 0
+            )
+
+            index += 1
+            results.append({
+                "index": index,
+                "id": material_id,
+                "order_num": g(m, "order_num", ""),
+                "material_num": g(m, "material_num", ""),
+                "req_qty": g(m, "material_qty", 0),
+                "date": g(m, "material_delivery_date", ""),
+
+                "input_allOk_disable": (not can_input_stockin),
+                "allOk_disable": (not can_input_stockin),
+
+                "shortage_note": g(m, "shortage_note", ""),
+                "comment": cleaned_comment,
+                "Incoming2_Abnormal": bool(g(m, "Incoming2_Abnormal", False)),
+
+                "process_id": g(p, "id"),
+                "assemble_id": assemble_id,
+                "delivery_qty": delivery_qty,
+                "must_allOk_qty": remain_allOk_qty,
+                "total_allOk_qty": total_allOk_qty,
+                "allOk_qty": to_int(g(a, "allOk_qty", 0), 0),
+
+                "isWarehouseStationShow": isWarehouseStationShow,
+                "normal_work_time": g(p, "normal_work_time", 0),
+                "tooltipVisible": False,
+                "line": line,
+
+                "must_receive_end_qty": g(a, "must_receive_end_qty", 0),
+                "total_ask_qty_end": g(a, "total_ask_qty_end", 0),
+                "abnormal_qty": g(a, "abnormal_qty", 0),
+                "transport_mode": "自" if bool(g(m, "move_by_automatic_or_manual_2", False)) else "人",
+            })
+
+        # end for loop
+
+        # ------------------------------------------------------------
+        # Warehouse 顯示規則：
+        #
+        # End 每送出一筆 assemble，
+        # Warehouse 就保留一筆。
+        #
+        # 同一 material_id 不合併，
+        # 只防止同一 assemble_id 因 JOIN 重複出現。
+        # ------------------------------------------------------------
+        dedup_map = {}
+
+        def _safe_int(v, default=0):
+            try:
+                return int(v)
+            except Exception:
+                return default
+
+        for row in results:
+            material_id_key = _safe_int(
+                row.get("id"),
+                0
+            )
+
+            assemble_id_key = _safe_int(
+                row.get("assemble_id"),
+                0
+            )
+
+            process_id_key = _safe_int(
+                row.get("process_id"),
+                0
+            )
+
+            if material_id_key <= 0:
+                continue
+
+            # 組裝線正常情況以 assemble_id 唯一顯示
+            if assemble_id_key > 0:
+                key = (
+                    row.get("line"),
+                    material_id_key,
+                    assemble_id_key,
+                )
+            else:
+                # 防止少數沒有 assemble_id 的資料互相覆蓋
+                key = (
+                    row.get("line"),
+                    material_id_key,
+                    assemble_id_key,
+                    process_id_key,
+                )
+
+            old = dedup_map.get(key)
+
+            if old is None:
+                dedup_map[key] = row
+                continue
+
+            # 同 assemble 因 JOIN 重複時，
+            # 優先保留較新的 process。
+            old_process_id = _safe_int(
+                old.get("process_id"),
+                0
+            )
+
+            if process_id_key > old_process_id:
+                dedup_map[key] = row
+
+        results = list(
+            dedup_map.values()
+        )
+
+        # 20260809版
+        # ------------------------------------------------------------
+        # 20260809
+        # Warehouse 顯示規則
+        #
+        # 一般工單：
+        #   維持原規則，以 material_id + assemble_id 顯示。
+        #
+        # 缺料分批、不併單工單：
+        #   同 order_num 可能有多個 material：
+        #
+        #       A1 → A2 → A3 ...
+        #
+        #   必須等所有批次都送到 Warehouse 後，
+        #   才合併成一筆顯示。
+        #
+        # 注意：
+        #   分批代表 BOM 分批，不代表成品數量相加。
+        #
+        #   例如：
+        #       A1 completed_qty = 20
+        #       A2 completed_qty = 20
+        #       A3 completed_qty = 20
+        #
+        #   訂單仍然只有 20 件，
+        #   Warehouse 不可變成 60 件。
+        # ------------------------------------------------------------
+
+        def _safe_int(v, default=0):
+            try:
+                return int(v)
+            except Exception:
+                return default
+
+        '''
+        # ------------------------------------------------------------
+        # 1. 先取得同 order_num 的全部組裝線 material
+        #
+        # 用來判斷：
+        #   這張缺料拆單總共有幾個 material
+        # ------------------------------------------------------------
+        assemble_order_nums = {
+            str(row.get("order_num") or "").strip()
+            for row in results
+            if (
+                row.get("line") == "assemble"
+                and str(row.get("order_num") or "").strip()
+            )
+        }
+
+
+        order_all_material_ids = {}
+
+        if assemble_order_nums:
+            all_material_rows = (
+                s.query(
+                    Material.order_num,
+                    Material.id,
+                    Material.is_copied_from_id,
+                    Material.merge_enabled,
+                )
+                .filter(
+                    Material.order_num.in_(
+                        list(assemble_order_nums)
+                    )
+                )
+                .filter(
+                    Material.move_by_process_type == 2
+                )
+                .all()
+            )
+
+            for (
+                order_num,
+                material_id,
+                copied_from_id,
+                merge_enabled,
+            ) in all_material_rows:
+
+                order_num = str(
+                    order_num or ""
+                ).strip()
+
+                if not order_num:
+                    continue
+
+                order_all_material_ids.setdefault(
+                    order_num,
+                    set()
+                ).add(
+                    int(material_id)
+                )
+        '''
+        #
+        # ------------------------------------------------------------
+        # 1. 先取得同 order_num 的「最後有效 leaf material」
+        #
+        # copy 關係例如：
+        #
+        #   87 -> 93
+        #
+        # 87 已經被 93 接續，不需要再要求 87 自己進 Warehouse。
+        # Warehouse 只需要確認最後沒有 child 的 material 已送達。
+        #
+        # 多層：
+        #
+        #   A1 -> A2 -> A3
+        #
+        # 最後只要求 A3。
+        # ------------------------------------------------------------
+        assemble_order_nums = {
+            str(row.get("order_num") or "").strip()
+            for row in results
+            if (
+                row.get("line") == "assemble"
+                and str(row.get("order_num") or "").strip()
+            )
+        }
+
+
+        order_all_material_ids = {}
+
+        if assemble_order_nums:
+
+            all_material_rows = (
+                s.query(
+                    Material.order_num,
+                    Material.id,
+                    Material.is_copied_from_id,
+                )
+                .filter(
+                    Material.order_num.in_(
+                        list(assemble_order_nums)
+                    )
+                )
+                .filter(
+                    Material.move_by_process_type == 2
+                )
+                .all()
+            )
+
+            # --------------------------------------------------------
+            # 被其他 material 當 parent 的 material_id
+            # --------------------------------------------------------
+            parent_material_ids = {
+                int(copied_from_id)
+                for (
+                    _order_num,
+                    _material_id,
+                    copied_from_id,
+                ) in all_material_rows
+                if int(
+                    copied_from_id or 0
+                ) > 0
+            }
+
+            # --------------------------------------------------------
+            # 只留下 leaf material：
+            # 沒有再被其他 material copy 的最後一批。
+            # --------------------------------------------------------
+            for (
+                order_num,
+                material_id,
+                copied_from_id,
+            ) in all_material_rows:
+
+                order_num = str(
+                    order_num or ""
+                ).strip()
+
+                material_id = _safe_int(
+                    material_id,
+                    0
+                )
+
+                if (
+                    not order_num
+                    or material_id <= 0
+                ):
+                    continue
+
+                # 已經有 child，代表這是舊 parent
+                if (
+                    material_id
+                    in parent_material_ids
+                ):
+                    continue
+
+                order_all_material_ids.setdefault(
+                    order_num,
+                    set()
+                ).add(
+                    material_id
+                )
+        #
+
+        # ------------------------------------------------------------
+        # 2. 取得目前已真正送到 Warehouse 的 material
+        # ------------------------------------------------------------
+        order_warehouse_material_ids = {}
+
+        for row in results:
+
+            if row.get("line") != "assemble":
+                continue
+
+            order_num = str(
+                row.get("order_num") or ""
+            ).strip()
+
+            material_id = _safe_int(
+                row.get("id"),
+                0
+            )
+
+            if not order_num or material_id <= 0:
+                continue
+
+            order_warehouse_material_ids.setdefault(
+                order_num,
+                set()
+            ).add(material_id)
+
+
+        # 20260810版
+        # ------------------------------------------------------------
+        # 3. 判斷哪些 order_num 是「缺料分批 / copy 工單」
+        #
+        # 規則：
+        #
+        # 同 order_num 只要曾產生 copied material，
+        # 就代表這張工單曾做過分批備料。
+        #
+        # Warehouse 最終必須依 order_num 合併成一筆。
+        #
+        # 注意：
+        # merge_enabled 是「當下備料批次是否與前批併」的設定，
+        # 不應再用它判斷 Warehouse 最終是否合併。
+        #
+        # 例如：
+        #
+        # A：merge_enabled = False
+        # B：merge_enabled = True
+        #
+        # A、B 都到 Warehouse 後，
+        # 最終仍應合併成同一張 order_num。
+        # ------------------------------------------------------------
+        split_order_nums = set()
+
+        if assemble_order_nums:
+
+            split_rows = (
+                s.query(
+                    Material.order_num
+                )
+                .filter(
+                    Material.order_num.in_(
+                        list(assemble_order_nums)
+                    )
+                )
+                .filter(
+                    Material.move_by_process_type == 2
+                )
+                .filter(
+                    Material.is_copied_from_id.isnot(None)
+                )
+                .distinct()
+                .all()
+            )
+
+            split_order_nums = {
+                str(r[0] or "").strip()
+                for r in split_rows
+                if str(r[0] or "").strip()
+            }
+
+        print(
+            "[Warehouse][split_order_nums]",
+            sorted(split_order_nums)
+        )
+        #
+
+        # ------------------------------------------------------------
+        # 4. 一般列與缺料拆單分開處理
+        # ------------------------------------------------------------
+        normal_map = {}
+
+        split_groups = {}
+
+
+        for row in results:
+
+            line = str(
+                row.get("line") or ""
+            )
+
+            material_id = _safe_int(
+                row.get("id"),
+                0
+            )
+
+            assemble_id = _safe_int(
+                row.get("assemble_id"),
+                0
+            )
+
+            process_id = _safe_int(
+                row.get("process_id"),
+                0
+            )
+
+            order_num = str(
+                row.get("order_num") or ""
+            ).strip()
+
+            if material_id <= 0:
+                continue
+
+
+            # --------------------------------------------------------
+            # 加工線永遠維持原本規則
+            # --------------------------------------------------------
+            if line != "assemble":
+
+                if assemble_id > 0:
+                    key = (
+                        line,
+                        material_id,
+                        assemble_id,
+                    )
+                else:
+                    key = (
+                        line,
+                        material_id,
+                        assemble_id,
+                        process_id,
+                    )
+
+                old = normal_map.get(key)
+
+                if (
+                    old is None
+                    or process_id
+                    > _safe_int(
+                        old.get("process_id"),
+                        0
+                    )
+                ):
+                    normal_map[key] = row
+
+                continue
+
+
+            # --------------------------------------------------------
+            # 組裝線：缺料拆單
+            # --------------------------------------------------------
+            if order_num in split_order_nums:
+
+                split_groups.setdefault(
+                    order_num,
+                    []
+                ).append(row)
+
+                continue
+
+
+            # --------------------------------------------------------
+            # 組裝線：一般工單
+            # --------------------------------------------------------
+            if assemble_id > 0:
+
+                key = (
+                    line,
+                    material_id,
+                    assemble_id,
+                )
+
+            else:
+
+                key = (
+                    line,
+                    material_id,
+                    assemble_id,
+                    process_id,
+                )
+
+            old = normal_map.get(key)
+
+            if (
+                old is None
+                or process_id
+                > _safe_int(
+                    old.get("process_id"),
+                    0
+                )
+            ):
+                normal_map[key] = row
+
+
+        # ------------------------------------------------------------
+        # 5. 缺料拆單：
+        #
+        # 必須全部 material 都已送到 Warehouse
+        # 才顯示一筆。
+        # ------------------------------------------------------------
+        merged_split_rows = []
+
+        for order_num, group_rows in split_groups.items():
+
+            all_material_ids = (
+                order_all_material_ids.get(
+                    order_num,
+                    set()
+                )
+            )
+
+            warehouse_material_ids = (
+                order_warehouse_material_ids.get(
+                    order_num,
+                    set()
+                )
+            )
+
+            all_sent_to_warehouse = (
+                len(all_material_ids) > 0
+                and all_material_ids
+                .issubset(
+                    warehouse_material_ids
+                )
+            )
+
+            print(
+                "[Warehouse][split merge]",
+                {
+                    "order_num":
+                        order_num,
+
+                    "all_material_ids":
+                        sorted(
+                            all_material_ids
+                        ),
+
+                    "warehouse_material_ids":
+                        sorted(
+                            warehouse_material_ids
+                        ),
+
+                    "all_sent_to_warehouse":
+                        all_sent_to_warehouse,
+                }
+            )
+
+            '''
+            # 尚有任何一批沒送到 Warehouse：
+            # Warehouse 暫時完全不顯示此訂單。
+            if not all_sent_to_warehouse:
+                continue
+            '''
+            #
+            # ============================================================
+            # 20260817
+            # 缺料 / copy 分批工單：
+            #
+            # 不需要等所有批次都到 Warehouse 才顯示。
+            #
+            # 已經送到 Warehouse 的批次要先顯示；
+            # 尚未完成的 child / 後續批次，之後送到 Warehouse
+            # 再由後面的合併邏輯處理。
+            #
+            # 例如 121100020631：
+            #
+            #   material 118 → 已完成 34，已到 Warehouse
+            #   material 123 → 第2批仍在組裝區
+            #
+            # Warehouse 必須先顯示 118，
+            # 不可因為 123 尚未完成而整張隱藏。
+            # ============================================================
+            if not all_sent_to_warehouse:
+
+                merged_split_rows.extend(
+                    group_rows
+                )
+
+                continue
+            #
+
+            # --------------------------------------------------------
+            # 取 root material 當代表
+            #
+            # 優先：
+            #   is_copied_from_id IS NULL
+            #
+            # 找不到才用最小 material_id。
+            # --------------------------------------------------------
+            root_material = (
+                s.query(Material)
+                .filter(
+                    Material.order_num == order_num
+                )
+                .filter(
+                    Material.move_by_process_type == 2
+                )
+                .filter(
+                    Material.is_copied_from_id.is_(None)
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+
+            # --------------------------------------------------------
+            # 選一筆顯示用 row
+            #
+            # 優先 root material 對應的 Warehouse row。
+            # --------------------------------------------------------
+            representative = None
+
+            if root_material is not None:
+
+                root_id = int(
+                    root_material.id
+                )
+
+                representative = next(
+                    (
+                        r
+                        for r in group_rows
+                        if _safe_int(
+                            r.get("id"),
+                            0
+                        ) == root_id
+                    ),
+                    None
+                )
+
+
+            if representative is None:
+
+                representative = min(
+                    group_rows,
+                    key=lambda r: _safe_int(
+                        r.get("id"),
+                        0
+                    )
+                )
+
+
+            merged = dict(
+                representative
+            )
+
+
+            # --------------------------------------------------------
+            # 這些 material 都屬於同一張訂單
+            # 留給入庫時一次同步全部批次。
+            # --------------------------------------------------------
+            merged[
+                "group_material_ids"
+            ] = sorted(
+                all_material_ids
+            )
+
+
+            merged[
+                "group_assemble_ids"
+            ] = sorted({
+                _safe_int(
+                    r.get("assemble_id"),
+                    0
+                )
+                for r in group_rows
+                if _safe_int(
+                    r.get("assemble_id"),
+                    0
+                ) > 0
+            })
+
+
+            merged[
+                "is_merged_shortage_order"
+            ] = True
+
+
+            # --------------------------------------------------------
+            # 成品數量不可 SUM
+            #
+            # 三批：
+            #   20 / 20 / 20
+            #
+            # 仍然是同一張 20 件工單。
+            # --------------------------------------------------------
+            delivery_qty = max(
+                [
+                    _safe_int(
+                        r.get("delivery_qty"),
+                        0
+                    )
+                    for r in group_rows
+                ]
+                or [0]
+            )
+
+
+            req_qty = max(
+                [
+                    _safe_int(
+                        r.get("req_qty"),
+                        0
+                    )
+                    for r in group_rows
+                ]
+                or [0]
+            )
+
+
+            # 原訂單 material_qty 最可信
+            if root_material is not None:
+
+                root_qty = _safe_int(
+                    getattr(
+                        root_material,
+                        "material_qty",
+                        0
+                    ),
+                    0
+                )
+
+                if root_qty > 0:
+                    req_qty = root_qty
+
+                    # 不可超過原訂單需求量
+                    if delivery_qty <= 0:
+                        delivery_qty = root_qty
+
+
+            merged[
+                "req_qty"
+            ] = req_qty
+
+            merged[
+                "delivery_qty"
+            ] = delivery_qty
+
+
+            # --------------------------------------------------------
+            # 已入庫量：
+            # 同一張拆單應視為一張成品單，
+            # 不把各 copy material 的完成量累加。
+            # --------------------------------------------------------
+            merged[
+                "total_allOk_qty"
+            ] = max(
+                [
+                    _safe_int(
+                        r.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+                    for r in group_rows
+                ]
+                or [0]
+            )
+
+
+            merged[
+                "must_allOk_qty"
+            ] = max(
+                0,
+                delivery_qty
+                - _safe_int(
+                    merged.get(
+                        "total_allOk_qty"
+                    ),
+                    0
+                )
+            )
+
+
+            can_input_stockin = (
+                not history_flag
+                and merged[
+                    "must_allOk_qty"
+                ] > 0
+            )
+
+
+            merged[
+                "input_allOk_disable"
+            ] = not can_input_stockin
+
+            merged[
+                "allOk_disable"
+            ] = not can_input_stockin
+
+
+            merged_split_rows.append(
+                merged
+            )
+
+
+        # ------------------------------------------------------------
+        # 6. 合併結果
+        # ------------------------------------------------------------
+        results = list(
+            normal_map.values()
+        )
+
+        results.extend(
+            merged_split_rows
+        )
+
+        # 20260810版 add
+        # ============================================================
+        # Warehouse 缺料分批：
+        # 所有 material 都到 Warehouse 後，依 order_num 合併
+        # ============================================================
+
+        warehouse_order_groups = {}
+
+        other_results = []
+
+        for row in results:
+
+            if row.get("line") != "assemble":
+                other_results.append(row)
+                continue
+
+            order_num = str(
+                row.get("order_num") or ""
+            ).strip()
+
+            if not order_num:
+                other_results.append(row)
+                continue
+
+            warehouse_order_groups.setdefault(
+                order_num,
+                []
+            ).append(row)
+
+
+        merged_warehouse_results = []
+
+
+        for order_num, order_rows in (
+            warehouse_order_groups.items()
+        ):
+
+            # ============================================================
+            # 20260826
+            # Warehouse：
+            # 同一 order_num + 同一 material_id 的多個 assemble
+            # 先合併成一筆。
+            #
+            # 例如：
+            #   正常 B110   completed = 15
+            #   異常 B110   completed = 5
+            #
+            #   material_id 都相同
+            #
+            # Warehouse 顯示：
+            #   到庫數量 = 20
+            #
+            # 注意：
+            # 只合併「同 material」的 assemble。
+            # 不同 material 的缺料 BOM 分批不可在這裡 SUM。
+            # ============================================================
+
+            material_row_groups = {}
+
+            for current_row in order_rows:
+
+                current_material_id = _safe_int(
+                    current_row.get("id"),
+                    0
+                )
+
+                if current_material_id <= 0:
+                    continue
+
+                material_row_groups.setdefault(
+                    current_material_id,
+                    []
+                ).append(
+                    current_row
+                )
+
+
+            merged_same_material_rows = []
+
+
+            for (
+                current_material_id,
+                same_material_rows
+            ) in material_row_groups.items():
+
+                if len(same_material_rows) == 1:
+
+                    merged_same_material_rows.append(
+                        same_material_rows[0]
+                    )
+
+                    continue
+
+
+                representative = dict(
+                    same_material_rows[0]
+                )
+
+
+                arrival_qty = sum(
+                    _safe_int(
+                        current_row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+                    for current_row
+                    in same_material_rows
+                )
+
+                '''
+                stocked_qty = sum(
+                    _safe_int(
+                        current_row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+                    for current_row
+                    in same_material_rows
+                )
+                '''
+                # 20260831版
+                # 同一 material 的 total_allOk_qty
+                # 是 material-level 累計值，
+                # 多個 assemble row 會帶到相同數字，
+                # 因此不可 SUM。
+                stocked_qty = max(
+                    [
+                        _safe_int(
+                            current_row.get(
+                                "total_allOk_qty"
+                            ),
+                            0
+                        )
+                        for current_row
+                        in same_material_rows
+                    ]
+                    or [0]
+                )
+                #
+
+                req_qty = max(
+                    [
+                        _safe_int(
+                            current_row.get(
+                                "req_qty"
+                            ),
+                            0
+                        )
+                        for current_row
+                        in same_material_rows
+                    ]
+                    or [0]
+                )
+
+
+                if req_qty > 0:
+
+                    arrival_qty = min(
+                        arrival_qty,
+                        req_qty
+                    )
+
+                    stocked_qty = min(
+                        stocked_qty,
+                        req_qty
+                    )
+
+
+                remain_qty = max(
+                    0,
+                    arrival_qty
+                    - stocked_qty
+                )
+
+
+                group_assemble_ids = sorted({
+                    _safe_int(
+                        current_row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    )
+                    for current_row
+                    in same_material_rows
+                    if _safe_int(
+                        current_row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    ) > 0
+                })
+
+
+                stockin_targets = []
+
+                for current_row in (
+                    same_material_rows
+                ):
+
+                    row_delivery_qty = _safe_int(
+                        current_row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+
+                    row_stocked_qty = _safe_int(
+                        current_row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+
+                    row_remain_qty = max(
+                        0,
+                        row_delivery_qty
+                        - row_stocked_qty
+                    )
+
+                    stockin_targets.append({
+                        "material_id":
+                            current_material_id,
+
+                        "assemble_id":
+                            _safe_int(
+                                current_row.get(
+                                    "assemble_id"
+                                ),
+                                0
+                            ),
+
+                        "process_id":
+                            _safe_int(
+                                current_row.get(
+                                    "process_id"
+                                ),
+                                0
+                            ),
+
+                        "delivery_qty":
+                            row_delivery_qty,
+
+                        "allOk_qty":
+                            row_remain_qty,
+                    })
+
+
+                representative.update({
+
+                    "is_order_merged":
+                        True,
+
+                    "is_order_level_warehouse":
+                        True,
+
+                    "is_group_stockin":
+                        True,
+
+                    "delivery_qty":
+                        arrival_qty,
+
+                    "req_qty":
+                        req_qty,
+
+                    "total_allOk_qty":
+                        stocked_qty,
+
+                    "must_allOk_qty":
+                        remain_qty,
+
+                    "remain_stockin_qty":
+                        remain_qty,
+
+                    "allOk_qty":
+                        0,
+
+                    "material_ids": [
+                        current_material_id
+                    ],
+
+                    "group_material_ids": [
+                        current_material_id
+                    ],
+
+                    "group_assemble_ids":
+                        group_assemble_ids,
+
+                    "stockin_targets":
+                        stockin_targets,
+                })
+
+
+                can_input_stockin = (
+                    not history_flag
+                    and remain_qty > 0
+                )
+
+
+                representative[
+                    "input_allOk_disable"
+                ] = not can_input_stockin
+
+                representative[
+                    "allOk_disable"
+                ] = not can_input_stockin
+
+
+                print(
+                    "[Warehouse]"
+                    "[same material merge]",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "material_id":
+                            current_material_id,
+
+                        "assemble_ids":
+                            group_assemble_ids,
+
+                        "arrival_qty":
+                            arrival_qty,
+
+                        "stocked_qty":
+                            stocked_qty,
+
+                        "remain_qty":
+                            remain_qty,
+                    }
+                )
+
+
+                merged_same_material_rows.append(
+                    representative
+                )
+
+
+            order_rows = (
+                merged_same_material_rows
+            )
+
+
+            # --------------------------------------------------------
+            # 1. 找同 order_num 所有組裝線 material
+            # --------------------------------------------------------
+            order_materials = (
+                s.query(Material)
+                .filter(
+                    Material.order_num == order_num,
+                    Material.move_by_process_type == 2
+                )
+                .order_by(
+                    Material.create_at.asc(),
+                    Material.id.asc()
+                )
+                .all()
+            )
+
+            if not order_materials:
+                merged_warehouse_results.extend(
+                    order_rows
+                )
+                continue
+
+            # --------------------------------------------------------
+            # 2. 是否為缺料分批訂單
+            #
+            # 任一 material.isLackMaterial != 99
+            # --------------------------------------------------------
+            is_lack_batch_order = any(
+                _safe_int(
+                    getattr(
+                        material,
+                        "isLackMaterial",
+                        99
+                    ),
+                    99
+                ) != 99
+                for material in order_materials
+            )
+
+            '''
+            if not is_lack_batch_order:
+                merged_warehouse_results.extend(
+                    order_rows
+                )
+                continue
+            '''
+            #
+            # ============================================================
+            # 20260826
+            # 一般組裝工單：
+            #
+            # Warehouse 改為 order_num level 顯示。
+            #
+            # 同 order_num 已經送到 Warehouse 的 assemble：
+            #
+            #   正常 15
+            #   異常  5
+            #
+            # 顯示：
+            #
+            #   999900019978   到庫數量 20
+            #
+            # 若目前只送 5：
+            #
+            #   999900019978   到庫數量 5
+            #
+            # 注意：
+            # 缺料分批工單不可走這裡，
+            # 因為缺料 copy 是 BOM 拆批，不是成品數量拆批。
+            # ============================================================
+            if not is_lack_batch_order:
+
+                representative = dict(
+                    order_rows[0]
+                )
+
+                # --------------------------------------------------------
+                # 本次已經真正抵達 Warehouse 的 assemble 完成量
+                # --------------------------------------------------------
+                warehouse_arrival_qty = sum(
+                    _safe_int(
+                        row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                )
+
+                # --------------------------------------------------------
+                # 原訂單應完成量
+                #
+                # 同 order_num 不 SUM material_qty。
+                # 優先取 root / 最大需求量。
+                # --------------------------------------------------------
+                order_req_qty = max(
+                    [
+                        _safe_int(
+                            row.get(
+                                "req_qty"
+                            ),
+                            0
+                        )
+                        for row in order_rows
+                    ]
+                    or [0]
+                )
+
+                # --------------------------------------------------------
+                # 已入庫量
+                #
+                # 這裡是 process_type=31 的真正入庫數量。
+                # --------------------------------------------------------
+                total_stockin_qty = sum(
+                    _safe_int(
+                        row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                )
+
+                # --------------------------------------------------------
+                # 不可讓到庫量超過訂單需求
+                # --------------------------------------------------------
+                if order_req_qty > 0:
+
+                    warehouse_arrival_qty = min(
+                        warehouse_arrival_qty,
+                        order_req_qty
+                    )
+
+                    total_stockin_qty = min(
+                        total_stockin_qty,
+                        order_req_qty
+                    )
+
+
+                # --------------------------------------------------------
+                # Warehouse 尚可入庫數量
+                #
+                # 注意：
+                # 到庫 20、已入庫 0 → 可入庫 20
+                # --------------------------------------------------------
+                remain_stockin_qty = max(
+                    0,
+                    warehouse_arrival_qty
+                    - total_stockin_qty
+                )
+
+
+                # --------------------------------------------------------
+                # 保留真正來源 assemble
+                #
+                # createProduct() 後面會需要。
+                # --------------------------------------------------------
+                group_material_ids = sorted({
+                    _safe_int(
+                        row.get("id"),
+                        0
+                    )
+                    for row in order_rows
+                    if _safe_int(
+                        row.get("id"),
+                        0
+                    ) > 0
+                })
+
+
+                group_assemble_ids = sorted({
+                    _safe_int(
+                        row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    )
+                    for row in order_rows
+                    if _safe_int(
+                        row.get(
+                            "assemble_id"
+                        ),
+                        0
+                    ) > 0
+                })
+
+
+                stockin_targets = []
+
+                for row in order_rows:
+
+                    row_delivery_qty = _safe_int(
+                        row.get(
+                            "delivery_qty"
+                        ),
+                        0
+                    )
+
+                    row_stockin_qty = _safe_int(
+                        row.get(
+                            "total_allOk_qty"
+                        ),
+                        0
+                    )
+
+                    row_remain_qty = max(
+                        0,
+                        row_delivery_qty
+                        - row_stockin_qty
+                    )
+
+                    stockin_targets.append({
+                        "material_id":
+                            _safe_int(
+                                row.get("id"),
+                                0
+                            ),
+
+                        "assemble_id":
+                            _safe_int(
+                                row.get(
+                                    "assemble_id"
+                                ),
+                                0
+                            ),
+
+                        "process_id":
+                            _safe_int(
+                                row.get(
+                                    "process_id"
+                                ),
+                                0
+                            ),
+
+                        "delivery_qty":
+                            row_delivery_qty,
+
+                        "allOk_qty":
+                            row_remain_qty,
+                    })
+
+
+                representative.update({
+
+                    # ----------------------------------------------------
+                    # 一般訂單的 Warehouse order-level 合併
+                    # ----------------------------------------------------
+                    "is_order_merged":
+                        True,
+
+                    "is_order_level_warehouse":
+                        True,
+
+                    "is_merged_shortage_order":
+                        False,
+
+                    # ----------------------------------------------------
+                    # 顯示數量
+                    # ----------------------------------------------------
+                    "delivery_qty":
+                        warehouse_arrival_qty,
+
+                    "req_qty":
+                        order_req_qty,
+
+                    "total_allOk_qty":
+                        total_stockin_qty,
+
+                    "must_allOk_qty":
+                        remain_stockin_qty,
+
+                    "remain_stockin_qty":
+                        remain_stockin_qty,
+
+                    # 入庫欄位仍然讓使用者輸入
+                    "allOk_qty":
+                        0,
+
+                    # ----------------------------------------------------
+                    # backing rows
+                    # ----------------------------------------------------
+                    "material_ids":
+                        group_material_ids,
+
+                    "group_material_ids":
+                        group_material_ids,
+
+                    "group_assemble_ids":
+                        group_assemble_ids,
+
+                    "stockin_targets":
+                        stockin_targets,
+                })
+
+
+                can_input_stockin = (
+                    not history_flag
+                    and remain_stockin_qty > 0
+                )
+
+
+                representative[
+                    "input_allOk_disable"
+                ] = not can_input_stockin
+
+                representative[
+                    "allOk_disable"
+                ] = not can_input_stockin
+
+
+                merged_warehouse_results.append(
+                    representative
+                )
+
+                continue
+            #
 
             '''
             all_material_ids = {
@@ -13725,6 +16890,7 @@ def get_materials_and_assembles_by_user():
                 ) > 0
             }
 
+            ''''''
             # ------------------------------------------------------------
             # 整張訂單真正完成量
             #
@@ -13768,6 +16934,86 @@ def get_materials_and_assembles_by_user():
                 ]
                 or [0]
             )
+            ''''''
+            #
+            # 20260825版
+            # ------------------------------------------------------------
+            # 整張訂單真正完成量
+            #
+            # 規則：
+            #
+            # 1. 同一 material 底下：
+            #    正常 waiting_send + 異常 waiting_send
+            #    必須相加。
+            #
+            #    例如：
+            #       material 397
+            #       正常 15 + 異常 5 = 20
+            #
+            # 2. 不同缺料 copy material 之間不可相加。
+            #
+            #    例如：
+            #       material 220 = 38
+            #       material 225 = 38
+            #       material 278 = 38
+            #
+            #    不可變成 114。
+            #
+            # 所以：
+            #    先依 material_id 加總
+            #    再取各 material 完成量的 max。
+            # ------------------------------------------------------------
+
+            waiting_qty_by_material = {}
+
+            for row in waiting_rows:
+
+                mid = int(
+                    getattr(
+                        row,
+                        'material_id',
+                        0
+                    )
+                    or 0
+                )
+
+                if mid <= 0:
+                    continue
+
+                qty = max(
+                    int(
+                        getattr(
+                            row,
+                            'completed_qty',
+                            0
+                        )
+                        or 0
+                    ),
+
+                    int(
+                        getattr(
+                            row,
+                            'total_completed_qty',
+                            0
+                        )
+                        or 0
+                    ),
+                )
+
+                waiting_qty_by_material[mid] = (
+                    waiting_qty_by_material.get(
+                        mid,
+                        0
+                    )
+                    + qty
+                )
+
+
+            waiting_completed_qty = max(
+                waiting_qty_by_material.values(),
+                default=0
+            )
+            #
 
             # ------------------------------------------------------------
             # 整張訂單是否已完成 End

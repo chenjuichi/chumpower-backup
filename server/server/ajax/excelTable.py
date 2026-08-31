@@ -1956,6 +1956,7 @@ def export_to_excel_for_error():
     })
 
 
+# 20260825版
 @excelTable.route("/exportToExcelForAssembleInformationByWorkDate", methods=['POST'])
 def export_to_excel_for_assemble_information_by_work_date():
     print("exportToExcelForAssembleInformationByWorkDate.")
@@ -2143,7 +2144,10 @@ def export_to_excel_for_assemble_information_by_work_date():
         '廢品數量', '入庫數量',
         '工序', '員工',
         '開始時間', '結束時間',
-        '實際耗時(分)', '實際工時(分/PCS)', '單件標工(分/PCS)', '註記'
+        '實際耗時(分)', '實際工時(分/PCS)', '單件標工(分/PCS)',
+        # 20260825 add
+        '標準實際差異',
+        '註記'
     ]
     ws.append(header)
 
@@ -2334,12 +2338,81 @@ def export_to_excel_for_assemble_information_by_work_date():
                 if actual_per_pcs == 0:
                     actual_per_pcs = ''
 
+            '''
             std_per_pcs = ''
             sd_field = ptype_to_sd_field.get(record.process_type)
             if sd_field and hasattr(material, sd_field):
                 std_total_min = _to_float(getattr(material, sd_field, 0), 0)
                 if work_qty and float(work_qty) > 0 and std_total_min:
                     std_per_pcs = round(std_total_min / float(work_qty), 4)
+            '''
+            # 20260825版
+            std_per_pcs = ''
+
+            sd_field = (
+                ptype_to_sd_field.get(
+                    record.process_type
+                )
+            )
+
+            if (
+                sd_field
+                and
+                hasattr(
+                    material,
+                    sd_field
+                )
+            ):
+
+                std_value = _to_float(
+                    getattr(
+                        material,
+                        sd_field,
+                        0
+                    ),
+                    0
+                )
+
+                # sd_time 本身就是 分/PCS
+                if std_value > 0:
+
+                    std_per_pcs = round(
+                        std_value,
+                        2
+                    )
+
+
+            # ============================================================
+            # 20260825
+            # 標準實際差異
+            #
+            # 單件標工(分/PCS) - 實際工時(分/PCS)
+            # ============================================================
+
+            std_actual_diff = ''
+
+            if (
+                std_per_pcs != ''
+                and
+                actual_per_pcs != ''
+            ):
+
+                try:
+
+                    std_actual_diff = round(
+                        float(std_per_pcs)
+                        -
+                        float(actual_per_pcs),
+                        2
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+
+                    std_actual_diff = ''
+            #
 
             ws.append([
                 order_num,
@@ -2357,6 +2430,8 @@ def export_to_excel_for_assemble_information_by_work_date():
                 actual_minutes,
                 actual_per_pcs,
                 std_per_pcs,
+                # 20260825 add
+                std_actual_diff,
                 alarm_msg_string
             ])
 
@@ -2835,6 +2910,7 @@ def export_to_excel_for_assemble_information():
 """
 
 
+# 20250825版
 # 20260820版
 @excelTable.route(
     "/exportToExcelForAssembleInformation",
@@ -3525,6 +3601,8 @@ def export_to_excel_for_assemble_information():
             '實際耗時(分)',
             '實際工時(分/PCS)',
             '單件標工(分/PCS)',
+            # 20260825 add
+            '標準實際差異',
             '註記',
         ]
 
@@ -3708,8 +3786,10 @@ def export_to_excel_for_assemble_information():
                     '',
                     '',
                     '',
-                    '',
-                    '',
+                    '',     # 單件標工
+                    # 20260825 add
+                    '',     # 標準實際差異
+                    '',     # 註記
                 ])
 
                 row_num = ws.max_row
@@ -4372,6 +4452,39 @@ def export_to_excel_for_assemble_information():
                                 2
                             )
 
+                    #
+                    # ============================================================
+                    # 20260825
+                    # 標準實際差異
+                    #
+                    # 單件標工(分/PCS) - 實際工時(分/PCS)
+                    # ============================================================
+
+                    std_actual_diff = ""
+
+                    if (
+                        std_per_pcs != ""
+                        and
+                        actual_per_pcs != ""
+                    ):
+
+                        try:
+
+                            std_actual_diff = round(
+                                float(std_per_pcs)
+                                -
+                                float(actual_per_pcs),
+                                2
+                            )
+
+                        except (
+                            TypeError,
+                            ValueError,
+                        ):
+
+                            std_actual_diff = ""
+                    #
+
 
                     # =============================================
                     # Excel「現況數量」
@@ -4429,6 +4542,9 @@ def export_to_excel_for_assemble_information():
                         actual_per_pcs,
 
                         std_per_pcs,
+
+                        # 20260825 add
+                        std_actual_diff,
 
                         alarm_msg_string,
                     ])
@@ -5058,6 +5174,7 @@ def export_to_excel_for_process_information():
 """
 
 
+# 20260825版
 # 20260820版
 @excelTable.route(
     "/exportToExcelForProcessInformation",
@@ -5815,6 +5932,8 @@ def export_to_excel_for_process_information():
             '實際耗時(分)',
             '實際工時(分/PCS)',
             '單件標工(分/PCS)',
+            # 20260825 add
+            '標準實際差異',
             '註記',
         ]
 
@@ -6131,8 +6250,10 @@ def export_to_excel_for_process_information():
                         '',
                         '',
                         '',
-                        '',
-                        '',
+                        '',     # 單件標工
+                        # 20260825 add
+                        '',     # 標準實際差異
+                        '',     # 註記
                     ],
                     group_fill
                 )
@@ -6770,6 +6891,38 @@ def export_to_excel_for_process_information():
 
                                         std_per_pcs = ""
 
+                    #
+                    # ============================================================
+                    # 20260825
+                    # 標準實際差異
+                    #
+                    # 單件標工(分/PCS) - 實際工時(分/PCS)
+                    # ============================================================
+
+                    std_actual_diff = ""
+
+                    if (
+                        std_per_pcs != ""
+                        and
+                        actual_per_pcs != ""
+                    ):
+
+                        try:
+
+                            std_actual_diff = round(
+                                float(std_per_pcs)
+                                -
+                                float(actual_per_pcs),
+                                2
+                            )
+
+                        except (
+                            TypeError,
+                            ValueError,
+                        ):
+
+                            std_actual_diff = ""
+                    #
 
                     # =============================================
                     # 廢品
@@ -6840,6 +6993,9 @@ def export_to_excel_for_process_information():
                             actual_per_pcs,
 
                             std_per_pcs,
+
+                            # 20260825 add
+                            std_actual_diff,
 
                             alarm_msg_string,
                         ],
@@ -7138,6 +7294,9 @@ def export_to_excel_for_process_information():
                             '',             # 實際工時
 
                             '',             # 單件標工
+
+                            # 20260825 add
+                            '',             # 標準實際差異
 
                             '',             # 註記
                         ],

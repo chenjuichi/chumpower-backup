@@ -140,6 +140,59 @@ function ensureLogFileExists() {
   }
 }
 
+// 20260830版
+// ============================================================
+// Socket Service Log
+// ============================================================
+
+function getLogTime() {
+    const now = new Date();
+
+    // Windows Server 使用台灣時間
+    const yyyy = now.getFullYear();
+    const MM = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const ms = String(now.getMilliseconds()).padStart(3, '0');
+
+    //return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}.${ms}`;
+    return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
+}
+
+function writeServiceLog(direction, socketName, extra = '') {
+
+    try {
+
+        checkLogFileSize();
+
+        const line =
+            `${getLogTime()}`
+            + ` | ONLINE=${on_line}`
+            + ` | ${String(direction).padEnd(8)}`
+            + ` | ${socketName}`
+            + (extra ? ` | ${extra}` : '')
+            + '\n';
+
+        fs.appendFileSync(
+            logFilePath,
+            line,
+            'utf8'
+        );
+
+    } catch (err) {
+
+        console.error(
+            'writeServiceLog error:',
+            err.message
+        );
+
+    }
+}
+//
+
 
 // ==============================================================================
 
@@ -192,6 +245,14 @@ io.on('connection', (socket) => {
     console.log("收到 station1_call 訊息...");
 
     if (on_line) {
+
+      // 20260830版
+      writeServiceLog(
+          'KUKA_OUT',
+          'station1_call'
+      );
+      //
+
       client.write('station1_call');    //廣播至後端kuka伺服器的訊息(B)
       console.log("AGV 準備從裝卸站啟動...");
     } else {
@@ -263,6 +324,14 @@ io.on('connection', (socket) => {
     console.log('收到 station2_call 訊息');
 
     if (on_line) {
+
+      // 20260830版
+      writeServiceLog(
+          'KUKA_OUT',
+          'station2_call'
+      );
+      //
+
       client.write('station2_call');    //廣播至後端kuka伺服器的訊息(B)
       console.log("AGV 準備從裝卸站啟動...");
     } else {
@@ -327,6 +396,14 @@ io.on('connection', (socket) => {
     console.log('收到 agv_reset 訊息，重置所有動作...');
     resetRequested = true;          // 設置重置請求為 true
     //socket.emit('agv_ack');       // 向客戶端確認收到重置請求
+
+    // 20260830版
+    writeServiceLog(
+        'KUKA_OUT',
+        'agv_reset'
+    );
+    //
+
     client.write('agv_reset');      // 廣播至後端kuka伺服器的訊息(B)
   });
 
@@ -529,6 +606,7 @@ io.on('connection', (socket) => {
   //  console.log(`❌ Client disconnected: ${socket.id}`);
   //});
 
+/*
   // 使用 socket.onAny 監聽所有事件
   socket.onAny(async (eventName) => {
     let webRTC_message = ['candidate', 'answer', 'offer', 'join', 'disconnect', 'error',
@@ -551,6 +629,95 @@ io.on('connection', (socket) => {
       client.write(eventName);                        //廣播至後端kuka伺服器的訊息(B)
     }
   });
+*/
+
+  // 20260826版
+  socket.onAny(async (eventName) => {
+
+    // 20260830版
+    // ==========================================
+    // LOG：Vue -> Socket Server
+    // ==========================================
+    writeServiceLog(
+        'VUE_IN',
+        eventName,
+        //`socket=${socket.id}`
+    );
+    //
+
+    // 這些事件已有自己的 socket.on() 處理，
+    // 不可以再由 onAny 重複送給 KUKA。
+    const doNotForwardToKuka = [
+        'candidate',
+        'answer',
+        'offer',
+        'join',
+        'disconnect',
+        'error',
+
+        // AGV
+        'station1_call',
+        'station2_call',
+        'agv_reset',
+
+        // 手動搬運
+        'station2_trans_over',
+        'station2_trans_end',
+        'station2_trans_begin',
+        'station2_trans_call',
+        'station3_trans_over',
+        'station3_trans_end',
+        'station3_trans_begin',
+        'station3_trans_call',
+
+        // 系統內部通知，不應送 KUKA
+        'material-delivered-callForklift',
+        'material-delivered-callAGV',
+        'assemble-delivered-callForklift',
+        'assemble-delivered-callAGV',
+        'assemble-batch-released',
+        'assemble-batch-released2',
+        'assemble-feed-released',
+        'warehouse-stock-in',
+        'assemble-abnormal-created',
+        'assemble-schedule-updated',
+        'assemble-scheduling-dialog-lock',
+        'assemble-scheduling-dialog-unlock',
+        'get-assemble-scheduling-dialog-locks',
+
+        'process-started',
+        'process-paused',
+        'process-resumed',
+        'process-ended',
+        'process-refresh',
+        'process-dialog-lock',
+        'process-dialog-unlock',
+        'process-end-completed',
+        'process-material-refresh',
+    ];
+
+    console.log(`收到來自網頁端 ${eventName} 訊息`);
+
+    if (
+        on_line === true &&
+        !doNotForwardToKuka.includes(eventName)
+    ) {
+        console.log(`發送 ${eventName} 訊息給kuka伺服器!`);
+
+        // 20260830版
+        // ==========================================
+        // LOG：Socket Server -> KUKA
+        // ==========================================
+        writeServiceLog(
+            'KUKA_OUT',
+            eventName
+        );
+        //
+
+        client.write(eventName);
+    }
+  });
+  //
 
   // 20260730 add
   function normalizeProcessPayload(payload = {}) {
@@ -675,6 +842,17 @@ io.on('connection', (socket) => {
 function bindClientHandlers() {
   client.on('data', (data) => {     //廣播至後端kuka伺服器
     const message = data.toString().trim();
+
+    // 20260830版
+    // ==========================================
+    // LOG：KUKA -> Socket Server
+    // ==========================================
+    writeServiceLog(
+        'KUKA_IN',
+        message
+    );
+    //
+
     console.log('\x1b[33m%s\x1b[0m', `來自kuka端伺服器的訊息: ${message}`);
 
     const match = message.match(/^(station\d+_loading_ready)$/);
@@ -686,6 +864,14 @@ function bindClientHandlers() {
         //const parsedData = JSON.parse(jsonPart);
 
         console.log(`從kuka端收到裝卸站 ${eventName} 資料:`);
+
+        // 20260830版
+        // Socket Server -> Vue
+        writeServiceLog(
+            'VUE_OUT',
+            eventName
+        );
+        //
 
         // 廣播事件與資料給前端瀏覽器
         //io.emit(eventName, parsedData);
@@ -713,9 +899,25 @@ function bindClientHandlers() {
       case 'station1_error':
       case 'station2_error':
         console.log("send", res, "to socket io...");
+
+        //20260830版
+        writeServiceLog(
+            'VUE_OUT',
+            res
+        );
+        //
+
         io.emit(res); //廣播至前端瀏覽器
         break;
       default:
+
+        // 20260830版
+        writeServiceLog(
+            'VUE_OUT',
+            res
+        );
+        //
+
         io.emit(res); //廣播至前端瀏覽器
         break;
     }
@@ -767,6 +969,14 @@ function connectToCSharp(retryDelay = 5000) {
     csharpReady = true;     // 伺服器狀態回復
     lastErrorMessage = '';  // 重設錯誤訊息過濾器
 
+    // 20260830版
+    writeServiceLog(
+        'SYSTEM',
+        'KUKA_CONNECTED',
+        `IP=${CSHARP_SERVER_IP} PORT=${CSHARP_PORT}`
+    );
+    //
+
     // 通知等待的 client：kuka伺服器已連線
     waitingClients.forEach(sock => {
       sock.emit('kuka_server_ready', {
@@ -775,8 +985,8 @@ function connectToCSharp(retryDelay = 5000) {
     });
     waitingClients.clear();
 
-    checkLogFileSize();
-    fs.appendFileSync('service.log', `連線時間: ${new Date()}, mode: ${on_line}, RUN_MODE: ${RUN_MODE}\n`);
+    //checkLogFileSize();
+    //fs.appendFileSync('service.log', `連線時間: ${new Date()}, mode: ${on_line}, RUN_MODE: ${RUN_MODE}\n`);
   });
 }
 
@@ -785,6 +995,15 @@ connectToCSharp();
 
 http.listen(PORT, () => {
   console.log(`\n` );
-  console.log(`\x1b[34mBuild 2026-07-30\x1b[0m`);
+  console.log(`\x1b[34mBuild 2026-08-27\x1b[0m`);
   console.log(`應用軟體已在 port ${PORT} 執行!` );
+
+  // 20260830版
+  writeServiceLog(
+      'SYSTEM',
+      'SERVICE_START',
+      `PORT=${PORT} RUN_MODE=${RUN_MODE} MOVE_MODE=${MOVE_MODE}`
+  );
+  //
+
 });

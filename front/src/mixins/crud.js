@@ -215,6 +215,7 @@ export const apiOperation = (operation, path, payload) => {
     const request = axios[operation](path, options);  // Axios 請求，根據操作類型執行不同的方法（get 或 post）
     */
 
+    /*
     let request;
 
     if (operation === 'get') {
@@ -236,6 +237,54 @@ export const apiOperation = (operation, path, payload) => {
       // POST 先不取消（避免誤取消寫入類操作）
       request = axios.post(path, payload, { timeout: 30000 });
     }
+    */
+    // 20260830版
+    let request;
+    let controller = null;
+
+    if (operation === 'get') {
+      console.log(
+        'timeout=',
+        30000,
+        'path=',
+        path
+      );
+
+      // 取消同一路徑上一個尚未完成的 GET
+      const prev = _getAbortMap.get(path);
+
+      if (prev) {
+        prev.abort();
+      }
+
+      controller = new AbortController();
+
+      _getAbortMap.set(
+        path,
+        controller
+      );
+
+      request = axios.get(
+        path,
+        {
+          params: payload,
+          timeout: 30000,
+          signal: controller.signal,
+        }
+      );
+
+    } else {
+
+      // POST 不取消
+      request = axios.post(
+        path,
+        payload,
+        {
+          timeout: 30000
+        }
+      );
+    }
+    //
 
     //const request =
     //  operation === 'get'
@@ -249,7 +298,12 @@ export const apiOperation = (operation, path, payload) => {
 
           // ✅ 完成後清掉 controller
           const cur = _getAbortMap.get(path);
-          if (cur) _getAbortMap.delete(path);
+          //if (cur) _getAbortMap.delete(path);
+          // 20260830版
+          if (cur === controller) {
+            _getAbortMap.delete(path);
+          }
+          //
 
           if (path == '/listDepartments') {
             //departments.value = [...res.data.departments];

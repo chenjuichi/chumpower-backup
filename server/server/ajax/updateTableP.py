@@ -4957,4 +4957,42 @@ def update_material_p():
     })
 
 
+@updateTableP.route("/updateMaterialRecordP", methods=['POST'])
+def update_material_record_p():
+  print("updateMaterialRecordP....")
+
+  request_data = request.get_json()
+
+  _order_num = request_data.get('order_num')
+  _id = request_data.get('id')
+
+  _show1_ok = request_data['show1_ok']
+  _show2_ok = request_data['show2_ok']
+  _show3_ok = request_data['show3_ok']
+  #_whichStation = request_data['whichStation']
+
+  s = Session()
+
+  if _order_num is not None:  # 如果傳入了 order_num
+    s.query(P_Material).filter(P_Material.order_num == _order_num).update({
+      "show1_ok": _show1_ok,
+      "show2_ok": _show2_ok,
+      "show3_ok": _show3_ok,
+      #"whichStation": _whichStation,
+    })
+  elif _id is not None:  # 如果傳入了 id
+    s.query(P_Material).filter(P_Material.id == _id).update({
+      "show1_ok": _show1_ok,
+      "show2_ok": _show2_ok,
+      "show3_ok": _show3_ok,
+      #"whichStation": _whichStation,
+    })
+
+  s.commit()
+
+  s.close()
+
+  return jsonify({
+    'status': True
+  })
 

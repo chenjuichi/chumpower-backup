@@ -1678,7 +1678,7 @@ def calc_b109_releasable_qty_batch(session, material_id):
             "message": "no B109 assemble steps",
         }
 
-
+    '''
     # ============================================================
     # 3. 計算每一個 B109 schedule 的真正累計完成量
     # ============================================================
@@ -1866,7 +1866,335 @@ def calc_b109_releasable_qty_batch(session, material_id):
         done_qty_list.append(
             total_done
         )
+    '''
+    #
+    # ============================================================
+    # 3. 計算每一個 B109 schedule 的「有效累計完成量」
+    #
+    # 20260907
+    #
+    # 規則：
+    #
+    #   正常 B109 完成
+    #       +
+    #   同 schedule_id 的 B109 異常返工完成
+    #       =
+    #   此 B109 schedule 的有效完成量
+    #
+    # 例如：
+    #
+    #   a1 正常 = 2
+    #   a1-異常 = 1
+    #
+    #   a1 effective = 3
+    #
+    #   a2 正常 = 3
+    #
+    #   a2 effective = 3
+    #
+    #   min(3, 3) = 3
+    #
+    #   → B110 b1/b2 qty=3
+    #
+    # 注意：
+    #
+    #   is_copied_from_id != NULL
+    #
+    # 不代表一定是異常返工。
+    #
+    # 像 a2 也可能是 copy row。
+    #
+    # 必須以：
+    #
+    #   work_num == B109
+    #   reason == 異常返工
+    #
+    # 才認定為返工完成量。
+    # ============================================================
 
+    done_qty_list = []
+
+
+    # ------------------------------------------------------------
+    # 取得一筆 B109 row 真正完成量
+    #
+    # 優先：
+    #   已結束 Process(type=21) 的數量
+    #
+    # fallback：
+    #   total_completed_qty
+    #   allOk_qty
+    #   completed_qty
+    # ------------------------------------------------------------
+    def get_b109_row_done(row):
+
+        process_done = (
+            session.query(
+                func.coalesce(
+                    func.sum(
+                        Process.process_work_time_qty
+                    ),
+                    0
+                )
+            )
+            .filter(
+                Process.material_id == material_id
+            )
+            .filter(
+                Process.assemble_id == row.id
+            )
+            .filter(
+                Process.process_type == 21
+            )
+            .filter(
+                Process.end_time.isnot(None)
+            )
+            .filter(
+                Process.end_time != ''
+            )
+            .scalar()
+        ) or 0
+
+        return max(
+            int(process_done or 0),
+            int(
+                getattr(
+                    row,
+                    'total_completed_qty',
+                    0
+                ) or 0
+            ),
+            int(
+                getattr(
+                    row,
+                    'allOk_qty',
+                    0
+                ) or 0
+            ),
+            int(
+                getattr(
+                    row,
+                    'completed_qty',
+                    0
+                ) or 0
+            ),
+            0
+        )
+
+
+    # ------------------------------------------------------------
+    # 訂單 / material 原始應完成總數量
+    #
+    # effective done 不允許超過它。
+    #
+    # 本案例 = 3
+    # ------------------------------------------------------------
+    original_required_qty = max(
+        int(
+            getattr(
+                material,
+                'total_delivery_qty',
+                0
+            ) or 0
+        ),
+        int(
+            getattr(
+                material,
+                'delivery_qty',
+                0
+            ) or 0
+        ),
+        int(
+            getattr(
+                material,
+                'material_qty',
+                0
+            ) or 0
+        ),
+        0
+    )
+
+
+    for sid in assemble_step_ids:
+
+        # ========================================================
+        # A. 正常 B109
+        #
+        # 不包含：
+        #   異常返工
+        #   B109_DIRECT_WAIT_SEND
+        #   B109_DONE_COPY
+        # ========================================================
+        normal_rows = (
+            session.query(Assemble)
+
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+
+            .filter(
+                Assemble.work_num
+                == 'B109'
+            )
+
+            .filter(
+                Assemble.schedule_id
+                == sid
+            )
+
+            .filter(
+                or_(
+                    Assemble.reason.is_(None),
+
+                    ~Assemble.reason.in_(
+                        [
+                            '異常返工',
+                            'B109_DIRECT_WAIT_SEND',
+                            'B109_DONE_COPY',
+                        ]
+                    )
+                )
+            )
+
+            .order_by(
+                Assemble.id.asc()
+            )
+
+            .all()
+        )
+
+
+        # ========================================================
+        # B. 同 schedule_id 的 B109 異常返工
+        #
+        # 只抓：
+        #
+        #   reason = 異常返工
+        #
+        # 因此 a2 雖然 is_copied_from_id != NULL，
+        # 也不會被誤判成返工。
+        # ========================================================
+        rework_rows = (
+            session.query(Assemble)
+
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+
+            .filter(
+                Assemble.work_num
+                == 'B109'
+            )
+
+            .filter(
+                Assemble.schedule_id
+                == sid
+            )
+
+            .filter(
+                Assemble.reason
+                == '異常返工'
+            )
+
+            .order_by(
+                Assemble.id.asc()
+            )
+
+            .all()
+        )
+
+
+        # --------------------------------------------------------
+        # 正常完成量
+        # --------------------------------------------------------
+        normal_done = sum(
+            get_b109_row_done(r)
+            for r in normal_rows
+        )
+
+
+        # --------------------------------------------------------
+        # 異常返工完成量
+        #
+        # 只有真正完成：
+        #
+        #   process_step_code == 0
+        #
+        # 才能合併。
+        #
+        # 尚在 Begin / End 執行中的異常返工不可算進去。
+        # --------------------------------------------------------
+        rework_done = sum(
+            get_b109_row_done(r)
+            for r in rework_rows
+            if int(
+                getattr(
+                    r,
+                    'process_step_code',
+                    0
+                ) or 0
+            ) == 0
+        )
+
+
+        effective_done = (
+            normal_done
+            + rework_done
+        )
+
+
+        # --------------------------------------------------------
+        # 不可以超過訂單應完成數量
+        # --------------------------------------------------------
+        if original_required_qty > 0:
+            effective_done = min(
+                effective_done,
+                original_required_qty
+            )
+
+
+        print(
+            "[B109 EFFECTIVE DONE]",
+            {
+                "material_id":
+                    material_id,
+
+                "schedule_id":
+                    sid,
+
+                "normal_ids":
+                    [
+                        r.id
+                        for r in normal_rows
+                    ],
+
+                "rework_ids":
+                    [
+                        r.id
+                        for r in rework_rows
+                    ],
+
+                "normal_done":
+                    normal_done,
+
+                "rework_done":
+                    rework_done,
+
+                "effective_done":
+                    effective_done,
+
+                "original_required_qty":
+                    original_required_qty,
+            }
+        )
+
+
+        done_qty_list.append(
+            effective_done
+        )
+    #
 
     # ============================================================
     # 4. B109 可以共同往 B110 釋放到哪裡

@@ -3636,6 +3636,7 @@ def copy_new_assemble():
   })
 
 
+# 20260902版
 # 20260825版
 # 20260811版
 # ------------------------------------------------------------
@@ -4064,6 +4065,7 @@ def copy_material_and_bom():
             copy_required_qty,
         )
 
+        '''
         # ----------------------------------------------------
         # 8. 將缺料 BOM 複製到新 material
         # ----------------------------------------------------
@@ -4126,6 +4128,112 @@ def copy_material_and_bom():
             missing_bom_ids.append(
                 bom.id
             )
+        '''
+        # 20260902版
+        # ----------------------------------------------------
+        # 8. 將缺料 BOM 複製到新 material
+        # ----------------------------------------------------
+        missing_bom_ids = []
+
+        for bom in missing_boms:
+
+            # ============================================================
+            # 20260902 修正
+            #
+            # 這些 BOM 是從 parent 的 receive=False 篩出來的。
+            #
+            # 所以搬到 child 後，
+            # 必須仍維持「尚未到料」狀態：
+            #
+            # receive = False
+            # lack = True
+            # isPickOK = False
+            #
+            # 不可以在 copy 時直接變成 receive=True，
+            # 否則 Begin 會誤認為整張訂單 BOM 已全部到齊，
+            # 導致缺料併單時「+工序」錯誤 enable。
+            # ============================================================
+
+            new_bom = Bom(
+
+                material_id=
+                    new_material.id,
+
+                seq_num=
+                    bom.seq_num,
+
+                material_num=
+                    bom.material_num,
+
+                material_comment=
+                    bom.material_comment,
+
+                req_qty=
+                    bom.req_qty,
+
+                # --------------------------------------------------------
+                # child 是待補料資料
+                # 尚未重新領料，所以 pick_qty 先歸 0
+                # --------------------------------------------------------
+                pick_qty=0,
+
+                non_qty=
+                    bom.non_qty or 0,
+
+                # --------------------------------------------------------
+                # 保留缺料數量
+                # 若原本 lack_qty 沒值，可用 req_qty
+                # --------------------------------------------------------
+                lack_qty=(
+                    bom.lack_qty
+                    if bom.lack_qty is not None
+                    else (
+                        bom.req_qty or 0
+                    )
+                ),
+
+                # --------------------------------------------------------
+                # ★ 關鍵：
+                # child 剛建立就是缺料待補
+                # --------------------------------------------------------
+                lack=True,
+
+                lack_bom_qty=(
+                    bom.lack_bom_qty
+                    if bom.lack_bom_qty is not None
+                    else (
+                        bom.req_qty or 0
+                    )
+                ),
+
+                # --------------------------------------------------------
+                # ★★★ 最重要修正 ★★★
+                #
+                # 缺料 BOM 搬到 child 後，
+                # 絕對不能預設 receive=True。
+                #
+                # 必須等第 2 次 Material 備料時，
+                # 使用者真正勾選後才變成 True。
+                # --------------------------------------------------------
+                receive=False,
+
+                # --------------------------------------------------------
+                # 尚未重新備料完成
+                # --------------------------------------------------------
+                isPickOK=False,
+
+                start_date=
+                    bom.start_date,
+            )
+
+            s.add(
+                new_bom
+            )
+
+            missing_bom_ids.append(
+                bom.id
+            )
+        #
 
         # flush 新 BOM
         s.flush()

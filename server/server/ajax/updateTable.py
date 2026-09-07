@@ -293,13 +293,58 @@ def refresh_root_status(session, order_num: str) -> None:
     all_received = (total_bom > 0 and total_bom == received_bom)
 
     # 5) 更新 root 欄位
+    #if all_received:
+    #    root.shortage_note = ""
+    #    root.isLackMaterial = 99
+    #else:
+    #    root.shortage_note = "(缺料)"
+    #    root.isLackMaterial = 0
+    #
+    # ============================================================
+    # 20260901
+    # root 缺料狀態
+    #
+    # merge_enabled=False：
+    #   代表這張 parent 當初選「缺料不併單」。
+    #   即使後續 child 已全部補齊，
+    #   parent.shortage_note 仍必須保留，
+    #   這是第 1 批的歷史狀態。
+    #
+    # merge_enabled=True：
+    #   全部補齊後可以解除 shortage_note。
+    # ============================================================
+
+    root_merge_enabled = bool(
+        getattr(
+            root,
+            "merge_enabled",
+            True
+        )
+    )
+
     if all_received:
-        root.shortage_note = ""
+
         root.isLackMaterial = 99
+
+        # ★ 只有併單才解除歷史缺料
+        if root_merge_enabled:
+            root.shortage_note = ""
+
+        else:
+
+            # ★ 不併單必須保留第一批歷史
+            if not str(
+                root.shortage_note
+                or ""
+            ).strip():
+
+                root.shortage_note = "(缺料)"
+
     else:
+
         root.shortage_note = "(缺料)"
         root.isLackMaterial = 0
-
+    #
 
 def order_has_lack(s, order_num):
     return s.query(Bom)\
@@ -1143,6 +1188,7 @@ def update_bom(material_id):
   })
 
 
+# 20260907版
 # 20260728版
 @updateTable.route('/updateAssembleProcessStep', methods=['POST'])
 def update_assemble_process_step():
@@ -1821,6 +1867,7 @@ def update_assemble_process_step():
         elif finished_work_num == 'B110':
             finish_all_process_logs(22)
 
+        '''
         # ============================================================
         # 異常返工：B109 完成
         # ============================================================
@@ -2170,6 +2217,739 @@ def update_assemble_process_step():
             }), 200
 
         # end if 異常返工, B109 完成
+        '''
+        #
+        # ============================================================
+        # 20260907
+        # B109 異常返工完成
+        #
+        # 新規則：
+        #
+        #   a1 正常完成 2
+        #   a1-異常返工完成 1
+        #
+        #       ↓
+        #
+        #   a1 有效完成 = 3
+        #
+        # 不建立：
+        #
+        #   b1-異常
+        #   b2-異常
+        #
+        # 等所有 B109（正常 + 異常返工）全部完成後，
+        # 再由 release_b109_to_b110_batch()
+        # 合併有效完成量後建立正常 B110。
+        # ============================================================
+        if (
+            finished_work_num == 'B109'
+            and
+            (assemble_record.reason or '').strip()
+            == '異常返工'
+        ):
+
+            # ========================================================
+            # 20260907
+            # 判斷這筆 B109 異常返工的來源
+            #
+            # parent = B109
+            #   → B109 自己發生異常
+            #   → 完成後併回正常 B109
+            #
+            # parent = B110
+            #   → B110 發生異常
+            #   → 回 B109 重工
+            #   → B109 重工完成後必須回原 B110
+            # ========================================================
+            parent_row = None
+
+            parent_id = to_int(
+                getattr(
+                    assemble_record,
+                    'is_copied_from_id',
+                    0
+                )
+            )
+
+            if parent_id > 0:
+                parent_row = (
+                    s.query(Assemble)
+                    .filter(
+                        Assemble.id == parent_id
+                    )
+                    .filter(
+                        Assemble.material_id == material_id
+                    )
+                    .first()
+                )
+
+            parent_work_num = (
+                (parent_row.work_num or '').strip()
+                if parent_row
+                else ''
+            )
+
+            is_from_b110_abnormal = (
+                parent_work_num == 'B110'
+            )
+
+            print(
+                "[B109 REWORK SOURCE]",
+                {
+                    "rework_id":
+                        assemble_record.id,
+
+                    "parent_id":
+                        parent_id,
+
+                    "parent_work_num":
+                        parent_work_num,
+
+                    "from_b110":
+                        is_from_b110_abnormal,
+                }
+            )
+
+            qty = to_int(
+                done_qty
+                or assemble_record.must_receive_end_qty
+                or assemble_record.ask_qty
+                or assemble_record.must_receive_qty
+            )
+
+
+            print(
+                "[B109 ABNORMAL FINISHED]",
+                {
+                    "material_id":
+                        material_id,
+
+                    "assemble_id":
+                        assemble_record.id,
+
+                    "schedule_id":
+                        to_int(
+                            getattr(
+                                assemble_record,
+                                'schedule_id',
+                                0
+                            )
+                        ),
+
+                    "qty":
+                        qty,
+                }
+            )
+
+
+            # --------------------------------------------------------
+            # 1. 關閉此 B109 異常返工的所有 Process
+            # --------------------------------------------------------
+            finish_all_process_logs(21)
+
+
+            # --------------------------------------------------------
+            # 2. 此異常返工完成並隱藏
+            #
+            # 保留 DB row，
+            # helper 後續會把這個 qty 合併回原 B109 schedule。
+            # --------------------------------------------------------
+            assemble_record.process_step_code = 0
+
+            assemble_record.must_receive_qty = qty
+            assemble_record.ask_qty = qty
+            assemble_record.total_ask_qty = qty
+            assemble_record.must_receive_end_qty = qty
+
+            assemble_record.completed_qty = qty
+            assemble_record.total_completed_qty = qty
+            assemble_record.allOk_qty = qty
+
+            assemble_record.isAssembleStationShow = False
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = True
+
+            assemble_record.currentStartTime = None
+            assemble_record.currentEndTime = None
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 7
+            assemble_record.show3_ok = 7
+
+            #
+            # ========================================================
+            # 20260907
+            # B110 異常 → B109 重工 → 回原 B110
+            #
+            # 例如：
+            #
+            # b1 異常 1
+            #   ↓
+            # a1-異常 1
+            #   ↓ 完成
+            # b1-異常 1
+            #
+            # 此流程不可進入一般 B109 merge。
+            # ========================================================
+            if is_from_b110_abnormal:
+
+                source_b110 = parent_row
+
+                source_schedule_id = to_int(
+                    getattr(
+                        source_b110,
+                        'schedule_id',
+                        0
+                    )
+                )
+
+                # ----------------------------------------------------
+                # 找同一條返工鏈是否已經存在 B110-異常
+                # ----------------------------------------------------
+                child_b110 = (
+                    s.query(Assemble)
+                    .filter(
+                        Assemble.material_id
+                        == material_id
+                    )
+                    .filter(
+                        Assemble.work_num
+                        == 'B110'
+                    )
+                    .filter(
+                        Assemble.reason
+                        == '異常返工'
+                    )
+                    .filter(
+                        Assemble.is_copied_from_id
+                        == assemble_record.id
+                    )
+                    .filter(
+                        Assemble.schedule_id
+                        == source_schedule_id
+                    )
+                    .order_by(
+                        Assemble.id.asc()
+                    )
+                    .first()
+                )
+
+
+                # ====================================================
+                # 已存在 → 重新開啟
+                # ====================================================
+                if child_b110:
+
+                    child_b110.process_step_code = 2
+
+                    child_b110.must_receive_qty = qty
+                    child_b110.ask_qty = qty
+                    child_b110.total_ask_qty = qty
+                    child_b110.total_ask_qty_end = 0
+                    child_b110.must_receive_end_qty = qty
+
+                    child_b110.abnormal_qty = 0
+
+                    child_b110.completed_qty = 0
+                    child_b110.total_completed_qty = 0
+                    child_b110.allOk_qty = 0
+
+                    child_b110.isAssembleStationShow = True
+                    child_b110.isWarehouseStationShow = False
+
+                    child_b110.input_disable = False
+                    child_b110.input_end_disable = False
+                    child_b110.input_abnormal_disable = False
+                    child_b110.input_allOk_disable = True
+
+                    child_b110.currentStartTime = None
+                    child_b110.currentEndTime = None
+
+                    child_b110.show1_ok = 1
+                    child_b110.show2_ok = 5
+                    child_b110.show3_ok = 5
+
+
+                # ====================================================
+                # 不存在 → 建立 b1-異常
+                # ====================================================
+                else:
+
+                    child_b110 = Assemble(
+
+                        material_id=
+                            assemble_record.material_id,
+
+                        material_num=
+                            assemble_record.material_num,
+
+                        material_comment=
+                            assemble_record.material_comment,
+
+                        seq_num=
+                            source_b110.seq_num,
+
+                        work_num='B110',
+
+                        process_step_code=2,
+
+                        Incoming1_Abnormal=(
+                            assemble_record.Incoming1_Abnormal
+                            or ''
+                        ),
+
+                        must_receive_qty=qty,
+                        ask_qty=qty,
+                        total_ask_qty=qty,
+                        total_ask_qty_end=0,
+                        must_receive_end_qty=qty,
+
+                        abnormal_qty=0,
+
+                        user_id='',
+
+                        writer_id=
+                            assemble_record.writer_id,
+
+                        write_date=
+                            assemble_record.write_date,
+
+                        good_qty=0,
+                        total_good_qty=0,
+                        non_good_qty=0,
+                        meinh_qty=0,
+
+                        completed_qty=0,
+                        total_completed_qty=0,
+                        allOk_qty=0,
+
+                        reason='異常返工',
+
+                        confirm_comment=(
+                            assemble_record.confirm_comment
+                            or ''
+                        ),
+
+                        is_assemble_ok=0,
+
+                        currentStartTime=None,
+                        currentEndTime=None,
+
+                        input_disable=False,
+                        input_end_disable=False,
+                        input_allOk_disable=True,
+                        input_abnormal_disable=False,
+
+                        isAssembleStationShow=True,
+                        isWarehouseStationShow=False,
+
+                        alarm_enable=True,
+                        alarm_message='',
+
+                        isAssembleFirstAlarm=True,
+                        isAssembleFirstAlarm_message='',
+                        isAssembleFirstAlarm_qty=0,
+
+                        whichStation=2,
+
+                        show1_ok=1,
+                        show2_ok=5,
+                        show3_ok=5,
+
+                        # ★ 回到原本發生異常的 b1 / b2
+                        schedule_id=
+                            source_schedule_id,
+
+                        # ★ b1-異常 → a1-異常
+                        is_copied_from_id=
+                            assemble_record.id,
+
+                        release_batch_no=0,
+                    )
+
+                    s.add(child_b110)
+                    s.flush()
+
+
+                # ----------------------------------------------------
+                # Material 保持在組裝區
+                # ----------------------------------------------------
+                material_record.isAssembleStationShow = True
+                material_record.isAssembleStation3TakeOk = False
+                material_record.whichStation = 2
+
+                material_record.show1_ok = 3
+                material_record.show2_ok = 5
+                material_record.show3_ok = 5
+
+                release_material_lock(
+                    material_record
+                )
+
+
+                print(
+                    "[B110 -> B109 -> B110 REWORK]",
+                    {
+                        "source_b110_id":
+                            source_b110.id,
+
+                        "b109_rework_id":
+                            assemble_record.id,
+
+                        "b110_rework_id":
+                            child_b110.id,
+
+                        "schedule_id":
+                            source_schedule_id,
+
+                        "qty":
+                            qty,
+                    }
+                )
+
+
+                s.commit()
+
+
+                return jsonify({
+                    "status": False,
+
+                    "material_done": False,
+
+                    "waiting_send": False,
+
+                    "abnormal_rework": True,
+
+                    "released_next_group": True,
+
+                    "released_count":
+                        qty,
+
+                    "created_ids": [
+                        child_b110.id
+                    ],
+
+                    "next_work_num":
+                        "B110",
+
+                    "message":
+                        (
+                            "B110 abnormal returned through "
+                            "B109 and B110 rework is ready"
+                        ),
+                }), 200
+
+            #
+
+            # --------------------------------------------------------
+            # 3. 判斷還有沒有任何 B109 尚未完成
+            #
+            # 這裡包含：
+            #
+            #   正常 B109
+            #   B109 異常返工
+            #
+            # 但排除顯示/待送出的衍生 row。
+            # --------------------------------------------------------
+            remaining_b109_rows = (
+                s.query(Assemble)
+
+                .filter(
+                    Assemble.material_id
+                    == material_id
+                )
+
+                .filter(
+                    Assemble.work_num
+                    == 'B109'
+                )
+
+                .filter(
+                    Assemble.schedule_id
+                    > 0
+                )
+
+                .filter(
+                    Assemble.process_step_code
+                    > 0
+                )
+
+                .filter(
+                    or_(
+                        Assemble.reason.is_(None),
+
+                        ~Assemble.reason.in_(
+                            [
+                                'B109_DIRECT_WAIT_SEND',
+                                'B109_DONE_COPY',
+                            ]
+                        )
+                    )
+                )
+
+                .all()
+            )
+
+
+            # --------------------------------------------------------
+            # 目前這一列已經被設為 step=0，
+            # SQLAlchemy query autoflush 後不會再抓到自己。
+            # --------------------------------------------------------
+            all_b109_done = (
+                len(
+                    remaining_b109_rows
+                )
+                == 0
+            )
+
+
+            print(
+                "[B109 ABNORMAL FINISHED CHECK]",
+                {
+                    "material_id":
+                        material_id,
+
+                    "remaining_b109_ids":
+                        [
+                            r.id
+                            for r
+                            in remaining_b109_rows
+                        ],
+
+                    "all_b109_done":
+                        all_b109_done,
+                }
+            )
+
+
+            # --------------------------------------------------------
+            # 4. 判斷此工單是否有正常 B110
+            #
+            # 不再建立 B110-異常。
+            # --------------------------------------------------------
+            normal_b110_exists = (
+                s.query(Assemble.id)
+
+                .filter(
+                    Assemble.material_id
+                    == material_id
+                )
+
+                .filter(
+                    Assemble.work_num
+                    == 'B110'
+                )
+
+                .filter(
+                    Assemble.schedule_id
+                    > 0
+                )
+
+                .filter(
+                    or_(
+                        Assemble.reason.is_(None),
+                        Assemble.reason == ''
+                    )
+                )
+
+                .first()
+                is not None
+            )
+
+
+            # ========================================================
+            # 5. 有正常 B110
+            # ========================================================
+            if normal_b110_exists:
+
+                release_result = {
+                    "released": False,
+                    "release_qty": 0,
+                    "created_ids": [],
+                    "message":
+                        "waiting other B109 processes",
+                }
+
+
+                # ----------------------------------------------------
+                # 所有正常 + 異常 B109 全部完成後
+                # 才允許釋放 B110。
+                # ----------------------------------------------------
+                if all_b109_done:
+
+                    release_result = (
+                        release_b109_to_b110_batch(
+                            session=s,
+                            material_id=material_id
+                        )
+                    )
+
+
+                material_record.isAssembleStationShow = True
+                material_record.isAssembleStation3TakeOk = False
+                material_record.whichStation = 2
+
+                material_record.show1_ok = 3
+
+                if all_b109_done:
+                    material_record.show2_ok = 5
+                    material_record.show3_ok = 5
+                else:
+                    material_record.show2_ok = 3
+                    material_record.show3_ok = 3
+
+
+                release_material_lock(
+                    material_record
+                )
+
+                s.commit()
+
+
+                return jsonify({
+                    "status": False,
+
+                    "material_done": False,
+
+                    "waiting_send": False,
+
+                    "abnormal_rework":
+                        True,
+
+                    "all_b109_done":
+                        all_b109_done,
+
+                    "released_next_group":
+                        bool(
+                            release_result.get(
+                                "released",
+                                False
+                            )
+                        ),
+
+                    "released_count":
+                        to_int(
+                            release_result.get(
+                                "release_qty",
+                                0
+                            )
+                        ),
+
+                    "created_ids":
+                        release_result.get(
+                            "created_ids",
+                            []
+                        ),
+
+                    "next_work_num":
+                        (
+                            "B110"
+                            if all_b109_done
+                            else "B109"
+                        ),
+
+                    "message":
+                        release_result.get(
+                            "message",
+                            (
+                                "B109 abnormal rework finished; "
+                                "waiting other B109 processes"
+                            )
+                        ),
+                }), 200
+
+
+            # ========================================================
+            # 6. 沒有 B110
+            #
+            # 仍保留原本「只有 B109」流程。
+            # ========================================================
+            if not all_b109_done:
+
+                material_record.isAssembleStationShow = True
+                material_record.isAssembleStation3TakeOk = False
+                material_record.whichStation = 2
+
+                material_record.show1_ok = 3
+                material_record.show2_ok = 3
+                material_record.show3_ok = 3
+
+                release_material_lock(
+                    material_record
+                )
+
+                s.commit()
+
+                return jsonify({
+                    "status": False,
+                    "material_done": False,
+                    "waiting_send": False,
+                    "abnormal_rework": True,
+                    "all_b109_done": False,
+                    "message":
+                        (
+                            "B109 abnormal rework finished; "
+                            "waiting other B109 processes"
+                        ),
+                }), 200
+
+
+            # --------------------------------------------------------
+            # 沒有 B110，而且所有 B109 已完成：
+            # 保留原本直接待送出的行為。
+            # --------------------------------------------------------
+            assemble_record.isAssembleStationShow = True
+            assemble_record.isWarehouseStationShow = False
+
+            assemble_record.input_disable = True
+            assemble_record.input_end_disable = True
+            assemble_record.input_abnormal_disable = True
+            assemble_record.input_allOk_disable = False
+
+            assemble_record.show1_ok = 1
+            assemble_record.show2_ok = 9
+            assemble_record.show3_ok = 9
+
+            material_record.isAssembleStationShow = True
+            material_record.isAssembleStation3TakeOk = True
+            material_record.whichStation = 2
+
+            material_record.show1_ok = 3
+            material_record.show2_ok = 9
+            material_record.show3_ok = 9
+
+            release_material_lock(
+                material_record
+            )
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "material_done": False,
+                "waiting_send": True,
+                "abnormal_rework": True,
+                "all_b109_done": True,
+
+                "current_assemble_id":
+                    assemble_record.id,
+
+                "completed_qty":
+                    qty,
+
+                "message":
+                    (
+                        "B109 abnormal rework finished, "
+                        "direct waiting send"
+                    ),
+            }), 200
+
+        # end if B109 異常返工完成
+        #
 
         # ============================================================
         # B109 FULL END
@@ -2376,6 +3156,7 @@ def update_assemble_process_step():
             # 而是判斷：
             #   是否還存在 process_step_code=3 的 B109 active row
             # --------------------------------------------------------
+            '''
             remaining_b109_rows = [
                 r for r in b109_rows
                 if (
@@ -2385,6 +3166,111 @@ def update_assemble_process_step():
             ]
 
             all_b109_done = len(remaining_b109_rows) == 0
+            '''
+            #
+            # --------------------------------------------------------
+            # 3) 判斷是否還有正常 B109 需要繼續加工
+            # --------------------------------------------------------
+            remaining_b109_rows = [
+                r for r in b109_rows
+                if (
+                    to_int(
+                        r.process_step_code
+                    ) == 3
+
+                    and
+
+                    to_int(
+                        r.id
+                    ) != to_int(
+                        assemble_record.id
+                    )
+                )
+            ]
+
+
+            # ========================================================
+            # 20260907
+            # 另外檢查 B109 異常返工是否仍未完成
+            #
+            # 正常 B109 全部完成，
+            # 但只要 a1-異常 / a2-異常仍在做，
+            #
+            # B110 就不能出現。
+            # ========================================================
+            active_b109_rework_rows = (
+                s.query(Assemble)
+
+                .filter(
+                    Assemble.material_id
+                    == material_id
+                )
+
+                .filter(
+                    Assemble.work_num
+                    == 'B109'
+                )
+
+                .filter(
+                    Assemble.reason
+                    == '異常返工'
+                )
+
+                .filter(
+                    Assemble.schedule_id
+                    > 0
+                )
+
+                .filter(
+                    Assemble.process_step_code
+                    > 0
+                )
+
+                .all()
+            )
+
+
+            all_b109_done = (
+                len(
+                    remaining_b109_rows
+                ) == 0
+
+                and
+
+                len(
+                    active_b109_rework_rows
+                ) == 0
+            )
+
+
+            print(
+                "[B109 FULL END]",
+                {
+                    "material_id":
+                        material_id,
+
+                    "assemble_id":
+                        assemble_id,
+
+                    "remaining_normal_ids":
+                        [
+                            r.id
+                            for r
+                            in remaining_b109_rows
+                        ],
+
+                    "active_rework_ids":
+                        [
+                            r.id
+                            for r
+                            in active_b109_rework_rows
+                        ],
+
+                    "all_b109_done":
+                        all_b109_done,
+                }
+            )
+            #
 
             print(
                 "[B109 FULL END]",
@@ -3950,42 +4836,6 @@ def update_modify_material_and_Boms():
   })
 
 
-@updateTable.route("/updateModifyMaterialAndBomsP", methods=['POST'])
-def update_modify_material_and_Boms_p():
-  print("updateModifyMaterialAndBoms....")
-
-  data = request.json
-  _id = data.get("id")
-  _date = data.get("date")
-  _qty = data.get("qty")
-
-  return_value = True
-
-  update_data = {}
-  if _date is not None:
-      update_data["material_delivery_date"] = _date   #訂單日期
-  if _qty is not None:
-      update_data["material_qty"] = _qty              #需求數量(訂單數量)
-      update_data["total_delivery_qty"] = _qty        #應備數量
-
-  s = Session()
-
-  if update_data:
-    rows_updated = s.query(P_Material).filter(P_Material.id == _id).update(update_data)
-
-  if rows_updated == 0:
-    return_value = False
-    raise ValueError("Update failed: no rows affected")
-
-  s.commit()
-
-  s.close()
-
-  return jsonify({
-    'status': return_value
-  })
-
-
 # 20260811版 修
 @updateTable.route("/updateAssmbleDataByMaterialID", methods=['POST'])
 def update_assemble_data_by_material_id():
@@ -4535,7 +5385,14 @@ def update_assemble_schedule_rows():
         s.close()
 
 
-def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, qty):
+# 20260907版
+def add_assemble_schedule_rows_by_abnormal(
+    session,
+    material_id,
+    process_steps,
+    qty,
+    source_assemble_id=0
+):
     print("add_assemble_schedule_rows_by_abnormal....")
     print("material_id:", material_id)
     print("qty:", qty)
@@ -4543,6 +5400,52 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
     material = session.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise Exception(f"material not found: {material_id}")
+
+    #
+    # ============================================================
+    # 20260907
+    # 本次按異常的來源 Assemble
+    #
+    # 可能是：
+    #   B109 a1
+    #   B110 b1
+    # ============================================================
+    source_row = None
+
+    source_assemble_id = to_int(
+        source_assemble_id
+    )
+
+    if source_assemble_id > 0:
+
+        source_row = (
+            session.query(Assemble)
+            .filter(
+                Assemble.id
+                == source_assemble_id
+            )
+            .filter(
+                Assemble.material_id
+                == material_id
+            )
+            .first()
+        )
+
+    print(
+        "[ABNORMAL SOURCE]",
+        {
+            "source_assemble_id":
+                source_assemble_id,
+
+            "source_work_num":
+                (
+                    source_row.work_num
+                    if source_row
+                    else None
+                ),
+        }
+    )
+    #
 
     try:
         target_qty = int(qty or 0)
@@ -4640,11 +5543,19 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
         session.flush()
         return new_row
 
-    def add_group_rows(work_num, process_step_code, target_steps):
+    def add_group_rows(
+            work_num,
+            process_step_code,
+            target_steps
+    ):
         checked_ids = [
             int(x.get('id'))
             for x in (target_steps or [])
-            if x.get('checked') and x.get('id') is not None
+            if (
+                x.get('checked')
+                and
+                x.get('id') is not None
+            )
         ]
 
         if not checked_ids:
@@ -4652,8 +5563,85 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
             return []
 
         template = get_any_template_row()
+
         created_rows = []
 
+        #
+        # ========================================================
+        # 第一筆異常返工的 parent
+        #
+        # 若這次是從 B110(b1) 按異常：
+        #
+        # a1-異常.is_copied_from_id = b1.id
+        #
+        # 若從 B109(a1) 按異常：
+        #
+        # a1-異常.is_copied_from_id = a1.id
+        # ========================================================
+        base_parent_id = None
+
+        if (
+            work_num == 'B109'
+            and
+            source_row is not None
+        ):
+            base_parent_id = (
+                source_row.id
+            )
+
+
+        # 第一個 checked step
+        base = create_row_from_template(
+            template=template,
+            work_num=work_num,
+            process_step_code=process_step_code,
+            schedule_id=checked_ids[0],
+
+            # ★ 修改
+            copied_from_id=
+                base_parent_id,
+
+            reason_text='異常返工',
+        )
+
+        created_rows.append(
+            base
+        )
+
+
+        # --------------------------------------------------------
+        # 其餘組裝異常 row
+        # 仍指向第一筆異常 row
+        # --------------------------------------------------------
+        for sid in checked_ids[1:]:
+
+            copied = create_row_from_template(
+                template=base,
+                work_num=work_num,
+                process_step_code=process_step_code,
+                schedule_id=sid,
+
+                copied_from_id=
+                    base.id,
+
+                reason_text='異常返工',
+            )
+
+            created_rows.append(
+                copied
+            )
+
+
+        print(
+            f"created abnormal schedule rows: "
+            f"material_id={material_id}, "
+            f"work_num={work_num}, "
+            f"count={len(created_rows)}"
+        )
+
+        return created_rows
+        #
+        '''
         # 第一個 checked step 建主列
         base = create_row_from_template(
             template=template,
@@ -4685,7 +5673,7 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
         )
 
         return created_rows
-
+        '''
     created = []
 
     # B109 = 組裝
@@ -4705,15 +5693,46 @@ def add_assemble_schedule_rows_by_abnormal(session, material_id, process_steps, 
     return created
 
 
+# 20260907版
 @updateTable.route("/addAssembleScheduleRows", methods=['POST'])
 def add_assemble_schedule_rows():
     print("addAssembleScheduleRows....")
-
+    '''
     request_data = request.get_json() or {}
 
     material_id = request_data.get('id')
     process_steps = request_data.get('process_steps') or {}
     abnormal_qty = request_data.get('abnormal_qty', None)
+    '''
+    # 20260907版
+    request_data = request.get_json() or {}
+
+    material_id = request_data.get(
+        'id'
+    )
+
+    process_steps = (
+        request_data.get(
+            'process_steps'
+        )
+        or {}
+    )
+
+    abnormal_qty = (
+        request_data.get(
+            'abnormal_qty',
+            None
+        )
+    )
+
+    # ★ 新增
+    source_assemble_id = to_int(
+        request_data.get(
+            'source_assemble_id',
+            0
+        )
+    )
+    #
 
     s = Session()
 
@@ -4745,13 +5764,34 @@ def add_assemble_schedule_rows():
 
         #print("normalized_process_steps:", normalized_process_steps)
         #print("abnormal_qty:", abnormal_qty)
-
+        '''
         created_rows = add_assemble_schedule_rows_by_abnormal(
             session=s,
             material_id=material_id,
             process_steps=normalized_process_steps,
             qty=abnormal_qty
         )
+        '''
+        # 20260907版
+        created_rows = (
+            add_assemble_schedule_rows_by_abnormal(
+                session=s,
+
+                material_id=
+                    material_id,
+
+                process_steps=
+                    normalized_process_steps,
+
+                qty=
+                    abnormal_qty,
+
+                # ★ 新增
+                source_assemble_id=
+                    source_assemble_id,
+            )
+        )
+        #
 
         s.commit()
 
@@ -4834,6 +5874,34 @@ def update_material():
     _id = request_data.get('id')
     _record_name = request_data.get('record_name')
     _record_data = request_data.get('record_data')
+
+    if (
+        str(_id) == '502'
+        and _record_name == 'merge_enabled'
+    ):
+        print(
+            '\n'
+            '========================================'
+        )
+        print(
+            '[updateMaterial][502][merge_enabled]'
+        )
+        print(
+            {
+                'id':
+                    _id,
+
+                'record_name':
+                    _record_name,
+
+                'record_data':
+                    _record_data,
+            }
+        )
+        print(
+            '========================================'
+            '\n'
+        )
 
     s = Session()
 
@@ -5290,6 +6358,8 @@ def update_bom_xor_receive():
     })
 """
 
+
+"""
 @updateTable.route(
     "/updateBomXorReceive",
     methods=["POST"]
@@ -5775,60 +6845,2065 @@ def update_bom_xor_receive():
     finally:
 
         s.close()
+"""
 
+"""
+@updateTable.route(
+    "/updateBomXorReceive",
+    methods=["POST"]
+)
+def update_bom_xor_receive():
 
-@updateTable.route("/updateBomXorReceiveP", methods=["POST"])
-def update_bom_xor_receive_p():
-    print("updateBomXorReceiveP....")
+    print("updateBomXorReceive....")
 
-    data = request.get_json()
-    copied_id = data.get("copied_material_id")
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    copied_id = data.get(
+        "copied_material_id"
+    )
+
+    print(
+        "copied_id:",
+        copied_id
+    )
+
+    if copied_id is None:
+        return jsonify({
+            "status": False,
+            "message":
+                "missing copied_material_id"
+        }), 400
+
+    try:
+        copied_id = int(
+            copied_id
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid copied_material_id"
+        }), 400
 
     s = Session()
 
-    # 找到複製資料
-    copied_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_id).first()
-    if not copied_material or not copied_material.is_copied_from_id:
-        return jsonify({"error": "Invalid copied p_material table or missing source ID"}), 400
-    #print("copied_material:",copied_material)
+    try:
 
-    # 找到原始資料
-    source_material = s.query(P_Material).options(joinedload(P_Material._bom)).filter_by(id=copied_material.is_copied_from_id).first()
-    if not source_material:
-        return jsonify({"error": "Source p_material not found"}), 404
-    #print("source p_material:",source_material)
+        # ============================================================
+        # 1. 找 copied / child material
+        # ============================================================
 
-    # 條件限制：兩者其中之一 isLackMaterial 必須為 0 才繼續
-    if source_material.isLackMaterial != 0 and copied_material.isLackMaterial != 0:
-        return jsonify({"message": "No update required, neither material has isLackMaterial == 0"}), 200
+        copied_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == copied_id
+            )
+            .first()
+        )
 
-    # 建立 dict 以 seq_num 為 key 對應 receive
-    source_boms = {bom.seq_num: bom for bom in source_material._bom}
-    copied_boms = {bom.seq_num: bom for bom in copied_material._bom}
-    #print("source_boms:",source_boms)
-    #print("copied_boms:",copied_boms)
+        if (
+            copied_material is None
+            or not
+            copied_material.is_copied_from_id
+        ):
 
-    updated = False
-    for seq_num, source_bom in source_boms.items():
-        if seq_num in copied_boms:
-            copied_bom = copied_boms[seq_num]
-            xor_result = int(source_bom.receive) ^ int(copied_bom.receive)
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Invalid copied material "
+                    "or missing source ID"
+            }), 400
+
+        print(
+            "copied_material:",
+            copied_material
+        )
+
+        source_id = int(
+            copied_material
+            .is_copied_from_id
+        )
+
+
+        # ============================================================
+        # 2. 找 source / parent material
+        # ============================================================
+
+        source_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == source_id
+            )
+            .first()
+        )
+
+        if source_material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material not found"
+            }), 404
+
+        print(
+            "source_material:",
+            source_material
+        )
+
+        order_num = str(
+            source_material.order_num
+            or ""
+        ).strip()
+
+        if not order_num:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material "
+                    "has no order_num"
+            }), 400
+
+
+        # ============================================================
+        # 2-1. 20260901
+        #
+        # ★ 併單 / 不併單，以 source / parent 為準。
+        #
+        # 原因：
+        # copied child 的 merge_enabled 可能因舊流程被寫成 True，
+        # 例如：
+        #
+        # parent 488 = False  → 缺料不併單
+        # child  493 = True   → 舊資料錯誤
+        #
+        # 所以不能再用 copied_material.merge_enabled
+        # 判斷 child 是否要獨立進 Begin。
+        # ============================================================
+
+        source_merge_enabled = bool(
+            getattr(
+                source_material,
+                "merge_enabled",
+                True
+            )
+        )
+
+        print(
+            "[updateBomXorReceive] merge mode:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "source_merge_enabled":
+                    source_merge_enabled,
+
+                "copied_id":
+                    copied_material.id,
+
+                "copied_merge_enabled":
+                    bool(
+                        getattr(
+                            copied_material,
+                            "merge_enabled",
+                            True
+                        )
+                    ),
+            }
+        )
+
+
+        # ============================================================
+        # 3. 原有 XOR BOM 同步
+        #
+        # 只處理 source / copy
+        # 具有相同 seq_num 的 BOM。
+        # ============================================================
+
+        source_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                source_material._bom
+                or []
+            )
+        }
+
+        copied_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                copied_material._bom
+                or []
+            )
+        }
+
+        updated = False
+
+        for (
+            seq_num,
+            source_bom
+        ) in source_boms.items():
+
+            if (
+                seq_num
+                not in copied_boms
+            ):
+                continue
+
+            copied_bom = (
+                copied_boms[
+                    seq_num
+                ]
+            )
+
+            source_receive = bool(
+                source_bom.receive
+            )
+
+            copied_receive = bool(
+                copied_bom.receive
+            )
+
+            xor_result = (
+                int(
+                    source_receive
+                )
+                ^
+                int(
+                    copied_receive
+                )
+            )
+
             if xor_result == 1:
-                source_bom.receive = True  #          將缺料清除
-                source_material.isLackMaterial = 99
-                copied_material.isLackMaterial = 0
+
+                # ----------------------------------------------------
+                # source / copy 其中一邊已到料，
+                # 將 source BOM 視為已補齊。
+                # ----------------------------------------------------
+
+                source_bom.receive = True
+
+                source_material\
+                    .isLackMaterial = 99
+
+                copied_material\
+                    .isLackMaterial = 0
+
                 updated = True
 
-    if updated:
+
+        # ============================================================
+        # 4. 整張 order 即時缺料判斷
+        # ============================================================
+
+        # 先 flush XOR 結果，
+        # 讓下面查詢取得最新 receive 狀態。
+        s.flush()
+
+
+        still_lack = (
+            s.query(
+                Bom.id
+            )
+            .join(
+                Material,
+                Material.id
+                == Bom.material_id
+            )
+            .filter(
+                Material.order_num
+                == order_num
+            )
+            .filter(
+                or_(
+                    Bom.receive
+                    .is_(False),
+
+                    Bom.receive
+                    .is_(None),
+                )
+            )
+            .first()
+        )
+
+
+        order_all_ready = (
+            still_lack is None
+        )
+
+
+        print(
+            "[updateBomXorReceive] "
+            "order status:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "copied_id":
+                    copied_material.id,
+
+                "xor_updated":
+                    updated,
+
+                "order_all_ready":
+                    order_all_ready,
+            }
+        )
+
+
+        # ============================================================
+        # 5. 更新 root 缺料 / 狀態
+        # ============================================================
+
+        refresh_root_shortage_note(
+            s,
+            order_num
+        )
+
+        refresh_root_status(
+            s,
+            order_num
+        )
+
+
+        # ============================================================
+        # 6. 整張 order BOM 已全部到齊
+        # ============================================================
+
+        if order_all_ready:
+
+            # --------------------------------------------------------
+            # source / parent
+            # --------------------------------------------------------
+
+            source_material\
+                .isLackMaterial = 99
+
+            # --------------------------------------------------------
+            # ★ 併單：
+            # 缺料解除後，parent 不再顯示缺料。
+            #
+            # ★ 不併單：
+            # parent 是原第 1 批，
+            # 要保留歷史「缺料不併單」狀態。
+            # --------------------------------------------------------
+
+            if source_merge_enabled:
+
+                source_material\
+                    .shortage_note = ""
+
+
+            # --------------------------------------------------------
+            # copied / child
+            # 第二批目前已補齊，所以 child 本身不再顯示缺料。
+            # --------------------------------------------------------
+
+            copied_material\
+                .isLackMaterial = 99
+
+            copied_material\
+                .shortage_note = ""
+
+
+            # ========================================================
+            # A. 併單
+            #
+            # source.merge_enabled = True
+            #
+            # child 只是補料資料，
+            # 不需要獨立留在 Begin。
+            # ========================================================
+
+            if source_merge_enabled:
+
+                copied_material\
+                    .isShow = False
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                copied_material\
+                    .isAssembleStationShow = False
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+                copied_material\
+                    .process_step_enable = 0
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "MERGE - copy closed:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "source_merge_enabled":
+                            source_merge_enabled,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_isShow":
+                            copied_material.isShow,
+                    }
+                )
+
+
+            # ========================================================
+            # B. 不併單
+            #
+            # source.merge_enabled = False
+            #
+            # child 是獨立的第 2 批。
+            #
+            # Material 已送出後：
+            #   isShow=True
+            #
+            # Begin API 才能抓到 child。
+            # ========================================================
+
+            else:
+
+                copied_material\
+                    .isShow = True
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                # child 為獨立批次，
+                # 必須讓組裝區可以看到。
+                copied_material\
+                    .isAssembleStationShow = True
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+                # ----------------------------------------------------
+                # 注意：
+                # 不併單時不要在這裡設：
+                #
+                # process_step_enable = 0
+                #
+                # 因為 child 後續還要在 Begin 獨立設定 / 執行工序。
+                # ----------------------------------------------------
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "NON-MERGE - copy sent to Begin:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "source_merge_enabled":
+                            source_merge_enabled,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_merge_enabled":
+                            bool(
+                                getattr(
+                                    copied_material,
+                                    "merge_enabled",
+                                    True
+                                )
+                            ),
+
+                        "copied_isShow":
+                            copied_material.isShow,
+
+                        "copied_isAssembleStationShow":
+                            copied_material
+                            .isAssembleStationShow,
+                    }
+                )
+
+
+        # ============================================================
+        # 7. 還有缺料
+        #
+        # copy 繼續留在 Material，
+        # Begin +工序維持 disable。
+        # ============================================================
+
+        else:
+
+            print(
+                "[updateBomXorReceive] "
+                "order still shortage:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_id":
+                        source_material.id,
+
+                    "copied_id":
+                        copied_material.id,
+                }
+            )
+
+
+        # ============================================================
+        # 8. commit
+        # ============================================================
+
         s.commit()
 
-    s.close()
 
-    return jsonify({
-      'status': True,
-      'message': "Updated successfully."
-    })
+        return jsonify({
+            "status": True,
 
+            "message":
+                "Updated successfully.",
+
+            "order_num":
+                order_num,
+
+            "source_material_id":
+                source_material.id,
+
+            "copied_material_id":
+                copied_material.id,
+
+            "source_merge_enabled":
+                source_merge_enabled,
+
+            "copied_merge_enabled":
+                bool(
+                    getattr(
+                        copied_material,
+                        "merge_enabled",
+                        True
+                    )
+                ),
+
+            "xor_updated":
+                updated,
+
+            "order_all_ready":
+                order_all_ready,
+
+            # True = 併單 child 被關閉
+            # False = 不併單 child 留在 Begin
+            "copy_closed":
+                bool(
+                    order_all_ready
+                    and
+                    source_merge_enabled
+                ),
+
+            "copy_isShow":
+                bool(
+                    copied_material.isShow
+                ),
+
+            "copy_isAssembleStationShow":
+                bool(
+                    copied_material
+                    .isAssembleStationShow
+                ),
+
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBomXorReceive ERROR:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+
+    finally:
+
+        s.close()
+"""
+
+
+# 20260901版
+@updateTable.route(
+    "/updateBomXorReceive",
+    methods=["POST"]
+)
+def update_bom_xor_receive():
+
+    print("updateBomXorReceive....")
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    copied_id = data.get(
+        "copied_material_id"
+    )
+
+    print(
+        "copied_id:",
+        copied_id
+    )
+
+    if copied_id is None:
+        return jsonify({
+            "status": False,
+            "message":
+                "missing copied_material_id"
+        }), 400
+
+    try:
+        copied_id = int(
+            copied_id
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid copied_material_id"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ============================================================
+        # 1. 找 copied / child material
+        # ============================================================
+
+        copied_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == copied_id
+            )
+            .first()
+        )
+
+        if (
+            copied_material is None
+            or not
+            copied_material.is_copied_from_id
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Invalid copied material "
+                    "or missing source ID"
+            }), 400
+
+        source_id = int(
+            copied_material
+            .is_copied_from_id
+        )
+
+
+        # ============================================================
+        # 2. 找 source / parent
+        # ============================================================
+
+        source_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == source_id
+            )
+            .first()
+        )
+
+        if source_material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material not found"
+            }), 404
+
+        order_num = str(
+            source_material.order_num
+            or ""
+        ).strip()
+
+        if not order_num:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material has no order_num"
+            }), 400
+
+
+        # ============================================================
+        # 2-1. merge 模式必須以 parent 為準
+        # ============================================================
+
+        source_merge_enabled = bool(
+            getattr(
+                source_material,
+                "merge_enabled",
+                True
+            )
+        )
+
+
+        # ============================================================
+        # 2-2. 保存 parent 歷史 shortage_note
+        #
+        # 不併單時：
+        # 第 1 批即使後面全部補料完成，
+        # 仍要保留「缺料不併單」。
+        # ============================================================
+
+        source_original_shortage_note = str(
+            getattr(
+                source_material,
+                "shortage_note",
+                ""
+            )
+            or ""
+        ).strip()
+
+
+        print(
+            "[updateBomXorReceive] merge mode:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "source_merge_enabled":
+                    source_merge_enabled,
+
+                "source_original_shortage_note":
+                    source_original_shortage_note,
+
+                "copied_id":
+                    copied_material.id,
+
+                "copied_merge_enabled":
+                    bool(
+                        getattr(
+                            copied_material,
+                            "merge_enabled",
+                            True
+                        )
+                    ),
+            }
+        )
+
+
+        # ============================================================
+        # 3. XOR BOM 同步
+        # ============================================================
+
+        source_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                source_material._bom
+                or []
+            )
+        }
+
+        copied_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                copied_material._bom
+                or []
+            )
+        }
+
+        updated = False
+
+        for (
+            seq_num,
+            source_bom
+        ) in source_boms.items():
+
+            if (
+                seq_num
+                not in copied_boms
+            ):
+                continue
+
+            copied_bom = (
+                copied_boms[
+                    seq_num
+                ]
+            )
+
+            source_receive = bool(
+                source_bom.receive
+            )
+
+            copied_receive = bool(
+                copied_bom.receive
+            )
+
+            xor_result = (
+                int(source_receive)
+                ^
+                int(copied_receive)
+            )
+
+            if xor_result == 1:
+
+                source_bom.receive = True
+
+                source_material\
+                    .isLackMaterial = 99
+
+                copied_material\
+                    .isLackMaterial = 0
+
+                updated = True
+
+
+        # ============================================================
+        # 4. 查整張 order 是否全部到料
+        # ============================================================
+
+        s.flush()
+
+        still_lack = (
+            s.query(
+                Bom.id
+            )
+            .join(
+                Material,
+                Material.id
+                == Bom.material_id
+            )
+            .filter(
+                Material.order_num
+                == order_num
+            )
+            .filter(
+                or_(
+                    Bom.receive.is_(False),
+                    Bom.receive.is_(None),
+                )
+            )
+            .first()
+        )
+
+        order_all_ready = (
+            still_lack is None
+        )
+
+
+        print(
+            "[updateBomXorReceive] order status:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "copied_id":
+                    copied_material.id,
+
+                "xor_updated":
+                    updated,
+
+                "order_all_ready":
+                    order_all_ready,
+            }
+        )
+
+
+        # ============================================================
+        # 5. 更新 root 狀態
+        # ============================================================
+
+        refresh_root_shortage_note(
+            s,
+            order_num
+        )
+
+        refresh_root_status(
+            s,
+            order_num
+        )
+
+
+        # ============================================================
+        # ★ 不併單：
+        # refresh_root_xxx 可能把 parent shortage_note 清掉，
+        # 所以要恢復歷史缺料。
+        # ============================================================
+
+        if (
+            not source_merge_enabled
+            and source_original_shortage_note
+        ):
+
+            source_material.shortage_note = (
+                source_original_shortage_note
+            )
+
+            print(
+                "[updateBomXorReceive] "
+                "restore source shortage history:",
+                {
+                    "source_id":
+                        source_material.id,
+
+                    "shortage_note":
+                        source_material
+                        .shortage_note,
+                }
+            )
+
+
+        # ============================================================
+        # 6. 全部到料
+        # ============================================================
+
+        if order_all_ready:
+
+            source_material\
+                .isLackMaterial = 99
+
+
+            # --------------------------------------------------------
+            # 只有併單才解除 parent 歷史 shortage
+            # --------------------------------------------------------
+
+            if source_merge_enabled:
+
+                source_material\
+                    .shortage_note = ""
+
+            else:
+
+                # ★ 不併單即使原值意外為空，
+                #   仍補回歷史標記。
+                if not str(
+                    source_material
+                    .shortage_note
+                    or ""
+                ).strip():
+
+                    source_material\
+                        .shortage_note = "(缺料)"
+
+
+            # --------------------------------------------------------
+            # child 自己已補齊
+            # --------------------------------------------------------
+
+            copied_material\
+                .isLackMaterial = 99
+
+            copied_material\
+                .shortage_note = ""
+
+
+            # ========================================================
+            # A. 併單
+            # ========================================================
+
+            if source_merge_enabled:
+
+                copied_material\
+                    .merge_enabled = True
+
+                copied_material\
+                    .isShow = False
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                copied_material\
+                    .isAssembleStationShow = False
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+                copied_material\
+                    .process_step_enable = 0
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "MERGE - copy closed:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_merge_enabled":
+                            copied_material
+                            .merge_enabled,
+
+                        "copied_isShow":
+                            copied_material
+                            .isShow,
+                    }
+                )
+
+
+            # ========================================================
+            # B. 不併單
+            # ========================================================
+
+            else:
+
+                # ----------------------------------------------------
+                # ★ 最重要：
+                # child 必須永久繼承 parent 的不併單模式
+                # ----------------------------------------------------
+
+                copied_material\
+                    .merge_enabled = False
+
+                copied_material\
+                    .isShow = True
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                copied_material\
+                    .isAssembleStationShow = True
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+                # 不要改 process_step_enable
+                # child 後面還要在 Begin 獨立設定工序。
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "NON-MERGE - copy sent to Begin:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "source_merge_enabled":
+                            source_merge_enabled,
+
+                        "source_shortage_note":
+                            source_material
+                            .shortage_note,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_merge_enabled":
+                            copied_material
+                            .merge_enabled,
+
+                        "copied_isShow":
+                            copied_material
+                            .isShow,
+
+                        "copied_isAssembleStationShow":
+                            copied_material
+                            .isAssembleStationShow,
+                    }
+                )
+
+
+        # ============================================================
+        # 7. 還有缺料
+        # ============================================================
+
+        else:
+
+            # child 仍留在 Material
+            copied_material\
+                .isShow = False
+
+            copied_material\
+                .isAssembleStationShow = False
+
+            # 同樣保持 parent merge 模式
+            copied_material.merge_enabled = (
+                source_merge_enabled
+            )
+
+            print(
+                "[updateBomXorReceive] "
+                "order still shortage:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_id":
+                        source_material.id,
+
+                    "copied_id":
+                        copied_material.id,
+
+                    "copied_merge_enabled":
+                        copied_material
+                        .merge_enabled,
+                }
+            )
+
+
+        # ============================================================
+        # 8. commit
+        # ============================================================
+
+        s.commit()
+
+
+        return jsonify({
+
+            "status": True,
+
+            "message":
+                "Updated successfully.",
+
+            "order_num":
+                order_num,
+
+            "source_material_id":
+                source_material.id,
+
+            "copied_material_id":
+                copied_material.id,
+
+            "source_merge_enabled":
+                source_merge_enabled,
+
+            "source_shortage_note":
+                source_material.shortage_note,
+
+            "copied_merge_enabled":
+                bool(
+                    copied_material
+                    .merge_enabled
+                ),
+
+            "xor_updated":
+                updated,
+
+            "order_all_ready":
+                order_all_ready,
+
+            "copy_closed":
+                bool(
+                    order_all_ready
+                    and
+                    source_merge_enabled
+                ),
+
+            "copy_isShow":
+                bool(
+                    copied_material
+                    .isShow
+                ),
+
+            "copy_isAssembleStationShow":
+                bool(
+                    copied_material
+                    .isAssembleStationShow
+                ),
+
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBomXorReceive ERROR:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+
+    finally:
+
+        s.close()
+
+
+"""
+# 20260901版
+@updateTable.route(
+    "/updateBomXorReceive",
+    methods=["POST"]
+)
+def update_bom_xor_receive():
+
+    print("updateBomXorReceive....")
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    copied_id = data.get(
+        "copied_material_id"
+    )
+
+    print(
+        "copied_id:",
+        copied_id
+    )
+
+    if copied_id is None:
+        return jsonify({
+            "status": False,
+            "message":
+                "missing copied_material_id"
+        }), 400
+
+    try:
+        copied_id = int(
+            copied_id
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "invalid copied_material_id"
+        }), 400
+
+    s = Session()
+
+    try:
+
+        # ============================================================
+        # 1. 找 copied / child material
+        # ============================================================
+
+        copied_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == copied_id
+            )
+            .first()
+        )
+
+        if (
+            copied_material is None
+            or not
+            copied_material.is_copied_from_id
+        ):
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Invalid copied material "
+                    "or missing source ID"
+            }), 400
+
+        print(
+            "copied_material:",
+            copied_material
+        )
+
+        source_id = int(
+            copied_material
+            .is_copied_from_id
+        )
+
+
+        # ============================================================
+        # 2. 找 source / parent material
+        # ============================================================
+
+        source_material = (
+            s.query(Material)
+            .options(
+                joinedload(
+                    Material._bom
+                )
+            )
+            .filter(
+                Material.id
+                == source_id
+            )
+            .first()
+        )
+
+        if source_material is None:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material not found"
+            }), 404
+
+        print(
+            "source_material:",
+            source_material
+        )
+
+
+        order_num = str(
+            source_material.order_num
+            or ""
+        ).strip()
+
+        if not order_num:
+
+            s.rollback()
+
+            return jsonify({
+                "status": False,
+                "message":
+                    "Source material "
+                    "has no order_num"
+            }), 400
+
+
+        # ============================================================
+        # 2-1. 20260901
+        #
+        # ★ 併單 / 不併單必須以 source / parent 為準
+        #
+        # child 的 merge_enabled 可能因舊流程為 True，
+        # 例如：
+        #
+        # source 502 = False
+        # copied 507 = True
+        #
+        # 但當初實際選的是「不併單」。
+        # ============================================================
+
+        source_merge_enabled = bool(
+            getattr(
+                source_material,
+                "merge_enabled",
+                True
+            )
+        )
+
+
+        # ============================================================
+        # 2-2. 20260901
+        #
+        # ★ 保存 parent 原本的歷史缺料文字
+        #
+        # refresh_root_shortage_note()
+        # 在整張訂單 BOM 全到齊時，
+        # 會把 root.shortage_note 清空。
+        #
+        # 但「不併單」第 1 批需要永久保留
+        # 「缺料不併單」的歷史依據。
+        # ============================================================
+
+        source_original_shortage_note = str(
+            getattr(
+                source_material,
+                "shortage_note",
+                ""
+            )
+            or ""
+        ).strip()
+
+
+        print(
+            "[updateBomXorReceive] merge mode:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "source_merge_enabled":
+                    source_merge_enabled,
+
+                "source_original_shortage_note":
+                    source_original_shortage_note,
+
+                "copied_id":
+                    copied_material.id,
+
+                "copied_merge_enabled":
+                    bool(
+                        getattr(
+                            copied_material,
+                            "merge_enabled",
+                            True
+                        )
+                    ),
+            }
+        )
+
+
+        # ============================================================
+        # 3. XOR BOM 同步
+        #
+        # source / copied 若有相同 seq_num，
+        # 其中一邊 receive=True，
+        # 則將 source 對應 BOM 視為補齊。
+        # ============================================================
+
+        source_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                source_material._bom
+                or []
+            )
+        }
+
+        copied_boms = {
+            bom.seq_num: bom
+            for bom
+            in (
+                copied_material._bom
+                or []
+            )
+        }
+
+        updated = False
+
+
+        for (
+            seq_num,
+            source_bom
+        ) in source_boms.items():
+
+            if (
+                seq_num
+                not in copied_boms
+            ):
+                continue
+
+
+            copied_bom = (
+                copied_boms[
+                    seq_num
+                ]
+            )
+
+
+            source_receive = bool(
+                source_bom.receive
+            )
+
+            copied_receive = bool(
+                copied_bom.receive
+            )
+
+
+            xor_result = (
+                int(
+                    source_receive
+                )
+                ^
+                int(
+                    copied_receive
+                )
+            )
+
+
+            if xor_result == 1:
+
+                # ----------------------------------------------------
+                # source / copy 其中一邊已到料，
+                # source BOM 視為已補齊
+                # ----------------------------------------------------
+
+                source_bom.receive = True
+
+                source_material\
+                    .isLackMaterial = 99
+
+                copied_material\
+                    .isLackMaterial = 0
+
+                updated = True
+
+
+        # ============================================================
+        # 4. 整張 order 即時缺料判斷
+        #
+        # 注意：
+        # 不可包在 if updated 裡。
+        #
+        # 因為 source / child BOM 可能完全沒有相同 seq_num，
+        # updated=False，
+        # 但整張訂單實際上已經全部到齊。
+        # ============================================================
+
+        s.flush()
+
+
+        still_lack = (
+            s.query(
+                Bom.id
+            )
+            .join(
+                Material,
+                Material.id
+                == Bom.material_id
+            )
+            .filter(
+                Material.order_num
+                == order_num
+            )
+            .filter(
+                or_(
+                    Bom.receive
+                    .is_(False),
+
+                    Bom.receive
+                    .is_(None),
+                )
+            )
+            .first()
+        )
+
+
+        order_all_ready = (
+            still_lack is None
+        )
+
+
+        print(
+            "[updateBomXorReceive] "
+            "order status:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_id":
+                    source_material.id,
+
+                "copied_id":
+                    copied_material.id,
+
+                "xor_updated":
+                    updated,
+
+                "order_all_ready":
+                    order_all_ready,
+            }
+        )
+
+
+        # ============================================================
+        # 5. 更新 root 缺料 / 狀態
+        # ============================================================
+
+        refresh_root_shortage_note(
+            s,
+            order_num
+        )
+
+        refresh_root_status(
+            s,
+            order_num
+        )
+
+
+        # ============================================================
+        # 5-1. 20260901
+        #
+        # ★ 不併單：
+        # 恢復 parent 原本的歷史 shortage_note
+        #
+        # 因為 refresh_root_shortage_note()
+        # 在 BOM 全到齊後會清掉它。
+        # ============================================================
+
+        if (
+            not source_merge_enabled
+            and
+            source_original_shortage_note
+        ):
+
+            source_material.shortage_note = (
+                source_original_shortage_note
+            )
+
+            print(
+                "[updateBomXorReceive] "
+                "restore source shortage history:",
+                {
+                    "source_id":
+                        source_material.id,
+
+                    "shortage_note":
+                        source_material.shortage_note,
+                }
+            )
+
+
+        # ============================================================
+        # 6. 整張 order BOM 已全部到齊
+        # ============================================================
+
+        if order_all_ready:
+
+            # --------------------------------------------------------
+            # source / parent
+            # --------------------------------------------------------
+
+            source_material\
+                .isLackMaterial = 99
+
+
+            # --------------------------------------------------------
+            # ★ 只有「併單」才清除 parent shortage_note
+            #
+            # 不併單：
+            # parent 是第 1 批獨立資料，
+            # 必須保留歷史缺料標記。
+            # --------------------------------------------------------
+
+            if source_merge_enabled:
+
+                source_material\
+                    .shortage_note = ""
+
+
+            # --------------------------------------------------------
+            # copied / child
+            #
+            # 第二批已經全部補齊，
+            # child 自己不再顯示缺料。
+            # --------------------------------------------------------
+
+            copied_material\
+                .isLackMaterial = 99
+
+            copied_material\
+                .shortage_note = ""
+
+
+            # ========================================================
+            # A. 併單
+            #
+            # source.merge_enabled = True
+            #
+            # child 只是補料資料，
+            # 不獨立留在 Begin。
+            # ========================================================
+
+            if source_merge_enabled:
+
+                copied_material\
+                    .isShow = False
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                copied_material\
+                    .isAssembleStationShow = False
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+                copied_material\
+                    .process_step_enable = 0
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "MERGE - copy closed:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "source_merge_enabled":
+                            source_merge_enabled,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_isShow":
+                            copied_material.isShow,
+
+                        "source_shortage_note":
+                            source_material
+                            .shortage_note,
+                    }
+                )
+
+
+            # ========================================================
+            # B. 不併單
+            #
+            # source.merge_enabled = False
+            #
+            # copied / child 是獨立第 2 批，
+            # 必須留在 Begin。
+            # ========================================================
+
+            else:
+
+                copied_material\
+                    .isShow = True
+
+                copied_material\
+                    .isOpen = False
+
+                copied_material\
+                    .isOpenEmpId = ""
+
+                copied_material\
+                    .hasStarted = False
+
+                copied_material\
+                    .startStatus = 1
+
+                copied_material\
+                    .isAssembleStationShow = True
+
+                copied_material\
+                    .isAssembleStation1TakeOk = False
+
+                copied_material\
+                    .isAssembleStation2TakeOk = False
+
+                copied_material\
+                    .isAssembleStation3TakeOk = False
+
+
+                # ----------------------------------------------------
+                # 不併單 child 還要在 Begin 做工序，
+                # 所以這裡不要：
+                #
+                # copied_material.process_step_enable = 0
+                # ----------------------------------------------------
+
+
+                print(
+                    "[updateBomXorReceive] "
+                    "NON-MERGE - copy sent to Begin:",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "source_id":
+                            source_material.id,
+
+                        "source_merge_enabled":
+                            source_merge_enabled,
+
+                        "source_shortage_note":
+                            source_material
+                            .shortage_note,
+
+                        "copied_id":
+                            copied_material.id,
+
+                        "copied_merge_enabled":
+                            bool(
+                                getattr(
+                                    copied_material,
+                                    "merge_enabled",
+                                    True
+                                )
+                            ),
+
+                        "copied_isShow":
+                            copied_material
+                            .isShow,
+
+                        "copied_isAssembleStationShow":
+                            copied_material
+                            .isAssembleStationShow,
+                    }
+                )
+
+
+        # ============================================================
+        # 7. 還有缺料
+        # ============================================================
+
+        else:
+
+            print(
+                "[updateBomXorReceive] "
+                "order still shortage:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_id":
+                        source_material.id,
+
+                    "copied_id":
+                        copied_material.id,
+                }
+            )
+
+
+        # ============================================================
+        # 8. commit
+        # ============================================================
+
+        s.commit()
+
+
+        return jsonify({
+
+            "status":
+                True,
+
+            "message":
+                "Updated successfully.",
+
+            "order_num":
+                order_num,
+
+            "source_material_id":
+                source_material.id,
+
+            "copied_material_id":
+                copied_material.id,
+
+            "source_merge_enabled":
+                source_merge_enabled,
+
+            "copied_merge_enabled":
+                bool(
+                    getattr(
+                        copied_material,
+                        "merge_enabled",
+                        True
+                    )
+                ),
+
+            "source_shortage_note":
+                str(
+                    source_material
+                    .shortage_note
+                    or ""
+                ),
+
+            "xor_updated":
+                updated,
+
+            "order_all_ready":
+                order_all_ready,
+
+            # True：
+            # 併單 child 被關閉
+            #
+            # False：
+            # 不併單 child 繼續獨立留在 Begin
+            "copy_closed":
+                bool(
+                    order_all_ready
+                    and
+                    source_merge_enabled
+                ),
+
+            "copy_isShow":
+                bool(
+                    copied_material
+                    .isShow
+                ),
+
+            "copy_isAssembleStationShow":
+                bool(
+                    copied_material
+                    .isAssembleStationShow
+                ),
+
+        }), 200
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "updateBomXorReceive ERROR:",
+            repr(e)
+        )
+
+        traceback.print_exc()
+
+        return jsonify({
+            "status": False,
+            "message": str(e)
+        }), 500
+
+
+    finally:
+
+        s.close()
+"""
 
 @updateTable.route("/updateProduct", methods=["POST"])
 def update_product():

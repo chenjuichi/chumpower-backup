@@ -219,6 +219,10 @@ class P_Assemble(BASE):
     must_receive_end_qty = Column(Integer, default=0)
     abnormal_qty = Column(Integer, default=0)
 
+    # 20260904 add
+    # 加工線 PEnd 廢品原因，最多 20 字
+    scrap_message = Column(String(20), nullable=True, default='', server_default=text("''"))
+
     # Excel 匯入時的原始工序數量，後續不可變更, 20260805 add
     original_must_receive_end_qty = Column(Integer, nullable=False, default=0)
 

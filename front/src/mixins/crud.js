@@ -554,6 +554,15 @@ export const apiOperation = (operation, path, payload) => {
   path == '/dialog2StartProcessBegin' || path == '/dialog2UpdateProcessBegin' || path == '/dialog2ToggleProcessBegin' || path == '/dialog2CloseProcessBegin') {
             return res.data;
           }
+
+          // 20260902版, QR Login
+          if (path == '/qrLogin/create' ||
+              path == '/qrLogin/confirm' ||
+              path == '/qrLogin/exchange') {
+            return res.data;
+          }
+          //
+
           /*
           if (path == '/getInformationsForAssembleErrorByHistory') {
             informations_for_assemble_error.value = [...res.data.informations_for_assemble_error];

@@ -76,8 +76,8 @@
             mdi-caps-lock
           </v-icon>
         </div>
-        <span style="position:relative; top:150px; font-weight:300; font-size: 12px;">
-          {{ 'Build 2026-08-30' }}
+        <span style="position:relative; top:30px; font-weight:300; font-size: 12px;">
+          {{ 'Build 2026-09-07' }}
         </span>
       </div>
   </div>
@@ -86,6 +86,9 @@
 
 <script setup>
 import { ref, reactive, defineComponent, watch, onBeforeMount, onMounted, onUnmounted, onBeforeUnmount, computed } from 'vue';
+
+import QrcodeVue from 'qrcode.vue'; // 20260902版
+
 import { useRouter } from 'vue-router';
 
 import { routerLinks } from '../router/index.js';
@@ -113,6 +116,12 @@ const listUsers2 = apiOperation('get', '/listUsers2');
 const register = apiOperation('post', '/register');
 const login = apiOperation('post', '/login');
 const reLogin = apiOperation('post', '/reLogin');
+
+// ========================================
+// QR Login
+// ========================================
+const qrLoginCreate = apiOperation('post', '/qrLogin/create');
+const qrLoginExchange = apiOperation('post', '/qrLogin/exchange');
 
 //=== component name ==
 defineComponent({ name: 'LoginForm3' });

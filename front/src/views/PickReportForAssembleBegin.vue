@@ -664,47 +664,93 @@
             style="width: 25px; height: 25px;"
           />
 
-<div
-  v-if="
-    isTableVisible &&
-    String(activeBomItemId) === String(item.id) &&
-    getFilteredBoms(item).length > 0 &&
-    !isGifDisabled(item)
-  "
-  :style="adjustTablePosition"
+          <div
+            v-if="
+              isTableVisible &&
+              String(activeBomItemId) === String(item.id) &&
+              getFilteredBoms(item).length > 0 &&
+              !isGifDisabled(item)
+            "
+            :style="adjustTablePosition"
+          >
+            <!--
+            <v-table style="width: 190px; overflow: hidden;" class="show_table">
+              <thead>
+                <tr>
+                  <th style="text-align: left;">編號</th>
+                  <th style="text-align: right;">數量</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr
+                  v-for="(bom_item, index) in getFilteredBoms(item)"
+                  :key="bom_item.id || index"
+                  :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
+                  class="custom-row"
+                >
+                  <td style="text-align: left;">{{ bom_item.material_num }}</td>
+                  <td style="text-align: right;">{{ bom_item.qty }}</td>
+                </tr>
+              </tbody>
+
+              <tfoot>
+                <tr>
+                  <td colspan="2">
+                    共 {{ getFilteredBoms(item).length }} 項
+                  </td>
+                </tr>
+              </tfoot>
+            </v-table>
+            -->
+            <!--20260907版-->
+
+            <v-table
+  fixed-header
+  style="width: 190px;"
+  class="show_table bom-table"
 >
+  <thead>
+    <tr>
+      <th style="text-align: left;">
+        編號
+      </th>
 
+      <th style="text-align: right;">
+        數量
+      </th>
+    </tr>
+  </thead>
 
-  <v-table style="width: 190px; overflow: hidden;" class="show_table">
-    <thead>
-      <tr>
-        <th style="text-align: left;">編號</th>
-        <th style="text-align: right;">數量</th>
-      </tr>
-    </thead>
+  <tbody>
+    <tr
+      v-for="(bom_item, index) in getFilteredBoms(item)"
+      :key="bom_item.id || index"
+      :style="{
+        backgroundColor:
+          index % 2 === 0 ? '#ffffff' : '#edf2f4'
+      }"
+      class="custom-row"
+    >
+      <td style="text-align: left;">
+        {{ bom_item.material_num }}
+      </td>
 
-    <tbody>
-      <tr
-        v-for="(bom_item, index) in getFilteredBoms(item)"
-        :key="bom_item.id || index"
-        :style="{backgroundColor: index % 2 === 0 ? '#ffffff' : '#edf2f4'}"
-        class="custom-row"
-      >
-        <td style="text-align: left;">{{ bom_item.material_num }}</td>
-        <td style="text-align: right;">{{ bom_item.qty }}</td>
-      </tr>
-    </tbody>
+      <td style="text-align: right;">
+        {{ bom_item.qty }}
+      </td>
+    </tr>
+  </tbody>
 
-    <tfoot>
-      <tr>
-        <td colspan="2">
-          共 {{ getFilteredBoms(item).length }} 項
-        </td>
-      </tr>
-    </tfoot>
-  </v-table>
-</div>
-
+  <tfoot>
+    <tr>
+      <td colspan="2">
+        共 {{ getFilteredBoms(item).length }} 項
+      </td>
+    </tr>
+  </tfoot>
+</v-table>
+          </div>
         </div>
       </v-hover>
     </template>
@@ -2810,6 +2856,8 @@ const fetchBomsV2 = async (item) => {
   }
 };
 */
+
+/*
 // 20260812版
 const fetchBomsV2 = async (item) => {
   try {
@@ -2877,6 +2925,74 @@ const fetchBomsV2 = async (item) => {
     )
 
     bomsMap.value[String(item.id)] = []
+  }
+}
+*/
+// 20260901版
+const fetchBomsV2 = async (item) => {
+  try {
+    const key = String(item.id)
+
+    activeBomItemId.value = key
+    isTableVisible.value = true
+
+    // =========================================================
+    // 20260901
+    // Begin BOM 一律依 material_id 查詢
+    //
+    // 原因：
+    // 同 order_num 可能有多批 material，例如：
+    //
+    // 502 -> 第 1 批，10 個 BOM
+    // 507 -> 第 2 批， 1 個 BOM
+    //
+    // 若依 merge_enabled / order_num 查詢，
+    // child 的 merge_enabled 若為舊資料 True，
+    // 就會把 502 + 507 合併成 11 個 BOM。
+    //
+    // Begin 顯示的是獨立 material row，
+    // 所以 BOM 也必須依 item.id 查詢。
+    // =========================================================
+
+    const payload = {
+      id: item.id,
+      mode: 'picked',
+    }
+
+    console.log(
+      "[Begin BOM] getBoms payload:",
+      payload
+    )
+
+    await getBoms(payload)
+
+    const bomRows = Array.isArray(
+      currentBoms.value
+    )
+      ? currentBoms.value
+      : []
+
+    bomsMap.value[key] = bomRows
+
+    console.log(
+      "[Begin BOM]",
+      {
+        material_id: item.id,
+        order_num: item.order_num,
+        bom_count: bomRows.length,
+      }
+    )
+
+  } catch (e) {
+
+    console.error(
+      "fetchBomsV2 failed:",
+      e
+    )
+
+    bomsMap.value[
+      String(item.id)
+    ] = []
   }
 }
 //
@@ -5578,4 +5694,66 @@ const isAddProcessDialogBlocked = (item) => {
   background-color: #ef9a9a !important;
 }
 
+// 20260907版 add
+.bom-table :deep(.v-table__wrapper) {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+// 表頭固定
+.bom-table :deep(thead) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.bom-table :deep(thead th) {
+  background-color: #ffffff !important;
+}
+
+
+// 欄寬
+.bom-table :deep(th:first-child),
+.bom-table :deep(td:first-child) {
+  width: 145px;
+}
+
+.bom-table :deep(th:last-child),
+.bom-table :deep(td:last-child) {
+  width: 65px;
+}
+
+/* BOM 整張 table：
+   資料少時自動縮小
+   超過 280px 才出現 scrollbar
+*/
+.bom-table :deep(.v-table__wrapper) {
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 表頭固定 */
+.bom-table :deep(thead) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.bom-table :deep(thead th) {
+  background-color: #ffffff !important;
+}
+
+/* 表尾固定 */
+.bom-table :deep(tfoot) {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+
+.bom-table :deep(tfoot td) {
+  background-color: #ffffff !important;
+  border-top: 1px solid #ddd;
+}
+//
 </style>

@@ -37,6 +37,9 @@ import J4 from '../views/dataForMachineAlarm.vue';
 //import LoginRegister from '@/views/LoginRegister.vue';
 //import LoginRegister from '../views/LoginForm2.vue';
 import LoginRegister from '../views/LoginForm3.vue';
+
+import QrLogin from '../views/QrLogin.vue';   // 20260902版
+
 import Employer from '../views/Employer.vue';
 import Main from '../views/Main.vue';
 import NotFound from '../views/NotFound.vue';   // 404 Not Found 頁面
@@ -49,6 +52,8 @@ const LOCKED_ROUTE_NAMES = new Set(['G01']);
 const routes = [
   { path: '/', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
   { path: '/login', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
+
+  { path: '/qr-login', name: 'QrLogin', component: QrLogin, meta: { hideNavAndFooter: true } },
 
   //{ path: '/', name: 'LoginRegister', component: LoginRegister, meta: { hideNavAndFooter: true } },
   //{ path: '/animation', name: 'Animation', component: Animation, meta: { hideNavAndFooter: true } },
@@ -125,6 +130,7 @@ router.beforeEach((to, from, next) => {
 
   console.log("to.name:", to.name)
 
+  /*
   if (isAnimationShow == false && to.name !== 'Animation') {
     console.log("routine step 1... 跳轉到 Animation 頁面");
 
@@ -134,6 +140,21 @@ router.beforeEach((to, from, next) => {
     console.log("routine step 1-1,",JSON.parse(localStorage.getItem('animationShow')));
     return next({ name: 'Animation' });   // 使用 return 結束邏輯，避免重複執行 next
   }
+  */
+  // 20260902版
+  if (
+    isAnimationShow == false && to.name !== 'Animation' && to.name !== 'QrLogin') {
+    console.log("routine step 1... 跳轉到 Animation 頁面");
+
+    isAnimationShow = true;
+
+    localStorage.setItem('animationShow', isAnimationShow);
+
+    console.log("routine step 1-1,", JSON.parse(localStorage.getItem('animationShow')));
+
+    return next({ name: 'Animation' });
+  }
+  //
 
   // 檢查動畫頁面是否是 Animation
   if (to.name === 'Animation') {
@@ -141,12 +162,29 @@ router.beforeEach((to, from, next) => {
     return next(); // 確保動畫頁面可以顯示
   }
 
+  /*
   // 認證檢查邏輯
   if (to.name !== 'LoginRegister' && !isAuthenticated) {
     console.log("routine step 2... 跳轉到 LoginRegister 頁面");
     return next({ name: 'LoginRegister' });
   }
+  */
+  // 20260902版
+  // ==================================================
+  // 不需要登入即可進入的頁面
+  // ==================================================
+  const PUBLIC_ROUTE_NAMES = new Set(['Animation', 'LoginRegister', 'QrLogin']);
 
+  // ==================================================
+  // Authentication
+  // ==================================================
+  if (
+    !PUBLIC_ROUTE_NAMES.has(to.name) && !isAuthenticated) {
+    console.log('routine step 2...' + ' 跳轉到 LoginRegister 頁面');
+
+    return next({name: 'LoginRegister'});
+  }
+  //
 
   // ✅ 登出：Main → LoginRegister 時，強制使用 slide-right（舊頁往右滑出）
   if (from.name === 'Main' && to.name === 'LoginRegister') {

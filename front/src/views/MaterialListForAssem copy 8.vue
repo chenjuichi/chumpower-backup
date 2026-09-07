@@ -270,7 +270,6 @@
                       <div class="example ex1" :style="{ display: group1_radio_btn_disable ? 'none' : '' }">
                         <span class="ex1-title">備料是否併單</span>
                         <div class="radio-group">
-<!--
                           <label class="radio red">
                             <input type="radio" name="group1" :value="'red'" v-model="group1" />
                             <span>不併單</span>
@@ -279,52 +278,6 @@
                             <input type="radio" name="group1" :value="'blue'" v-model="group1" />
                             <span>併單</span>
                           </label>
--->
-<!--20260902版-->
-<!--
-<label class="radio red">
-  <input
-    type="radio"
-    name="group1"
-    value="red"
-    v-model="group1"
-    @change="onMergeChoice(false)"
-  />
-  <span>不併單</span>
-</label>
-
-<label class="radio blue">
-  <input
-    type="radio"
-    name="group1"
-    value="blue"
-    v-model="group1"
-    @change="onMergeChoice(true)"
-  />
-  <span>併單</span>
-</label>
--->
-
-<!--20260904版-->
-<label class="radio red">
-  <input
-    type="radio"
-    name="group1"
-    value="red"
-    v-model="group1"
-  />
-  <span>不併單</span>
-</label>
-
-<label class="radio blue">
-  <input
-    type="radio"
-    name="group1"
-    value="blue"
-    v-model="group1"
-  />
-  <span>併單</span>
-</label>
                         </div>
                       </div>
                     </v-col>
@@ -804,158 +757,32 @@
     </template>
 
     <!-- 自訂 '訂單編號' 欄位 -->
-  <!--
     <template v-slot:item.order_num="{ item }">
       <div style="display: flex; align-items: center;">
         <v-icon style="color: blue;" @click="editOrderNum(item)" small>
           mdi-pencil-outline
         </v-icon>
 
+        <!--備料完成(缺料)-->
+        <!--<div style="color:red;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">-->
         <div style="color:blue;  width:185px;" v-if="item.isTakeOk && item.isLackMaterial != 99">
           <span style="right:25px; position:relative;">{{ item.order_num }}&nbsp;&nbsp;</span>
+          <!--<span style="font-weight: 700; font-size: 16px; right:25px; position:relative;">缺料</span>-->
           <span style="color:red; font-weight: 700; font-size: 12px; right:25px; position:relative;">缺料</span>
         </div>
 
+        <!--備料完成-->
         <div style="color: blue; margin-right: 20px;" v-else-if="item.isTakeOk && item.isLackMaterial == 99">
           {{ item.order_num }}
         </div>
 
+        <!--備料尚未完成-->
         <div style="margin-right: 20px;" v-else>
           {{ item.order_num }}
         </div>
       </div>
     </template>
-  -->
-<template v-slot:item.order_num="{ item }">
 
-  <div
-    style="
-      display: flex;
-      align-items: center;
-    "
-  >
-
-    <v-icon
-      style="color: blue;"
-      @click="editOrderNum(item)"
-      small
-    >
-      mdi-pencil-outline
-    </v-icon>
-
-
-    <!-- ====================================================== -->
-    <!-- 1. 缺料不併單：最高優先 -->
-    <!--
-         即使後來 BOM 已補齊，
-         isLackMaterial 已變成 99，
-         仍保留「缺料不併單」歷史狀態。
-    -->
-    <!-- ====================================================== -->
-
-    <div
-      v-if="
-        item.isTakeOk &&
-        (
-          item.merge_enabled === false ||
-          item.merge_enabled === 0 ||
-          item.merge_enabled === '0'
-        ) &&
-        item.shortage_note
-      "
-      style="
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        white-space: nowrap;
-      "
-    >
-
-      <span style="color: blue;">
-        {{ item.order_num }}
-      </span>
-
-      <span
-        style="
-          color: blue;
-          font-weight: 700;
-          font-size: 12px;
-        "
-      >
-        缺料不併單
-      </span>
-
-    </div>
-
-
-    <!-- ====================================================== -->
-    <!-- 2. 一般缺料 + 併單 -->
-    <!-- ====================================================== -->
-
-    <div
-      v-else-if="
-        item.isTakeOk &&
-        item.isLackMaterial != 99
-      "
-      style="
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        white-space: nowrap;
-      "
-    >
-
-      <span style="color: blue;">
-        {{ item.order_num }}
-      </span>
-
-      <span
-        style="
-          color: red;
-          font-weight: 700;
-          font-size: 12px;
-        "
-      >
-        缺料
-      </span>
-
-    </div>
-
-
-    <!-- ====================================================== -->
-    <!-- 3. 備料完成，無缺料 -->
-    <!-- ====================================================== -->
-
-    <div
-      v-else-if="
-        item.isTakeOk &&
-        item.isLackMaterial == 99
-      "
-      style="
-        color: blue;
-        white-space: nowrap;
-      "
-    >
-      {{ item.order_num }}
-    </div>
-
-
-    <!-- ====================================================== -->
-    <!-- 4. 尚未備料完成 -->
-    <!-- ====================================================== -->
-
-    <div
-      v-else
-      style="
-        white-space: nowrap;
-      "
-    >
-      {{ item.order_num }}
-    </div>
-
-  </div>
-
-</template>
     <!-- 自訂 '需求數量' (req_qty) 欄位 -->
     <template v-slot:item.req_qty="{ item }">
       <div>
@@ -1336,18 +1163,6 @@ const old_formattedStartTime = ref('');
 const old_formattedEndTime = ref('');
 
 const group1 = ref('blue');
-
-// ============================================================
-// 20260902
-// ★ 真正的併單決策
-//
-// 不再讓 updateItem() 直接相信 group1。
-// group1 只負責畫面 radio。
-// ============================================================
-
-const selectedMergeEnabled = ref(true);
-const mergeChoiceTouched = ref(false);
-
 const group1_radio_btn_disable=ref(true);
 
 const forklift2StartTime = ref(null);     // 堆高機運行計時開始
@@ -1430,8 +1245,6 @@ watch(group1, async (newVal, oldVal) => {
   await updateMergeEnabled(mergeEnabled);
 });
 */
-
-/*
 // 20260901版
 watch(group1, async (newVal, oldVal) => {
   if (isInitializingMergeRadio.value) return;
@@ -1473,7 +1286,6 @@ watch(group1, async (newVal, oldVal) => {
     mergeEnabled
   );
 });
-*/
 
 // help menu每次打開都回到第 1 頁
 watch(show_dropdown, (open) => {
@@ -1832,10 +1644,6 @@ onMounted(async () => {
   try {
     await setupSocketConnection();
 
-    // 20260903版 add
-    await restoreActiveAgvState();
-    //
-
     //socket.value.on('station1_error', async () => {
     //  console.log("receive station1_error socket...");
     //  activeColor.value = 'green'  // 預設亮綠燈, 區域閒置
@@ -2153,17 +1961,6 @@ onMounted(async () => {
       if (localStorage.getItem('selectedItems')) {
         localStorage.removeItem('selectedItems');
       }
-
-      // =====================================================
-      // 20260903
-      // 本次 AGV 送料任務完成，釋放 Material 頁面的鎖定。
-      // 下一批已備料完成的工單才可以重新勾選 / 呼叫 AGV。
-      // =====================================================
-      isCallAGV.value = false;
-
-      clearActiveAgvMaterialIds();
-      //
-
       //待待
       //window.location.reload(true);   // true:強制從伺服器重新載入, false:從瀏覽器快取中重新載入頁面（較快，可能不更新最新內容,預設)
       await fetchMaterials();
@@ -2743,40 +2540,6 @@ async function fetchMaterials() {
   try {
     tableLoading.value = true
     await listMaterials()
-    //
-    console.log('[LIST MATERIALS][888800020273]',
-      materials.value
-        .filter(
-          x =>
-            x.order_num ===
-            '888800020273'
-        )
-        .map(
-          x => ({
-            id:
-              x.id,
-
-            order_num:
-              x.order_num,
-
-            merge_enabled:
-              x.merge_enabled,
-
-            isTakeOk:
-              x.isTakeOk,
-
-            isLackMaterial:
-              x.isLackMaterial,
-
-            is_copied_from_id:
-              x.is_copied_from_id,
-
-            isShow:
-              x.isShow,
-          })
-        )
-    );
-    //
     lastRefreshed.value = new Date()
   } catch (err) {
     console.error('fetchMaterials error:', err)
@@ -2793,6 +2556,7 @@ const initialize = async () => {
     // 使用 async/await 等待 API 請求完成，確保順序正確
     //await listMaterials();
     await fetchMaterials();
+
     //console.log('## materials ##', materials)
     console.log('## materials length ##', materials.value?.length ?? 0)
 
@@ -3247,7 +3011,6 @@ const handleOutsideClick = async (dlg) => {
 const editOrderNum = async (item) => {
   console.log("editOrderNum(),", item);
 
-  /*
   editedRecord.value = item;
 
   isInitializingMergeRadio.value = true;    // 20260806 add
@@ -3257,35 +3020,6 @@ const editOrderNum = async (item) => {
   await nextTick();                         // 20260806 add
 
   isInitializingMergeRadio.value = false;   // 20260806 add
-  */
-  // 20260902版
-  editedRecord.value = item;
-
-isInitializingMergeRadio.value = true;
-
-// 每次重新開 dialog，先載入 DB 原始值
-selectedMergeEnabled.value =
-  //Boolean(
-  //  item.merge_enabled
-  //);
-  // 20260904版
-  toBooleanMergeEnabled(
-    item.merge_enabled
-  );
-
-mergeChoiceTouched.value =
-  false;
-
-group1.value =
-  selectedMergeEnabled.value
-    ? 'blue'
-    : 'red';
-
-await nextTick();
-
-isInitializingMergeRadio.value =
-  false;
-  //
 
   group1_radio_btn_disable.value = !item.merge_radio_disable && !item.isTakeOk;
 
@@ -3375,39 +3109,6 @@ const toggleExpand = async (item) => {
 
   current_cell.value = item.delivery_qty
   editedRecord.value = item;                // 點擊詳情按鍵的目前紀錄
-
-  //
-  // ============================================================
-  // 20260904
-  // 每次開啟備料 Dialog，都必須重新初始化「併單 / 不併單」
-  //
-  // 新批次不可沿用上一筆 material 的 radio 狀態
-  // ============================================================
-
-  isInitializingMergeRadio.value = true;
-
-  // 以目前這筆 material DB 值為準
-  selectedMergeEnabled.value =
-  // Boolean(item.merge_enabled);
-  // 20260904版
-  toBooleanMergeEnabled(
-    item.merge_enabled
-  );
-
-
-  // 這一批尚未有人手動點 radio
-  mergeChoiceTouched.value = false;
-
-  // 畫面同步
-  group1.value =
-    selectedMergeEnabled.value
-      ? 'blue'
-      : 'red';
-
-  await nextTick();
-
-  isInitializingMergeRadio.value = false;
-  //
 
   // 記錄當前開始備料時間
   currentStartTime.value = new Date();      // 使用 Date 來記錄當時時間
@@ -3739,30 +3440,6 @@ const createAbnormalFun = async () => {
 const updateItem2 = async (item) => {
   console.log("updateItem2(),", item);
 
-  // 20260902版 add
-  const finalMergeEnabled =
-  Boolean(
-    selectedMergeEnabled.value
-  );
-
-console.log(
-  '[UPDATE ITEM][LOCK MERGE]',
-  {
-    material_id:
-      editedRecord.value?.id,
-
-    group1:
-      group1.value,
-
-    mergeChoiceTouched:
-      mergeChoiceTouched.value,
-
-    finalMergeEnabled:
-      finalMergeEnabled,
-  }
-);
-  //
-
   let deliveryQty = 0;
   // 檢查是否輸入了空白或 0
   if (!item.delivery_qty || Number(item.delivery_qty) === 0) {
@@ -3806,921 +3483,224 @@ const onConfirm = async (dlg) => {
   }
 };
 
-
-// 20260901版
-// 20260902版
-const updateItem = async () => {
-
-  console.log(
-    "MaterialListForAssm.vue, updateItem(),",
-    boms.value
-  );
-
-
-  // ============================================================
-  // 20260902
-  // ★ 第一時間凍結「併單 / 不併單」
-  //
-  // selectedMergeEnabled 才是真正的使用者選擇。
-  //
-  // false = 不併單
-  // true  = 併單
-  //
-  // 後面整支 updateItem 都只能使用 finalMergeEnabled，
-  // 不可以再用 group1 判斷 merge。
-  // ============================================================
-
-  //const finalMergeEnabled =
-  //  Boolean(
-  //    selectedMergeEnabled.value
-  //  );
-  //
-  // ============================================================
-  // 20260904
-  // 本批併單設定：
-  //
-  // 1. 使用者有點過 radio
-  //    → 採用使用者選擇
-  //
-  // 2. 使用者完全沒碰 radio
-  //    → 預設為「併單」
-  //
-  // 避免舊資料 merge_enabled = false
-  // 導致使用者沒有操作卻被當成「不併單」
-  // ============================================================
-  //const finalMergeEnabled =
-  //  mergeChoiceTouched.value
-  //    ? Boolean(selectedMergeEnabled.value)
-  //    : true;
-
-  // ============================================================
-  // 20260904 修正
-  //
-  // 本批 material 的 merge mode，永遠以目前 material 已載入的
-  // selectedMergeEnabled 為準。
-  //
-  // toggleExpand() 開啟 Dialog 時：
-  //   selectedMergeEnabled = item.merge_enabled
-  //
-  // 使用者有點 radio 時：
-  //   onMergeChoice() 會更新 selectedMergeEnabled
-  //
-  // 因此不能再用 mergeChoiceTouched=false 就強制改成 true。
-  //
-  // 下一批 child 的「預設併單=true」
-  // 已經由 childMergeEnabled=true 負責。
-  // ============================================================
-
-  const finalMergeEnabled =
-    Boolean(
-      selectedMergeEnabled.value
-    );
-
-  console.log(
-    '[MATERIAL CONFIRM][MERGE MODE]',
-    {
-      material_id:
-        editedRecord.value?.id,
-
-      order_num:
-        editedRecord.value?.order_num,
-
-      group1:
-        group1.value,
-
-      selectedMergeEnabled:
-        selectedMergeEnabled.value,
-
-      mergeChoiceTouched:
-        mergeChoiceTouched.value,
-
-      finalMergeEnabled:
-        finalMergeEnabled,
-    }
-  );
-
-
-  // ============================================================
-  // 防呆
-  // ============================================================
-
-  if (
-    !editedRecord.value
-    || !editedRecord.value.id
-  ) {
-
-    console.error(
-      '[updateItem] editedRecord invalid:',
-      editedRecord.value
-    );
-
-    throw new Error(
-      '目前沒有有效的 material 資料'
-    );
-  }
-
-
-  // ============================================================
-  // ★ 第一件事：
-  // 按下確定後，立刻把 parent merge mode 寫入 DB。
-  // ============================================================
-
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
-
-    record_name:
-      'merge_enabled',
-
-    record_data:
-      finalMergeEnabled,
-  });
-
-
-  editedRecord.value.merge_enabled =
-    finalMergeEnabled;
-
-
-  console.log(
-    '[UPDATE ITEM][PARENT MERGE SAVED]',
-    {
-      id:
-        editedRecord.value.id,
-
-      merge_enabled:
-        editedRecord.value.merge_enabled,
-    }
-  );
-
-
-  // ============================================================
-  // 備料確認
-  // ============================================================
+// 20260727版
+const updateItem = async () => {    //編輯 bom, material及process後端table資料
+  console.log("MaterialListForAssm.vue, updateItem(),", boms.value);
 
   isConfirmed.value = true;
 
+  currentEndTime.value = new Date();
+  let periodTime = calculatePeriodTime(currentStartTime.value, currentEndTime.value);
+  let formattedStartTime = formatDateTime(currentStartTime.value);
+  let formattedEndTime = formatDateTime(currentEndTime.value);
 
-  currentEndTime.value =
-    new Date();
+  // 只要有任何 bom.receive = false，就代表缺料
+  const take_out = !boms.value.some(bom => !bom.receive);
+  console.log("take_out:", take_out);
 
-
-  let periodTime =
-    calculatePeriodTime(
-      currentStartTime.value,
-      currentEndTime.value
-    );
-
-
-  let formattedStartTime =
-    formatDateTime(
-      currentStartTime.value
-    );
-
-
-  let formattedEndTime =
-    formatDateTime(
-      currentEndTime.value
-    );
-
-
-  console.log(
-    '[updateItem][TIME]',
-    {
-      formattedStartTime:
-        formattedStartTime,
-
-      formattedEndTime:
-        formattedEndTime,
-
-      periodTime:
-        periodTime,
-    }
-  );
-
-
-  // ============================================================
-  // BOM 是否全部到齊
-  //
-  // true:
-  //   全部 receive=true
-  //
-  // false:
-  //   至少 1 個 BOM receive=false
-  // ============================================================
-
-  const take_out =
-    !boms.value.some(
-      bom => !bom.receive
-    );
-
-
-  console.log(
-    '[UPDATE ITEM][BOM STATUS]',
-    {
-      material_id:
-        editedRecord.value.id,
-
-      take_out:
-        take_out,
-
-      finalMergeEnabled:
-        finalMergeEnabled,
-
-      boms:
-        boms.value.map(
-          bom => ({
-            id:
-              bom.id,
-
-            seq_num:
-              bom.seq_num,
-
-            receive:
-              bom.receive,
-          })
-        ),
-    }
-  );
-
-
-  // ============================================================
-  // 1. 更新 BOM
-  // ============================================================
-
-  await updateBoms(
-    boms.value
-  );
-
+  // 1. 先更新 boms
+  await updateBoms(boms.value);
 
   let payload = {};
 
-
-  // ============================================================
-  // 2. material 缺料狀態
-  // ============================================================
-
+  // 2. 更新目前這筆 material 的缺料狀態
+  // 缺料 => isLackMaterial = 0
+  // 不缺料 => isLackMaterial = 99
   if (!take_out) {
-
-    // ----------------------------------------------------------
-    // 有缺料
-    // ----------------------------------------------------------
+    payload = {
+      id: editedRecord.value.id,
+      record_name: 'shortage_note',
+      record_data: '(缺料)'
+    };
+    await updateMaterial(payload);
+    editedRecord.value.shortage_note = '(缺料)';
 
     payload = {
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'shortage_note',
-
-      record_data:
-        '(缺料)',
+      id: editedRecord.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 0
     };
-
-
-    await updateMaterial(
-      payload
-    );
-
-
-    editedRecord.value.shortage_note =
-      '(缺料)';
-
-
-    payload = {
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'isLackMaterial',
-
-      record_data:
-        0,
-    };
-
-
-    await updateMaterial(
-      payload
-    );
-
-
-    editedRecord.value.isLackMaterial =
-      0;
-
-
-    // ==========================================================
-    // ★ updateBoms() 有可能重算 root 狀態，
-    //   所以這裡再強制寫回 merge mode。
-    // ==========================================================
-
-    await updateMaterial({
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        finalMergeEnabled,
-    });
-
-
-    editedRecord.value.merge_enabled =
-      finalMergeEnabled;
-
-
-    // ==========================================================
-    // ★ 不併單：
-    //   parent shortage_note 必須永久保留。
-    // ==========================================================
-
-    if (!finalMergeEnabled) {
-
-      await updateMaterial({
-        id:
-          editedRecord.value.id,
-
-        record_name:
-          'shortage_note',
-
-        record_data:
-          '(缺料)',
-      });
-
-
-      editedRecord.value.shortage_note =
-        '(缺料)';
-    }
-
-
-    console.log(
-      '[UPDATE ITEM][SHORTAGE]',
-      {
-        id:
-          editedRecord.value.id,
-
-        merge_enabled:
-          editedRecord.value.merge_enabled,
-
-        shortage_note:
-          editedRecord.value.shortage_note,
-
-        isLackMaterial:
-          editedRecord.value.isLackMaterial,
-      }
-    );
+    await updateMaterial(payload);
+    editedRecord.value.isLackMaterial = 0;
 
   } else {
-
-    // ----------------------------------------------------------
-    // 全部到料
-    // ----------------------------------------------------------
+    payload = {
+      id: editedRecord.value.id,
+      record_name: 'shortage_note',
+      record_data: ''
+    };
+    await updateMaterial(payload);
+    editedRecord.value.shortage_note = '';
 
     payload = {
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'shortage_note',
-
-      record_data:
-        '',
+      id: editedRecord.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 99
     };
-
-
-    await updateMaterial(
-      payload
-    );
-
-
-    editedRecord.value.shortage_note =
-      '';
-
-
-    payload = {
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'isLackMaterial',
-
-      record_data:
-        99,
-    };
-
-
-    await updateMaterial(
-      payload
-    );
-
-
-    editedRecord.value.isLackMaterial =
-      99;
-
-
-    // merge mode 仍保持目前選擇
-    await updateMaterial({
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        finalMergeEnabled,
-    });
-
-
-    editedRecord.value.merge_enabled =
-      finalMergeEnabled;
+    await updateMaterial(payload);
+    editedRecord.value.isLackMaterial = 99;
   }
 
+  // 3. 紀錄備料完成
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'isTakeOk',
+    record_data: true
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isTakeOk = true;
 
-  // ============================================================
-  // 3. 備料完成
-  // ============================================================
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'hasStarted',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.hasStarted = false;
 
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'startStatus',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.startStatus = false;
+  //
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'isOpen',
+    record_data: false
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isOpen = false;
 
-    record_name:
-      'isTakeOk',
-
-    record_data:
-      true,
-  });
-
-
-  editedRecord.value.isTakeOk =
-    true;
-
-
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
-
-    record_name:
-      'hasStarted',
-
-    record_data:
-      false,
-  });
-
-
-  editedRecord.value.hasStarted =
-    false;
-
-
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
-
-    record_name:
-      'startStatus',
-
-    record_data:
-      false,
-  });
-
-
-  editedRecord.value.startStatus =
-    false;
-
-
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
-
-    record_name:
-      'isOpen',
-
-    record_data:
-      false,
-  });
-
-
-  editedRecord.value.isOpen =
-    false;
-
-
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
-
-    record_name:
-      'isOpenEmpId',
-
-    record_data:
-      '',
-  });
-
-
-  editedRecord.value.isOpenEmpId =
-    '';
-
-
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'isOpenEmpId',
+    record_data: ''
+  };
+  await updateMaterial(payload);
+  editedRecord.value.isOpenEmpId = '';
+  //
   await nextTick();
 
+  payload = {
+    id: editedRecord.value.id,
+    record_name: 'show2_ok',
+    record_data: 2
+  };
+  await updateMaterial(payload);
 
-  await updateMaterial({
-    id:
-      editedRecord.value.id,
+  payload = {
+    process_id: currentProcessId.value,
+    record_name: 'process_work_time_qty',
+    record_data: editedRecord.value.req_qty,
+  };
+  await updateProcessData(payload);
 
-    record_name:
-      'show2_ok',
-
-    record_data:
-      2,
-  });
-
-
-  // ============================================================
-  // process 備料數量
-  // ============================================================
-
-  await updateProcessData({
-    process_id:
-      currentProcessId.value,
-
-    record_name:
-      'process_work_time_qty',
-
-    record_data:
-      editedRecord.value.req_qty,
-  });
-
-
-  // ============================================================
-  // 4. 有缺料 → 建立 child material
-  // ============================================================
-
+  // 4. 若缺料，建立拆單的新資料
   if (!take_out) {
+    // 主資料目前的併單設定
+    const sourceMergeEnabled = Boolean(
+      editedRecord.value.merge_enabled
+    );
 
-    // 本批的設定, 保留使用者本次選擇
-    const sourceMergeEnabled = finalMergeEnabled;
-
-    // 20260904
-    // 新建立的下一批 material，預設一律「併單」
-    const childMergeEnabled = true;
-    /*
     console.log(
-      '[CREATE CHILD][LOCK MERGE MODE]',
+      '[CREATE CHILD]',
       {
-        parent_id:
-          editedRecord.value.id,
-
-        order_num:
-          editedRecord.value.order_num,
-
-        group1:
-          group1.value,
-
-        selectedMergeEnabled:
-          selectedMergeEnabled.value,
-
-        finalMergeEnabled:
-          finalMergeEnabled,
-
-        sourceMergeEnabled:
-          sourceMergeEnabled,
+        source_id: editedRecord.value.id,
+        order_num: editedRecord.value.order_num,
+        source_merge_enabled: editedRecord.value.merge_enabled,
+        group1: group1.value,
+        calculated_merge_enabled: sourceMergeEnabled,
       }
     );
-    */
-   console.log(
-  '[COPY MATERIAL][MERGE BEFORE]',
-  {
-    source_id:
-      editedRecord.value?.id,
 
-    order_num:
-      editedRecord.value?.order_num,
-
-    sourceMergeEnabled:
-      sourceMergeEnabled,
-
-    childMergeEnabled:
-      childMergeEnabled,
-
-    mergeChoiceTouched:
-      mergeChoiceTouched.value,
-
-    selectedMergeEnabled:
-      selectedMergeEnabled.value,
-
-    group1:
-      group1.value,
-  }
-);
-
-    // ==========================================================
-    // parent merge 再鎖一次
-    // ==========================================================
-
-    await updateMaterial({
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        sourceMergeEnabled,
-    });
-
-
-    editedRecord.value.merge_enabled =
-      sourceMergeEnabled;
-
-
-    // ==========================================================
-    // 不併單 parent 必須留下歷史缺料
-    // ==========================================================
-
-    if (!sourceMergeEnabled) {
-
-      await updateMaterial({
-        id:
-          editedRecord.value.id,
-
-        record_name:
-          'shortage_note',
-
-        record_data:
-          '(缺料)',
-      });
-
-
-      editedRecord.value.shortage_note =
-        '(缺料)';
-    }
-
-
-    // ==========================================================
-    // 建立 child payload
-    // ==========================================================
-
+    /*
     payload = {
       copy_id: editedRecord.value.id,
+      delivery_qty: editedRecord.value.delivery_qty,
+      show2_ok: 2,
+      shortage_note: '',
+      // 缺料產生的新資料必須繼承主資料設定, 20260806 add
+      merge_enabled: sourceMergeEnabled,
+    };
+    await copyMaterialAndBom(payload);
+    */
+    // 20260811版
+    payload = {
+      // 原 Material ID
+      copy_id: editedRecord.value.id,
 
+      // 本次實際備料(送料)數量
       delivery_qty: Number(editedRecord.value.delivery_qty || 0),
 
-      total_delivery_qty: Number(editedRecord.value.total_delivery_qty),
+      // 本批應備總數量
+      total_delivery_qty: Number(editedRecord.value.total_delivery_qty || 0),
 
+      // 若之後有用到可保留
       allOk_qty: Number(editedRecord.value.allOk_qty || 0),
+
+      //lack_bom_qty: Number(
+      //    editedRecord.value.lack_bom_qty || 0
+      //),
 
       show2_ok: 2,
 
       shortage_note: '',
 
-      // child 繼承 parent 的 merge mode
-      //merge_enabled: sourceMergeEnabled,
-      // 20260904版, 下一批永遠預設為併單
-      merge_enabled: childMergeEnabled,
+      merge_enabled: Boolean(sourceMergeEnabled),
     };
 
+    console.log("[copyMaterialAndBom] payload:", payload);
 
-    console.log(
-      '[copyMaterialAndBom][REQUEST]',
-      payload
-    );
-
-
-    // ==========================================================
-    // 建 child
-    // ==========================================================
-
-    await copyMaterialAndBom(
-      payload
-    );
-
-
-    const newMaterialId =
-      Number(
-        material_copy.value?.id
-        || 0
-      );
-
-
-    if (
-      newMaterialId <= 0
-    ) {
-
-      console.error(
-        '[copyMaterialAndBom] invalid result:',
-        material_copy.value
-      );
-
-      throw new Error(
-        'copyMaterialAndBom 未回傳新 material id'
-      );
-    }
-
-
-    console.log(
-      '[copyMaterialAndBom][CREATED]',
-      {
-        parent_id:
-          editedRecord.value.id,
-
-        child_id:
-          newMaterialId,
-
-        child_data:
-          material_copy.value,
-      }
-    );
-
-
-    // ==========================================================
-    // child 初始仍是待補料
-    // ==========================================================
-
-    await updateMaterial({
-      id:
-        newMaterialId,
-
-      record_name:
-        'isLackMaterial',
-
-      record_data:
-        0,
-    });
-
-
-    material_copy.value.isLackMaterial =
-      0;
-
-
-    // ==========================================================
-    // ★ child merge mode 強制跟 parent 一樣
-    // ==========================================================
-
-    await updateMaterial({
-      id:
-        newMaterialId,
-
-      record_name:
-        'merge_enabled',
-
-      //record_data:
-      //  sourceMergeEnabled,
-      // 20260904版
-      record_data: childMergeEnabled,
-    });
-
-
-    //material_copy.value.merge_enabled =
-    //  sourceMergeEnabled;
-    // 20260904版
-    material_copy.value.merge_enabled = childMergeEnabled;
-
-    console.log(
-  '[COPY MATERIAL][MERGE AFTER]',
-  {
-    parent_id:
-      editedRecord.value?.id,
-
-    newMaterialId:
-      newMaterialId,
-
-    childMergeEnabled:
-      childMergeEnabled,
-
-    material_copy_merge_enabled:
-      material_copy.value?.merge_enabled,
-  }
-);
-
-    // ==========================================================
-    //   copyMaterialAndBom 執行完後，
-    //   parent 再鎖一次。
+    await copyMaterialAndBom(payload);
     //
-    //   即使 copy API 內部有舊程式，
-    //   這裡也會再修回正確值。
-    // ==========================================================
-
-    await updateMaterial({
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        sourceMergeEnabled,
-    });
 
 
-    editedRecord.value.merge_enabled =
-      sourceMergeEnabled;
+    const newMaterialId = Number(
+      material_copy.value?.id || 0
+    );
 
-
-    // ==========================================================
-    // ★ 不併單 parent shortage_note 最後再鎖一次
-    // ==========================================================
-
-    if (!sourceMergeEnabled) {
-
-      await updateMaterial({
-        id:
-          editedRecord.value.id,
-
-        record_name:
-          'shortage_note',
-
-        record_data:
-          '(缺料)',
-      });
-
-
-      editedRecord.value.shortage_note =
-        '(缺料)';
+    if (newMaterialId <= 0) {
+      throw new Error('copyMaterialAndBom 未回傳新 material id');
     }
 
+    payload = {
+      id: material_copy.value.id,
+      record_name: 'isLackMaterial',
+      record_data: 0,
+    };
+    await updateMaterial(payload);
 
-    console.log(
-      '[CREATE CHILD][FINAL CHECK]',
-      {
-        parent_id:
-          editedRecord.value.id,
+    material_copy.value.isLackMaterial = 0;
 
-        parent_merge_enabled:
-          editedRecord.value.merge_enabled,
+    // 20260806版, add
+    // 再明確同步一次 merge_enabled，
+    // 避免後端 copyMaterialAndBom 未複製該欄位
+    await updateMaterial({
+      id: newMaterialId,
+      record_name: 'merge_enabled',
+      record_data: sourceMergeEnabled,
+    });
+    material_copy.value.merge_enabled = sourceMergeEnabled;
 
-        parent_shortage_note:
-          editedRecord.value.shortage_note,
+    materials.value.push(material_copy.value);
+    //materials.value.push({
+    //  ...material_copy.value,
+    //  merge_enabled: sourceMergeEnabled,
+    //});
 
-        child_id:
-          newMaterialId,
-
-        child_merge_enabled:
-          material_copy.value.merge_enabled,
-
-        child_isLackMaterial:
-          material_copy.value.isLackMaterial,
+    materials.value.sort((a, b) => {
+      if (a.order_num === b.order_num) {
+        return (a.isTakeOk === b.isTakeOk) ? 0 : (a.isTakeOk ? -1 : 1);
       }
-    );
-
-
-    // ==========================================================
-    // 加入 Material list
-    // ==========================================================
-
-    materials.value.push(
-      material_copy.value
-    );
-
-
-    materials.value.sort(
-      (a, b) => {
-
-        if (
-          a.order_num
-          === b.order_num
-        ) {
-
-          return (
-            a.isTakeOk
-            === b.isTakeOk
-          )
-            ? 0
-            : (
-              a.isTakeOk
-                ? -1
-                : 1
-            );
-        }
-
-        return (
-          a.order_num.localeCompare(
-            b.order_num
-          )
-        );
-      }
-    );
+      return a.order_num.localeCompare(b.order_num);
+    });
   }
 
-
-  // ============================================================
-  // 5. refresh Material
-  // ============================================================
-
+  // 5. 最後再抓一次資料，讓畫面與後端一致
   await fetchMaterials();
-
-
-  console.log(
-    '[UPDATE ITEM][DONE]',
-    {
-      material_id:
-        editedRecord.value?.id,
-
-      finalMergeEnabled:
-        finalMergeEnabled,
-
-      take_out:
-        take_out,
-    }
-  );
 };
 
 const calculatePeriodTime = (start, end) => {     // 計算兩個時間之間的間隔，並以 hh:mm:ss 格式返回
@@ -5009,22 +3989,33 @@ const callAGV = async () => {
   // 乾淨的 id 陣列（去重）
   const selectedIds = Array.isArray(selectedItems.value) ? [...new Set(selectedItems.value)] : [];
 
+  // 20260826版 add
   if (selectedIds.length === 0) {
-    showSnackbar('請選擇送料的工單!', 'red accent-2');
-    return;
-  }
-
-  if (isCallAGV.value) {
-    showSnackbar('請不要重複按鍵!', 'red accent-2');
-    return;
+      showSnackbar(
+          '請選擇送料的工單!',
+          'red accent-2'
+      );
+      return;
   }
 
   // ★ 20260826
   // 從這一刻開始，這次 AGV 任務固定使用這批 ids
   saveActiveAgvMaterialIds(selectedIds);
 
-  console.log('[AGV] 本次送料 material ids:', getActiveAgvMaterialIds());
+  console.log(
+      '[AGV] 本次送料 material ids:',
+      getActiveAgvMaterialIds()
+  );
   //
+
+  if (selectedIds.length === 0) {
+    showSnackbar('請選擇送料的工單!', 'red accent-2');
+    return;
+  }
+  if (isCallAGV.value) {
+    showSnackbar('請不要重複按鍵!', 'red accent-2');
+    return;
+  }
 
   isCallAGV.value = true;
   try {
@@ -5116,23 +4107,20 @@ const callAGV = async () => {
 
     } else {
       showSnackbar('沒有任何工單更新成功，未變更 AGV 狀態', 'red accent-2');
-
-      // 20260903版
-      // 一筆都沒成功，代表 AGV 任務沒有真正成立
-      isCallAGV.value = false;
-      clearActiveAgvMaterialIds();
-
-      activeColor.value = 'green';
-
-      return;
     }
   } catch (e) {
     //console.error('叫車流程例外：', e);
     //showSnackbar('叫車流程執行失敗，請稍後再試', 'red accent-2');
     // 20260826版
-    console.error('叫車流程例外：', e);
+    console.error(
+        '叫車流程例外：',
+        e
+    );
 
-    showSnackbar('叫車流程執行失敗，請稍後再試', 'red accent-2');
+    showSnackbar(
+        '叫車流程執行失敗，請稍後再試',
+        'red accent-2'
+    );
 
     // 只有叫車失敗才解鎖
     isCallAGV.value = false;
@@ -5197,7 +4185,6 @@ const readAllExcelFun = async () => {
   }
 };
 
-/*
 const updateModifyMaterialAndBomsFun = async () => {
   console.log("updateModifyMaterialAndBomsFun()...");
 
@@ -5214,189 +4201,8 @@ const updateModifyMaterialAndBomsFun = async () => {
   editDialog.value = false
 
   await listMaterials();
-  //
-  console.log('[LIST MATERIALS][888800020273][updateModifyMaterialAndBomsFun]',
-    materials.value
-      .filter(
-        x =>
-          x.order_num ===
-          '888800020273'
-      )
-      .map(
-        x => ({
-          id:
-            x.id,
-
-          order_num:
-            x.order_num,
-
-          merge_enabled:
-            x.merge_enabled,
-
-          isTakeOk:
-            x.isTakeOk,
-
-          isLackMaterial:
-            x.isLackMaterial,
-
-          is_copied_from_id:
-            x.is_copied_from_id,
-
-          isShow:
-            x.isShow,
-        })
-      )
-  );
-  //
   await nextTick();
 }
-*/
-// 20260904版
-const updateModifyMaterialAndBomsFun =
-async () => {
-
-  console.log(
-    "updateModifyMaterialAndBomsFun()..."
-  );
-
-
-  // ============================================================
-  // 20260904
-  // 工單維護 Dialog：
-  //
-  // radio:
-  //   red  = 不併單 = false
-  //   blue = 併單   = true
-  //
-  // 「修改」才是正式儲存點。
-  // 不再依賴 radio change/click 是否有成功呼叫 API。
-  // ============================================================
-
-  const finalMergeEnabled =
-    group1.value === 'blue';
-
-
-  console.log(
-    '[MODIFY MATERIAL][MERGE SAVE]',
-    {
-      id:
-        selectedId.value,
-
-      group1:
-        group1.value,
-
-      merge_enabled:
-        finalMergeEnabled,
-    }
-  );
-
-
-  // ============================================================
-  // 1. 先明確儲存 merge_enabled
-  // ============================================================
-
-  await updateMaterial({
-    id:
-      selectedId.value,
-
-    record_name:
-      'merge_enabled',
-
-    record_data:
-      finalMergeEnabled,
-  });
-
-
-  // 本地狀態同步
-  selectedMergeEnabled.value =
-    finalMergeEnabled;
-
-  if (
-    editedRecord.value
-    && Number(
-      editedRecord.value.id
-    ) === Number(
-      selectedId.value
-    )
-  ) {
-
-    editedRecord.value.merge_enabled =
-      finalMergeEnabled;
-  }
-
-
-  // ============================================================
-  // 2. 修改訂單日期 / 數量 / BOM
-  // ============================================================
-
-  let payload = {
-
-    id:
-      selectedId.value,
-
-    date:
-      selectedDate.value,
-
-    qty:
-      selectedReqQty.value,
-
-    file_name:
-      modify_file_name.value,
-
-    bom_data:
-      modify_boms.value,
-  };
-
-
-  await updateModifyMaterialAndBoms(
-    payload
-  );
-
-
-  // ============================================================
-  // 3. 再抓一次 Material
-  // ============================================================
-
-  editDialog.value = false;
-
-  await listMaterials();
-
-
-  console.log(
-    '[LIST MATERIALS]'
-    + '[888800020273]'
-    + '[updateModifyMaterialAndBomsFun]',
-
-    materials.value
-      .filter(
-        x =>
-          x.order_num ===
-          '888800020273'
-      )
-      .map(
-        x => ({
-          id:
-            x.id,
-
-          merge_enabled:
-            x.merge_enabled,
-
-          isTakeOk:
-            x.isTakeOk,
-
-          isLackMaterial:
-            x.isLackMaterial,
-
-          is_copied_from_id:
-            x.is_copied_from_id,
-        })
-      )
-  );
-
-
-  await nextTick();
-};
-//
 
 async function onModify() {
   const ok = await confirmRef.value.open({
@@ -5436,40 +4242,6 @@ const removeMaterialsAndRelationTableFun = async () => {
     if (status) {
       editDialog.value = false
       await listMaterials();
-      //
-      console.log('[LIST MATERIALS][888800020273][removeMaterialsAndRelationTableFun]',
-        materials.value
-          .filter(
-            x =>
-              x.order_num ===
-              '888800020273'
-          )
-          .map(
-            x => ({
-              id:
-                x.id,
-
-              order_num:
-                x.order_num,
-
-              merge_enabled:
-                x.merge_enabled,
-
-              isTakeOk:
-                x.isTakeOk,
-
-              isLackMaterial:
-                x.isLackMaterial,
-
-              is_copied_from_id:
-                x.is_copied_from_id,
-
-              isShow:
-                x.isShow,
-            })
-          )
-      );
-      //
       await nextTick();   // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
       showSnackbar("刪除工單完成!", 'green darken-1');
     }
@@ -5503,40 +4275,7 @@ const modifyExcelFilesFun = async () => {
 
       // 重新抓清單
       await listMaterials();
-      //
-      console.log('[LIST MATERIALS][888800020273][modifyExcelFilesFun]',
-        materials.value
-          .filter(
-            x =>
-              x.order_num ===
-              '888800020273'
-          )
-          .map(
-            x => ({
-              id:
-                x.id,
 
-              order_num:
-                x.order_num,
-
-              merge_enabled:
-                x.merge_enabled,
-
-              isTakeOk:
-                x.isTakeOk,
-
-              isLackMaterial:
-                x.isLackMaterial,
-
-              is_copied_from_id:
-                x.is_copied_from_id,
-
-              isShow:
-                x.isShow,
-            })
-          )
-      );
-      //
       // 操作「更新後的 DOM」, 如自動捲動/聚焦/量尺寸才需要
       await nextTick();
 
@@ -5790,204 +4529,6 @@ sessionStorage.setItem(
   'materialListSocketClientId',
   schedulingClientId
 );
-
-/*
-// 20260902版
-const onMergeChoice = async (mergeEnabled) => {
-
-  console.log(
-    '[MERGE CHOICE]',
-    {
-      material_id:
-        editedRecord.value?.id,
-
-      mergeEnabled:
-        mergeEnabled,
-    }
-  );
-
-  // ★ 使用者親自按過 radio
-  mergeChoiceTouched.value = true;
-
-  // ★ 真正保存的值
-  selectedMergeEnabled.value =
-    Boolean(mergeEnabled);
-
-  // 畫面同步
-  group1.value =
-    mergeEnabled
-      ? 'blue'
-      : 'red';
-
-  // DB 立即同步
-  if (editedRecord.value?.id) {
-
-    await updateMaterial({
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        Boolean(mergeEnabled),
-    });
-
-    editedRecord.value.merge_enabled =
-      Boolean(mergeEnabled);
-  }
-
-  console.log(
-    '[MERGE CHOICE][SAVED]',
-    {
-      material_id:
-        editedRecord.value?.id,
-
-      group1:
-        group1.value,
-
-      selectedMergeEnabled:
-        selectedMergeEnabled.value,
-
-      edited_merge_enabled:
-        editedRecord.value?.merge_enabled,
-    }
-  );
-};
-*/
-// 20260904版
-const onMergeChoice = async (mergeEnabled) => {
-
-  mergeChoiceTouched.value = true;
-
-  selectedMergeEnabled.value =
-  //Boolean(mergeEnabled);
-  // 20260904版
-  toBooleanMergeEnabled(
-    item.merge_enabled
-  );
-
-
-  group1.value =
-    mergeEnabled
-      ? 'blue'
-      : 'red';
-
-
-  console.log(
-    '[MERGE CHOICE]',
-    {
-      material_id:
-        editedRecord.value?.id,
-
-      mergeEnabled:
-        mergeEnabled,
-
-      selectedMergeEnabled:
-        selectedMergeEnabled.value,
-    }
-  );
-
-
-  if (editedRecord.value?.id) {
-
-    const payload = {
-      id:
-        editedRecord.value.id,
-
-      record_name:
-        'merge_enabled',
-
-      record_data:
-        Boolean(
-          mergeEnabled
-        ),
-    };
-
-
-    console.log(
-      '[MERGE CHOICE][UPDATE]',
-      payload
-    );
-
-
-    await updateMaterial(
-      payload
-    );
-
-
-    editedRecord.value.merge_enabled =
-      Boolean(
-        mergeEnabled
-      );
-
-
-    console.log(
-      '[MERGE CHOICE][DONE]',
-      {
-        material_id:
-          editedRecord.value.id,
-
-        merge_enabled:
-          editedRecord.value.merge_enabled,
-      }
-    );
-  }
-};
-//
-
-// 20260903版 add
-const restoreActiveAgvState = async () => {
-  const activeIds = getActiveAgvMaterialIds();
-
-  if (activeIds.length === 0) {
-    isCallAGV.value = false;
-    return;
-  }
-
-  try {
-    await getAGV({ agv_id: 1 });
-
-    const status = Number(currentAGV.value?.status ?? 0);
-
-    console.log('[restoreActiveAgvState]', {
-        activeIds,
-        status
-    });
-
-    // status:
-    // 0 = ready
-    // 1 = waiting/busy
-    // 2 = moving
-    if (status === 1 || status === 2) {
-
-      // AGV 任務仍在進行
-      isCallAGV.value = true;
-
-    } else {
-
-      // AGV 已 ready，但 localStorage 還留舊資料
-      isCallAGV.value = false;
-      clearActiveAgvMaterialIds();
-    }
-
-  } catch (err) {
-
-    console.error('[restoreActiveAgvState] failed:', err);
-
-    // 查不到狀態時，不要誤清掉既有任務
-    isCallAGV.value = activeIds.length > 0;
-  }
-};
-
-const toBooleanMergeEnabled = (value) => {
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    String(value).trim().toLowerCase() === 'true'
-  );
-};
 
 </script>
 

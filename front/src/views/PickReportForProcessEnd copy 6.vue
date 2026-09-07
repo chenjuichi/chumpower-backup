@@ -43,7 +43,7 @@
         </template>
 
         <!-- 自定義每行的選擇框 -->
-        <!--
+      <!--
         <template v-slot:item.data-table-select="{ internalItem }">
           <v-checkbox-btn
             :model-value="isSelected(internalItem)"
@@ -53,7 +53,7 @@
             :class="{ 'blue-text': internalItem.raw.isAssembleStationShow}"
           />
         </template>
-        -->
+      -->
         <template v-slot:item.data-table-select="{ internalItem }">
           <v-checkbox-btn
             :model-value="isSelected(internalItem)"
@@ -230,8 +230,7 @@
 
         <!-- 客製化 '需求數量' (req_qty) 欄位的表頭 -->
         <template v-slot:header.req_qty="{ column }">
-          <!--<div style="text-align: center;">-->
-          <div class="qty-header-space"> <!--20260905版-->
+          <div style="text-align: center;">
             <div>需求</div>
             <div>數量</div>
           </div>
@@ -239,8 +238,7 @@
 
         <!-- 客製化 '領取數量' (ask_qty) 欄位的表頭 -->
         <template v-slot:header.ask_qty="{ column }">
-          <!--<div style="text-align: center;">-->
-          <div class="qty-header-space"> <!--20260905版-->
+          <div style="text-align: center;">
             <div>領取</div>
             <div>數量</div>
           </div>
@@ -248,8 +246,7 @@
 
         <!-- 客製化 '應完成總數量' (must_receive_end_qty) 欄位的表頭 -->
         <template v-slot:header.must_receive_end_qty="{ column }">
-          <!--<div style="text-align: center; width:90px;">-->
-          <div class="qty-header-space"> <!--20260905版-->
+          <div style="text-align: center;">
             <div>應完成</div>
             <div>總數量</div>
           </div>
@@ -257,8 +254,7 @@
 
         <!-- 客製化 '已完成總數量' (total_completed_qty_num) 欄位的表頭 -->
         <template v-slot:header.total_completed_qty_num="{ column }">
-          <!--<div style="text-align: center; width:90px;">-->
-          <div class="qty-header-space"> <!--20260905版-->
+          <div style="text-align: center;">
             <div>已完成</div>
             <div>總數量</div>
           </div>
@@ -266,8 +262,7 @@
 
         <!-- 客製化 '完成數量' (receive_qty) 欄位的表頭 -->
         <template v-slot:header.receive_qty="{ column }">
-          <!--<div style="text-align: center;">-->
-          <div class="qty-header"><!--20260905版-->
+          <div style="text-align: center;">
             <div>完成</div>
             <div>數量</div>
           </div>
@@ -275,27 +270,11 @@
 
         <!-- 客製化 '廢品數量' (abnormal_qty) 欄位的表頭 -->
         <template v-slot:header.abnormal_qty="{ column }">
-          <!--<div style="text-align: center;">-->
-          <div class="qty-header"><!--20260905版-->
+          <div style="text-align: center;">
             <div>廢品</div>
             <div>數量</div>
           </div>
         </template>
-
-        <template v-slot:header.delivery_date>
-          <div style="position:relative; right:30px;">
-            交期
-          </div>
-        </template>
-
-        <!-- 客製化 '編輯' (input_action) 欄位的表頭 -->
-        <template v-slot:header.input_action>
-          <div class="edit-header-nowrap">
-            編輯
-          </div>
-        </template>
-
-
 
         <!-- 自訂 index 欄位的資料欄位 -->
         <template v-slot:item.index="{ item }">
@@ -304,7 +283,7 @@
 
         <!-- 自訂 '訂單編號(工序)' 欄位的資料欄位 -->
         <template v-slot:item.order_num="{ item }">
-          <div style="display:flex; align-items:center; width:150px;">
+          <div style="display: flex; align-items: center;">
             <div
               :style="{
                 color: isProcessEndDone(item) ? 'blue' : '',
@@ -331,41 +310,28 @@
         </template>
 
         <!-- 自訂 '應完成數量'欄位 -->
-        <!--
+      <!--
         <template v-slot:item.must_receive_end_qty="{ item }">
           {{ item.must_receive_end_qty }}
         </template>
-        -->
+      -->
+<!--20260813版-->
+<template v-slot:item.must_receive_end_qty="{ item }">
+  {{
+    item.display_must_receive_end_qty
+      ?? item.must_receive_end_qty
+  }}
+</template>
 
-        <!-- 20260905版, 自訂 '已完成總數量'欄位 -->
-        <template v-slot:item.total_completed_qty_num="{ item }">
-          <div class="qty-cell"> <!--20260905版-->
-            {{ item.total_completed_qty_num }}
-          </div>
-        </template>
-
-
-        <!--20260813版-->
-        <template v-slot:item.must_receive_end_qty="{ item }">
-          <div class="qty-cell"> <!--20260905版-->
-            {{
-              item.display_must_receive_end_qty
-                ?? item.must_receive_end_qty
-            }}
-          </div>
-        </template>
 
         <!-- 自訂 '完成數量' 輸入欄位 -->
         <template v-slot:item.receive_qty="{ item }">
-          <!--<div style="position: relative; display: inline-block;">-->
-          <div class="qty-input-cell"> <!--20260905版-->
+          <div style="position: relative; display: inline-block;">
             <v-text-field
               v-model="item.receive_qty"
               dense
               hide-details
-
-              class="qty-input"
-
+              style="max-width: 60px; text-align: center; z-index: 1;"
               :id="`receiveQtyID-${item.assemble_id}`"
               @keydown="handleKeyDown"
               @update:modelValue="checkReceiveQty(item)"
@@ -395,8 +361,7 @@
 
         <!-- 自訂 '廢品數量' 輸入欄位 -->
         <template v-slot:item.abnormal_qty = "{ item }">
-          <!--<div style="position: relative; display: inline-block;">-->
-          <div class="qty-input-cell">  <!--20260905版-->
+          <div style="position: relative; display: inline-block;">
             <!--
             <v-text-field
               v-model="item.abnormal_qty"
@@ -417,85 +382,25 @@
               v-model="item.abnormal_qty"
               dense
               hide-details
-
-              class="qty-input"
-
+              style="max-width: 60px; text-align: center; z-index: 1;"
               :id="`abnormalQtyID-${item.assemble_id}`"
 
               @keydown="handleKeyDown"
+
               @update:modelValue="(value) => onAbnormalQtyUpdate(item, value)"
+
               @update:focused="(focused) => checkAbnormalField(focused, item)"
+
               @keyup.enter="commitAbnormalQtyPreview(item)"
+
               :disabled="item.input_abnormal_disable"
             />
             <span
               v-show="item.abnormal_tooltipVisible"
-              style="
-              position: absolute;
-              left: 60px;
-              top: 0;
-              z-index: 2;
-              background-color: white;
-              min-width: 120px;
-              white-space: nowrap;
-              color:red;
-              text-align: left;
-              font-weight: 700;"
+              style="position: absolute; left: 60px; top: 0; z-index: 2; background-color: white; padding: 0; min-width: 120px; white-space: nowrap; color:red; text-align: left; font-weight: 700;"
             >
               {{ abnormal_qty_alarm }}
             </span>
-          </div>
-        </template>
-
-        <!-- 20260905版 add：廢品原因 -->
-        <template v-slot:item.scrap_message="{ item }">
-          <div class="scrap-message-cell">
-            <v-tooltip location="bottom">
-              <template #activator="{ props }">
-                <span
-                  class="ellipsis-cell"
-                  v-bind="props"
-                >
-                  {{ item.scrap_message || '' }}
-                </span>
-              </template>
-
-              <div class="tooltip-content">
-                {{ item.scrap_message || '' }}
-              </div>
-            </v-tooltip>
-          </div>
-        </template>
-
-        <!-- 20260905版 add：編輯廢品原因 -->
-        <template v-slot:item.input_action="{ item }">
-          <v-icon
-            small
-
-            :style="{
-              color: Number(item.abnormal_qty || 0) > 0
-              ? 'blue' : '#bdbdbd',
-
-              cursor: Number(item.abnormal_qty || 0) > 0
-              ? 'pointer' : 'not-allowed'
-            }"
-            :title="
-              Number(item.abnormal_qty || 0) > 0
-                ? '編輯廢品原因'
-                : '沒有廢料數量'
-            "
-            @click="
-              Number(item.abnormal_qty || 0) > 0 &&
-              editScrapMessage(item)
-            "
-          >
-            mdi-pencil
-          </v-icon>
-        </template>
-
-        <template v-slot:item.delivery_date="{ item }">
-          <div class="delivery-date-cell">
-            {{ item.delivery_date }}
           </div>
         </template>
 
@@ -654,57 +559,6 @@
         </template>
       </v-data-table>
 
-      <!-- 20260904 add：廢品原因 Dialog -->
-      <v-dialog
-        v-model="scrapDlg.open"
-        max-width="500"
-      >
-        <v-card>
-          <v-card-title class="text-h6 font-weight-bold">
-            編輯廢品原因
-          </v-card-title>
-
-          <v-card-text>
-            <v-text-field
-              v-model.trim="scrapDlg.message"
-              label="廢品原因"
-              maxlength="20"
-              counter="20"
-              clearable
-              autofocus
-
-              class="scrap-reason-input"
-
-              variant="underlined"
-              density="comfortable"
-
-              @keyup.enter="saveScrapMessage"
-            />
-          </v-card-text>
-
-          <v-card-actions>
-            <v-spacer />
-
-            <v-btn
-              color="grey"
-              variant="text"
-              @click="closeScrapDialog"
-            >
-              取消
-            </v-btn>
-
-            <v-btn
-              color="primary"
-              variant="tonal"
-              :disabled="!String(scrapDlg.message || '').trim()"
-              @click="saveScrapMessage"
-            >
-              確定
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
-
     </div>
   </div>
 </template>
@@ -784,13 +638,6 @@ const endTitle = ref('完成加工生產工單');
 const endMessage = ref('確定？');
 const confirmRef = ref(null);
 
-// 20260904 add：廢品原因 dialog
-const scrapDlg = reactive({
-  open: false,
-  target: null,
-  message: '',
-});
-
 const tableWrapRef = ref(null);
 const sendButton = ref(null);
 const tableWidth = ref(0);
@@ -829,49 +676,19 @@ const footerOptions = [
   { value: -1, title: '全部' }
 ];
 
-/*
 const headers = [
   { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
   { title: '訂單編號', sortable: true, key: 'order_num', width:260 },
   { title: '物料編號', sortable: false, key: 'material_num', width:170 },
   { title: '需求數量', sortable: false, key: 'req_qty', width:70 },
   { title: '領取數量', sortable: false, key: 'ask_qty', width:70 },
-  { title: '應完成總數量', sortable: false, key: 'must_receive_end_qty', width:90 },       // 2025-06-13 add, 改順序
-  { title: '已完成總數量', sortable: false, key: 'total_completed_qty_num', width:90 },
-  { title: '完成數量', sortable: false, key: 'receive_qty', width:120 },
-  { title: '廢料數量', sortable: false, key: 'abnormal_qty', width:120 },             // 2025-06-13 add, 改順序
-
-  // 20260905版
-  { title: '廢品原因', sortable: false, key: 'scrap_message', width:120 },
-  { title: '編輯', sortable: false, key: 'input_action', width:80 },
-
+  { title: '應完成總數量', sortable: false, key: 'must_receive_end_qty', width:70 },       // 2025-06-13 add, 改順序
+  { title: '已完成總數量', sortable: false, key: 'total_completed_qty_num', width:70 },
+  { title: '完成數量', sortable: false, key: 'receive_qty', width:70 },
+  { title: '廢料數量', sortable: false, key: 'abnormal_qty', width:70 },             // 2025-06-13 add, 改順序
   { title: '交期', sortable: false, key: 'delivery_date', width:120 },
-  { title: '', sortable: false, key: 'action', width:190 },
+  { title: '', sortable: false, key: 'action', width:300 },
 ];
-*/
-// 20260905版
-const headers = [
-  { title: '  ', sortable: false, key: 'index', width: 30, class: 'hidden-column' },
-
-  { title: '訂單編號', sortable: true, key: 'order_num', width: 250 },
-  { title: '物料編號', sortable: false, key: 'material_num', width: 170 },
-
-  // 20260905：數量欄增加水平間距
-  { title: '需求數量', sortable: false, key: 'req_qty', width: 60, align: 'center' },
-  { title: '領取數量', sortable: false, key: 'ask_qty', width: 60, align: 'center' },
-  { title: '應完成總數量', sortable: false, key: 'must_receive_end_qty', width: 100, align: 'center' },
-  { title: '已完成總數量', sortable: false, key: 'total_completed_qty_num', width: 100, align: 'center' },
-
-  { title: '完成數量', sortable: false, key: 'receive_qty', width: 80, align: 'center' },
-  { title: '廢品數量', sortable: false, key: 'abnormal_qty', width: 80, align: 'center' },
-
-  { title: '廢品原因', sortable: false, key: 'scrap_message', width: 90, align: 'center' },
-  { title: '編輯', sortable: false, key: 'input_action', width: 60, align: 'center' },
-
-  { title: '交期', sortable: false, key: 'delivery_date', width: 110, align: 'center' },
-  { title: '', sortable: false, key: 'action', width: 190, align: 'center' },
-];
-//
 
 const app_user_id = 'user_chumpower';
 const clientAppName = 'PickReportForProcessEnd';
@@ -2287,8 +2104,6 @@ const onAbnormalQtyUpdate = (item, value) => {
   checkAbnormalQty(item);
 };
 */
-
-/*
 // 20260805版
 const onAbnormalQtyUpdate = (
   item,
@@ -2302,72 +2117,6 @@ const onAbnormalQtyUpdate = (
   }
 
   // 輸入過程只驗證，不在每次輸入時扣數量
-  checkAbnormalQty(item)
-}
-//
-*/
-
-/*
-// 20260905版
-const onAbnormalQtyUpdate = async (
-  item,
-  value
-) => {
-  item.abnormal_qty = value
-
-  if (item.code === '109') {
-    item.isAssembleFirstAlarm_qty =
-      value
-  }
-
-  // 20260905：
-  // 廢品數量調整為 0 時，
-  // 立即清除廢品原因（畫面 + DB）
-  if (Number(value || 0) === 0) {
-
-    // 畫面立即清空
-    item.scrap_message = ''
-
-    try {
-      await updateAssemble({
-        assemble_id: item.assemble_id,
-        record_name: 'scrap_message',
-        record_data: '',
-      })
-    } catch (error) {
-      console.error(
-        'clear scrap_message error:',
-        error
-      )
-    }
-  }
-
-  // 原本檢查邏輯
-  checkAbnormalQty(item)
-}
-*/
-// 20260906版
-const onAbnormalQtyUpdate = async (item, value) => {
-  if (!item) return
-
-  item.abnormal_qty = value
-
-  if (item.code === '109') {
-    item.isAssembleFirstAlarm_qty =
-      value
-  }
-
-  // 廢品數量輸入為 0
-  // 畫面上的廢品原因立即清空
-  //
-  // DB 寫入統一由
-  // commitAbnormalQtyPreview()
-  // 在 Enter / blur 時處理
-  if (Number(value || 0) === 0) {
-    item.scrap_message = ''
-  }
-
-  // 原本驗證
   checkAbnormalQty(item)
 }
 //
@@ -4421,8 +4170,6 @@ const checkAbnormalField = (
   commitAbnormalQtyPreview(item)
 }
 */
-
-/*
 const checkAbnormalField = async (
   focused,
   item
@@ -4448,50 +4195,6 @@ const checkAbnormalField = async (
     item.abnormal_qty = 0
   }
 
-  await commitAbnormalQtyPreview(item)
-}
-//
-*/
-// 20260906版
-const checkAbnormalField = async (focused, item) => {
-  if (!item) return
-
-  // =========================================================
-  // 進入欄位
-  // =========================================================
-  if (focused) {
-
-    // 非常重要：
-    // 在把 0 改成空白之前，
-    // 先記住目前 DB 對應的 abnormal_qty
-    getAbnormalQtySaveState(item)
-
-    if (
-      item.abnormal_qty === 0 ||
-      item.abnormal_qty === '0'
-    ) {
-      item.abnormal_qty = ''
-    }
-
-    return
-  }
-
-  // =========================================================
-  // 離開欄位
-  // =========================================================
-
-  // 空白視為 0
-  if (
-    item.abnormal_qty === '' ||
-    item.abnormal_qty === null ||
-    item.abnormal_qty === undefined
-  ) {
-    item.abnormal_qty = 0
-  }
-
-  // 統一由 commit 處理。
-  // 若 Enter 已經存過相同值，
-  // commit 會自行判斷並直接 return。
   await commitAbnormalQtyPreview(item)
 }
 //
@@ -4593,7 +4296,6 @@ const handleProcessEndCompleted = async (
   }
 }
 
-/*
 // 20260805 add
 const commitAbnormalQtyPreview = async (item) => {
   if (!item) return
@@ -4659,351 +4361,6 @@ const commitAbnormalQtyPreview = async (item) => {
   }
 }
 //
-*/
-// ------------------------------------------------------------
-// 20260906版
-//
-// PEnd 廢品數量：
-//
-// 1. Enter 或 blur 都可以進來
-// 2. 相同值只存一次
-// 3. API 執行中不重複送出
-// 4. 先 preview 檢查
-// 5. 成功後 abnormal_qty 寫回 DB
-// 6. abnormal_qty = 0 時 scrap_message 同步清空
-// 7. refresh 後維持 DB 新值
-// ------------------------------------------------------------
-const commitAbnormalQtyPreview = async (item) => {
-  if (!item) return false
-
-
-  // ==========================================================
-  // 1. 整理輸入數量
-  // ==========================================================
-  const abnormalQty = Number(
-    item.abnormal_qty || 0
-  )
-
-
-  if (
-    !Number.isFinite(abnormalQty) ||
-    abnormalQty < 0
-  ) {
-    abnormal_qty_alarm.value =
-      '廢品數量格式不正確!'
-
-    item.abnormal_tooltipVisible =
-      true
-
-    return false
-  }
-
-
-  // ==========================================================
-  // 2. 取得本列儲存狀態
-  // ==========================================================
-  const state =
-    getAbnormalQtySaveState(item)
-
-
-  // ==========================================================
-  // 3. 如果前一次 API 還在執行
-  //    先等它完成
-  //
-  // 目的：
-  // Enter 後立刻 blur 時，
-  // 不允許兩個更新同時競爭。
-  // ==========================================================
-  if (state.savingPromise) {
-    try {
-      await state.savingPromise
-    } catch (error) {
-      // 前一筆失敗沒關係，
-      // 後面仍可以重新判斷是否需要保存
-    }
-  }
-
-
-  // ==========================================================
-  // 4. 如果目前數值就是 DB 最後已保存值
-  //    不再呼叫任何 API
-  //
-  // 例如：
-  //
-  // Enter：
-  // 5 → update → savedQty = 5
-  //
-  // 接著 blur：
-  // 5 === savedQty
-  //
-  // → 直接 return
-  // ==========================================================
-  if (
-    Number(state.savedQty || 0) ===
-    abnormalQty
-  ) {
-    item.abnormal_tooltipVisible =
-      false
-
-    return true
-  }
-
-
-  // ==========================================================
-  // 5. 真正執行儲存
-  // ==========================================================
-  const savePromise = (
-    async () => {
-
-      try {
-
-        // -----------------------------------------------------
-        // A. 先請後端做廢品數量預覽計算
-        // -----------------------------------------------------
-        const response =
-          await previewProcessAbnormalQty({
-
-            material_id: Number(
-              item.material_id ??
-              item.id ??
-              0
-            ),
-
-            assemble_id: Number(
-              item.assemble_id ||
-              0
-            ),
-
-            abnormal_qty:
-              abnormalQty,
-          })
-
-
-        const data =
-          response?.data ??
-          response ??
-          {}
-
-
-        if (data?.status !== true) {
-          throw new Error(
-            data?.message ||
-            '廢品數量預覽失敗'
-          )
-        }
-
-
-        // -----------------------------------------------------
-        // B. 更新畫面上的「應完成總數量」
-        // -----------------------------------------------------
-        item.must_receive_end_qty =
-          Number(
-            data.preview_remaining_qty ||
-            0
-          )
-
-
-        item.original_must_receive_end_qty =
-          Number(
-            data.original_must_receive_end_qty ||
-            0
-          )
-
-
-        // -----------------------------------------------------
-        // C. 真正寫入 p_assemble.abnormal_qty
-        //
-        // 這一段就是 refresh 後仍保留新值的關鍵。
-        // -----------------------------------------------------
-        await updateAssemble({
-
-          assemble_id: Number(
-            item.assemble_id ||
-            0
-          ),
-
-          record_name:
-            'abnormal_qty',
-
-          record_data:
-            abnormalQty,
-        })
-
-
-        // -----------------------------------------------------
-        // D. 廢品數量 = 0
-        //
-        // 畫面已經在 onAbnormalQtyUpdate()
-        // 立即清空。
-        //
-        // 這裡負責同步清 DB。
-        // -----------------------------------------------------
-        if (abnormalQty === 0) {
-
-          item.scrap_message = ''
-
-          await updateAssemble({
-
-            assemble_id: Number(
-              item.assemble_id ||
-              0
-            ),
-
-            record_name:
-              'scrap_message',
-
-            record_data:
-              '',
-          })
-        }
-
-
-        // -----------------------------------------------------
-        // E. 所有 DB 更新完成後，
-        //    才認定這個數量已正式保存
-        // -----------------------------------------------------
-        state.savedQty =
-          abnormalQty
-
-
-        item.abnormal_qty =
-          abnormalQty
-
-
-        item.abnormal_tooltipVisible =
-          false
-
-
-        console.log(
-          '[PEnd] abnormal_qty saved:',
-          {
-            material_id:
-              item.material_id ??
-              item.id,
-
-            assemble_id:
-              item.assemble_id,
-
-            abnormal_qty:
-              abnormalQty,
-
-            scrap_message:
-              item.scrap_message ||
-              '',
-          }
-        )
-
-
-        return true
-
-      } catch (error) {
-
-        console.error(
-          '[PEnd] save abnormal_qty error:',
-          error
-        )
-
-
-        abnormal_qty_alarm.value =
-          error?.response?.data?.message ||
-          error?.message ||
-          '廢品數量更新失敗'
-
-
-        item.abnormal_tooltipVisible =
-          true
-
-
-        return false
-      }
-    }
-  )()
-
-
-  // 記錄目前正在執行的 Promise
-  state.savingPromise =
-    savePromise
-
-
-  try {
-
-    return await savePromise
-
-  } finally {
-
-    // 只有目前還是同一個 Promise 時才清除
-    if (
-      state.savingPromise ===
-      savePromise
-    ) {
-      state.savingPromise =
-        null
-    }
-  }
-}
-
-// ------------------------------------------------------------
-// 20260906
-// PEnd 廢品數量儲存狀態
-//
-// 功能：
-// 1. Enter 儲存後，blur 不再重複儲存
-// 2. blur 儲存後，同值不再重複儲存
-// 3. API 尚未完成時，不重複送出
-// 4. 不同值則依序儲存，避免 API race condition
-//
-// key:
-// material_id + assemble_id
-//
-// value:
-// {
-//   savedQty: 最後已確認寫入 DB 的數量,
-//   savingPromise: 目前正在執行的 Promise
-// }
-// ------------------------------------------------------------
-const abnormalQtySaveStateMap = new Map()
-
-const makeAbnormalQtySaveKey = (item) => {
-  const materialId = Number(
-    item?.material_id ??
-    item?.id ??
-    0
-  )
-
-  const assembleId = Number(
-    item?.assemble_id ??
-    0
-  )
-
-  return `${materialId}:${assembleId}`
-}
-
-const getAbnormalQtySaveState = (item) => {
-
-  const key =
-    makeAbnormalQtySaveKey(item)
-
-  if (
-    !abnormalQtySaveStateMap.has(key)
-  ) {
-    abnormalQtySaveStateMap.set(
-      key,
-      {
-        // 第一次建立時，
-        // 畫面值就是目前從 DB 取得的值
-        savedQty: Number(
-          item?.abnormal_qty || 0
-        ),
-
-        savingPromise: null,
-      }
-    )
-  }
-
-  return abnormalQtySaveStateMap.get(
-    key
-  )
-}
 
 // ------------------------------------------------------------
 // 保存每一筆加工工序「資料庫原始應完成數量」。
@@ -5062,86 +4419,6 @@ const getOriginalMustReceiveEndQty = (
 }
 //
 
-//
-// 20260904版 add
-const editScrapMessage = (item) => {
-  if (Number(item.abnormal_qty || 0) <= 0) {
-    snackbar_info.value = '請先輸入廢料數量';
-    snackbar_color.value = 'red accent-2';
-    snackbar.value = true;
-    return;
-  }
-
-  scrapDlg.target = item;
-
-  scrapDlg.message = String(
-    item.scrap_message || ''
-  ).slice(0, 20);
-
-  scrapDlg.open = true;
-};
-
-
-// 20260904版 add
-const closeScrapDialog = () => {
-  scrapDlg.open = false;
-  scrapDlg.target = null;
-  scrapDlg.message = '';
-};
-
-
-// 20260904版 add
-const saveScrapMessage = async () => {
-  const item = scrapDlg.target;
-
-  if (!item) {
-    return;
-  }
-
-  const message = String(
-    scrapDlg.message || ''
-  ).trim().slice(0, 20);
-
-  // 有廢料時，建議原因不可空白
-  if (
-    Number(item.abnormal_qty || 0) > 0 &&
-    !message
-  ) {
-    snackbar_info.value = '有廢料時，請輸入廢品原因';
-    snackbar_color.value = 'red accent-2';
-    snackbar.value = true;
-    return;
-  }
-
-  try {
-    await updateAssemble({
-      assemble_id: item.assemble_id,
-      record_name: 'scrap_message',
-      record_data: message,
-    });
-
-    // 前端同步
-    item.scrap_message = message;
-
-    snackbar_info.value = '廢品原因更新完成';
-    snackbar_color.value = 'success';
-    snackbar.value = true;
-
-    closeScrapDialog();
-
-  } catch (error) {
-    console.error(
-      'saveScrapMessage error:',
-      error
-    );
-
-    snackbar_info.value = '廢品原因更新失敗';
-    snackbar_color.value = 'red accent-2';
-    snackbar.value = true;
-  }
-};
-//
-
 </script>
 
 <style lang="scss" scoped>
@@ -5196,20 +4473,16 @@ const saveScrapMessage = async () => {
   border-radius: 0 0 20px 20px;
 }
 
-/* 20260905：Data Table 不顯示水平 scrollbar */
-:deep(.custom-table .v-table__wrapper) {
-  overflow-x: hidden !important;
-}
 
 .action-cell {
   display: flex;
   align-items: center;
   gap: 6px;             // 按鈕間距
   white-space: nowrap;  // 禁止換行
-  //width: 300px;         // 寬度（可視需要調整）
+  width: 300px;         // 寬度（可視需要調整）
   padding: 0 2px;
   position: relative;
-  right:90px;
+  right:40px;
 }
 
 .action-cell .v-btn {
@@ -5419,135 +4692,6 @@ const saveScrapMessage = async () => {
   min-height: 86px !important;
   max-height: 86px !important;
   overflow: visible;
-}
-
-/* ================================
-   PEnd table 欄位統一對齊
-   20260905
-   ================================ */
-
-.qty-header {
-  width: 100%;
-  text-align: center;
-  line-height: 1.25;
-}
-
-.qty-cell {
-  width: 100%;
-  text-align: center;
-}
-
-// 完成數量 / 廢品數量
-.qty-input-cell {
-  position: relative;
-  width: 85%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.qty-input {
-  width: 60px;
-  max-width: 60px;
-}
-
-// v-text-field 內真正的數字置中
-.qty-input :deep(input) {
-  text-align: center !important;
-}
-
-// 廢品原因
-.scrap-message-cell {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.scrap-message-cell .ellipsis-cell {
-  display: block;
-  width: 85px;
-  max-width: 85px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  text-align: left;
-}
-
-// 編輯鉛筆
-.input-action-cell {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-// 應完成 / 已完成：固定兩行，不允許中文字自行斷行
-.qty-header-nowrap {
-  width: 100%;
-  text-align: center;
-  white-space: nowrap;
-  line-height: 1.3;
-}
-
-// 編輯：固定單行
-.edit-header-nowrap {
-  width: 100%;
-  text-align: center;
-  white-space: nowrap;
-}
-
-
-//   PEnd 四個主要數量欄位：
-//   水平平均分布，欄與欄之間保留較大空間
-.qty-header-space {
-  width: 100%;
-  min-width: 55px;
-
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-
-  text-align: center;
-  white-space: nowrap;
-  line-height: 1.3;
-}
-
-.edit-header-nowrap {
-  width: 100%;
-  text-align: center;
-  white-space: nowrap !important;
-  word-break: keep-all;
-}
-
-.tooltip-content {
-  white-space: nowrap;
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: left;
-}
-
-.delivery-date-cell {
-  width: 100%;
-  min-width: 120px;
-  text-align: center;
-  white-space: nowrap;
-
-  position: relative;
-  right: 30px;
-}
-
-/* 20260906：廢品原因輸入文字 / 游標往下調整 */
-:deep(.scrap-reason-input .v-field__input) {
-  padding-top: 20px !important;
-  padding-bottom: 4px !important;
-  min-height: 48px;
-  align-items: center;
-}
-
-:deep(.scrap-reason-input input) {
-  line-height: 24px !important;
 }
 </style>
 

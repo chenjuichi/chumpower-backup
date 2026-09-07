@@ -6,7 +6,6 @@ from dotenv import dotenv_values
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-#from flask import Flask, session, jsonify, request
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -46,7 +45,7 @@ hostName = socket.gethostname()
 local_ip = socket.gethostbyname(hostName)                           # get local ip address
 print('\n' + 'Lan ip: ' + '\033[46m' + local_ip + '\033[0m')
 logger.info(f'Lan ip: {local_ip}')
-print('Build:  ' + '\033[42m' + '2026-08-30' + '\033[0m' + '\n')
+print('Build:  ' + '\033[42m' + '2026-09-07' + '\033[0m' + '\n')
 host_ip = local_ip
 
 # 保持持續有效 + 防止螢幕關閉 + 防止系統睡眠
@@ -68,7 +67,7 @@ app.register_blueprint(updateTableP)
 app.register_blueprint(deleteTable)
 app.register_blueprint(deleteTableP)
 app.register_blueprint(excelTable)
-#app.register_blueprint(excelModifyTable)
+
 app.register_blueprint(browseDirectory)
 app.register_blueprint(hardware)
 app.register_blueprint(archiveTable)
@@ -111,7 +110,9 @@ app.config['file_ok'] = False                         # 初始化file_ok
 app.config['socket_server_ip'] = local_ip
 f.close()
 
+
 # --------------------------
+
 
 scheduler = BackgroundScheduler()       # 初始化调度器
 
@@ -151,6 +152,7 @@ def ping():
       "message": "Flask API is alive"
   })
 
+
 @app.route("/report", methods=["POST"])
 def report():
     data = request.get_json(silent=True) or {}
@@ -161,6 +163,7 @@ def report():
         "received": data
     })
 
+
 @app.route("/device_status", methods=["GET"])
 def get_device_status():
     return jsonify({
@@ -168,12 +171,14 @@ def get_device_status():
         "data": device_state
     })
 
+
 @app.route("/device_command", methods=["GET"])
 def get_device_command():
     return jsonify({
         "ok": True,
         "target_on": device_state["target_on"]
     })
+
 
 @app.route("/device_set", methods=["POST"])
 def set_device():
@@ -187,6 +192,7 @@ def set_device():
         "message": "target updated",
         "target_on": device_state["target_on"]
     })
+
 
 @app.route("/device_report", methods=["POST"])
 def report_device():
@@ -206,14 +212,14 @@ def report_device():
 # --------------------------
 
 
-#
 @app.teardown_appcontext
 def remove_session(exc):
     # 不論成功/失敗，每次請求結束都清掉這個 thread 的 session
     Session.remove()
-#
+
 
 # --------------------------
+
 
 def my_job1():
     print("Scheduled job1 正在執行...")
@@ -221,11 +227,13 @@ def my_job1():
         do_read_user_table()
         #delete_pdf_files()
 
+
 def my_job2():
     print("Scheduled job2 正在執行...")
     with app.app_context():
         do_read_user_table()
         #delete_pdf_files()
+
 
 def my_job3():
     print("Scheduled job3 正在執行...")
@@ -233,6 +241,7 @@ def my_job3():
         delete_log_files()
         #delete_pdf_files()
         #delete_exec_files()
+
 
 schedule_1=[]
 schedule_2=[]
@@ -244,6 +253,7 @@ if schedule_1_str:
     if len(schedule_1) >= 2:
         print("schedule_1預計於" +  schedule_1[0] + ':' + schedule_1[1].strip() + " 啟動")
         scheduler.add_job(my_job1, 'cron', hour=int(schedule_1[0]), minute=int(schedule_1[1]))
+
 # 注册第二個排程任務
 schedule_2_str= env_vars["schedule_2_24HHMM"]
 if schedule_2_str:
@@ -251,6 +261,7 @@ if schedule_2_str:
     if len(schedule_2) >= 2:
         print("schedule_2預計於" + schedule_2[0] + ':' + schedule_2[1].strip() + " 啟動")
         scheduler.add_job(my_job2, 'cron', hour=int(schedule_2[0]), minute=int(schedule_2[1]))
+
 # 註冊第三個排程任務
 schedule_3_str = env_vars["schedule_3_24HHMM"]
 schedule_3 = []
@@ -266,20 +277,6 @@ if schedule_3_str:
 
 if __name__ == '__main__':
   scheduler.start()                            # 啟動scheduler
-  #print("Scheduled version...")
-  #方法1
-  #app.run(host=host_ip, port=7010, debug=True)  # 啟動app
-  #方法2
-  #app.run(host='0.0.0.0', port=7010, debug=True)  # 啟動app
-  #方法3
+
   app.run(host='0.0.0.0', port=7010, debug=False, use_reloader=False)  # 啟動app, 避免觸發reloader，連線就被中斷
 
-  #方法4
-  '''
-  from werkzeug.serving import make_server
-  def run_server():
-      http_server = make_server(host_ip, 7010, app)
-      http_server.serve_forever()
-  print("後端應用程式已經啟動...")
-  run_server()
-  '''

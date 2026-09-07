@@ -1,5 +1,7 @@
 import re
 
+import secrets
+
 from flask import Blueprint, jsonify, request, current_app
 from werkzeug.security import check_password_hash
 from database.tables import User, Material, Assemble, Bom, Agv, Permission, Process, AbnormalCause, UserDelegate, Setting, Session
@@ -1746,6 +1748,7 @@ def get_order_picked_boms():
         s.close()
 
 
+"""
 @getTable.route("/getBoms", methods=['POST'])
 def get_boms():
   print("getBoms....")
@@ -1796,6 +1799,1724 @@ def get_boms():
     'status': return_value,
     'boms': results
   })
+"""
+
+
+"""
+# 20260904版
+# 20260902版
+@getTable.route("/getBoms", methods=['POST'])
+def get_boms():
+
+    print("getBoms....")
+
+    request_data = request.get_json(silent=True) or {}
+
+    _order_num = request_data.get('order_num')
+    _id = request_data.get('id')
+
+    # prepare / picked / all
+    _mode = request_data.get(
+        'mode',
+        'prepare'
+    )
+
+    return_value = True
+    s = Session()
+
+    try:
+
+        # ============================================================
+        # 1. 找到目前 material
+        #
+        # 優先使用 id。
+        #
+        # 原因：
+        # 同一 order_num 可能有 parent / child，
+        # 若 order_num 優先，容易永遠抓到 parent。
+        # ============================================================
+
+        material_record = None
+
+
+        if (
+            _id is not None
+            and
+            str(_id).strip() not in (
+                '',
+                '0',
+                'None',
+            )
+        ):
+
+            material_record = (
+                s.query(Material)
+                .filter(
+                    Material.id
+                    == int(_id)
+                )
+                .first()
+            )
+
+
+        elif (
+            _order_num is not None
+            and
+            str(_order_num).strip() != ''
+        ):
+
+            material_record = (
+                s.query(Material)
+                .filter(
+                    Material.order_num
+                    == _order_num
+                )
+                .filter(
+                    Material.move_by_process_type
+                    == 2
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+
+        # ============================================================
+        # 找不到 material
+        # ============================================================
+
+        if not material_record:
+
+            print(
+                "getBoms: material not found",
+                {
+                    "id":
+                        _id,
+
+                    "order_num":
+                        _order_num,
+
+                    "mode":
+                        _mode,
+                }
+            )
+
+            return jsonify({
+                'status': False,
+                'boms': [],
+            })
+
+
+        # ============================================================
+        # 2. merge_enabled
+        # ============================================================
+
+        merge_enabled = (
+            material_record.merge_enabled
+            is True
+            or material_record.merge_enabled
+            == 1
+            or str(
+                material_record.merge_enabled
+            ).strip().lower()
+            in (
+                '1',
+                'true',
+                'yes',
+                'y',
+                'on',
+            )
+        )
+
+
+        print(
+            "getBoms material:",
+            {
+                "id":
+                    material_record.id,
+
+                "order_num":
+                    material_record.order_num,
+
+                "mode":
+                    _mode,
+
+                "merge_enabled":
+                    merge_enabled,
+            }
+        )
+
+
+        # ============================================================
+        # 3. prepare
+        #
+        # Material 備料頁：
+        #
+        # 只看目前這一筆 material 自己的 BOM。
+        #
+        # parent = parent BOM
+        # child  = child BOM
+        #
+        # 不可跨 material 合併。
+        # ============================================================
+
+        if _mode == 'prepare':
+
+            boms = (
+                s.query(Bom)
+                .filter(
+                    Bom.material_id
+                    == material_record.id
+                )
+                .order_by(
+                    cast(
+                        Bom.seq_num,
+                        Integer
+                    ).asc(),
+
+                    Bom.id.asc(),
+                )
+                .all()
+            )
+
+
+        # ============================================================
+        # 4. picked
+        #
+        # Begin 顯示已備料 BOM。
+        #
+        # merge_enabled=True：
+        #
+        #   同一 order_num 的 parent + child
+        #   全部已備料 BOM 要合併顯示。
+        #
+        #   例如：
+        #
+        #       888800020273
+        #
+        #       parent 502 = 10
+        #       child  507 = 1
+        #
+        #       Begin BOM = 11
+        #
+        #
+        # merge_enabled=False：
+        #
+        #   每一批獨立，
+        #   只看目前 material 自己的 BOM。
+        # ============================================================
+
+        elif _mode == 'picked':
+
+            # --------------------------------------------------------
+            # A. 併單
+            # --------------------------------------------------------
+            '''
+            if merge_enabled:
+
+                # ====================================================
+                # 找同 order_num 所有已完成備料 material
+                #
+                # 注意：
+                # child 併回 parent 後，
+                # isShow 可能已經 False，
+                # 所以這裡不能用 isShow=True 過濾。
+                # ====================================================
+
+                material_rows = (
+                    s.query(Material)
+                    .filter(
+                        Material.order_num
+                        == material_record.order_num
+                    )
+                    .filter(
+                        Material.move_by_process_type
+                        == 2
+                    )
+                    .filter(
+                        Material.isTakeOk.is_(True)
+                    )
+                    .order_by(
+                        Material.id.asc()
+                    )
+                    .all()
+                )
+
+
+                material_ids = [
+                    int(m.id)
+                    for m in material_rows
+                    if m.id
+                ]
+
+
+                print(
+                    "[getBoms][picked][MERGE]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "request_material_id":
+                            material_record.id,
+
+                        "material_ids":
+                            material_ids,
+                    }
+                )
+
+
+                # ----------------------------------------------------
+                # 理論上至少有目前 material
+                # ----------------------------------------------------
+
+                if not material_ids:
+
+                    material_ids = [
+                        material_record.id
+                    ]
+
+
+                # ====================================================
+                # 只顯示真正已領到的 BOM
+                # ====================================================
+
+                raw_boms = (
+                    s.query(Bom)
+                    .filter(
+                        Bom.material_id.in_(
+                            material_ids
+                        )
+                    )
+                    .filter(
+                        Bom.receive.is_(True)
+                    )
+                    .order_by(
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.material_id.asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                # ====================================================
+                # 依 seq_num 去重
+                #
+                # 缺料拆分時，
+                # 原 BOM 是「搬」到 child，
+                # 正常不應重複。
+                #
+                # 但舊資料可能有重複，
+                # 因此仍保留 dedup。
+                # ====================================================
+
+                dedup = {}
+
+
+                for bom in raw_boms:
+
+                    try:
+
+                        seq_key = (
+                            'N',
+                            int(
+                                bom.seq_num
+                                or 0
+                            )
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+
+                        seq_key = (
+                            'S',
+                            str(
+                                bom.seq_num
+                                or ''
+                            )
+                        )
+
+
+                    if seq_key not in dedup:
+
+                        dedup[
+                            seq_key
+                        ] = bom
+
+
+                # ====================================================
+                # 排序
+                # ====================================================
+
+                def bom_sort_key(bom):
+
+                    try:
+
+                        seq_num = int(
+                            bom.seq_num
+                            or 0
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+
+                        seq_num = 999999
+
+
+                    return (
+                        seq_num,
+
+                        int(
+                            bom.material_id
+                            or 0
+                        ),
+
+                        int(
+                            bom.id
+                            or 0
+                        ),
+                    )
+
+
+                boms = sorted(
+                    dedup.values(),
+                    key=bom_sort_key,
+                )
+
+
+                print(
+                    "[getBoms][picked][MERGE RESULT]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "raw_bom_count":
+                            len(
+                                raw_boms
+                            ),
+
+                        "final_bom_count":
+                            len(
+                                boms
+                            ),
+
+                        "rows": [
+                            {
+                                "bom_id":
+                                    bom.id,
+
+                                "material_id":
+                                    bom.material_id,
+
+                                "seq_num":
+                                    bom.seq_num,
+
+                                "receive":
+                                    bool(
+                                        bom.receive
+                                    ),
+                            }
+                            for bom in boms
+                        ],
+                    }
+                )
+            '''
+            #
+            if merge_enabled:
+
+                # ========================================================
+                # 20260904
+                # Begin 併單 BOM：
+                #
+                # 不可以用 order_num 把所有 material 全部抓進來。
+                #
+                # 例如：
+                #
+                # 502 merge=0 → 不併單
+                #   ↓
+                # 507 merge=1 → 併單
+                #   ↓
+                # 508 merge=1 → 併單
+                #
+                # 點 507 時：
+                # material_ids 應為 [507, 508]
+                #
+                # 不可以把 502 加進來。
+                # ========================================================
+
+                material_ids = [
+                    int(material_record.id)
+                ]
+
+                current_id = int(
+                    material_record.id
+                )
+
+                while True:
+
+                    child = (
+                        s.query(Material)
+                        .filter(
+                            Material.is_copied_from_id
+                            == current_id
+                        )
+                        .filter(
+                            Material.order_num
+                            == material_record.order_num
+                        )
+                        .filter(
+                            Material.move_by_process_type
+                            == 2
+                        )
+                        .filter(
+                            Material.isTakeOk.is_(True)
+                        )
+                        .order_by(
+                            Material.id.asc()
+                        )
+                        .first()
+                    )
+
+                    if not child:
+                        break
+
+                    child_merge_enabled = (
+                        child.merge_enabled is True
+                        or child.merge_enabled == 1
+                        or str(
+                            child.merge_enabled
+                        ).strip().lower()
+                        in (
+                            '1',
+                            'true',
+                            'yes',
+                            'y',
+                            'on',
+                        )
+                    )
+
+                    # child 本身不是併單，就在這裡切斷
+                    if not child_merge_enabled:
+                        break
+
+                    material_ids.append(
+                        int(child.id)
+                    )
+
+                    current_id = int(
+                        child.id
+                    )
+
+
+                print(
+                    "[getBoms][picked][MERGE]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "request_material_id":
+                            material_record.id,
+
+                        "material_ids":
+                            material_ids,
+                    }
+                )
+
+                #
+                # ========================================================
+                # 取得這個併單群組所有已領料 BOM
+                # ========================================================
+
+                boms = (
+                    s.query(Bom)
+                    .filter(
+                        Bom.material_id.in_(
+                            material_ids
+                        )
+                    )
+                    .filter(
+                        Bom.receive.is_(True)
+                    )
+                    .order_by(
+                        Bom.material_id.asc(),
+
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                print(
+                    "[getBoms][picked][MERGE RESULT]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "material_ids":
+                            material_ids,
+
+                        "bom_count":
+                            len(boms),
+
+                        "rows": [
+                            {
+                                "bom_id":
+                                    bom.id,
+
+                                "material_id":
+                                    bom.material_id,
+
+                                "seq_num":
+                                    bom.seq_num,
+
+                                "receive":
+                                    bool(
+                                        bom.receive
+                                    ),
+                            }
+                            for bom in boms
+                        ],
+                    }
+                )
+                #
+                # ========================================================
+                # 20260904
+                # 將這個併單群組的 BOM 全部抓出來
+                #
+                # 例如：
+                # 507 => 2筆
+                # 508 => 1筆
+                #
+                # material_ids = [507, 508]
+                # 最後應取得 3 筆
+                # ========================================================
+
+                boms = (
+                    s.query(Bom)
+                    .filter(
+                        Bom.material_id.in_(
+                            material_ids
+                        )
+                    )
+                    .filter(
+                        Bom.receive.is_(True)
+                    )
+                    .order_by(
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.material_id.asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                print(
+                    "[getBoms][picked][MERGE RESULT]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "request_material_id":
+                            material_record.id,
+
+                        "material_ids":
+                            material_ids,
+
+                        "bom_count":
+                            len(boms),
+
+                        "rows": [
+                            {
+                                "bom_id":
+                                    bom.id,
+
+                                "material_id":
+                                    bom.material_id,
+
+                                "seq_num":
+                                    bom.seq_num,
+
+                                "receive":
+                                    bool(
+                                        bom.receive
+                                    ),
+                            }
+                            for bom in boms
+                        ],
+                    }
+                )
+                #
+            #
+
+            # --------------------------------------------------------
+            # B. 不併單
+            # --------------------------------------------------------
+
+            else:
+
+                boms = (
+                    s.query(Bom)
+                    .filter(
+                        Bom.material_id
+                        == material_record.id
+                    )
+                    .filter(
+                        Bom.receive.is_(True)
+                    )
+                    .order_by(
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                print(
+                    "[getBoms][picked][NON-MERGE]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "material_id":
+                            material_record.id,
+
+                        "bom_count":
+                            len(
+                                boms
+                            ),
+                    }
+                )
+
+
+        # ============================================================
+        # 5. all
+        #
+        # 看目前 material 的全部 BOM，
+        # 不管 receive / isPickOK。
+        # ============================================================
+
+        else:
+
+            boms = (
+                s.query(Bom)
+                .filter(
+                    Bom.material_id
+                    == material_record.id
+                )
+                .order_by(
+                    cast(
+                        Bom.seq_num,
+                        Integer
+                    ).asc(),
+
+                    Bom.id.asc(),
+                )
+                .all()
+            )
+
+
+        # ============================================================
+        # 6. 回傳
+        #
+        # ★ 不再使用：
+        #
+        #     if not bom.isPickOK
+        #
+        # 因為 Begin picked 模式要看真正 receive=True 的 BOM，
+        # isPickOK 不是這裡的主要判斷依據。
+        # ============================================================
+
+        results = [
+
+            {
+                'id':
+                    bom.id,
+
+                # ★ 必須回傳
+                # 方便確認 BOM 是 parent 還是 child
+                'material_id':
+                    bom.material_id,
+
+                'order_num':
+                    material_record.order_num,
+
+                'seq_num':
+                    bom.seq_num,
+
+                'material_num':
+                    bom.material_num,
+
+                'mtl_comment':
+                    bom.material_comment,
+
+                'qty':
+                    bom.req_qty,
+
+                'date':
+                    material_record.material_date,
+
+                'date_alarm':
+                    '',
+
+                'receive':
+                    bom.receive,
+
+                'lack':
+                    bom.lack,
+
+                'isPickOK':
+                    bom.isPickOK,
+            }
+
+            for bom in boms
+        ]
+
+
+        temp_len = len(
+            results
+        )
+
+
+        print(
+            "getBoms, 總數:",
+            temp_len
+        )
+
+
+        if temp_len == 0:
+
+            return_value = False
+
+
+        return jsonify({
+            'status':
+                return_value,
+
+            'boms':
+                results,
+        })
+
+
+    except Exception as e:
+
+        print(
+            "getBoms ERROR:",
+            repr(e)
+        )
+
+
+        return jsonify({
+            'status': False,
+            'boms': [],
+            'error': str(e),
+        }), 500
+
+
+    finally:
+
+        s.close()
+"""
+
+
+# 20260904版
+@getTable.route("/getBoms", methods=['POST'])
+def get_boms():
+
+    print("getBoms....")
+
+    request_data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    _order_num = (
+        request_data.get(
+            'order_num'
+        )
+    )
+
+    _id = (
+        request_data.get(
+            'id'
+        )
+    )
+
+    # prepare / picked / all
+    _mode = (
+        request_data.get(
+            'mode',
+            'prepare'
+        )
+    )
+
+    return_value = True
+
+    s = Session()
+
+    try:
+
+        # ============================================================
+        # helper
+        # ============================================================
+
+        def is_merge_material(
+            material
+        ):
+
+            if not material:
+                return False
+
+            value = getattr(
+                material,
+                'merge_enabled',
+                False
+            )
+
+            return (
+                value is True
+                or value == 1
+                or str(
+                    value
+                ).strip().lower()
+                in (
+                    '1',
+                    'true',
+                    'yes',
+                    'y',
+                    'on',
+                )
+            )
+
+
+        # ============================================================
+        # 1. 找目前 material
+        #
+        # 優先使用 id。
+        #
+        # 同一 order_num 可能有：
+        #
+        # parent
+        # child
+        # child-child
+        #
+        # 所以不能只用 order_num.first()。
+        # ============================================================
+
+        material_record = None
+
+
+        if (
+            _id is not None
+            and str(
+                _id
+            ).strip()
+            not in (
+                '',
+                '0',
+                'None',
+            )
+        ):
+
+            material_record = (
+                s.query(
+                    Material
+                )
+                .filter(
+                    Material.id
+                    == int(
+                        _id
+                    )
+                )
+                .first()
+            )
+
+
+        elif (
+            _order_num is not None
+            and str(
+                _order_num
+            ).strip()
+            != ''
+        ):
+
+            material_record = (
+                s.query(
+                    Material
+                )
+                .filter(
+                    Material.order_num
+                    == _order_num
+                )
+                .filter(
+                    Material.move_by_process_type
+                    == 2
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+
+        # ============================================================
+        # 找不到 material
+        # ============================================================
+
+        if not material_record:
+
+            print(
+                "getBoms: material not found",
+                {
+                    "id":
+                        _id,
+
+                    "order_num":
+                        _order_num,
+
+                    "mode":
+                        _mode,
+                }
+            )
+
+            return jsonify({
+                'status': False,
+                'boms': [],
+            })
+
+
+        # ============================================================
+        # 2. merge_enabled
+        # ============================================================
+
+        merge_enabled = (
+            is_merge_material(
+                material_record
+            )
+        )
+
+        #
+        # ============================================================
+        # 20260904
+        # picked 模式的有效併單判斷
+        #
+        # 情況：
+        #
+        #   502 merge=False
+        #       ↓
+        #   507 merge=False   ← DB 狀態可能尚未修正
+        #       ↓
+        #   508 merge=True
+        #
+        # 查 507 時，只要下一個 child 是 merge=True，
+        # 就代表：
+        #
+        #   507 + 508
+        #
+        # 是同一個補料併單 group。
+        #
+        # 因此 picked 時仍要進 MERGE。
+        # ============================================================
+
+        if (
+            _mode == 'picked'
+            and not merge_enabled
+        ):
+
+            merge_child = (
+                s.query(Material)
+                .filter(
+                    Material.is_copied_from_id
+                    == material_record.id
+                )
+                .filter(
+                    Material.order_num
+                    == material_record.order_num
+                )
+                .filter(
+                    Material.move_by_process_type
+                    == 2
+                )
+                .filter(
+                    Material.isTakeOk.is_(True)
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+            if (
+                merge_child
+                and is_merge_material(
+                    merge_child
+                )
+            ):
+
+                merge_enabled = True
+
+                print(
+                    "[getBoms][picked][FORCE MERGE]",
+                    {
+                        "material_id":
+                            material_record.id,
+
+                        "child_id":
+                            merge_child.id,
+
+                        "child_merge_enabled":
+                            merge_child.merge_enabled,
+                    }
+                )
+        #
+
+        print(
+            "getBoms material:",
+            {
+                "id":
+                    material_record.id,
+
+                "order_num":
+                    material_record.order_num,
+
+                "mode":
+                    _mode,
+
+                "merge_enabled":
+                    merge_enabled,
+
+                "is_copied_from_id":
+                    getattr(
+                        material_record,
+                        'is_copied_from_id',
+                        None
+                    ),
+            }
+        )
+
+
+        # ============================================================
+        # 3. prepare
+        #
+        # 備料頁：
+        #
+        # 永遠只看目前 material 自己的 BOM。
+        #
+        # 不做 parent / child 合併。
+        # ============================================================
+
+        if _mode == 'prepare':
+
+            boms = (
+                s.query(
+                    Bom
+                )
+                .filter(
+                    Bom.material_id
+                    == material_record.id
+                )
+                .order_by(
+                    cast(
+                        Bom.seq_num,
+                        Integer
+                    ).asc(),
+
+                    Bom.id.asc(),
+                )
+                .all()
+            )
+
+
+        # ============================================================
+        # 4. picked
+        #
+        # Begin 顯示已備料 BOM。
+        # ============================================================
+
+        elif _mode == 'picked':
+
+            # ========================================================
+            # A. 併單
+            # ========================================================
+
+            if merge_enabled:
+
+                # ====================================================
+                # 20260904
+                #
+                # 範例：
+                #
+                #   502 merge=False
+                #       ↓
+                #   507 merge=True
+                #       ↓
+                #   508 merge=True
+                #
+                #
+                # 如果 Begin 傳：
+                #
+                #   id=507
+                #
+                # 要得到：
+                #
+                #   [507, 508]
+                #
+                #
+                # 如果 Begin 傳：
+                #
+                #   id=508
+                #
+                # 也要先往 parent 找到 507，
+                # 最後仍得到：
+                #
+                #   [507, 508]
+                #
+                #
+                # 502 因 merge=False，
+                # 是前一個獨立 group，
+                # 不可以被包含。
+                # ====================================================
+
+
+                # ----------------------------------------------------
+                # 4A-1.
+                # 先往 parent 找目前 merge group 的 root
+                # ----------------------------------------------------
+
+                group_root = (
+                    material_record
+                )
+
+
+                while True:
+
+                    parent_id = int(
+                        getattr(
+                            group_root,
+                            'is_copied_from_id',
+                            0
+                        )
+                        or 0
+                    )
+
+
+                    if parent_id <= 0:
+                        break
+
+
+                    parent = (
+                        s.query(
+                            Material
+                        )
+                        .filter(
+                            Material.id
+                            == parent_id
+                        )
+                        .filter(
+                            Material.order_num
+                            == material_record.order_num
+                        )
+                        .filter(
+                            Material.move_by_process_type
+                            == 2
+                        )
+                        .first()
+                    )
+
+
+                    if not parent:
+                        break
+
+
+                    # ------------------------------------------------
+                    # parent 若是不併單，
+                    # 就代表跨到前一個 group。
+                    #
+                    # 502 false
+                    #     ↓
+                    # 507 true
+                    #
+                    # 所以 root 保持 507。
+                    # ------------------------------------------------
+
+                    if not is_merge_material(
+                        parent
+                    ):
+                        break
+
+
+                    group_root = (
+                        parent
+                    )
+
+
+                # ----------------------------------------------------
+                # 4A-2.
+                # 從 root 往 child 找完整 merge chain
+                # ----------------------------------------------------
+
+                material_ids = [
+                    int(
+                        group_root.id
+                    )
+                ]
+
+
+                current_id = int(
+                    group_root.id
+                )
+
+
+                # 20260904版
+                while True:
+
+                    child = (
+                        s.query(
+                            Material
+                        )
+                        .filter(
+                            Material.is_copied_from_id
+                            == current_id
+                        )
+                        .filter(
+                            Material.order_num
+                            == material_record.order_num
+                        )
+                        .filter(
+                            Material.move_by_process_type
+                            == 2
+                        )
+                        .filter(
+                            Material.isTakeOk.is_(True)
+                        )
+                        .order_by(
+                            Material.id.asc()
+                        )
+                        .first()
+                    )
+
+
+                    if not child:
+                        break
+
+
+                    # ====================================================
+                    # 20260904
+                    # child 必須真的已送到組裝區
+                    #
+                    # process_type:
+                    #
+                    #   2 = AGV 備料區 -> 組裝區
+                    #   5 = 堆高機 備料區 -> 組裝區
+                    #
+                    # 不能再用 isAssembleStationShow 判斷。
+                    # ====================================================
+
+                    child_delivered_process = (
+                        s.query(
+                            Process
+                        )
+                        .filter(
+                            Process.material_id
+                            == child.id
+                        )
+                        .filter(
+                            Process.process_type.in_(
+                                [
+                                    2,
+                                    5,
+                                ]
+                            )
+                        )
+                        .filter(
+                            Process.end_time.isnot(
+                                None
+                            )
+                        )
+                        .filter(
+                            Process.end_time
+                            != ''
+                        )
+                        .order_by(
+                            Process.id.desc()
+                        )
+                        .first()
+                    )
+
+
+                    # child 還沒真的送到 Begin
+                    if not child_delivered_process:
+
+                        print(
+                            "[getBoms][picked][SKIP CHILD NOT DELIVERED]",
+                            {
+                                "parent_id":
+                                    current_id,
+
+                                "child_id":
+                                    child.id,
+                            }
+                        )
+
+                        break
+
+
+                    # ------------------------------------------------
+                    # child 本身如果不併單，
+                    # 表示這裡開始是下一組
+                    # ------------------------------------------------
+
+                    if not is_merge_material(
+                        child
+                    ):
+                        break
+
+
+                    child_id = int(
+                        child.id
+                    )
+
+
+                    # 防止循環
+                    if (
+                        child_id
+                        in material_ids
+                    ):
+                        break
+
+
+                    material_ids.append(
+                        child_id
+                    )
+
+
+                    print(
+                        "[getBoms][picked][ADD CHILD]",
+                        {
+                            "child_id":
+                                child_id,
+
+                            "process_id":
+                                child_delivered_process.id,
+
+                            "process_type":
+                                child_delivered_process.process_type,
+
+                            "end_time":
+                                child_delivered_process.end_time,
+                        }
+                    )
+
+
+                    current_id = (
+                        child_id
+                    )
+                #
+
+                print(
+                    "[getBoms][picked][MERGE]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "request_material_id":
+                            material_record.id,
+
+                        "group_root_id":
+                            group_root.id,
+
+                        "material_ids":
+                            material_ids,
+                    }
+                )
+
+
+                # ----------------------------------------------------
+                # 4A-3.
+                # 取得 group 內所有已領料 BOM
+                #
+                # ★ 不可依 seq_num 去重
+                #
+                # 因為不同缺料批次 seq_num
+                # 可能重新從 1 開始。
+                # ----------------------------------------------------
+
+                boms = (
+                    s.query(
+                        Bom
+                    )
+                    .filter(
+                        Bom.material_id.in_(
+                            material_ids
+                        )
+                    )
+                    .filter(
+                        Bom.receive.is_(
+                            True
+                        )
+                    )
+                    .order_by(
+                        Bom.material_id.asc(),
+
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                print(
+                    "[getBoms][picked][MERGE RESULT]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "request_material_id":
+                            material_record.id,
+
+                        "group_root_id":
+                            group_root.id,
+
+                        "material_ids":
+                            material_ids,
+
+                        "bom_count":
+                            len(
+                                boms
+                            ),
+
+                        "rows": [
+                            {
+                                "bom_id":
+                                    bom.id,
+
+                                "material_id":
+                                    bom.material_id,
+
+                                "seq_num":
+                                    bom.seq_num,
+
+                                "receive":
+                                    bool(
+                                        bom.receive
+                                    ),
+                            }
+
+                            for bom
+                            in boms
+                        ],
+                    }
+                )
+
+
+            # ========================================================
+            # B. 不併單
+            #
+            # 只抓目前 material 自己 receive=True BOM。
+            # ========================================================
+
+            else:
+
+                boms = (
+                    s.query(
+                        Bom
+                    )
+                    .filter(
+                        Bom.material_id
+                        == material_record.id
+                    )
+                    .filter(
+                        Bom.receive.is_(
+                            True
+                        )
+                    )
+                    .order_by(
+                        cast(
+                            Bom.seq_num,
+                            Integer
+                        ).asc(),
+
+                        Bom.id.asc(),
+                    )
+                    .all()
+                )
+
+
+                print(
+                    "[getBoms][picked][NON-MERGE]",
+                    {
+                        "order_num":
+                            material_record.order_num,
+
+                        "material_id":
+                            material_record.id,
+
+                        "bom_count":
+                            len(
+                                boms
+                            ),
+                    }
+                )
+
+
+        # ============================================================
+        # 5. all
+        #
+        # 只看目前 material 的全部 BOM。
+        #
+        # 不管 receive / isPickOK。
+        # ============================================================
+
+        else:
+
+            boms = (
+                s.query(
+                    Bom
+                )
+                .filter(
+                    Bom.material_id
+                    == material_record.id
+                )
+                .order_by(
+                    cast(
+                        Bom.seq_num,
+                        Integer
+                    ).asc(),
+
+                    Bom.id.asc(),
+                )
+                .all()
+            )
+
+
+        # ============================================================
+        # 6. 回傳
+        # ============================================================
+
+        results = [
+
+            {
+                'id':
+                    bom.id,
+
+                # 方便確認 BOM 是哪個 material
+                'material_id':
+                    bom.material_id,
+
+                'order_num':
+                    material_record.order_num,
+
+                'seq_num':
+                    bom.seq_num,
+
+                'material_num':
+                    bom.material_num,
+
+                'mtl_comment':
+                    bom.material_comment,
+
+                'qty':
+                    bom.req_qty,
+
+                'date':
+                    material_record.material_date,
+
+                'date_alarm':
+                    '',
+
+                'receive':
+                    bom.receive,
+
+                'lack':
+                    bom.lack,
+
+                'isPickOK':
+                    bom.isPickOK,
+            }
+
+            for bom
+            in boms
+        ]
+
+
+        temp_len = len(
+            results
+        )
+
+
+        print(
+            "getBoms, 總數:",
+            temp_len
+        )
+
+
+        if temp_len == 0:
+
+            return_value = False
+
+
+        return jsonify({
+            'status':
+                return_value,
+
+            'boms':
+                results,
+        })
+
+
+    except Exception as e:
+
+        print(
+            "getBoms ERROR:",
+            repr(
+                e
+            )
+        )
+
+        traceback.print_exc()
+
+
+        return jsonify({
+            'status': False,
+            'boms': [],
+            'error': str(
+                e
+            ),
+        }), 500
+
+
+    finally:
+
+        s.close()
 
 
 # -----dialog2~ for 前端 MaterialListForAssem.vue -------------------------------------------------------------
@@ -13185,7 +14906,8 @@ def get_Warehouse_For_assemble_by_history():
                     0
                 )
             '''
-            #
+
+            '''
             if line == "assemble":
                 # ------------------------------------------------------------
                 # 20260831 修正
@@ -13229,6 +14951,108 @@ def get_Warehouse_For_assemble_by_history():
                     )
                     .scalar()
                 ) or 0
+
+                total_allOk_qty = to_int(
+                    total_allOk_qty,
+                    0
+                )
+            '''
+            # 20260901版
+            if line == "assemble":
+
+                assemble_reason = str(
+                    g(a, "reason", "") or ""
+                ).strip()
+
+                work_num = str(
+                    g(a, "work_num", "") or ""
+                ).strip()
+
+                # ------------------------------------------------------------
+                # B109 直接送 Warehouse
+                #
+                # 這種 row 代表整張工單待入庫，
+                # 異常返工可能已先由其他 assemble_id 入庫。
+                #
+                # 例如 121100020561：
+                #
+                #   171 異常返工已入庫 2
+                #   180 B109_DIRECT_WAIT_SEND = 20
+                #
+                # Warehouse 應顯示：
+                #
+                #   20 - 2 = 18
+                #
+                # 因此使用 material-level 的 type=31 累計。
+                # ------------------------------------------------------------
+                use_material_level_stockin = (
+                    work_num == "B109"
+                    and assemble_reason == "B109_DIRECT_WAIT_SEND"
+                )
+
+                if use_material_level_stockin:
+
+                    total_allOk_qty = (
+                        s.query(
+                            func.coalesce(
+                                func.sum(
+                                    Process.process_work_time_qty
+                                ),
+                                0
+                            )
+                        )
+                        .filter(
+                            Process.material_id == material_id
+                        )
+                        .filter(
+                            Process.process_type == 31
+                        )
+                        .filter(
+                            Process.end_time.isnot(None)
+                        )
+                        .scalar()
+                    ) or 0
+
+                else:
+
+                    # --------------------------------------------------------
+                    # 一般 Warehouse assemble：
+                    #
+                    # 每筆 assemble 自己扣自己的實際入庫量。
+                    #
+                    # 例如 121100020616：
+                    #
+                    #   341 異常 5 已入庫
+                    #   327 正常 15 已入庫 10
+                    #
+                    # 327：
+                    #   15 - 10 = 5
+                    #
+                    # 不可把 341 的 5 扣到 327。
+                    # --------------------------------------------------------
+                    total_allOk_qty = (
+                        s.query(
+                            func.coalesce(
+                                func.sum(
+                                    Process.process_work_time_qty
+                                ),
+                                0
+                            )
+                        )
+                        .filter(
+                            Process.material_id == material_id
+                        )
+                        .filter(
+                            Process.assemble_id == assemble_id
+                        )
+                        .filter(
+                            Process.process_type == 31
+                        )
+                        .filter(
+                            Process.end_time.isnot(None)
+                        )
+                        .scalar()
+                    ) or 0
 
                 total_allOk_qty = to_int(
                     total_allOk_qty,
@@ -15438,10 +17262,15 @@ def get_informations_for_assemble_error_by_history():
         #if assemble_record.abnormal_qty == 0:
         #   continue
         #
+        #has_abnormal = (
+        #    int(assemble_record.abnormal_qty or 0) > 0
+        #    or bool((assemble_record.alarm_message or "").strip())
+        #)
+        # 20260903版
         has_abnormal = (
             int(assemble_record.abnormal_qty or 0) > 0
-            or bool((assemble_record.alarm_message or "").strip())
         )
+        #
 
         if not has_abnormal:
             continue
@@ -15582,6 +17411,51 @@ def get_informations_for_assemble_error_by_history():
         #temp_temp_show2_ok_str = re.sub(r'\b00\b', 'na', temp_temp_show2_ok_str)
         temp_temp_show2_ok_str = re.sub(r'\b00\b', '', temp_temp_show2_ok_str)
 
+        #
+        # ============================================================
+        # 20260903
+        # Error 現況備註修正
+        #
+        # 原本直接使用 material.show3_ok，
+        # 但 material 狀態可能已經被後續製程改掉。
+        #
+        # 若目前有尚未結束的組裝 / 檢驗 / 雷射 Process，
+        # 現況備註優先使用實際 Process。
+        # ============================================================
+
+        current_show3_ok = str3[
+            int(material_record.show3_ok or 0)
+        ]
+
+        active_process = (
+            s.query(Process)
+            .filter(
+                Process.material_id == material_record.id,
+                Process.process_type.in_([21, 22, 23]),
+                Process.has_started.is_(True),
+                or_(
+                    Process.end_time.is_(None),
+                    Process.end_time == ''
+                ),
+            )
+            .order_by(
+                Process.id.desc()
+            )
+            .first()
+        )
+
+        if active_process:
+
+            if int(active_process.process_type) == 21:
+                current_show3_ok = '組裝進行中'
+
+            elif int(active_process.process_type) == 22:
+                current_show3_ok = '檢驗進行中'
+
+            elif int(active_process.process_type) == 23:
+                current_show3_ok = '雷射進行中'
+        #
+
         index += 1
 
         _object = {
@@ -15598,7 +17472,9 @@ def get_informations_for_assemble_error_by_history():
           'comment': cleaned_comment,                               # 說明
           'show1_ok': str1[int(material_record.show1_ok) - 1],      # 現況進度
           'show2_ok' : temp_temp_show2_ok_str,                      #現況進度(途程)
-          'show3_ok': str3[int(material_record.show3_ok)],          # 現況備註
+          #'show3_ok': str3[int(material_record.show3_ok)],          # 現況備註
+          # 20260903版
+          'show3_ok': current_show3_ok,
           'cause_user': writerName,   #填寫人員
           #'user': user.emp_name,      #檢點人員
           'user': userName,

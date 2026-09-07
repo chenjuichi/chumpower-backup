@@ -333,6 +333,7 @@ def need_more_p_process_qty(k1: int, a1: int, t1: int, must_qty: int, s=None):
 # ------------------------------------------------------------------
 
 
+# 20260904版
 # 20260813版
 @getTableP.route("/getMaterialsAndAssemblesByUserP", methods=['POST'])
 def get_materials_and_assembles_by_user_p():
@@ -1159,6 +1160,8 @@ def get_materials_and_assembles_by_user_p():
 
                     'is_copied_from_id': assemble_record.is_copied_from_id,
                     'create_at': assemble_record.create_at,
+
+                    'scrap_message': assemble_record.scrap_message or '',   # 20260904版
                 }
 
                 _results.append(_object)

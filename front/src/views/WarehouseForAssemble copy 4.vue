@@ -1722,7 +1722,6 @@ const updateAnimationPosition = () => {
   animationLeft.value = rect.right + 10;
 }
 
-/*
 // 20260709版
 const onClickWarehouseIn = async () => {
 
@@ -1765,7 +1764,179 @@ const onClickWarehouseIn = async () => {
       const updateMat   = pick(current_line, updateMaterial, updateMaterialP);
       const createProd  = (current_line === 'process') ? createProductP : createProduct;
 
+      /*
+      // 20260810版
+      const isMergedShortageRow =
+        current_line === 'assemble'
+        && row.is_lack_batch_order === true
+        && row.is_order_merged === true
+        && Array.isArray(row.stockin_targets)
+        && row.stockin_targets.length > 1;
+      //
 
+      let d2 = 0;
+
+      if (!row.allOk_qty || Number(row.allOk_qty) === 0) {
+        d2 = getRemainQty(row);
+      } else {
+        d2 = Number(row.allOk_qty) || 0;
+      }
+
+      if (d2 <= 0) {
+        showSnackbar('入庫數量不可為 0', 'red accent-2');
+        continue;
+      }
+
+      console.log("已入庫, 數量:", d2)
+
+      const new_total = current_total_qty + d2;
+      const is_done = (current_must_qty > 0) ? (new_total >= current_must_qty) : false;
+
+      console.log("[WAREHOUSE] must=", current_must_qty, "old_total=", current_total_qty, "d2=", d2, "new_total=", new_total, "done=", is_done);
+
+      // 20260810版 add
+      // ============================================================
+      // 缺料分批已全部到 Warehouse，畫面已合併成 1 筆
+      //
+      // 例如：
+      //   78  -> 10
+      //   85  -> 10
+      //   111 -> 10
+      //
+      // 畫面：
+      //   121100020598 -> 30
+      //
+      // createProduct 不可送：
+      //   material_id=85, allOk_qty=30
+      //
+      // 必須拆成 items：
+      //   78/10、85/10、111/10
+      // ============================================================
+      if (isMergedShortageRow) {
+
+        const targets = row.stockin_targets
+          .map(target => ({
+            material_id:
+              Number(target.material_id || 0),
+
+            assemble_id:
+              Number(target.assemble_id || 0),
+
+            // Warehouse process_id 通常可能是 3/6，
+            // 不拿來當入庫 process 31。
+            // 讓 createProduct 自己建立 process_type=31。
+            process_id: 0,
+
+            user_id:
+              currentUser.value?.empID ?? '',
+
+            line_difference: 0,
+
+            allOk_qty:
+              Number(target.allOk_qty || 0),
+
+            good_qty:
+              Number(target.allOk_qty || 0),
+
+            non_good_qty: 0,
+
+            delivery_qty:
+              Number(
+                target.delivery_qty
+                || target.allOk_qty
+                || 0
+              ),
+
+            assemble_qty:
+              Number(target.allOk_qty || 0),
+
+            reason: '',
+
+            confirm_comment:
+              `缺料分批合併入庫：${row.order_num}`,
+          }))
+          .filter(target =>
+            target.material_id > 0
+            && target.allOk_qty > 0
+          );
+
+
+        if (targets.length === 0) {
+          throw new Error(
+            `工單 ${row.order_num} 缺少分批入庫明細`
+          );
+        }
+
+
+        // ==========================================================
+        // 驗證畫面輸入 30 是否等於三批實際待入庫量
+        // ==========================================================
+        const targetTotalQty = targets.reduce(
+          (sum, target) =>
+            sum + Number(target.allOk_qty || 0),
+          0
+        );
+
+
+        if (d2 !== targetTotalQty) {
+          throw new Error(
+            `工單 ${row.order_num} 合併入庫數量不符；`
+            + `應入庫 ${targetTotalQty}，目前輸入 ${d2}`
+          );
+        }
+
+
+        console.log(
+          '[Warehouse][merged shortage] createProduct payload:',
+          {
+            order_num: row.order_num,
+            total_qty: targetTotalQty,
+            targets,
+          }
+        );
+
+
+        // ==========================================================
+        // createProduct 本身已支援 items 批次，
+        // 三筆任何一筆失敗 → 後端整個 transaction rollback。
+        // ==========================================================
+        const resp = await createProduct({
+          items: targets,
+        });
+
+
+        if (!resp?.status) {
+          throw new Error(
+            resp?.error
+            || `工單 ${row.order_num} 合併入庫失敗`
+          );
+        }
+
+
+        console.log(
+          '[Warehouse][merged shortage] stock-in success:',
+          resp
+        );
+
+
+        successCount++;
+
+        // ==========================================================
+        // 很重要：
+        //
+        // 合併列不可再往下面執行：
+        //   updateAssem(current_assemble_id)
+        //   updateMat(current_material_id)
+        //
+        // 因為 current_material_id / current_assemble_id
+        // 只代表 78/85/111 其中一筆。
+        //
+        // createProduct 已經逐筆更新三個 material。
+        // ==========================================================
+        continue;
+      }
+      //
+      */
       // 20260909版
       const productPayload = {
         material_id: current_material_id,
@@ -1841,23 +2012,76 @@ const onClickWarehouseIn = async () => {
           || 'createProduct/createProductP failed'
         );
       }
+      //
 
-      // 20260909：
-      // 組裝線的 order-level 狀態全部交給 createProduct() 後端處理。
-      // 前端不要再只更新 representative material / assemble。
-      if (current_line === 'assemble') {
-        console.log(
-          '[Warehouse][20260909 assemble stockin success]',
-          {
-            order_num: row.order_num,
-            material_id: current_material_id,
-            qty: d2,
-            resp,
-          }
-        );
+      /*
+      const productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
+        process_id: current_process_id,
+        user_id: currentUser.value?.empID ?? '',
+        line_difference: (current_line === 'process') ? 1 : 0,
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+        delivery_qty: Number(row.delivery_qty) || 0,
+        assemble_qty: 0,
+      };
+      */
+      // 20260809版
+      productPayload = {
+        material_id: current_material_id,
+        assemble_id: current_assemble_id,
 
-        successCount++;
-        continue;
+        // Warehouse 上的 process_id 可能是 3/6，
+        // createProduct() 本身會判斷，不是 31 就自己建立 31
+        process_id: current_process_id,
+
+        user_id:
+          currentUser.value?.empID ?? '',
+
+        line_difference:
+          (current_line === 'process')
+            ? 1
+            : 0,
+
+        allOk_qty: d2,
+        good_qty: d2,
+        non_good_qty: 0,
+
+        delivery_qty:
+          Number(row.delivery_qty) || 0,
+
+        assemble_qty: 0,
+
+        // ----------------------------------------------------------
+        // 20260809
+        // 缺料、不併單、多批合併入庫
+        // ----------------------------------------------------------
+        /* 20260810 remove
+        is_merged_shortage_order:
+          row.is_merged_shortage_order === true,
+
+        group_material_ids:
+          Array.isArray(row.group_material_ids)
+            ? row.group_material_ids
+            : [current_material_id],
+
+        group_assemble_ids:
+          Array.isArray(row.group_assemble_ids)
+            ? row.group_assemble_ids
+            : (
+                current_assemble_id
+                  ? [current_assemble_id]
+                  : []
+              ),
+        */
+      };
+      //
+
+      resp = await createProd(productPayload);
+      if (!resp?.status) {
+        throw new Error(resp?.error || 'createProduct/createProductP failed');
       }
 
       // 前端同步更新本次輸入值
@@ -1874,7 +2098,43 @@ const onClickWarehouseIn = async () => {
           record_name: 'input_allOk_disable',
           record_data: false,
         });
+      /*
+      } else {
+        await updateMat({
+          id: current_material_id,
+          record_name: 'show2_ok',
+          record_data: current_line === 'process' ? 8 : 12,
+        });
 
+        await updateMat({
+          id: current_material_id,
+          record_name: 'show3_ok',
+          record_data: current_line === 'process' ? 8 : 13,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'input_allOk_disable',
+          record_data: true,
+        });
+
+        await updateAssem({
+          assemble_id: current_assemble_id,
+          record_name: 'isWarehouseStationShow',
+          //record_data: true,
+          record_data: false,
+        });
+
+        if (current_line === 'process') {
+          await updateAssem({
+            assemble_id: current_assemble_id,
+            record_name: 'isStockIn',
+            record_data: true,
+          });
+        }
+      }
+      */
+      //
       } else {
         // ------------------------------------------------------------
         // 入庫完成：material 狀態補完整，避免 Information 還顯示組裝已結束
@@ -2018,684 +2278,6 @@ const onClickWarehouseIn = async () => {
     }, 800);
   }
 };
-*/
-
-// 20260909版
-const onClickWarehouseIn = async () => {
-
-  updateAnimationPosition();
-
-  console.log("onClickWarehouseIn...");
-
-  const selectedIds =
-    Array.isArray(selectedItems.value)
-      ? [...new Set(selectedItems.value)]
-      : [];
-
-  if (selectedIds.length === 0) {
-
-    showSnackbar(
-      '請選擇入庫的工單!',
-      'red accent-2'
-    );
-
-    return;
-  }
-
-  warehouseAnimationVisible.value = true;
-
-  try {
-
-    let successCount = 0;
-
-    for (const id of selectedIds) {
-
-      const targetIndex =
-        warehouses.value.findIndex(
-          (kk) => kk.index === id
-        );
-
-      if (targetIndex === -1) {
-        continue;
-      }
-
-      const row =
-        warehouses.value[targetIndex];
-
-      const current_material_id =
-        row.id;
-
-      const current_assemble_id =
-        row.assemble_id;
-
-      const current_process_id =
-        row.process_id;
-
-
-      // ============================================================
-      // 應完成總數量
-      // ============================================================
-
-      const current_must_qty =
-        Number(
-          row.must_receive_end_qty
-          ??
-          row.total_ask_qty_end
-          ??
-          row.must_allOk_qty
-          ??
-          0
-        );
-
-
-      // ============================================================
-      // 目前已入庫累計數量
-      // ============================================================
-
-      const current_total_qty =
-        Number(
-          row.total_allOk_qty
-          ??
-          0
-        );
-
-
-      // ============================================================
-      // 判斷組裝線 / 加工線
-      // ============================================================
-
-      const current_line =
-        String(
-          row.line || ''
-        )
-          .trim()
-          .toLowerCase();
-
-
-      const updateAssem =
-        pick(
-          current_line,
-          updateAssemble,
-          updateAssembleP
-        );
-
-
-      const updateMat =
-        pick(
-          current_line,
-          updateMaterial,
-          updateMaterialP
-        );
-
-
-      const createProd =
-        current_line === 'process'
-          ? createProductP
-          : createProduct;
-
-
-      // ============================================================
-      // 20260909
-      // 本次實際入庫數量
-      //
-      // 若畫面 allOk_qty = 0，
-      // 則自動使用剩餘可入庫數量。
-      // ============================================================
-
-      let d2 = 0;
-
-      if (
-        !row.allOk_qty
-        ||
-        Number(
-          row.allOk_qty
-        ) === 0
-      ) {
-
-        d2 =
-          Number(
-            getRemainQty(row)
-          ) || 0;
-
-      } else {
-
-        d2 =
-          Number(
-            row.allOk_qty
-          ) || 0;
-
-      }
-
-
-      if (d2 <= 0) {
-
-        console.warn(
-          '[Warehouse] 入庫數量不可為 0',
-          {
-            order_num:
-              row.order_num,
-
-            material_id:
-              current_material_id,
-
-            assemble_id:
-              current_assemble_id,
-
-            allOk_qty:
-              row.allOk_qty,
-
-            remain_qty:
-              getRemainQty(row),
-          }
-        );
-
-        showSnackbar(
-          '入庫數量不可為 0',
-          'red accent-2'
-        );
-
-        continue;
-      }
-
-
-      // ============================================================
-      // 入庫後累計數量
-      // ============================================================
-
-      const new_total =
-        current_total_qty
-        +
-        d2;
-
-
-      // ============================================================
-      // 是否已全部完成入庫
-      // ============================================================
-
-      const is_done =
-        current_must_qty > 0
-          ? (
-              new_total
-              >=
-              current_must_qty
-            )
-          : false;
-
-
-      console.log(
-        '[Warehouse][20260909 qty]',
-        {
-          order_num:
-            row.order_num,
-
-          line:
-            current_line,
-
-          material_id:
-            current_material_id,
-
-          assemble_id:
-            current_assemble_id,
-
-          process_id:
-            current_process_id,
-
-          must_qty:
-            current_must_qty,
-
-          old_total:
-            current_total_qty,
-
-          stockin_qty:
-            d2,
-
-          new_total:
-            new_total,
-
-          is_done:
-            is_done,
-        }
-      );
-
-
-      // ============================================================
-      // 20260909
-      // 建立入庫 payload
-      // ============================================================
-
-      const productPayload = {
-
-        material_id:
-          current_material_id,
-
-        assemble_id:
-          current_assemble_id,
-
-
-        // ----------------------------------------------------------
-        // 組裝線：
-        // Warehouse 上的 process_id 通常是搬運 3 / 6，
-        // 入庫 process 31 交由 createProduct() 自己建立。
-        //
-        // 加工線：
-        // 保留目前 current_process_id。
-        // ----------------------------------------------------------
-
-        process_id:
-          current_line === 'assemble'
-            ? 0
-            : current_process_id,
-
-
-        user_id:
-          currentUser.value?.empID
-          ??
-          '',
-
-
-        line_difference:
-          current_line === 'process'
-            ? 1
-            : 0,
-
-
-        allOk_qty:
-          d2,
-
-        good_qty:
-          d2,
-
-        non_good_qty:
-          0,
-
-
-        delivery_qty:
-          Number(
-            row.delivery_qty
-          ) || 0,
-
-
-        assemble_qty:
-          current_line === 'assemble'
-            ? 0
-            : Number(
-                row.assemble_qty
-                ||
-                0
-              ),
-
-
-        // ----------------------------------------------------------
-        // 組裝線 order-level 入庫資訊
-        // ----------------------------------------------------------
-
-        is_merged_shortage_order:
-          row.is_merged_shortage_order
-          === true,
-
-
-        is_order_level_warehouse:
-          row.is_order_level_warehouse
-          === true,
-
-
-        group_material_ids:
-          Array.isArray(
-            row.group_material_ids
-          )
-            ? row.group_material_ids
-            : [
-                current_material_id
-              ],
-
-
-        group_assemble_ids:
-          Array.isArray(
-            row.group_assemble_ids
-          )
-            ? row.group_assemble_ids
-            : (
-                current_assemble_id
-                  ? [
-                      current_assemble_id
-                    ]
-                  : []
-              ),
-      };
-
-
-      console.log(
-        '[Warehouse][20260909 createProduct]',
-        {
-          order_num:
-            row.order_num,
-
-          payload:
-            productPayload,
-        }
-      );
-
-
-      // ============================================================
-      // 呼叫 createProduct / createProductP
-      // ============================================================
-
-      const resp =
-        await createProd(
-          productPayload
-        );
-
-
-      console.log(
-        '[Warehouse][20260909 createProduct result]',
-        {
-          order_num:
-            row.order_num,
-
-          response:
-            resp,
-        }
-      );
-
-
-      if (!resp?.status) {
-
-        throw new Error(
-          resp?.error
-          ||
-          resp?.message
-          ||
-          'createProduct/createProductP failed'
-        );
-      }
-
-
-      // ============================================================
-      // 組裝線
-      //
-      // order-level 的 material / assemble 狀態，
-      // 全部交由 createProduct() 後端統一處理。
-      //
-      // 前端不可再只更新代表列。
-      // ============================================================
-
-      if (
-        current_line === 'assemble'
-      ) {
-
-        console.log(
-          '[Warehouse][20260909 assemble stockin success]',
-          {
-            order_num:
-              row.order_num,
-
-            material_id:
-              current_material_id,
-
-            qty:
-              d2,
-
-            resp:
-              resp,
-          }
-        );
-
-        successCount++;
-
-        continue;
-      }
-
-
-      // ============================================================
-      // 加工線
-      // 前端同步本次累計入庫量
-      // ============================================================
-
-      await updateAssem({
-
-        assemble_id:
-          current_assemble_id,
-
-        record_name:
-          'allOk_qty',
-
-        record_data:
-          new_total,
-      });
-
-
-      // ============================================================
-      // 加工線：
-      // 尚未全部完成入庫
-      // ============================================================
-
-      if (!is_done) {
-
-        await updateAssem({
-
-          assemble_id:
-            current_assemble_id,
-
-          record_name:
-            'input_allOk_disable',
-
-          record_data:
-            false,
-        });
-
-      } else {
-
-        // ==========================================================
-        // 加工線：
-        // 已全部入庫完成
-        // ==========================================================
-
-        await updateMat({
-
-          id:
-            current_material_id,
-
-          record_name:
-            'show2_ok',
-
-          record_data:
-            8,
-        });
-
-
-        await updateMat({
-
-          id:
-            current_material_id,
-
-          record_name:
-            'show3_ok',
-
-          record_data:
-            8,
-        });
-
-
-        await updateAssem({
-
-          assemble_id:
-            current_assemble_id,
-
-          record_name:
-            'input_allOk_disable',
-
-          record_data:
-            true,
-        });
-
-
-        await updateAssem({
-
-          assemble_id:
-            current_assemble_id,
-
-          record_name:
-            'isWarehouseStationShow',
-
-          record_data:
-            false,
-        });
-
-
-        await updateAssem({
-
-          assemble_id:
-            current_assemble_id,
-
-          record_name:
-            'isStockIn',
-
-          record_data:
-            true,
-        });
-      }
-
-
-      successCount++;
-
-    }
-    // end for
-
-
-    // ============================================================
-    // 有成功入庫至少一筆，
-    // AGV 回到成品區 ready
-    // ============================================================
-
-    if (successCount > 0) {
-
-      await updateAGV({
-
-        id:
-          1,
-
-        status:
-          0,
-
-        station:
-          3,
-      });
-    }
-
-
-    await delay(500);
-
-
-    // ============================================================
-    // 清除選取狀態
-    // ============================================================
-
-    selectedItems.value = [];
-
-    if (
-      localStorage.getItem(
-        'selectedItems'
-      )
-    ) {
-
-      localStorage.removeItem(
-        'selectedItems'
-      );
-    }
-
-
-    history.value = false;
-
-    if (
-      localStorage.getItem(
-        'history'
-      )
-    ) {
-
-      localStorage.removeItem(
-        'history'
-      );
-    }
-
-
-    // ============================================================
-    // 入庫完成後重新抓 Warehouse
-    // 不依靠前端 splice
-    // ============================================================
-
-    await getWarehouseForAssembleByHistoryFun();
-
-
-    // ============================================================
-    // 通知其他頁面刷新
-    // ============================================================
-
-    socket.value?.emit(
-      'warehouse-stock-in',
-      {
-        reason:
-          'stockin',
-
-        source:
-          'WarehouseForAssemble',
-      }
-    );
-
-
-    showSnackbar(
-      '入庫登記完成!',
-      'green accent-3'
-    );
-
-  } catch (err) {
-
-    console.error(
-      '入庫流程發生例外：',
-      err
-    );
-
-
-    console.error(
-      '[Warehouse][stockin error detail]',
-      {
-        message:
-          err?.message,
-
-        response:
-          err?.response?.data,
-
-        status:
-          err?.response?.status,
-      }
-    );
-
-
-    showSnackbar(
-      err?.response?.data?.message
-      ||
-      err?.response?.data?.error
-      ||
-      err?.message
-      ||
-      '入庫流程執行失敗，請稍後再試',
-      'red accent-2'
-    );
-
-  } finally {
-
-    setTimeout(
-      () => {
-
-        warehouseAnimationVisible.value =
-          false;
-
-      },
-      800
-    );
-  }
-};
-//
-
 
 // 改變拖曳功能
 //const toggleDrag = () => {

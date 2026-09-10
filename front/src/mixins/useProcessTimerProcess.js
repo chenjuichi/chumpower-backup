@@ -638,11 +638,60 @@ export function useProcessTimer(getTimerRef) {
     }
 
     // 👉 新增：釋放資源
+    //function dispose() {
+    //    try { timer()?.pause?.(); } catch (e) {}
+    //    _stopLocalTicker();
+    //    _stopAutoUpdate();
+    //}
+
+    // 20260909版
+    // ========================================================
+    // 20260909
+    // 完整釋放加工 Process Timer
+    // ========================================================
     function dispose() {
-        try { timer()?.pause?.(); } catch (e) {}
+
+        console.log(
+            '[useProcessTimerProcess] dispose',
+            {
+                process_id: processId.value,
+                material_id: materialId.value,
+                assemble_id: assembleId.value,
+            }
+        );
+
+        // 1. 先標記關閉
+        isClosed.value = true;
+
+        // 2. 停止畫面 timer
+        try {
+            timer()?.pause?.();
+        } catch (e) {
+            console.warn(
+                '[useProcessTimerProcess] timer pause failed:',
+                e
+            );
+        }
+
+        // 3. 停止本地 ticker / auto update
         _stopLocalTicker();
         _stopAutoUpdate();
+
+        // 4. 清掉 process id
+        // 避免殘留 callback 再呼叫 dialog2UpdateProcessProcess
+        processId.value = null;
+
+        // 5. 清 timer 狀態
+        _frozenElapsedOnPause = null;
+
+        hasStarted.value = false;
+        isPaused.value = true;
+
+        // 6. UI 啟動旗標一起還原
+        _uiStarted = false;
     }
+    //
+
 // 20260730版 begin
 /*
 async function restoreProcess(

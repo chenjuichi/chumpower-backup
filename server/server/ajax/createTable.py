@@ -3636,6 +3636,7 @@ def copy_new_assemble():
   })
 
 
+# 20260908版
 # 20260902版
 # 20260825版
 # 20260811版
@@ -3881,6 +3882,17 @@ def copy_material_and_bom():
         if not _merge_enabled:
             # 不併單要永久保留歷史缺料註記
             existing_material.shortage_note = "(缺料)"
+        #
+        # ============================================================
+        # 20260908
+        # 只要有 missing_boms 並建立缺料 copy，
+        # 就代表來源 parent 這一批確實發生過缺料。
+        #
+        # Begin / Material 顯示「缺料」會依 isLackMaterial 判斷，
+        # 所以 parent 必須保留缺料狀態。
+        # ============================================================
+
+        existing_material.isLackMaterial = 1
         #
 
         # ----------------------------------------------------
@@ -4742,6 +4754,7 @@ def copy_material():
 """
 
 
+"""
 # 20260806版
 # copy material data table
 @createTable.route(
@@ -5215,6 +5228,798 @@ def copy_material():
 
     finally:
         s.close()
+"""
+
+
+# 20260908版
+# copy material data table
+@createTable.route(
+    "/copyMaterial",
+    methods=["POST"]
+)
+def copy_material():
+    print("copyMaterial....")
+
+    request_data = (
+        request.get_json(silent=True)
+        or {}
+    )
+
+    print(
+        "request_data:",
+        request_data
+    )
+
+    try:
+        _copy_id = int(
+            request_data.get(
+                "copy_id"
+            )
+            or 0
+        )
+
+        _delivery_qty = int(
+            request_data.get(
+                "delivery_qty"
+            )
+            or 0
+        )
+
+        raw_total_delivery_qty = (
+            request_data.get(
+                "total_delivery_qty"
+            )
+        )
+
+        _total_delivery_qty = (
+            int(
+                raw_total_delivery_qty
+                or 0
+            )
+            if raw_total_delivery_qty
+            is not None
+            else None
+        )
+
+        raw_all_ok_qty = (
+            request_data.get(
+                "allOk_qty"
+            )
+        )
+
+        _allOk_qty = (
+            int(
+                raw_all_ok_qty
+                or 0
+            )
+            if raw_all_ok_qty
+            is not None
+            else None
+        )
+
+        _show2_ok = int(
+            request_data.get(
+                "show2_ok"
+            )
+            or 0
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return jsonify({
+            "status": False,
+            "message":
+                "copy_id / 數量格式錯誤",
+        }), 400
+
+    _shortage_note = str(
+        request_data.get(
+            "shortage_note"
+        )
+        or ""
+    )
+
+    if _copy_id <= 0:
+        return jsonify({
+            "status": False,
+            "message":
+                "copy_id 不正確",
+        }), 400
+
+    return_value = True
+    s = Session()
+
+    try:
+        # ----------------------------------------------------
+        # 1. 鎖定來源 Material
+        #
+        # 避免 A、B 電腦或雙擊同時建立子批次。
+        # ----------------------------------------------------
+        existing_material = (
+            s.query(Material)
+            .filter(
+                Material.id ==
+                _copy_id
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+
+        if not existing_material:
+            return jsonify({
+                "status": False,
+                "message":
+                    f"找不到 material_id={_copy_id}",
+            }), 404
+
+        order_num = str(
+            existing_material.order_num
+            or ""
+        ).strip()
+
+        # ====================================================
+        # 20260908
+        # 1-1. 找這張訂單的 root Material
+        #
+        # root 的 material_qty 視為原始訂單需求數量。
+        #
+        # 例如：
+        #
+        #   material 171
+        #   material_qty = 39
+        #
+        # 後面的 186 / 572 都是 child，
+        # 不可以拿 child 的 material_qty 當訂單總需求。
+        # ====================================================
+        root_material = (
+            s.query(Material)
+            .filter(
+                Material.order_num ==
+                order_num
+            )
+            .filter(
+                Material.is_copied_from_id
+                .is_(None)
+            )
+            .order_by(
+                Material.id.asc()
+            )
+            .first()
+        )
+
+        if root_material:
+            order_required_qty = int(
+                root_material.material_qty
+                or 0
+            )
+        else:
+            order_required_qty = int(
+                existing_material.material_qty
+                or 0
+            )
+
+        # ====================================================
+        # 20260908
+        # 1-2. 計算這張訂單「實際已入庫數量」
+        #
+        # 只看 process_type = 31。
+        #
+        # 同一 material 若意外有多筆 type=31，
+        # 只取最大一筆，避免重複累加。
+        # ====================================================
+        stockin_by_material = (
+            s.query(
+                Process.material_id.label(
+                    "material_id"
+                ),
+
+                func.max(
+                    func.coalesce(
+                        Process.allOk_qty,
+                        Process.process_work_time_qty,
+                        0
+                    )
+                ).label(
+                    "stockin_qty"
+                )
+            )
+            .join(
+                Material,
+                Material.id ==
+                Process.material_id
+            )
+            .filter(
+                Material.order_num ==
+                order_num
+            )
+            .filter(
+                Process.process_type == 31
+            )
+            .group_by(
+                Process.material_id
+            )
+            .subquery()
+        )
+
+        stockin_total = (
+            s.query(
+                func.coalesce(
+                    func.sum(
+                        stockin_by_material
+                        .c.stockin_qty
+                    ),
+                    0
+                )
+            )
+            .scalar()
+            or 0
+        )
+
+        stockin_total = int(
+            stockin_total
+            or 0
+        )
+
+        print(
+            "[copyMaterial] order status:",
+            {
+                "order_num":
+                    order_num,
+
+                "source_material_id":
+                    existing_material.id,
+
+                "root_material_id":
+                    root_material.id
+                    if root_material
+                    else None,
+
+                "order_required_qty":
+                    order_required_qty,
+
+                "stockin_total":
+                    stockin_total,
+
+                "delivery_qty":
+                    _delivery_qty,
+
+                "total_delivery_qty":
+                    _total_delivery_qty,
+
+                "allOk_qty":
+                    _allOk_qty,
+            }
+        )
+
+        # ====================================================
+        # 20260908
+        # 1-3. 已完整入庫，不可再次建立 copy
+        #
+        # 121100020671：
+        #
+        #   root qty      = 39
+        #   stockin_total = 39
+        #
+        # 所以今天再呼叫 copyMaterial 時，
+        # 必須在這裡直接擋掉，
+        # 不可再建立 material 572 / assemble 1573。
+        # ====================================================
+        if (
+            order_required_qty > 0
+            and
+            stockin_total >=
+            order_required_qty
+        ):
+            s.rollback()
+
+            print(
+                "[copyMaterial] "
+                "stock-in completed, skip copy:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_material_id":
+                        existing_material.id,
+
+                    "order_required_qty":
+                        order_required_qty,
+
+                    "stockin_total":
+                        stockin_total,
+                }
+            )
+
+            return jsonify({
+                "status": False,
+                "created": False,
+                "duplicate": False,
+
+                "order_num":
+                    order_num,
+
+                "order_required_qty":
+                    order_required_qty,
+
+                "stockin_total":
+                    stockin_total,
+
+                "message":
+                    "此訂單已完成入庫，不可再建立新的備料批次",
+            }), 200
+
+        # ----------------------------------------------------
+        # 2. 剩餘批次模式
+        #
+        # 前端傳入：
+        #
+        # delivery_qty
+        #     = 本批已送數量
+        #
+        # total_delivery_qty
+        #     = 剩餘數量
+        #
+        # 剩餘量 <= 0 時，禁止建立 copy。
+        # ----------------------------------------------------
+        is_remaining_batch = (
+            _total_delivery_qty
+            is not None
+            and
+            _allOk_qty is None
+        )
+
+        # ====================================================
+        # 20260908
+        # 2-1. 防止前端傳入異常剩餘量
+        #
+        # 例如本次：
+        #
+        #   訂單需求 = 39
+        #   total_delivery_qty = 1500
+        #
+        # 1500 明顯不可能是這張訂單的剩餘量，
+        # 必須直接拒絕。
+        # ====================================================
+        if (
+            is_remaining_batch
+            and
+            order_required_qty > 0
+            and
+            _total_delivery_qty >
+            order_required_qty
+        ):
+            s.rollback()
+
+            print(
+                "[copyMaterial] "
+                "invalid remaining qty:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "source_material_id":
+                        existing_material.id,
+
+                    "order_required_qty":
+                        order_required_qty,
+
+                    "incoming_total_delivery_qty":
+                        _total_delivery_qty,
+                }
+            )
+
+            return jsonify({
+                "status": False,
+                "created": False,
+                "duplicate": False,
+
+                "order_num":
+                    order_num,
+
+                "order_required_qty":
+                    order_required_qty,
+
+                "incoming_total_delivery_qty":
+                    _total_delivery_qty,
+
+                "message":
+                    (
+                        "剩餘數量異常："
+                        f"{_total_delivery_qty} "
+                        f"不可大於訂單數量 "
+                        f"{order_required_qty}"
+                    ),
+            }), 200
+
+        if (
+            is_remaining_batch
+            and
+            _total_delivery_qty <= 0
+        ):
+            existing_material.show2_ok = 3
+
+            s.commit()
+
+            return jsonify({
+                "status": True,
+                "created": False,
+                "duplicate": False,
+
+                "material_data": {
+                    "id":
+                        existing_material.id,
+                },
+
+                "remaining_qty": 0,
+
+                "message":
+                    "剩餘數量為0，不建立新批次",
+            }), 200
+
+        # ----------------------------------------------------
+        # 3. 防止同一來源重複建立子批次
+        #
+        # 只針對剩餘批次模式判斷。
+        # 異常、返工等其他 copy 用途不受影響。
+        # ----------------------------------------------------
+        if is_remaining_batch:
+            existing_child = (
+                s.query(Material)
+                .filter(
+                    Material
+                    .is_copied_from_id ==
+                    existing_material.id
+                )
+                .filter(
+                    Material.isAllOk
+                    .isnot(True)
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .first()
+            )
+
+            if existing_child:
+                s.commit()
+
+                print(
+                    "[copyMaterial] "
+                    "duplicate child skipped:",
+                    {
+                        "source_id":
+                            existing_material.id,
+
+                        "existing_child_id":
+                            existing_child.id,
+                    }
+                )
+
+                return jsonify({
+                    "status": True,
+                    "created": False,
+                    "duplicate": True,
+
+                    "material_data": {
+                        "id":
+                            existing_child.id,
+                    },
+
+                    "remaining_qty":
+                        int(
+                            existing_child
+                            .total_delivery_qty
+                            or 0
+                        ),
+
+                    "message":
+                        "此來源工單已建立剩餘批次",
+                }), 200
+
+        # ----------------------------------------------------
+        # 4. 決定新批次數量
+        # ----------------------------------------------------
+        if is_remaining_batch:
+            new_batch_qty = int(
+                _total_delivery_qty
+                or 0
+            )
+
+        elif _allOk_qty is not None:
+            new_batch_qty = int(
+                _allOk_qty
+                or 0
+            )
+
+        else:
+            new_batch_qty = int(
+                existing_material
+                .material_qty
+                or 0
+            )
+
+        if new_batch_qty <= 0:
+            return jsonify({
+                "status": False,
+                "message":
+                    "新批次數量不可小於等於0",
+            }), 400
+
+        # ====================================================
+        # 20260908
+        # 4-1. 最後一道數量防護
+        #
+        # 不管是哪種 copy 模式，
+        # new_batch_qty 都不可超過 root 訂單數量。
+        # ====================================================
+        if (
+            order_required_qty > 0
+            and
+            new_batch_qty >
+            order_required_qty
+        ):
+            s.rollback()
+
+            print(
+                "[copyMaterial] "
+                "new_batch_qty overflow:",
+                {
+                    "order_num":
+                        order_num,
+
+                    "new_batch_qty":
+                        new_batch_qty,
+
+                    "order_required_qty":
+                        order_required_qty,
+                }
+            )
+
+            return jsonify({
+                "status": False,
+                "created": False,
+                "duplicate": False,
+
+                "message":
+                    (
+                        f"新批次數量 {new_batch_qty} "
+                        f"不可大於訂單數量 "
+                        f"{order_required_qty}"
+                    ),
+            }), 200
+
+        # ----------------------------------------------------
+        # 5. 建立新 Material
+        # ----------------------------------------------------
+        new_material = Material(
+            abnormal_cause_id=
+                existing_material
+                .abnormal_cause_id,
+
+            order_num=
+                existing_material
+                .order_num,
+
+            material_num=
+                existing_material
+                .material_num,
+
+            material_comment=
+                existing_material
+                .material_comment,
+
+            # 新批次數量
+            material_qty=
+                new_batch_qty,
+
+            delivery_qty=
+                new_batch_qty,
+
+            material_date=
+                existing_material
+                .material_date,
+
+            material_delivery_date=
+                existing_material
+                .material_delivery_date,
+
+            isTakeOk=True,
+
+            show2_ok=
+                _show2_ok,
+
+            total_delivery_qty=(
+                _total_delivery_qty
+                if is_remaining_batch
+                else
+                existing_material
+                .total_delivery_qty
+            ),
+
+            assemble_qty=(
+                _allOk_qty
+                if (
+                    _allOk_qty
+                    is not None
+                    and
+                    _total_delivery_qty
+                    is None
+                )
+                else 0
+            ),
+
+            shortage_note=
+                _shortage_note,
+
+            update_time=
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+
+            is_copied_from_id=
+                existing_material.id,
+        )
+
+        s.add(new_material)
+        s.flush()
+
+        print(
+            "Duplicated material:",
+            {
+                "new_id":
+                    new_material.id,
+
+                "source_id":
+                    existing_material.id,
+
+                "new_batch_qty":
+                    new_batch_qty,
+            }
+        )
+
+        # ----------------------------------------------------
+        # 6. 複製 BOM
+        # ----------------------------------------------------
+        for bom in (
+            existing_material._bom
+            or []
+        ):
+            new_bom = Bom(
+                material_id=
+                    new_material.id,
+
+                seq_num=
+                    bom.seq_num,
+
+                material_num=
+                    bom.material_num,
+
+                material_comment=
+                    bom.material_comment,
+
+                req_qty=
+                    bom.req_qty,
+
+                pick_qty=
+                    bom.pick_qty,
+
+                non_qty=
+                    bom.non_qty,
+
+                lack_qty=
+                    bom.lack_qty,
+
+                receive=
+                    bom.receive,
+
+                lack=
+                    bom.lack,
+
+                isPickOK=
+                    bom.isPickOK,
+
+                start_date=
+                    bom.start_date,
+            )
+
+            s.add(new_bom)
+
+        # ----------------------------------------------------
+        # 7. 複製 Assemble
+        # ----------------------------------------------------
+        for asm in (
+            existing_material._assemble
+            or []
+        ):
+            new_asm = Assemble(
+                material_id=
+                    new_material.id,
+
+                material_num=
+                    asm.material_num,
+
+                material_comment=
+                    asm.material_comment,
+
+                seq_num=
+                    asm.seq_num,
+
+                work_num=
+                    asm.work_num,
+
+                process_step_code=
+                    asm.process_step_code,
+
+                # 新批次應領量
+                must_receive_qty=
+                    new_batch_qty,
+
+                user_id="",
+            )
+
+            s.add(new_asm)
+
+            # 原資料改成本批實際送料數量
+            if (
+                asm.must_receive_qty
+                is not None
+            ):
+                asm.must_receive_qty = (
+                    _delivery_qty
+                )
+
+        s.commit()
+
+        print(
+            "Material copy successfully."
+        )
+
+        return jsonify({
+            "status": True,
+            "created": True,
+            "duplicate": False,
+
+            "material_data": {
+                "id":
+                    new_material.id,
+            },
+
+            "remaining_qty":
+                new_batch_qty,
+        }), 200
+
+    except Exception as error:
+        s.rollback()
+
+        print(
+            "copyMaterial Error:",
+            repr(error)
+        )
+
+        return_value = False
+
+        return jsonify({
+            "status":
+                return_value,
+
+            "created":
+                False,
+
+            "duplicate":
+                False,
+
+            "message":
+                "錯誤! 資料新增複製沒有成功...",
+
+            "detail":
+                str(error),
+        }), 500
+
+    finally:
+        s.close()
+
 
 """
 # 20260722版
@@ -11863,6 +12668,7 @@ def create_product():
 """
 
 
+"""
 # 20260831版
 # 20260826版
 # 20260809版
@@ -13700,6 +14506,2872 @@ def create_product():
             target_material_ids = (
                 group_material_ids
                 if is_merged_shortage_order
+                else [
+                    material_id
+                ]
+            )
+
+
+            target_material_rows = (
+                s.query(
+                    Material
+                )
+                .filter(
+                    Material.id.in_(
+                        target_material_ids
+                    )
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .with_for_update()
+                .all()
+            )
+
+
+            # merged copy 全部同步整單累計
+            for target_material in (
+                target_material_rows
+            ):
+
+                target_material.allOk_qty = (
+                    add_qty
+                )
+
+                target_material.total_allOk_qty = (
+                    new_total
+                )
+
+                if hasattr(
+                    target_material,
+                    "must_allOk_qty"
+                ):
+                    target_material.must_allOk_qty = (
+                        must_qty
+                    )
+
+
+            # ====================================================
+            # 4-7. 部分入庫
+            # ====================================================
+            if not material_finished:
+
+                for target_material in (
+                    target_material_rows
+                ):
+
+                    target_material.isAllOk = (
+                        False
+                    )
+
+                    target_material.isAssembleStationShow = (
+                        False
+                    )
+
+                    target_material.whichStation = (
+                        3
+                    )
+
+                    target_material.show1_ok = (
+                        3
+                    )
+
+                    target_material.show2_ok = (
+                        10
+                    )
+
+                    target_material.show3_ok = (
+                        11
+                    )
+
+                    target_material.isOpen = (
+                        False
+                    )
+
+                    target_material.isOpenEmpId = (
+                        ""
+                    )
+
+                    target_material.hasStarted = (
+                        False
+                    )
+
+                    target_material.startStatus = (
+                        1
+                    )
+
+                    if hasattr(
+                        target_material,
+                        "update_time"
+                    ):
+                        target_material.update_time = (
+                            now_str
+                        )
+
+
+                # -----------------------------------------------
+                # 一般工單：
+                # 部分入庫只關閉本次 assemble
+                #
+                # merged：
+                # backing Warehouse rows 仍保留，
+                # 下一次可繼續輸入剩餘量。
+                # -----------------------------------------------
+                #if (
+                #    not is_merged_shortage_order
+                #    and assemble_record
+                #    is not None
+                #):
+                # 20260826版
+                '''
+                if (
+                    not is_group_stockin
+                    and assemble_record
+                    is not None
+                ):
+                #
+
+                    assemble_record.allOk_qty = (
+                        add_qty
+                    )
+
+                    assemble_record.process_step_code = (
+                        0
+                    )
+
+                    assemble_record.isAssembleStationShow = (
+                        False
+                    )
+
+                    assemble_record.isWarehouseStationShow = (
+                        False
+                    )
+
+                    assemble_record.input_disable = (
+                        True
+                    )
+
+                    assemble_record.input_end_disable = (
+                        True
+                    )
+
+                    assemble_record.input_abnormal_disable = (
+                        True
+                    )
+
+                    assemble_record.input_allOk_disable = (
+                        True
+                    )
+
+                    assemble_record.currentStartTime = (
+                        None
+                    )
+
+                    assemble_record.currentEndTime = (
+                        None
+                    )
+
+                    assemble_record.whichStation = (
+                        3
+                    )
+
+                    assemble_record.show1_ok = (
+                        3
+                    )
+
+                    assemble_record.show2_ok = (
+                        12
+                    )
+
+                    assemble_record.show3_ok = (
+                        13
+                    )
+
+                    if hasattr(
+                        assemble_record,
+                        "update_time"
+                    ):
+                        assemble_record.update_time = (
+                            now_str
+                        )
+                '''
+                # 20260831版
+                if (
+                    not is_group_stockin
+                    and assemble_record
+                    is not None
+                ):
+
+                    row_delivery_qty = max(
+                        _normalize_int(
+                            assemble_record.completed_qty,
+                            0
+                        ),
+                        _normalize_int(
+                            assemble_record.total_completed_qty,
+                            0
+                        ),
+                        _normalize_int(
+                            assemble_record.must_receive_end_qty,
+                            0
+                        ),
+                        # 20260831版 add
+                        _normalize_int(
+                            assemble_record.must_receive_qty,
+                            0
+                        ),
+                        #
+                    )
+
+                    # ------------------------------------------------------------
+                    # 20260831 修正
+                    #
+                    # 注意：執行到這裡時，本次 process_type=31 已經建立/更新完成，
+                    # 所以這裡直接 SUM 同 material_id + assemble_id 的實際入庫量。
+                    #
+                    # 不可再 + add_qty，否則本次入庫數量會被重複計算。
+                    #
+                    # assemble.allOk_qty 保留完工/良品數量語意，
+                    # 不拿來當「已入庫數量」，也不在部分入庫時覆寫。
+                    # ------------------------------------------------------------
+                    row_new_stockin = (
+                        s.query(
+                            func.coalesce(
+                                func.sum(
+                                    Process.process_work_time_qty
+                                ),
+                                0
+                            )
+                        )
+                        .filter(
+                            Process.material_id == material_id
+                        )
+                        .filter(
+                            Process.assemble_id == assemble_id
+                        )
+                        .filter(
+                            Process.process_type == 31
+                        )
+                        .filter(
+                            Process.end_time.isnot(None)
+                        )
+                        .scalar()
+                    ) or 0
+
+                    row_new_stockin = _normalize_int(
+                        row_new_stockin,
+                        0
+                    )
+
+                    row_new_stockin = min(
+                        row_new_stockin,
+                        row_delivery_qty
+                    )
+
+                    row_finished = (
+                        row_delivery_qty > 0
+                        and row_new_stockin
+                        >= row_delivery_qty
+                    )
+
+                    if row_finished:
+
+                        assemble_record.isAssembleStationShow = False
+                        assemble_record.isWarehouseStationShow = False
+
+                        assemble_record.show2_ok = 12
+                        assemble_record.show3_ok = 13
+
+                    else:
+
+                        # 同一 Warehouse row 還有剩餘量
+                        assemble_record.isAssembleStationShow = False
+                        assemble_record.isWarehouseStationShow = True
+
+                        assemble_record.show2_ok = 10
+                        assemble_record.show3_ok = 10
+                #
+
+            # ====================================================
+            # 4-8. 全數入庫
+            # ====================================================
+            else:
+
+                # -----------------------------------------------
+                # A. 所有 Material 完成
+                # -----------------------------------------------
+                for target_material in (
+                    target_material_rows
+                ):
+
+                    target_material.isAllOk = (
+                        True
+                    )
+
+                    target_material.isShow = (
+                        True
+                    )
+
+                    target_material.isTakeOk = (
+                        True
+                    )
+
+                    target_material.isAssembleStationShow = (
+                        False
+                    )
+
+                    target_material.isAssembleStation3TakeOk = (
+                        True
+                    )
+
+                    target_material.whichStation = (
+                        3
+                    )
+
+                    target_material.show1_ok = (
+                        3
+                    )
+
+                    target_material.show2_ok = (
+                        12
+                    )
+
+                    target_material.show3_ok = (
+                        13
+                    )
+
+                    target_material.isOpen = (
+                        False
+                    )
+
+                    target_material.isOpenEmpId = (
+                        ""
+                    )
+
+                    target_material.hasStarted = (
+                        False
+                    )
+
+                    target_material.startStatus = (
+                        1
+                    )
+
+                    target_material.allOk_qty = (
+                        add_qty
+                    )
+
+                    target_material.total_allOk_qty = (
+                        new_total
+                    )
+
+                    if hasattr(
+                        target_material,
+                        "must_allOk_qty"
+                    ):
+                        target_material.must_allOk_qty = (
+                            must_qty
+                        )
+
+                    if hasattr(
+                        target_material,
+                        "update_time"
+                    ):
+                        target_material.update_time = (
+                            now_str
+                        )
+
+
+                # -----------------------------------------------
+                # B. 所有 Assemble 退出
+                # Begin / End / Warehouse
+                # -----------------------------------------------
+                all_assemble_rows = (
+                    s.query(
+                        Assemble
+                    )
+                    .filter(
+                        Assemble.material_id.in_(
+                            target_material_ids
+                        )
+                    )
+                    .order_by(
+                        Assemble.material_id.asc(),
+                        Assemble.id.asc()
+                    )
+                    .with_for_update()
+                    .all()
+                )
+
+
+                for assemble_row in (
+                    all_assemble_rows
+                ):
+
+                    assemble_row.process_step_code = (
+                        0
+                    )
+
+                    assemble_row.isAssembleStationShow = (
+                        False
+                    )
+
+                    assemble_row.isWarehouseStationShow = (
+                        False
+                    )
+
+                    assemble_row.input_disable = (
+                        True
+                    )
+
+                    assemble_row.input_end_disable = (
+                        True
+                    )
+
+                    assemble_row.input_abnormal_disable = (
+                        True
+                    )
+
+                    assemble_row.input_allOk_disable = (
+                        True
+                    )
+
+                    assemble_row.currentStartTime = (
+                        None
+                    )
+
+                    assemble_row.currentEndTime = (
+                        None
+                    )
+
+                    assemble_row.whichStation = (
+                        3
+                    )
+
+                    assemble_row.show1_ok = (
+                        3
+                    )
+
+                    assemble_row.show2_ok = (
+                        12
+                    )
+
+                    assemble_row.show3_ok = (
+                        13
+                    )
+
+                    '''
+                    if (
+                        is_merged_shortage_order
+                        and int(
+                            assemble_row.id
+                            or 0
+                        )
+                        in group_assemble_ids
+                    ):
+                        assemble_row.allOk_qty = (
+                            add_qty
+                        )
+
+
+                    elif (
+                        not is_merged_shortage_order
+                        and int(
+                            assemble_row.id
+                            or 0
+                        )
+                        == int(
+                            assemble_id
+                            or 0
+                        )
+                    ):
+                        assemble_row.allOk_qty = (
+                            add_qty
+                        )
+                    '''
+                    # 20260826版
+                    # ============================================================
+                    # Assemble 入庫量更新
+                    #
+                    # 1. 缺料分批：維持原本 add_qty 邏輯
+                    # 2. 一般 order-level：各 backing assemble 保留自己的 completed_qty
+                    # 3. 一般單筆：本次 assemble 使用 add_qty
+                    # ============================================================
+                    assemble_row_id = int(
+                        assemble_row.id or 0
+                    )
+
+                    if (
+                        is_merged_shortage_order
+                        and assemble_row_id
+                        in group_assemble_ids
+                    ):
+                        assemble_row.allOk_qty = (
+                            add_qty
+                        )
+
+                    elif (
+                        is_order_level_warehouse
+                        and assemble_row_id
+                        in group_assemble_ids
+                    ):
+                        assemble_row.allOk_qty = (
+                            _normalize_int(
+                                getattr(
+                                    assemble_row,
+                                    "completed_qty",
+                                    0
+                                ),
+                                0
+                            )
+                        )
+
+                    elif (
+                        not is_group_stockin
+                        and assemble_row_id
+                        == int(
+                            assemble_id or 0
+                        )
+                    ):
+                        # 一般單筆全數入庫時，
+                        # assemble.allOk_qty 保留此列完工/良品數量，
+                        # 不可用「本次 add_qty」覆蓋。
+                        #
+                        # 例如：completed=15，先入庫10、再入庫5，
+                        # 最後 allOk_qty 應維持15，而不是5。
+                        assemble_row.allOk_qty = max(
+                            _normalize_int(
+                                getattr(
+                                    assemble_row,
+                                    "allOk_qty",
+                                    0
+                                ),
+                                0
+                            ),
+                            _normalize_int(
+                                getattr(
+                                    assemble_row,
+                                    "completed_qty",
+                                    0
+                                ),
+                                0
+                            ),
+                            _normalize_int(
+                                getattr(
+                                    assemble_row,
+                                    "total_completed_qty",
+                                    0
+                                ),
+                                0
+                            ),
+                        )
+                    #
+
+                    if hasattr(
+                        assemble_row,
+                        "update_time"
+                    ):
+                        assemble_row.update_time = (
+                            now_str
+                        )
+
+
+                # -----------------------------------------------
+                # C. 關閉整組殘留 21/22/23
+                # -----------------------------------------------
+                active_process_rows = (
+                    s.query(
+                        Process
+                    )
+                    .filter(
+                        Process.material_id.in_(
+                            target_material_ids
+                        ),
+
+                        Process.process_type.in_(
+                            [
+                                21,
+                                22,
+                                23,
+                            ]
+                        ),
+
+                        or_(
+                            Process.end_time
+                            .is_(None),
+
+                            Process.end_time
+                            == "",
+
+                            Process.has_started
+                            .is_(True)
+                        )
+                    )
+                    .with_for_update()
+                    .all()
+                )
+
+
+                for process_row in (
+                    active_process_rows
+                ):
+
+                    if (
+                        process_row.end_time
+                        is None
+                        or str(
+                            process_row.end_time
+                        ).strip() == ""
+                    ):
+                        process_row.end_time = (
+                            now_str
+                        )
+
+                    process_row.has_started = (
+                        False
+                    )
+
+                    process_row.is_pause = (
+                        True
+                    )
+
+                    process_row.pause_started_at = (
+                        None
+                    )
+
+
+                print(
+                    "[createProduct] "
+                    "fully stocked in:",
+                    {
+                        "order_num":
+                            material.order_num,
+
+                        "representative_material_id":
+                            representative_material_id,
+
+                        "is_merged_shortage_order":
+                            is_merged_shortage_order,
+
+                        # 20260826版 add
+                        "is_order_level_warehouse":
+                            is_order_level_warehouse,
+
+                        "is_group_stockin":
+                            is_group_stockin,
+                        #
+
+                        "group_material_ids":
+                            target_material_ids,
+
+                        "group_assemble_ids":
+                            group_assemble_ids,
+
+                        "process_id":
+                            process_id_to_use,
+
+                        "product_id":
+                            product.id,
+
+                        "must_qty":
+                            must_qty,
+
+                        "old_total":
+                            old_total,
+
+                        "add_qty":
+                            add_qty,
+
+                        "new_total":
+                            new_total,
+
+                        "assemble_closed":
+                            len(
+                                all_assemble_rows
+                            ),
+
+                        "active_process_closed":
+                            len(
+                                active_process_rows
+                            ),
+                    }
+                )
+
+
+            # ====================================================
+            # Result
+            # ====================================================
+            result_items.append({
+
+                "index":
+                    idx,
+
+                "material_id":
+                    representative_material_id,
+
+                #"assemble_id":
+                #    (
+                #        None
+                #        if is_merged_shortage_order
+                #        else (
+                #            assemble_id
+                #            or None
+                #        )
+                #    ),
+                # 20260826版
+                "assemble_id":
+                    (
+                        None
+                        if is_group_stockin
+                        else (
+                            assemble_id
+                            or None
+                        )
+                    ),
+                #
+
+                "process_id":
+                    process_id_to_use,
+
+                "product_id":
+                    product.id,
+
+                "allOk_qty":
+                    add_qty,
+
+                "old_total_allOk_qty":
+                    old_total,
+
+                "new_total_allOk_qty":
+                    new_total,
+
+                "must_allOk_qty":
+                    must_qty,
+
+                "material_finished":
+                    material_finished,
+
+                "is_merged_shortage_order":
+                    is_merged_shortage_order,
+
+                "group_material_ids":
+                    target_material_ids,
+
+                "group_assemble_ids":
+                    group_assemble_ids,
+            })
+
+
+        # ========================================================
+        # 5. 全部成功才 commit
+        # ========================================================
+        s.commit()
+
+
+        response_products = []
+
+
+        for product in (
+            created_products
+        ):
+
+            response_products.append({
+
+                "id":
+                    product.id,
+
+                "material_id":
+                    product.material_id,
+
+                "process_id":
+                    product.process_id,
+
+                "delivery_qty":
+                    product.delivery_qty,
+
+                "assemble_qty":
+                    product.assemble_qty,
+
+                "allOk_qty":
+                    product.allOk_qty,
+
+                "good_qty":
+                    product.good_qty,
+
+                "non_good_qty":
+                    product.non_good_qty,
+
+                "reason":
+                    product.reason,
+
+                "confirm_comment":
+                    product.confirm_comment,
+
+                "create_at":
+                    (
+                        product.create_at
+                        .isoformat()
+                        if getattr(
+                            product,
+                            "create_at",
+                            None
+                        )
+                        else None
+                    ),
+            })
+
+
+        return jsonify({
+            "status": True,
+            "created":
+                len(
+                    response_products
+                ),
+
+            "items":
+                response_products,
+
+            "results":
+                result_items
+        }), 200
+
+
+    except ValueError as e:
+
+        s.rollback()
+
+        print(
+            "[createProduct] "
+            "validation error:",
+            str(e)
+        )
+
+        return jsonify({
+            "status": False,
+            "error": str(e)
+        }), 400
+
+
+    except SQLAlchemyError as e:
+
+        s.rollback()
+
+        print(
+            "[createProduct] "
+            "SQLAlchemy error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "status": False,
+            "error": str(e)
+        }), 500
+
+
+    except Exception as e:
+
+        s.rollback()
+
+        print(
+            "[createProduct] "
+            "unexpected error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "status": False,
+            "error": str(e)
+        }), 500
+
+
+    finally:
+
+        s.close()
+"""
+
+
+# 20260909版
+# 20260831版
+# 20260826版
+# 20260809版
+@createTable.route("/createProduct", methods=["POST"])
+def create_product():
+
+    # ============================================================
+    # 組裝線成品入庫
+    #
+    # 一般工單：
+    #   1 material
+    #   1 assemble
+    #   1 process_type=31
+    #   1 Product
+    #
+    # 缺料、不併單、多批 material：
+    #
+    #   material 152
+    #   material 160
+    #   material 161
+    #
+    #   Warehouse 顯示前已合併成：
+    #
+    #   group_material_ids = [152,160,161]
+    #   group_assemble_ids = [395,398,399]
+    #
+    # 入庫時：
+    #
+    #   process_type=31 只建立 1 筆
+    #   Product         只建立 1 筆
+    #
+    # 但：
+    #
+    #   material 152 / 160 / 161
+    #   assemble 相關列
+    #
+    # 全部同步成入庫完成。
+    #
+    # 歷史 material / assemble / process 不刪除。
+    # ============================================================
+
+    print("createProduct...")
+
+    def safe_int(value):
+        try:
+            return int(value or 0)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return 0
+
+
+    def safe_bool(value):
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, int):
+            return value == 1
+
+        if isinstance(value, str):
+            return (
+                value.strip().lower()
+                in (
+                    "1",
+                    "true",
+                    "yes",
+                    "y",
+                )
+            )
+
+        return False
+
+
+    s = Session()
+
+    try:
+
+        payload = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+
+        # ========================================================
+        # 1. 支援單筆 / 批次
+        # ========================================================
+        raw_items = payload.get(
+            "items"
+        )
+
+        if raw_items is None:
+            raw_items = [
+                payload
+            ]
+
+        if (
+            not isinstance(
+                raw_items,
+                list
+            )
+            or not raw_items
+        ):
+            return jsonify({
+                "status": False,
+                "error": (
+                    "payload 應為物件或 "
+                    "{'items': [...]}，"
+                    "且不可為空"
+                )
+            }), 400
+
+
+        # ========================================================
+        # 2. Normalize + 驗證輸入
+        # ========================================================
+        errors = []
+
+        normalized_items = []
+
+
+        for idx, item in enumerate(
+            raw_items
+        ):
+
+            if not isinstance(
+                item,
+                dict
+            ):
+                errors.append({
+                    "index": idx,
+                    "error":
+                        "每一筆 items 必須是物件"
+                })
+                continue
+
+
+            material_id = (
+                _normalize_int(
+                    item.get(
+                        "material_id"
+                    ),
+                    0
+                )
+            )
+
+            assemble_id = (
+                _normalize_int(
+                    item.get(
+                        "assemble_id"
+                    ),
+                    0
+                )
+            )
+
+            process_id = (
+                _normalize_int(
+                    item.get(
+                        "process_id"
+                    ),
+                    0
+                )
+            )
+
+            all_ok_qty = (
+                _normalize_int(
+                    item.get(
+                        "allOk_qty"
+                    ),
+                    0
+                )
+            )
+
+
+            if material_id <= 0:
+                errors.append({
+                    "index": idx,
+                    "error":
+                        "material_id 必須是大於 0 的整數"
+                })
+
+
+            if all_ok_qty <= 0:
+                errors.append({
+                    "index": idx,
+                    "error":
+                        "allOk_qty 入庫數量必須大於 0"
+                })
+
+
+            # ----------------------------------------------------
+            # group_material_ids
+            # ----------------------------------------------------
+            raw_group_material_ids = (
+                item.get(
+                    "group_material_ids"
+                )
+            )
+
+            group_material_ids = []
+
+
+            if isinstance(
+                raw_group_material_ids,
+                list
+            ):
+
+                for value in (
+                    raw_group_material_ids
+                ):
+
+                    mid = (
+                        _normalize_int(
+                            value,
+                            0
+                        )
+                    )
+
+                    if (
+                        mid > 0
+                        and mid
+                        not in group_material_ids
+                    ):
+                        group_material_ids.append(
+                            mid
+                        )
+
+
+            # 一般工單 fallback
+            if not group_material_ids:
+                group_material_ids = [
+                    material_id
+                ]
+
+
+            # representative 一定包含
+            if (
+                material_id
+                not in group_material_ids
+            ):
+                group_material_ids.insert(
+                    0,
+                    material_id
+                )
+
+
+            # ----------------------------------------------------
+            # group_assemble_ids
+            # ----------------------------------------------------
+            raw_group_assemble_ids = (
+                item.get(
+                    "group_assemble_ids"
+                )
+            )
+
+            group_assemble_ids = []
+
+
+            if isinstance(
+                raw_group_assemble_ids,
+                list
+            ):
+
+                for value in (
+                    raw_group_assemble_ids
+                ):
+
+                    aid = (
+                        _normalize_int(
+                            value,
+                            0
+                        )
+                    )
+
+                    if (
+                        aid > 0
+                        and aid
+                        not in group_assemble_ids
+                    ):
+                        group_assemble_ids.append(
+                            aid
+                        )
+
+
+            # ----------------------------------------------------
+            # merged shortage
+            # ----------------------------------------------------
+            is_merged_shortage_order = (
+                safe_bool(
+                    item.get(
+                        "is_merged_shortage_order"
+                    )
+                )
+                and len(
+                    group_material_ids
+                ) > 1
+            )
+
+            #
+            # ----------------------------------------------------
+            # 20260826
+            # 一般組裝單 Warehouse order_num level 合併
+            #
+            # 例如：
+            #   assemble 1087 = 15
+            #   assemble 1090 = 5
+            #
+            # Warehouse 顯示一筆：
+            #   999900019978 = 20
+            #
+            # 與缺料分批不同：
+            #   shortage → 多 material，數量不可 SUM
+            #   order-level → 同訂單多 assemble，數量可以 SUM
+            # ----------------------------------------------------
+            is_order_level_warehouse = (
+                safe_bool(
+                    item.get(
+                        "is_order_level_warehouse"
+                    )
+                )
+                and len(
+                    group_assemble_ids
+                ) > 1
+            )
+
+
+            is_group_stockin = (
+                is_merged_shortage_order
+                or is_order_level_warehouse
+            )
+            #
+
+            normalized_items.append({
+                "index":
+                    idx,
+
+                "raw":
+                    item,
+
+                "material_id":
+                    material_id,
+
+                "assemble_id":
+                    assemble_id,
+
+                "process_id":
+                    process_id,
+
+                "allOk_qty":
+                    all_ok_qty,
+
+                "is_merged_shortage_order":
+                    is_merged_shortage_order,
+
+                "is_order_level_warehouse":
+                    is_order_level_warehouse,
+
+                "is_group_stockin":
+                    is_group_stockin,
+
+                "group_material_ids":
+                    group_material_ids,
+
+                "group_assemble_ids":
+                    group_assemble_ids,
+                # 20260826版 add
+                "is_order_level_warehouse":
+                    is_order_level_warehouse,
+
+                "is_group_stockin":
+                    is_group_stockin,
+                #
+            })
+
+
+        if errors:
+            return jsonify({
+                "status": False,
+                "errors": errors
+            }), 400
+
+
+        # ========================================================
+        # 3. 驗證所有 material 存在
+        # ========================================================
+        material_ids = sorted({
+            mid
+            for row
+            in normalized_items
+            for mid
+            in row.get(
+                "group_material_ids",
+                [
+                    row[
+                        "material_id"
+                    ]
+                ]
+            )
+        })
+
+
+        existing_material_ids = {
+            int(row[0])
+            for row in (
+                s.query(
+                    Material.id
+                )
+                .filter(
+                    Material.id.in_(
+                        material_ids
+                    )
+                )
+                .all()
+            )
+        }
+
+
+        for row in (
+            normalized_items
+        ):
+
+            missing_ids = [
+                mid
+                for mid
+                in row.get(
+                    "group_material_ids",
+                    [
+                        row[
+                            "material_id"
+                        ]
+                    ]
+                )
+                if mid
+                not in existing_material_ids
+            ]
+
+            if missing_ids:
+                errors.append({
+                    "index":
+                        row["index"],
+
+                    "error": (
+                        "找不到 material_id："
+                        f"{missing_ids}"
+                    )
+                })
+
+
+        if errors:
+            return jsonify({
+                "status": False,
+                "errors": errors
+            }), 400
+
+
+        # ========================================================
+        # 4. 開始處理
+        # ========================================================
+        created_products = []
+
+        result_items = []
+
+
+        # 同一 merged group 不可在同一 request
+        # 重複處理
+        processed_merged_groups = set()
+
+        # 20260909
+        # 同一 request 內，同一 order_num 只允許處理一次。
+        # 避免 Warehouse order-level 顯示一筆，但前端 items
+        # 仍帶多個 copy material 時，各自建立 process_type=31。
+        processed_order_nums = set()
+
+
+        now_dt = datetime.now()
+
+        now_str = (
+            now_dt.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        )
+
+
+        for row in normalized_items:
+
+            idx = row["index"]
+
+            item = row["raw"]
+
+            material_id = (
+                row["material_id"]
+            )
+
+            assemble_id = (
+                row["assemble_id"]
+            )
+
+            process_id_to_use = (
+                row["process_id"]
+            )
+
+            add_qty = (
+                row["allOk_qty"]
+            )
+
+
+            is_merged_shortage_order = (
+                bool(
+                    row.get(
+                        "is_merged_shortage_order",
+                        False
+                    )
+                )
+            )
+
+            # 20260826版 add
+            is_order_level_warehouse = (
+                bool(
+                    row.get(
+                        "is_order_level_warehouse",
+                        False
+                    )
+                )
+            )
+
+            is_group_stockin = (
+                is_merged_shortage_order
+                or is_order_level_warehouse
+            )
+            #
+
+            group_material_ids = sorted({
+                int(mid)
+                for mid
+                in row.get(
+                    "group_material_ids",
+                    [
+                        material_id
+                    ]
+                )
+                if int(
+                    mid or 0
+                ) > 0
+            })
+
+
+            if not group_material_ids:
+                group_material_ids = [
+                    material_id
+                ]
+
+
+            group_assemble_ids = sorted({
+                int(aid)
+                for aid
+                in row.get(
+                    "group_assemble_ids",
+                    []
+                )
+                if int(
+                    aid or 0
+                ) > 0
+            })
+
+
+            # ----------------------------------------------------
+            # merged group 只處理一次
+            # ----------------------------------------------------
+            '''
+            if is_merged_shortage_order:
+
+                merge_key = tuple(
+                    group_material_ids
+                )
+            '''
+            #
+            if is_group_stockin:
+
+                if is_merged_shortage_order:
+
+                    merge_key = (
+                        "shortage",
+                        *tuple(
+                            group_material_ids
+                        )
+                    )
+
+                else:
+
+                    merge_key = (
+                        "order_level",
+                        *tuple(
+                            group_assemble_ids
+                        )
+                    )
+
+                if (
+                    merge_key
+                    in processed_merged_groups
+                ):
+                    print(
+                        "[createProduct] "
+                        "skip duplicated merged group:",
+                        merge_key
+                    )
+                    continue
+
+                processed_merged_groups.add(
+                    merge_key
+                )
+            #
+
+            user_id = str(
+                item.get(
+                    "user_id"
+                )
+                or "system"
+            ).strip() or "system"
+
+
+            delivery_qty = (
+                _normalize_int(
+                    item.get(
+                        "delivery_qty"
+                    ),
+                    0
+                )
+            )
+
+            assemble_qty = (
+                _normalize_int(
+                    item.get(
+                        "assemble_qty"
+                    ),
+                    0
+                )
+            )
+
+            good_qty = (
+                _normalize_int(
+                    item.get(
+                        "good_qty"
+                    ),
+                    0
+                )
+            )
+
+            non_good_qty = (
+                _normalize_int(
+                    item.get(
+                        "non_good_qty"
+                    ),
+                    0
+                )
+            )
+
+            line_difference = (
+                _normalize_int(
+                    item.get(
+                        "line_difference"
+                    ),
+                    0
+                )
+            )
+
+
+            reason = (
+                str(
+                    item.get(
+                        "reason"
+                    )
+                ).strip()
+                if item.get(
+                    "reason"
+                ) is not None
+                else None
+            )
+
+
+            confirm_comment = (
+                str(
+                    item.get(
+                        "confirm_comment"
+                    )
+                ).strip()
+                if item.get(
+                    "confirm_comment"
+                ) is not None
+                else None
+            )
+
+
+            # ====================================================
+            # 4-1. 一次鎖定整組 Material
+            # ====================================================
+            group_material_rows = (
+                s.query(
+                    Material
+                )
+                .filter(
+                    Material.id.in_(
+                        group_material_ids
+                    )
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .with_for_update()
+                .all()
+            )
+
+
+            group_material_map = {
+                int(m.id): m
+                for m
+                in group_material_rows
+            }
+
+
+            if (
+                len(
+                    group_material_rows
+                )
+                != len(
+                    group_material_ids
+                )
+            ):
+                raise ValueError(
+                    "合併入庫 material 數量不一致；"
+                    f"要求={group_material_ids}，"
+                    "找到="
+                    f"{sorted(group_material_map.keys())}"
+                )
+
+
+            # ====================================================
+            # 20260909
+            # 4-1-A. 後端以 order_num 自動補齊所有 copy material
+            #
+            # Warehouse 已是 order_num level 顯示，因此入庫也必須
+            # 以同一 order_num 為一個 logical order。
+            #
+            # 例如：
+            #   999900019077
+            #   material 580 -> 605 -> 607
+            #
+            # 即使前端只傳 material_id=580 或 605，
+            # 這裡仍會自動取得 580/605/607。
+            # ====================================================
+            seed_material = (
+                group_material_map.get(material_id)
+                or (
+                    group_material_rows[0]
+                    if group_material_rows
+                    else None
+                )
+            )
+
+            if seed_material is None:
+                raise ValueError(
+                    f"找不到 material_id={material_id}"
+                )
+
+            order_num = str(
+                getattr(
+                    seed_material,
+                    "order_num",
+                    ""
+                )
+                or ""
+            ).strip()
+
+            if not order_num:
+                raise ValueError(
+                    f"material_id={material_id} 缺少 order_num"
+                )
+
+            order_material_rows = (
+                s.query(Material)
+                .filter(
+                    Material.order_num == order_num,
+                    Material.move_by_process_type == 2,
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .with_for_update()
+                .all()
+            )
+
+            if not order_material_rows:
+                raise ValueError(
+                    f"找不到 order_num={order_num} 的組裝 material"
+                )
+
+            # 同訂單所有 copy material 一律納入此次 logical order。
+            group_material_rows = order_material_rows
+            group_material_ids = [
+                int(m.id)
+                for m in group_material_rows
+            ]
+            group_material_map = {
+                int(m.id): m
+                for m in group_material_rows
+            }
+
+            # 同一 request 如果 Warehouse 前端送來同訂單多個 item，
+            # 第二筆起直接略過，避免重複建立 type=31 / Product。
+            if order_num in processed_order_nums:
+                print(
+                    "[createProduct] "
+                    "skip duplicated order in same request:",
+                    order_num
+                )
+                continue
+
+            processed_order_nums.add(order_num)
+
+            # 只要同訂單存在多個 material copy，就視為 group stock-in。
+            is_order_copy_group = (
+                len(group_material_ids) > 1
+            )
+
+            is_group_stockin = (
+                is_merged_shortage_order
+                or is_order_level_warehouse
+                or is_order_copy_group
+            )
+
+            # 後端自動補齊同訂單所有 Warehouse assemble id，
+            # 不再完全依賴前端 group_assemble_ids。
+            auto_group_assemble_ids = {
+                int(r[0])
+                for r in (
+                    s.query(Assemble.id)
+                    .filter(
+                        Assemble.material_id.in_(
+                            group_material_ids
+                        )
+                    )
+                    .filter(
+                        or_(
+                            Assemble.isWarehouseStationShow.is_(True),
+                            Assemble.process_step_code == 0,
+                        )
+                    )
+                    .all()
+                )
+                if r[0] is not None
+            }
+
+            group_assemble_ids = sorted(
+                set(group_assemble_ids)
+                | auto_group_assemble_ids
+            )
+
+            print(
+                "[createProduct]"
+                "[20260909 order group]",
+                {
+                    "order_num": order_num,
+                    "request_material_id": material_id,
+                    "group_material_ids":
+                        group_material_ids,
+                    "group_assemble_ids":
+                        group_assemble_ids,
+                    "is_order_copy_group":
+                        is_order_copy_group,
+                    "is_group_stockin":
+                        is_group_stockin,
+                }
+            )
+
+
+            # ----------------------------------------------------
+            # representative material
+            #
+            # merged：
+            #   固定使用最小 material_id
+            #
+            # normal：
+            #   使用傳入 material_id
+            # ----------------------------------------------------
+            if is_group_stockin:
+
+                representative_material_id = (
+                    min(
+                        group_material_ids
+                    )
+                )
+
+            else:
+
+                representative_material_id = (
+                    material_id
+                )
+
+
+            material = (
+                group_material_map.get(
+                    representative_material_id
+                )
+            )
+
+
+            if material is None:
+                raise ValueError(
+                    "找不到代表 material_id="
+                    f"{representative_material_id}"
+                )
+
+
+            # ====================================================
+            # 4-1-1.
+            # merged shortage 安全驗證
+            # ====================================================
+            if is_merged_shortage_order:
+
+                representative_order_num = (
+                    str(
+                        getattr(
+                            material,
+                            "order_num",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+                )
+
+
+                # -----------------------------------------------
+                # A. group 全部必須同 order_num
+                # -----------------------------------------------
+                invalid_order_material_ids = [
+                    int(m.id)
+                    for m
+                    in group_material_rows
+                    if str(
+                        getattr(
+                            m,
+                            "order_num",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+                    != representative_order_num
+                ]
+
+
+                if invalid_order_material_ids:
+
+                    raise ValueError(
+                        "group_material_ids "
+                        "包含不同訂單資料；"
+                        "代表 order_num="
+                        f"{representative_order_num}，"
+                        "異常 material_id="
+                        f"{sorted(invalid_order_material_ids)}"
+                    )
+
+
+                # -----------------------------------------------
+                # B. 全部 material 都必須到 Warehouse
+                # -----------------------------------------------
+                warehouse_ready_rows = (
+                    s.query(
+                        Assemble.material_id
+                    )
+                    .filter(
+                        Assemble.material_id.in_(
+                            group_material_ids
+                        ),
+
+                        Assemble.work_num
+                        == "B110",
+
+                        Assemble.process_step_code
+                        == 0,
+
+                        Assemble.isWarehouseStationShow
+                        .is_(True),
+
+                        Assemble.show2_ok.in_(
+                            [9, 10]
+                        ),
+                    )
+                    .distinct()
+                    .all()
+                )
+
+
+                warehouse_ready_material_ids = {
+                    int(r[0])
+                    for r
+                    in warehouse_ready_rows
+                    if r[0] is not None
+                }
+
+
+                missing_warehouse_ids = (
+                    set(
+                        group_material_ids
+                    )
+                    - warehouse_ready_material_ids
+                )
+
+
+                print(
+                    "[createProduct]"
+                    "[merged shortage validation]",
+                    {
+                        "order_num":
+                            representative_order_num,
+
+                        "group_material_ids":
+                            group_material_ids,
+
+                        "warehouse_ready_material_ids":
+                            sorted(
+                                warehouse_ready_material_ids
+                            ),
+
+                        "missing_warehouse_ids":
+                            sorted(
+                                missing_warehouse_ids
+                            ),
+                    }
+                )
+
+
+                if missing_warehouse_ids:
+                    raise ValueError(
+                        "缺料分批尚未全部送到 Warehouse；"
+                        "不可進行合併入庫。"
+                        "尚缺 material_id="
+                        f"{sorted(missing_warehouse_ids)}"
+                    )
+
+
+            # ====================================================
+            # 4-2. 找本次 assemble
+            #
+            # merged shortage：
+            #   不再依單一 assemble 決定入庫。
+            #   backing rows 由 group_assemble_ids 控制。
+            # ====================================================
+            assemble_record = None
+
+
+            #if (
+            #    not is_merged_shortage_order
+            #):
+            # 20260826版
+            if (
+                not is_group_stockin
+            ):
+            #
+
+                if assemble_id > 0:
+
+                    assemble_record = (
+                        s.query(
+                            Assemble
+                        )
+                        .filter(
+                            Assemble.id
+                            == assemble_id,
+
+                            Assemble.material_id
+                            == material_id
+                        )
+                        .with_for_update()
+                        .one_or_none()
+                    )
+
+
+                    if (
+                        assemble_record
+                        is None
+                    ):
+                        raise ValueError(
+                            f"第 {idx + 1} 筆找不到 "
+                            f"assemble_id={assemble_id}，"
+                            "或不屬於 "
+                            f"material_id={material_id}"
+                        )
+
+
+                else:
+
+                    assemble_record = (
+                        s.query(
+                            Assemble
+                        )
+                        .filter(
+                            Assemble.material_id
+                            == material_id,
+
+                            Assemble.isWarehouseStationShow
+                            .is_(True)
+                        )
+                        .order_by(
+                            Assemble.id.asc()
+                        )
+                        .with_for_update()
+                        .first()
+                    )
+
+
+                    if (
+                        assemble_record
+                        is None
+                    ):
+
+                        assemble_record = (
+                            s.query(
+                                Assemble
+                            )
+                            .filter(
+                                Assemble.material_id
+                                == material_id,
+
+                                Assemble.process_step_code
+                                == 0
+                            )
+                            .order_by(
+                                Assemble.id.desc()
+                            )
+                            .with_for_update()
+                            .first()
+                        )
+
+
+                    if (
+                        assemble_record
+                        is not None
+                    ):
+                        assemble_id = int(
+                            assemble_record.id
+                        )
+
+
+            # ====================================================
+            # 4-3. 計算 old_total
+            # ====================================================
+            old_total = (
+                _normalize_int(
+                    getattr(
+                        material,
+                        "total_allOk_qty",
+                        0
+                    ),
+                    0
+                )
+            )
+
+
+            # merged：各 copy 是同一整單累計，
+            # 不可 SUM
+            if is_group_stockin:
+
+                old_total = max(
+                    [
+                        _normalize_int(
+                            getattr(
+                                m,
+                                "total_allOk_qty",
+                                0
+                            ),
+                            0
+                        )
+                        for m
+                        in group_material_rows
+                    ]
+                    or [0]
+                )
+
+
+            # ====================================================
+            # 4-3-1. must_qty
+            # ====================================================
+            material_qty_candidates = [
+                _normalize_int(
+                    getattr(
+                        material,
+                        "must_allOk_qty",
+                        0
+                    ),
+                    0
+                ),
+
+                _normalize_int(
+                    getattr(
+                        material,
+                        "total_assemble_qty",
+                        0
+                    ),
+                    0
+                ),
+
+                _normalize_int(
+                    getattr(
+                        material,
+                        "assemble_qty",
+                        0
+                    ),
+                    0
+                ),
+
+                _normalize_int(
+                    getattr(
+                        material,
+                        "total_delivery_qty",
+                        0
+                    ),
+                    0
+                ),
+
+                _normalize_int(
+                    getattr(
+                        material,
+                        "delivery_qty",
+                        0
+                    ),
+                    0
+                ),
+
+                _normalize_int(
+                    getattr(
+                        material,
+                        "material_qty",
+                        0
+                    ),
+                    0
+                ),
+            ]
+
+
+            # 一般工單才依單 material assemble
+            # 補候選數量
+            assemble_qty_candidates = []
+
+
+            if not is_merged_shortage_order:
+
+                warehouse_rows = (
+                    s.query(
+                        Assemble
+                    )
+                    .filter(
+                        Assemble.material_id
+                        == material_id
+                    )
+                    .filter(
+                        or_(
+                            Assemble.isWarehouseStationShow
+                            .is_(True),
+
+                            Assemble.process_step_code
+                            == 0
+                        )
+                    )
+                    .with_for_update()
+                    .all()
+                )
+
+
+                for warehouse_row in (
+                    warehouse_rows
+                ):
+
+                    assemble_qty_candidates.extend([
+                        _normalize_int(
+                            getattr(
+                                warehouse_row,
+                                "allOk_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        _normalize_int(
+                            getattr(
+                                warehouse_row,
+                                "total_completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        _normalize_int(
+                            getattr(
+                                warehouse_row,
+                                "completed_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        _normalize_int(
+                            getattr(
+                                warehouse_row,
+                                "total_ask_qty",
+                                0
+                            ),
+                            0
+                        ),
+
+                        _normalize_int(
+                            getattr(
+                                warehouse_row,
+                                "must_receive_qty",
+                                0
+                            ),
+                            0
+                        ),
+                    ])
+
+
+            must_qty = max(
+                material_qty_candidates
+                + assemble_qty_candidates
+                + [0]
+            )
+
+
+            # ----------------------------------------------------
+            # merged shortage：
+            #
+            # 152 = 20
+            # 160 = 20
+            # 161 = 20
+            #
+            # 不是 60
+            # ----------------------------------------------------
+            if is_group_stockin:
+
+                group_order_qty = max(
+                    [
+                        _normalize_int(
+                            getattr(
+                                group_material,
+                                "material_qty",
+                                0
+                            ),
+                            0
+                        )
+                        for group_material
+                        in group_material_rows
+                    ]
+                    or [0]
+                )
+
+
+                if group_order_qty > 0:
+                    must_qty = (
+                        group_order_qty
+                    )
+
+
+                print(
+                    "[createProduct]"
+                    "[merged shortage qty]",
+                    {
+                        "order_num":
+                            material.order_num,
+
+                        "group_material_ids":
+                            group_material_ids,
+
+                        "group_order_qty":
+                            group_order_qty,
+
+                        "must_qty":
+                            must_qty,
+
+                        "old_total":
+                            old_total,
+
+                        "add_qty":
+                            add_qty,
+                    }
+                )
+
+
+            # ----------------------------------------------------
+            # 一般工單數量上限
+            # ----------------------------------------------------
+            material_delivery_qty = (
+                _normalize_int(
+                    getattr(
+                        material,
+                        "delivery_qty",
+                        0
+                    ),
+                    0
+                )
+            )
+
+
+            material_order_qty = (
+                _normalize_int(
+                    getattr(
+                        material,
+                        "material_qty",
+                        0
+                    ),
+                    0
+                )
+            )
+
+
+            if (
+                not is_merged_shortage_order
+                and material_delivery_qty > 0
+                and material_order_qty > 0
+                and material_delivery_qty
+                >= material_order_qty
+            ):
+                must_qty = min(
+                    must_qty,
+                    material_delivery_qty
+                )
+
+
+            if (
+                must_qty <= 0
+                and material_order_qty > 0
+            ):
+                must_qty = (
+                    material_order_qty
+                )
+
+
+            print(
+                "[createProduct] "
+                "stock-in quantity validation:",
+                {
+                    "material_id":
+                        representative_material_id,
+
+                    "order_num":
+                        material.order_num,
+
+                    "is_merged_shortage_order":
+                        is_merged_shortage_order,
+
+                    "must_qty":
+                        must_qty,
+
+                    "old_total":
+                        old_total,
+
+                    "add_qty":
+                        add_qty,
+                }
+            )
+
+
+            # ====================================================
+            # 防止重複 / 超量
+            # ====================================================
+            if (
+                must_qty > 0
+                and old_total >= must_qty
+            ):
+
+                already_finished = any(
+                    bool(
+                        getattr(
+                            m,
+                            "isAllOk",
+                            False
+                        )
+                    )
+                    for m
+                    in group_material_rows
+                )
+
+                if already_finished:
+                    raise ValueError(
+                        "此工單已全數入庫，"
+                        "不可重複入庫；"
+                        f"order_num="
+                        f"{material.order_num}"
+                    )
+
+
+            if (
+                must_qty > 0
+                and old_total + add_qty
+                > must_qty
+            ):
+
+                remain_qty = max(
+                    must_qty - old_total,
+                    0
+                )
+
+                raise ValueError(
+                    f"第 {idx + 1} 筆"
+                    "入庫數量超過剩餘數量；"
+                    f"應入庫={must_qty}，"
+                    f"已入庫={old_total}，"
+                    f"剩餘={remain_qty}，"
+                    f"本次輸入={add_qty}"
+                )
+
+
+            # ====================================================
+            # 4-4. process_type = 31
+            #
+            # merged shortage：
+            #
+            # material_id =
+            #   representative_material_id
+            #
+            # assemble_id = 0
+            #
+            # 整組只建立 1 筆。
+            # ====================================================
+            #stockin_assemble_id = (
+            #    0
+            #    if is_merged_shortage_order
+            #    else int(
+            #        assemble_id or 0
+            #    )
+            #)
+            # 20260826版
+            stockin_assemble_id = (
+                0
+                if is_group_stockin
+                else int(
+                    assemble_id or 0
+                )
+            )
+            #
+
+            stockin_process = None
+
+
+            # ----------------------------------------------------
+            # A. 檢查前端 process_id
+            # ----------------------------------------------------
+            if process_id_to_use > 0:
+
+                candidate_process = (
+                    s.query(
+                        Process
+                    )
+                    .filter(
+                        Process.id
+                        == process_id_to_use
+                    )
+                    .with_for_update()
+                    .one_or_none()
+                )
+
+
+                if (
+                    candidate_process
+                    is None
+                ):
+
+                    print(
+                        "[createProduct] "
+                        "ignore invalid process_id:",
+                        process_id_to_use
+                    )
+
+                    process_id_to_use = 0
+
+
+                elif (
+                    int(
+                        candidate_process.process_type
+                        or 0
+                    )
+                    != 31
+                ):
+
+                    print(
+                        "[createProduct] "
+                        "ignore non-stockin process_id:",
+                        {
+                            "process_id":
+                                process_id_to_use,
+
+                            "process_type":
+                                int(
+                                    candidate_process.process_type
+                                    or 0
+                                ),
+                        }
+                    )
+
+                    process_id_to_use = 0
+
+
+                elif (
+                    int(
+                        candidate_process.material_id
+                        or 0
+                    )
+                    != representative_material_id
+                ):
+
+                    print(
+                        "[createProduct] "
+                        "ignore type31 of "
+                        "non representative material:",
+                        {
+                            "process_id":
+                                process_id_to_use,
+
+                            "process_material_id":
+                                candidate_process.material_id,
+
+                            "representative_material_id":
+                                representative_material_id,
+                        }
+                    )
+
+                    process_id_to_use = 0
+
+
+                else:
+
+                    stockin_process = (
+                        candidate_process
+                    )
+
+
+            # ----------------------------------------------------
+            # B. 使用既有 31
+            # ----------------------------------------------------
+            if stockin_process is not None:
+
+                duplicate_product = (
+                    s.query(
+                        Product.id
+                    )
+                    .filter(
+                        Product.process_id
+                        == stockin_process.id
+                    )
+                    .first()
+                )
+
+
+                if duplicate_product:
+
+                    raise ValueError(
+                        "process_id="
+                        f"{stockin_process.id} "
+                        "已建立過入庫 Product，"
+                        "不可重複送出"
+                    )
+
+
+                stockin_process.has_started = (
+                    False
+                )
+
+                stockin_process.is_pause = (
+                    True
+                )
+
+                stockin_process.pause_started_at = (
+                    None
+                )
+
+
+                if (
+                    stockin_process.begin_time
+                    is None
+                    or str(
+                        stockin_process.begin_time
+                    ).strip() == ""
+                ):
+                    stockin_process.begin_time = (
+                        now_str
+                    )
+
+
+                if (
+                    stockin_process.end_time
+                    is None
+                    or str(
+                        stockin_process.end_time
+                    ).strip() == ""
+                ):
+                    stockin_process.end_time = (
+                        now_str
+                    )
+
+
+                stockin_process.process_work_time_qty = (
+                    add_qty
+                )
+
+                stockin_process.allOk_qty = (
+                    add_qty
+                )
+
+                stockin_process.must_allOk_qty = (
+                    must_qty
+                )
+
+                stockin_process.isAllOk = (
+                    must_qty <= 0
+                    or old_total + add_qty
+                    >= must_qty
+                )
+
+
+                process_id_to_use = int(
+                    stockin_process.id
+                )
+
+
+            # ----------------------------------------------------
+            # C. 找 / 建新的 31
+            # ----------------------------------------------------
+            else:
+
+                existing_stockin_process = (
+                    s.query(
+                        Process
+                    )
+                    .filter(
+                        Process.material_id
+                        == representative_material_id,
+
+                        Process.assemble_id
+                        == stockin_assemble_id,
+
+                        Process.process_type
+                        == 31,
+
+                        Process.process_work_time_qty
+                        == add_qty
+                    )
+                    .order_by(
+                        Process.id.desc()
+                    )
+                    .with_for_update()
+                    .first()
+                )
+
+
+                if (
+                    existing_stockin_process
+                    is not None
+                ):
+
+                    duplicate_product = (
+                        s.query(
+                            Product.id
+                        )
+                        .filter(
+                            Product.process_id
+                            == existing_stockin_process.id
+                        )
+                        .first()
+                    )
+
+
+                    if duplicate_product:
+
+                        raise ValueError(
+                            "此工單已有相同入庫紀錄；"
+                            f"material_id="
+                            f"{representative_material_id}，"
+                            f"入庫數量={add_qty}"
+                        )
+
+
+                    stockin_process = (
+                        existing_stockin_process
+                    )
+
+
+                    stockin_process.has_started = (
+                        False
+                    )
+
+                    stockin_process.is_pause = (
+                        True
+                    )
+
+                    stockin_process.pause_started_at = (
+                        None
+                    )
+
+
+                    if (
+                        stockin_process.begin_time
+                        is None
+                        or str(
+                            stockin_process.begin_time
+                        ).strip() == ""
+                    ):
+                        stockin_process.begin_time = (
+                            now_str
+                        )
+
+
+                    if (
+                        stockin_process.end_time
+                        is None
+                        or str(
+                            stockin_process.end_time
+                        ).strip() == ""
+                    ):
+                        stockin_process.end_time = (
+                            now_str
+                        )
+
+
+                    stockin_process.process_work_time_qty = (
+                        add_qty
+                    )
+
+                    stockin_process.allOk_qty = (
+                        add_qty
+                    )
+
+                    stockin_process.must_allOk_qty = (
+                        must_qty
+                    )
+
+                    stockin_process.isAllOk = (
+                        must_qty <= 0
+                        or old_total + add_qty
+                        >= must_qty
+                    )
+
+
+                else:
+
+                    stockin_process = Process(
+
+                        material_id=
+                            representative_material_id,
+
+                        assemble_id=
+                            stockin_assemble_id,
+
+                        has_started=False,
+
+                        user_id=user_id,
+
+                        user_delegate_id="",
+
+                        begin_time=now_str,
+
+                        end_time=now_str,
+
+                        period_time="0:00:00",
+
+                        pause_time=0,
+
+                        pause_started_at=None,
+
+                        elapsedActive_time=0,
+
+                        str_elapsedActive_time=
+                            "00:00:00",
+
+                        is_pause=True,
+
+                        process_type=31,
+
+                        process_work_time_qty=
+                            add_qty,
+
+                        must_allOk_qty=
+                            must_qty,
+
+                        allOk_qty=
+                            add_qty,
+
+                        isAllOk=(
+                            must_qty <= 0
+                            or old_total + add_qty
+                            >= must_qty
+                        ),
+
+                        normal_work_time=1,
+
+                        abnormal_cause_message="",
+
+                        create_at=now_dt
+                    )
+
+
+                    s.add(
+                        stockin_process
+                    )
+
+                    s.flush()
+
+
+                process_id_to_use = int(
+                    stockin_process.id
+                )
+
+
+            # ====================================================
+            # 4-5. Product
+            #
+            # merged shortage：
+            # 只建立 1 筆
+            # ====================================================
+            product = Product(
+
+                material_id=
+                    representative_material_id,
+
+                process_id=
+                    process_id_to_use or None,
+
+                line_difference=
+                    line_difference,
+
+                delivery_qty=
+                    delivery_qty,
+
+                assemble_qty=
+                    assemble_qty,
+
+                allOk_qty=
+                    add_qty,
+
+                good_qty=
+                    good_qty,
+
+                non_good_qty=
+                    non_good_qty,
+
+                reason=
+                    reason,
+
+                confirm_comment=
+                    confirm_comment,
+            )
+
+
+            s.add(
+                product
+            )
+
+            s.flush()
+
+
+            created_products.append(
+                product
+            )
+
+
+            # ====================================================
+            # 4-6. Material 累計
+            # ====================================================
+            new_total = (
+                old_total
+                + add_qty
+            )
+
+
+            material_finished = (
+                must_qty <= 0
+                or new_total
+                >= must_qty
+            )
+
+
+            target_material_ids = (
+                group_material_ids
+                if is_group_stockin
                 else [
                     material_id
                 ]

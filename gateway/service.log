@@ -2021,3 +2021,118 @@
 2026-09-07 15:13:51 | ONLINE=false | VUE_IN   | assemble-batch-released2
 2026-09-07 15:14:07 | ONLINE=false | VUE_IN   | station2_call
 2026-09-07 15:14:20 | ONLINE=false | VUE_IN   | assemble-delivered-callAGV
+2026-09-08 09:30:19 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-08 09:30:19 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.68.112 PORT=6600
+2026-09-08 13:17:11 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-08 13:48:38 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-08 13:55:22 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-08 15:04:30 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-08 15:49:09 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-08 16:10:16 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-08 16:19:26 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 09:26:08 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-09 09:26:08 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.68.112 PORT=6600
+2026-09-09 12:13:32 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 13:31:31 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-09 13:31:31 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.68.112 PORT=6600
+2026-09-09 13:52:53 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 16:13:28 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 16:14:02 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 16:25:46 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 16:26:19 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 16:46:30 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 16:46:53 | ONLINE=false | VUE_IN   | process-started
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ETIMEDOUT 192.168.68.112:6600, mode: false, RUN_MODE: false
+2026-09-09 19:14:00 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-09 19:14:00 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.0.13 PORT=6600
+2026-09-09 19:28:27 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 19:28:43 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 19:29:13 | ONLINE=false | VUE_IN   | process-started
+2026-09-09 19:29:53 | ONLINE=false | VUE_IN   | warehouse-stock-in
+2026-09-09 19:35:23 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 19:38:48 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 19:40:28 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 19:41:15 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 19:44:26 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 19:47:20 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 19:47:49 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 19:57:47 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:00:15 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:01:19 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-09 20:01:42 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:02:31 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:20:47 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:27:19 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 20:38:43 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:23:32 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:43:12 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:43:21 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 21:43:21 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 21:45:03 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:53:35 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 21:53:36 | ONLINE=false | VUE_IN   | assemble-batch-released
+2026-09-09 21:53:43 | ONLINE=false | VUE_IN   | station2_call
+2026-09-09 21:53:56 | ONLINE=false | VUE_IN   | assemble-delivered-callAGV
+2026-09-09 21:54:03 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:54:53 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:55:06 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 21:55:06 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 21:55:11 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 21:55:11 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 21:55:14 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 21:55:14 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 21:57:23 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:57:48 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 21:57:48 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 21:58:01 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 21:59:54 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 21:59:55 | ONLINE=false | VUE_IN   | assemble-batch-released
+2026-09-09 22:00:28 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:02:50 | ONLINE=false | VUE_IN   | station2_call
+2026-09-09 22:03:04 | ONLINE=false | VUE_IN   | assemble-delivered-callAGV
+2026-09-09 22:03:20 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:13:38 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:22:37 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:22:44 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:22:45 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:23:06 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:23:12 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:24:08 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:24:08 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:24:09 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:24:09 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:24:24 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:24:24 | ONLINE=false | VUE_IN   | assemble-batch-released
+2026-09-09 22:24:35 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:24:35 | ONLINE=false | VUE_IN   | assemble-batch-released
+2026-09-09 22:24:42 | ONLINE=false | VUE_IN   | station2_call
+2026-09-09 22:24:55 | ONLINE=false | VUE_IN   | assemble-delivered-callAGV
+2026-09-09 22:25:00 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:25:09 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:25:09 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:25:10 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:25:10 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:25:11 | ONLINE=false | VUE_IN   | assemble-started
+2026-09-09 22:25:11 | ONLINE=false | VUE_IN   | icon-disable
+2026-09-09 22:25:23 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:25:30 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:25:41 | ONLINE=false | VUE_IN   | assemble-batch-released2
+2026-09-09 22:25:48 | ONLINE=false | VUE_IN   | station2_call
+2026-09-09 22:26:01 | ONLINE=false | VUE_IN   | assemble-delivered-callAGV
+2026-09-09 22:26:07 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-09 22:26:28 | ONLINE=false | VUE_IN   | warehouse-stock-in
+2026-09-10 06:30:24 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-10 06:30:24 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.0.13 PORT=6600
+連線失敗: read ECONNRESET, mode: false, RUN_MODE: false
+連線失敗: connect ECONNREFUSED 192.168.0.13:6600, mode: false, RUN_MODE: false
+2026-09-10 09:27:10 | ONLINE=false | SYSTEM   | SERVICE_START | PORT=6500 RUN_MODE=false MOVE_MODE=true
+2026-09-10 09:27:10 | ONLINE=false | SYSTEM   | KUKA_CONNECTED | IP=192.168.68.112 PORT=6600
+2026-09-10 10:55:05 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-10 10:55:32 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-10 10:56:58 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-10 11:15:43 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-10 11:49:16 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-10 11:56:54 | ONLINE=false | VUE_IN   | triggerLogout
+2026-09-10 11:57:51 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks
+2026-09-10 12:08:59 | ONLINE=false | VUE_IN   | get-assemble-scheduling-dialog-locks

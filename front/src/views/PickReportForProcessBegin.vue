@@ -1326,6 +1326,9 @@ function useRowTimer(row, currentUserId) {
 
   const key = `${rowKey}:${currentUserId}`
   */
+
+  //
+  /*
   const key = keyOf(row, currentUserId)
   if (!timerMap.has(key)) {
     const timerRef = ref(null)
@@ -1344,6 +1347,60 @@ function useRowTimer(row, currentUserId) {
   }
   return timerMap.get(key)
 }
+*/
+  // 20260909版
+  const key = keyOf(
+    row,
+    currentUserId
+  )
+
+  if (!timerMap.has(key)) {
+
+    const timerRef =
+      ref(null)
+
+    const t =
+      useProcessTimer(
+        () => timerRef.value
+      )
+
+    console.log(
+      "t:",
+      t
+    )
+
+    // ======================================================
+    // 20260909
+    //
+    // ★ 不可再覆寫 t.dispose()
+    //
+    // useProcessTimerProcess.js 已經提供完整 dispose：
+    //
+    // 1. isClosed = true
+    // 2. pause TimerDisplay
+    // 3. stop local ticker
+    // 4. stop auto update
+    // 5. processId = null
+    //
+    // 若在這裡重新指定 t.dispose，
+    // 會把 hook 原本真正的 dispose 蓋掉。
+    // ======================================================
+
+    timerMap.set(
+      key,
+      {
+        ...t,
+        timerRef
+      }
+    )
+  }
+
+  return timerMap.get(key)
+}
+//
+
+
+
 
 // // 這筆是否有人在開工（顯示綠點）
 //function hasAnyoneStarted(row) {

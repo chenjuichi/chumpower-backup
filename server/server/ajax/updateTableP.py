@@ -32,6 +32,7 @@ logger = setup_logger(__name__)  # 每個模組用自己的名稱
 # ------------------------------------------------------------------
 
 
+# 20260909版
 # 20260822版
 # 20260818版
 @updateTableP.route(
@@ -626,10 +627,117 @@ def update_assemble_process_step_p():
             #
             # 否則 PBegin 會誤判 B108-26 已經完成。
             # --------------------------------------------------------
-            next_record.completed_qty = 0
-            next_record.total_completed_qty = 0
-            next_record.total_ask_qty_end = 0
+            #next_record.completed_qty = 0
+            #next_record.total_completed_qty = 0
+            #next_record.total_ask_qty_end = 0
+            #
+            # 20260909版
+            # ========================================================
+            # 20260909
+            #
+            # 判斷 next_record 是否為「同一道工序的剩餘 child」
+            #
+            # 例如：
+            #
+            # parent：
+            #   id = 219
+            #   completed_qty = 100
+            #
+            # child：
+            #   is_copied_from_id = 219
+            #   must_receive_end_qty = 299
+            #
+            # 這種情況不是下一道加工工序，
+            # 而是同一道工序繼續加工剩餘量。
+            #
+            # 因此：
+            #
+            # completed_qty = 0
+            # total_completed_qty 必須保留 100
+            # total_ask_qty_end 必須保留 100
+            # ========================================================
 
+            is_partial_child = (
+                int(
+                    next_record.is_copied_from_id
+                    or 0
+                )
+                ==
+                int(
+                    assemble_record.id
+                    or 0
+                )
+                and
+                str(
+                    next_record.work_num
+                    or ''
+                ).strip()
+                ==
+                str(
+                    assemble_record.work_num
+                    or ''
+                ).strip()
+                and
+                str(
+                    next_record.seq_num
+                    or ''
+                ).strip()
+                ==
+                str(
+                    assemble_record.seq_num
+                    or ''
+                ).strip()
+            )
+
+
+            next_record.completed_qty = 0
+
+
+            if is_partial_child:
+
+                # 同一道工序的剩餘 child
+                #
+                # copyAssembleForDifferenceP 已經寫入：
+                #
+                # total_completed_qty = 100
+                # total_ask_qty_end = 100
+                #
+                # 這裡不可歸零。
+
+                next_record.total_completed_qty = max(
+                    int(
+                        next_record.total_completed_qty
+                        or 0
+                    ),
+                    int(
+                        assemble_record.completed_qty
+                        or 0
+                    ),
+                )
+
+                next_record.total_ask_qty_end = max(
+                    int(
+                        next_record.total_ask_qty_end
+                        or 0
+                    ),
+                    int(
+                        next_record.total_completed_qty
+                        or 0
+                    ),
+                )
+
+            else:
+
+                # 真正的下一道加工工序
+                #
+                # 例如：
+                # B100-03 → B108-26
+                #
+                # 完成量必須重新從 0 開始。
+
+                next_record.total_completed_qty = 0
+                next_record.total_ask_qty_end = 0
+            #
 
             next_assemble_id = int(
                 next_record.id
@@ -1899,6 +2007,7 @@ def update_assemble_data_by_material_id_p():
         s.close()
 
 
+# 20260908版
 # 20260822版
 # 20260813版
 @updateTableP.route('/sendProcessToWarehouse', methods=['POST'])
@@ -2300,10 +2409,27 @@ def send_process_to_warehouse():
 
             # active Process 顯示於 PEnd，
             # 所以這裡不用設成待送出。
+            #remaining_row.isAssembleStationShow = False
+            #remaining_row.isWarehouseStationShow = False
+            #
+            #remaining_row.isStockIn = False
+            #
+            # 20260908版
+            # active Process 顯示於 PEnd，
+            # 所以這裡不用設成待送出。
             remaining_row.isAssembleStationShow = False
             remaining_row.isWarehouseStationShow = False
 
-            remaining_row.isStockIn = False
+            # 20260908
+            # 剩餘加工列必須保留原工序的入庫屬性。
+            #
+            # Excel 作業短文若以 Z 開頭：
+            #   原 row.isStockIn = True
+            #   remaining row 也必須維持 True
+            #
+            # 否則分批完成後，下一批在 PEnd 會誤顯示「不入庫」。
+            remaining_row.isStockIn = row.isStockIn
+            #
 
             # --------------------------------------------------------
             # 5. 建立剩餘列的 active P_Process

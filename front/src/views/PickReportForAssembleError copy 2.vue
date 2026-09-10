@@ -10,17 +10,16 @@
     </template>
   </v-snackbar>
 
-  <!--20260909版-->
   <v-data-table
     :headers="headers"
     :items="filteredInformations"
     :row-props="getRowProps"
-
-
+    :search="search"
+    :custom-filter="customFilter"
     fixed-header
     style="font-family: '微軟正黑體', sans-serif; margin-top:10px;"
 
-      item-value="assemble_id"
+    item-value="order_num"
 
     v-model:items-per-page="pagination.itemsPerPage"
 
@@ -973,8 +972,6 @@ const filteredInformations = computed(() => {
   });
 });
 */
-
-/*
 // 20260908版
 const filteredInformations = computed(() => {
   return informations_for_assemble_error.value
@@ -1000,59 +997,6 @@ const filteredInformations = computed(() => {
     });
 });
 //
-*/
-// 20260909版
-const filteredInformations = computed(() => {
-
-  const keyword =
-    String(search.value || '')
-      .trim()
-      .toLowerCase()
-
-  return informations_for_assemble_error.value
-    .map(item => ({
-      ...item,
-
-      // 每一筆 Error 使用自己的 cause_message
-      cause_message:
-        item.cause_message ?? '',
-    }))
-    .filter(item => {
-
-      // 日期範圍
-      const isWithinDateRange =
-        checkDateInRange(
-          item.delivery_date
-        )
-
-      // 訂單範圍
-      const isWithinOrderRange =
-        checkOrderInRange(
-          item.order_num
-        )
-
-      if (
-        !isWithinDateRange ||
-        !isWithinOrderRange
-      ) {
-        return false
-      }
-
-      // 沒有搜尋文字 → 顯示
-      // 日期/訂單範圍內全部資料
-      if (!keyword) {
-        return true
-      }
-
-      // 搜尋目前這一列所有欄位
-      return Object.values(item).some(
-        value =>
-          String(value ?? '')
-            .toLowerCase()
-            .includes(keyword)
-      )
-    })
-})
 
 //=== mounted ===
 onMounted(async () => {
@@ -1991,8 +1935,7 @@ const checkOrderInRange = (orderNum) => {
   return orderNum >= minOrder && orderNum <= maxOrder;
 };
 
-// 20260909版 remove
-/*
+
 const customFilter = (value, search, item) => {
 //const customFilter = (search, item) => {
     if (!search) return true;
@@ -2002,7 +1945,6 @@ const customFilter = (value, search, item) => {
     String(val).toLowerCase().includes(search)
   );
 };
-*/
 
 /*
 const customFilter = (value, search, item) => {
@@ -3050,14 +2992,6 @@ function appendPreviewToMsg () {
 :deep(.v-data-table-footer__items-per-page .v-select__selection) {
   position: relative;
   left: 15px;
-}
-
-/* 20260909版：Footer 三個區塊全部向左移 20px */
-:deep(.v-data-table-footer__items-per-page),
-:deep(.v-data-table-footer__info),
-:deep(.v-data-table-footer__pagination) {
-  position: relative;
-  left: -20px;
 }
 
 </style>

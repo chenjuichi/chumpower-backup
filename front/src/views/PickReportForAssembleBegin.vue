@@ -448,7 +448,7 @@
     <!-- 自訂 '訂單編號' 欄位的資料欄位 -->
     <template v-slot:item.order_num="{ item }">
       <div>
-<!--
+        <!--
         <div
           style="color:black; font-size:12px; margin-right:2px;"
           v-if="(String(item.shortage_note || '').includes('缺料') && item.isLackMaterial != 99)"
@@ -470,109 +470,109 @@
           {{ item.order_num }}&nbsp;
           <span style="color:blue; font-weight:700; font-size:12px;">缺料不併單</span>
         </div>
-      -->
-<!--20260809版-->
-<!-- 缺料 + 不併單 -->
-<!--
-<div
-  style="color:black; font-size:12px; margin-right:2px;"
-  v-if="
-    String(item.shortage_note || '').includes('缺料') &&
-    item.isLackMaterial != 99 &&
-    !item.merge_enabled
-  "
->
-      -->
-<!--20260810版-->
-<div
-  style="color:black; font-size:12px; margin-right:2px;"
-  v-if="
-    String(item.shortage_note || '').includes('缺料') &&
-    !item.merge_enabled
-  "
->
-  <v-icon
-    style="color: green;"
-    @click.stop="onDelete(item)"
-    small
-  >
-    mdi-trash-can-outline
-  </v-icon>
+        -->
+        <!--20260809版-->
+        <!-- 缺料 + 不併單 -->
+        <!--
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-if="
+            String(item.shortage_note || '').includes('缺料') &&
+            item.isLackMaterial != 99 &&
+            !item.merge_enabled
+          "
+        >
+              -->
+        <!--20260810版-->
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-if="
+            String(item.shortage_note || '').includes('缺料') &&
+            !item.merge_enabled
+          "
+        >
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
 
-  {{ item.order_num }}&nbsp;
+          {{ item.order_num }}&nbsp;
 
-  <span
-    style="
-      color:blue;
-      font-weight:700;
-      font-size:12px;
-    "
-  >
-    缺料不併單
-  </span>
-</div>
+          <span
+            style="
+              color:blue;
+              font-weight:700;
+              font-size:12px;
+            "
+          >
+            缺料不併單
+          </span>
+        </div>
 
-<!-- 缺料 + 併單 -->
-<!--
-<div
-  style="color:black; font-size:12px; margin-right:2px;"
-  v-else-if="
-    String(item.shortage_note || '').includes('缺料') &&
-    item.isLackMaterial != 99
-  "
->
--->
-<!--20260810版-->
-<div
-  style="color:black; font-size:12px; margin-right:2px;"
-  v-else-if="
-    String(item.shortage_note || '').includes('缺料') &&
-    item.merge_enabled
-  "
->
+        <!-- 缺料 + 併單 -->
+        <!--
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-else-if="
+            String(item.shortage_note || '').includes('缺料') &&
+            item.isLackMaterial != 99
+          "
+        >
+        -->
+        <!--20260810版-->
+        <div
+          style="color:black; font-size:12px; margin-right:2px;"
+          v-else-if="
+            String(item.shortage_note || '').includes('缺料') &&
+            item.merge_enabled
+          "
+        >
 
-  <v-icon
-    style="color: green;"
-    @click.stop="onDelete(item)"
-    small
-  >
-    mdi-trash-can-outline
-  </v-icon>
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
 
-  {{ item.order_num }}&nbsp;
+          {{ item.order_num }}&nbsp;
 
-  <span
-    style="
-      color:red;
-      font-weight:700;
-      font-size:12px;
-    "
-  >
-    缺料
-  </span>
-</div>
+          <span
+            style="
+              color:red;
+              font-weight:700;
+              font-size:12px;
+            "
+          >
+            缺料
+          </span>
+        </div>
 
-<!-- 一般工單 -->
-<div
-  style="
-    color:black;
-    font-size:12px;
-    margin-right:20px;
-    margin-left:-15px;
-  "
-  v-else
->
-  <v-icon
-    style="color: green;"
-    @click.stop="onDelete(item)"
-    small
-  >
-    mdi-trash-can-outline
-  </v-icon>
+        <!-- 一般工單 -->
+        <div
+          style="
+            color:black;
+            font-size:12px;
+            margin-right:20px;
+            margin-left:-15px;
+          "
+          v-else
+        >
+          <v-icon
+            style="color: green;"
+            @click.stop="onDelete(item)"
+            small
+          >
+            mdi-trash-can-outline
+          </v-icon>
 
-  {{ item.order_num }}
-</div>
-<!--
+          {{ item.order_num }}
+        </div>
+        <!--
         <div
           style="color:black; font-size:12px; margin-right:20px; margin-left: -15px;"
           v-else
@@ -704,52 +704,51 @@
             </v-table>
             -->
             <!--20260907版-->
-
             <v-table
-  fixed-header
-  style="width: 190px;"
-  class="show_table bom-table"
->
-  <thead>
-    <tr>
-      <th style="text-align: left;">
-        編號
-      </th>
+              fixed-header
+              style="width: 190px;"
+              class="show_table bom-table"
+            >
+              <thead>
+                <tr>
+                  <th style="text-align: left;">
+                    編號
+                  </th>
 
-      <th style="text-align: right;">
-        數量
-      </th>
-    </tr>
-  </thead>
+                  <th style="text-align: right;">
+                    數量
+                  </th>
+                </tr>
+              </thead>
 
-  <tbody>
-    <tr
-      v-for="(bom_item, index) in getFilteredBoms(item)"
-      :key="bom_item.id || index"
-      :style="{
-        backgroundColor:
-          index % 2 === 0 ? '#ffffff' : '#edf2f4'
-      }"
-      class="custom-row"
-    >
-      <td style="text-align: left;">
-        {{ bom_item.material_num }}
-      </td>
+              <tbody>
+                <tr
+                  v-for="(bom_item, index) in getFilteredBoms(item)"
+                  :key="bom_item.id || index"
+                  :style="{
+                    backgroundColor:
+                      index % 2 === 0 ? '#ffffff' : '#edf2f4'
+                  }"
+                  class="custom-row"
+                >
+                  <td style="text-align: left;">
+                    {{ bom_item.material_num }}
+                  </td>
 
-      <td style="text-align: right;">
-        {{ bom_item.qty }}
-      </td>
-    </tr>
-  </tbody>
+                  <td style="text-align: right;">
+                    {{ bom_item.qty }}
+                  </td>
+                </tr>
+              </tbody>
 
-  <tfoot>
-    <tr>
-      <td colspan="2">
-        共 {{ getFilteredBoms(item).length }} 項
-      </td>
-    </tr>
-  </tfoot>
-</v-table>
+              <tfoot>
+                <tr>
+                  <td colspan="2">
+                    共 {{ getFilteredBoms(item).length }} 項
+                  </td>
+                </tr>
+              </tfoot>
+            </v-table>
           </div>
         </div>
       </v-hover>
@@ -758,7 +757,7 @@
     <!-- 自訂 '+工序' 按鍵欄位 -->
     <template #item.add_process="{ item }">
       <!-- 尚未設定工序：維持原本 + 工序按鍵 -->
-<!--
+      <!--
       <v-btn
         v-if="!isProcessStepEnabled(item)"
         size="small"
@@ -774,46 +773,46 @@
         <v-icon start size="18">mdi-plus</v-icon>
         工序
       </v-btn>
-    -->
-<!--20260810版-->
-<v-btn
-  v-if="!isProcessStepEnabled(item)"
-  size="small"
-  class="btn-add-process"
+      -->
+      <!--20260810版-->
+      <v-btn
+        v-if="!isProcessStepEnabled(item)"
+        size="small"
+        class="btn-add-process"
 
-  :class="{
-    'btn-add-process--disabled': isAddProcessButtonDisabled(item),
-    'btn-add-process--locked': isSchedulingDialogLocked(item)
-  }"
+        :class="{
+          'btn-add-process--disabled': isAddProcessButtonDisabled(item),
+          'btn-add-process--locked': isSchedulingDialogLocked(item)
+        }"
 
-  :disabled="
-    isAddProcessButtonDisabled(item) ||
-    isSchedulingDialogLocked(item)
-  "
+        :disabled="
+          isAddProcessButtonDisabled(item) ||
+          isSchedulingDialogLocked(item)
+        "
 
-  @click="onClickOpenSchedulingDialog(item)"
->
-  <v-icon start size="18">mdi-plus</v-icon>
-  工序
-</v-btn>
+        @click="onClickOpenSchedulingDialog(item)"
+      >
+        <v-icon start size="18">mdi-plus</v-icon>
+        工序
+      </v-btn>
 
-<!--0714 丁副-->
-<div v-else class="add-process-icon-group">
-  <v-btn
-    size="small"
-    icon
-    class="btn-add-process-icon btn-add-process-icon--edit"
-    :disabled="
-      isEditProcessDisabled(item) ||
-      isSchedulingDialogLocked(item)
-    "
-    @click.stop="openSchedulingDialog(item)"
-  >
-    <v-icon size="20" color="blue">
-      mdi-pencil
-    </v-icon>
-  </v-btn>
-</div>
+      <!--0714 丁副-->
+      <div v-else class="add-process-icon-group">
+        <v-btn
+          size="small"
+          icon
+          class="btn-add-process-icon btn-add-process-icon--edit"
+          :disabled="
+            isEditProcessDisabled(item) ||
+            isSchedulingDialogLocked(item)
+          "
+          @click.stop="openSchedulingDialog(item)"
+        >
+          <v-icon size="20" color="blue">
+            mdi-pencil
+          </v-icon>
+        </v-btn>
+      </div>
     </template>
 
     <!-- 自訂 '開始' 按鍵欄位 -->
@@ -5723,17 +5722,16 @@ const isAddProcessDialogBlocked = (item) => {
   width: 65px;
 }
 
-/* BOM 整張 table：
-   資料少時自動縮小
-   超過 280px 才出現 scrollbar
-*/
+// BOM 整張 table：
+//   資料少時自動縮小
+//   超過 280px 才出現 scrollbar
 .bom-table :deep(.v-table__wrapper) {
   max-height: 280px;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* 表頭固定 */
+// 表頭固定
 .bom-table :deep(thead) {
   position: sticky;
   top: 0;
@@ -5744,7 +5742,7 @@ const isAddProcessDialogBlocked = (item) => {
   background-color: #ffffff !important;
 }
 
-/* 表尾固定 */
+// 表尾固定
 .bom-table :deep(tfoot) {
   position: sticky;
   bottom: 0;
@@ -5756,4 +5754,5 @@ const isAddProcessDialogBlocked = (item) => {
   border-top: 1px solid #ddd;
 }
 //
+
 </style>

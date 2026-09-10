@@ -830,6 +830,37 @@ def list_materials_and_assembles_p():
             .all()
         )
 
+
+        # ============================================================
+        # DEBUG 999900006179：確認 material query 是否有抓到 186
+        # ============================================================
+        print("========== DEBUG MATERIAL 186 ==========")
+
+        debug_186 = [
+            m
+            for m in _objects
+            if int(m.id or 0) == 186
+        ]
+
+        print(
+            "material 186 in _objects =",
+            len(debug_186) > 0
+        )
+
+        for m in debug_186:
+            print(
+                "MATERIAL:",
+                "id=", m.id,
+                "order_num=", m.order_num,
+                "move_by_process_type=", m.move_by_process_type,
+                "isShow=", m.isShow,
+                "isTakeOk=", m.isTakeOk,
+                "show1_ok=", m.show1_ok,
+                "show2_ok=", m.show2_ok,
+            )
+
+        print("========================================")
+
         if not _objects:
 
             return jsonify({
@@ -899,6 +930,43 @@ def list_materials_and_assembles_p():
                 material_record._process
                 or []
             )
+
+            #
+            # ============================================================
+            # DEBUG 999900006179 / material 186
+            # ============================================================
+            if int(material_record.id or 0) == 186:
+
+                print("")
+                print("========== DEBUG 186 ASSEMBLE RECORDS ==========")
+
+                print(
+                    "material_id=",
+                    material_record.id,
+                    "order_num=",
+                    material_record.order_num,
+                    "assemble_count=",
+                    len(assemble_records),
+                )
+
+                for a in assemble_records:
+
+                    print(
+                        "ASSEMBLE:",
+                        "id=", a.id,
+                        "seq_num=", a.seq_num,
+                        "work_num=", a.work_num,
+                        "step=", a.process_step_code,
+                        "must_receive_qty=", a.must_receive_qty,
+                        "must_receive_end_qty=", a.must_receive_end_qty,
+                        "completed_qty=", a.completed_qty,
+                        "total_completed_qty=", a.total_completed_qty,
+                        "isSimultaneously=", a.isSimultaneously,
+                        "isWarehouseStationShow=",
+                        a.isWarehouseStationShow,
+                    )
+
+                print("================================================")
 
             # --------------------------------------------------------
             # 有多少 Process 曾經建立

@@ -2242,6 +2242,7 @@ const handlePopState = () => {
   }
 }
 
+/*
 const checkReceiveQty = (item) => {
   console.log("checkReceiveQty(),", item);
 
@@ -2273,6 +2274,161 @@ const checkReceiveQty = (item) => {
     item.tooltipVisible = false;
   }
 };
+*/
+
+/*
+// 20260908版
+const checkReceiveQty = (item) => {
+  console.log(
+    "checkReceiveQty(),",
+    item
+  )
+
+  // 本次輸入完成數量
+  const completedQty = Number(
+    item.receive_qty || 0
+  )
+
+  // 應完成總數量
+  const mustReceiveQty = Number(
+    item.display_must_receive_end_qty
+    ?? item.must_receive_end_qty
+    ?? 0
+  )
+
+  // 已完成總數量
+  const alreadyCompletedQty = Number(
+    item.total_completed_qty_num
+    ?? item.total_completed_qty
+    ?? 0
+  )
+
+  // 廢品數量
+  const abnormalQty = Number(
+    item.abnormal_qty || 0
+  )
+
+  // ------------------------------------------------------
+  // 本次最多還可以完成：
+  //
+  // 應完成總數量
+  // - 已完成總數量
+  // - 廢品數量
+  // ------------------------------------------------------
+  const remainingQty = Math.max(
+    mustReceiveQty -
+    alreadyCompletedQty -
+    abnormalQty,
+    0
+  )
+
+  console.log(
+    "[checkReceiveQty]",
+    {
+      mustReceiveQty,
+      alreadyCompletedQty,
+      abnormalQty,
+      remainingQty,
+      completedQty
+    }
+  )
+
+  if (
+    !Number.isFinite(completedQty) ||
+    completedQty < 0 ||
+    completedQty > remainingQty
+  ) {
+    receive_qty_alarm.value =
+      `完成數量不可超過 ${remainingQty}!`
+
+    item.tooltipVisible = true
+
+    setTimeout(() => {
+      item.tooltipVisible = false
+      item.receive_qty = ''
+    }, 2000)
+
+    console.error(
+      '完成數量錯誤!',
+      {
+        mustReceiveQty,
+        alreadyCompletedQty,
+        abnormalQty,
+        remainingQty,
+        completedQty
+      }
+    )
+
+    return
+  }
+
+  item.tooltipVisible = false
+}
+*/
+// 20260909版
+const checkReceiveQty = (item) => {
+  console.log(
+    "checkReceiveQty(),",
+    item
+  )
+
+  const completedQty = Number(
+    item.receive_qty || 0
+  )
+
+  const mustReceiveQty = Number(
+    item.display_must_receive_end_qty
+    ?? item.must_receive_end_qty
+    ?? 0
+  )
+
+  // 目前這一列可完成量，
+  // 已經由後端計算完成，
+  // 不可再扣 total_completed_qty / abnormal_qty
+  const remainingQty = Math.max(
+    mustReceiveQty,
+    0
+  )
+
+  console.log(
+    "[checkReceiveQty]",
+    {
+      mustReceiveQty,
+      remainingQty,
+      completedQty
+    }
+  )
+
+  if (
+    !Number.isFinite(completedQty) ||
+    completedQty < 0 ||
+    completedQty > remainingQty
+  ) {
+    receive_qty_alarm.value =
+      `完成數量不可超過 ${remainingQty}!`
+
+    item.tooltipVisible = true
+
+    setTimeout(() => {
+      item.tooltipVisible = false
+      item.receive_qty = ''
+    }, 2000)
+
+    console.error(
+      '完成數量錯誤!',
+      {
+        mustReceiveQty,
+        remainingQty,
+        completedQty
+      }
+    )
+
+    return
+  }
+
+  item.tooltipVisible = false
+}
+//
 
 /*
 const onAbnormalQtyUpdate = (item, value) => {
@@ -2410,6 +2566,7 @@ const checkAbnormalQty = (
     item.abnormal_qty || 0
   )
 
+  /*
   const originalMustQty =
     getOriginalMustReceiveEndQty(item)
 
@@ -2422,6 +2579,28 @@ const checkAbnormalQty = (
       completedQty,
     0
   )
+  */
+  // 20260908版
+  const originalMustQty =
+    getOriginalMustReceiveEndQty(item)
+
+  const alreadyCompletedQty = Number(
+    item.total_completed_qty_num
+    ?? item.total_completed_qty
+    ?? 0
+  )
+
+  const completedQty = Number(
+    item.receive_qty || 0
+  )
+
+  const availableQty = Math.max(
+    originalMustQty -
+    alreadyCompletedQty -
+    completedQty,
+    0
+  )
+  //
 
   if (
     !Number.isFinite(abnormalQty) ||
@@ -3316,6 +3495,7 @@ const onClickEnd = async (item) => {
   // 畫面已修正顯示 120。
   // 部分完成差額必須用 120 計算，不能再用舊 116。
   // ------------------------------------------------------
+  /*
   const mustReceiveQty = Number(
     item.display_must_receive_end_qty
     ?? item.must_receive_end_qty
@@ -3342,6 +3522,66 @@ const onClickEnd = async (item) => {
 
     return
   }
+  */
+  // 20260908版
+  const mustReceiveQty = Number(
+    item.display_must_receive_end_qty
+    ?? item.must_receive_end_qty
+    ?? 0
+  )
+
+  // 已完成總數量
+  const alreadyCompletedQty = Number(
+    item.total_completed_qty_num
+    ?? item.total_completed_qty
+    ?? 0
+  )
+
+  // 廢品數量
+  const abnormalQty = Number(
+    item.abnormal_qty || 0
+  )
+
+  // 本次最多可完成數量
+  //const remainingQty = Math.max(
+  //  mustReceiveQty -
+  //  alreadyCompletedQty -
+  //  abnormalQty,
+  //  0
+  //)
+  // 20260909版
+  const remainingQty = Math.max(
+    mustReceiveQty,
+    0
+  )
+  //
+
+  console.log(
+    "[onClickEnd] 完成數量檢查",
+    {
+      mustReceiveQty,
+      alreadyCompletedQty,
+      abnormalQty,
+      remainingQty,
+      completedQty
+    }
+  )
+
+  if (
+    completedQty > remainingQty
+  ) {
+    receive_qty_alarm.value =
+      `完成數量不可超過 ${remainingQty}!`
+
+    item.tooltipVisible = true
+
+    setTimeout(() => {
+      item.tooltipVisible = false
+    }, 2000)
+
+    return
+  }
+  //
 
   // 必須在 process_step_code 改成 0 前保存
   const completedProcessType = Number(
@@ -3535,10 +3775,12 @@ const onClickEnd = async (item) => {
     )
     //
 
-    const difference =
-      mustReceiveQty -
-      completedQty -
-      abnormalQty
+    //const difference =
+    //  mustReceiveQty -
+    //  completedQty -
+    //  abnormalQty
+    // 20260909版
+    const difference = mustReceiveQty - completedQty
 
     if (difference < 0) {
       throw new Error(

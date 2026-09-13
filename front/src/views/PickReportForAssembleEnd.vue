@@ -103,6 +103,7 @@
 />
 -->
 <!--20260810版-->
+<!--
 <v-checkbox-btn
   :model-value="isSelected(internalItem)"
 
@@ -116,6 +117,39 @@
         !internalItem.raw.waiting_send
         || Number(internalItem.raw.receive_qty || 0) === 0
       )
+      && warehouse_in_all_pass == '待完工'
+    )
+  "
+
+  color="primary"
+
+  @update:model-value="
+    value => toggleSelect(
+      internalItem,
+      value
+    )
+  "
+
+  :class="{
+    'blue-text':
+      internalItem.raw.waiting_send
+  }"
+/>
+-->
+<!--20260910版-->
+<v-checkbox-btn
+  :model-value="isSelected(internalItem)"
+
+  :disabled="
+    internalItem.raw.can_send_to_warehouse !== true
+    ||
+    internalItem.raw.checkbox_disable === true
+    ||
+    (
+
+      !internalItem.raw.waiting_send
+
+
       && warehouse_in_all_pass == '待完工'
     )
   "

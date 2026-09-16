@@ -25834,6 +25834,8 @@ def list_informations():
 """
 
 
+# 20260915版
+# 20260914版
 # 20260911版
 # 20260909版
 # 20260831版
@@ -26977,6 +26979,196 @@ def list_informations():
                 .all()
             )
 
+            # 20260914版
+            # ============================================================
+            # 20260914
+            # Information 舊資料防呆
+            #
+            # 若同 order_num 還有真正 active B109/B110/B106，
+            # 舊 B109_DIRECT_WAIT_SEND 不可再當成 waiting_send。
+            # ============================================================
+
+            active_order_nums_for_waiting_filter = {
+                str(order_num)
+                for (order_num,) in (
+                    s.query(
+                        Material.order_num
+                    )
+                    .join(
+                        Process,
+                        Process.material_id
+                        == Material.id
+                    )
+                    .join(
+                        Assemble,
+                        Assemble.id
+                        == Process.assemble_id
+                    )
+                    .filter(
+                        Material.move_by_process_type
+                        == 2
+                    )
+                    .filter(
+                        Process.process_type.in_([
+                            21,
+                            22,
+                            23
+                        ])
+                    )
+                    .filter(
+                        Process.has_started.is_(True)
+                    )
+                    .filter(
+                        or_(
+                            Process.end_time.is_(None),
+                            Process.end_time == ''
+                        )
+                    )
+                    .filter(
+                        Process.is_pause.is_(False)
+                    )
+                    .filter(
+                        Assemble.process_step_code > 0
+                    )
+                    .filter(
+                        Assemble.isAssembleStationShow
+                        .is_(True)
+                    )
+                    .distinct()
+                    .all()
+                )
+                if order_num
+            }
+
+
+            filtered_info_waiting_rows = []
+
+            for a in info_waiting_rows:
+
+                m = info_material_by_id.get(
+                    safe_int(
+                        a.material_id,
+                        0
+                    )
+                )
+
+                if m is None:
+                    continue
+
+                current_order_num = str(
+                    m.order_num
+                    or ''
+                ).strip()
+
+                reason = str(
+                    a.reason
+                    or ''
+                ).strip()
+
+
+                # 同 order 還有 active process 時，
+                # 舊 B109_DIRECT_WAIT_SEND 不算 waiting_send。
+                '''
+                if (
+                    reason
+                    == 'B109_DIRECT_WAIT_SEND'
+
+                    and
+
+                    current_order_num
+                    in active_order_nums_for_waiting_filter
+                ):
+                    print(
+                        "[Information]"
+                        "[SKIP OLD DIRECT WAIT SEND]"
+                        "[20260914]",
+                        {
+                            "order_num":
+                                current_order_num,
+
+                            "assemble_id":
+                                a.id,
+
+                            "material_id":
+                                a.material_id,
+                        }
+                    )
+
+                    continue
+                '''
+                # 20260914版
+                if (
+                    reason
+                    == 'B109_DIRECT_WAIT_SEND'
+                ):
+
+                    same_order_has_b110 = (
+                        s.query(
+                            Assemble.id
+                        )
+                        .join(
+                            Material,
+                            Material.id
+                            == Assemble.material_id
+                        )
+                        .filter(
+                            Material.order_num
+                            == current_order_num
+                        )
+                        .filter(
+                            Material.move_by_process_type
+                            == 2
+                        )
+                        .filter(
+                            Assemble.work_num
+                            == 'B110'
+                        )
+                        .filter(
+                            Assemble.schedule_id
+                            > 0
+                        )
+                        .first()
+                        is not None
+                    )
+
+                    if (
+                        same_order_has_b110
+                        or
+                        current_order_num
+                        in active_order_nums_for_waiting_filter
+                    ):
+
+                        print(
+                            "[Information]"
+                            "[SKIP OLD DIRECT WAIT SEND]"
+                            "[20260914]",
+                            {
+                                "order_num":
+                                    current_order_num,
+
+                                "assemble_id":
+                                    a.id,
+
+                                "material_id":
+                                    a.material_id,
+
+                                "same_order_has_b110":
+                                    same_order_has_b110,
+                            }
+                        )
+
+                        continue
+                #
+
+                filtered_info_waiting_rows.append(
+                    a
+                )
+
+
+            info_waiting_rows = (
+                filtered_info_waiting_rows
+            )
+            #
 
         info_waiting_rows_by_order = {}
 
@@ -28071,19 +28263,47 @@ def list_informations():
                 )
             )
 
-
+            #
             # ========================================================
-            # 20260831
+            # 20260915
+            # 是否已經有「完成」的入庫 Process 31
+            #
+            # 與單純歷史 Product 不同：
+            # order_stockin_time 有值代表：
+            #   process_type = 31
+            #   begin_time != NULL
+            #   end_time   != NULL
+            #
+            # 也就是這張訂單確實已完成入庫流程。
+            # ========================================================
+            has_completed_stockin_process = (
+                order_key in order_stockin_time
+            )
+            #
+
+            '''
+            #
+            # ========================================================
+            # 20260914
             # order-level 現況優先順序
             #
             # 1. 全部入庫完成
             # 2. 真正入庫 Process 進行中
             # 3. Warehouse 等待入庫
-            # 4. End 等待送出
-            # 5. 真正組裝/檢驗/雷射 Process
+            # 4. 真正組裝 / 檢驗 / 雷射 Process
+            # 5. End 等待送出
             # 6. 部分已完成入庫
             # 7. B109 等待組裝
             # 8. Material 原始狀態
+            #
+            # 20260914 修正：
+            #
+            # 同 order_num 若還有真正 active：
+            #
+            #   process_type = 21 / 22 / 23
+            #
+            # 必須優先顯示 active process，
+            # 不可被歷史 waiting_send 蓋成「等待送出」。
             # ========================================================
 
 
@@ -28167,101 +28387,23 @@ def list_informations():
                         '等待入庫作業'
                     )
 
-            # 20260911版
+
             # --------------------------------------------------------
-            # 4. End 完成，等待送出
+            # 4. 真正 Process 正在執行
             #
-            # 20260911：
-            # waiting_send_qty_by_order 已經是
-            # terminal + abnormal leaf + copy 去重後
-            # 的真正 physical completed qty。
+            # 20260914：
             #
-            # 所以等待送出時，
-            # 用這個數量更新 B109 / B110 / B106 進度。
-            # --------------------------------------------------------
-            elif (
-                order_key
-                in waiting_send_orders
-            ):
-
-                temp_show2_ok = 9
-
-                current_waiting_send_qty = safe_int(
-                    waiting_send_qty_by_order.get(
-                        order_key,
-                        0
-                    ),
-                    0
-                )
-
-                order_work_set = (
-                    work_nums_by_order.get(
-                        order_key,
-                        set()
-                    )
-                )
-
-                if current_waiting_send_qty > 0:
-
-                    if "B109" in order_work_set:
-                        qty1 = (
-                            current_waiting_send_qty
-                        )
-
-                    if "B110" in order_work_set:
-                        qty2 = (
-                            current_waiting_send_qty
-                        )
-
-                    if "B106" in order_work_set:
-                        qty3 = (
-                            current_waiting_send_qty
-                        )
-
-                temp_show2_ok_str = (
-                    f"{qty1}/"
-                    f"{qty2}/"
-                    f"{qty3}"
-                )
-
-                show1_code = 2
-
-                show3_code = 9
-
-                show3_text = (
-                    '等待送出'
-                )
-
-                print(
-                    "[Information]"
-                    "[WAITING SEND PROGRESS]"
-                    "[20260911]",
-                    {
-                        "order_num":
-                            order_key,
-
-                        "waiting_send_qty":
-                            current_waiting_send_qty,
-
-                        "work_nums":
-                            sorted(
-                                order_work_set
-                            ),
-
-                        "qty1":
-                            qty1,
-
-                        "qty2":
-                            qty2,
-
-                        "qty3":
-                            qty3,
-                    }
-                )
-            # end
-
-            # --------------------------------------------------------
-            # 5. 真正 Process 正在執行
+            # Active Process 優先於 End waiting_send。
+            #
+            # 例如：
+            #
+            #   999900018843
+            #
+            #   B109 組立異常 20 -> process_type 21
+            #   B110 防鏽 36     -> process_type 22
+            #
+            # 此時即使 DB 仍殘留舊 waiting_send，
+            # Information 仍應顯示目前真正進行中的 Process。
             # --------------------------------------------------------
             elif (
                 order_key
@@ -28349,16 +28491,114 @@ def list_informations():
 
 
             # --------------------------------------------------------
+            # 5. End 完成，等待送出
+            #
+            # 只有沒有 active 21 / 22 / 23 時，
+            # 才會進入這裡。
+            #
+            # waiting_send_qty_by_order：
+            # terminal + abnormal leaf + copy 去重後
+            # 的真正 physical completed qty。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in waiting_send_orders
+            ):
+
+                temp_show2_ok = 9
+
+                current_waiting_send_qty = safe_int(
+                    waiting_send_qty_by_order.get(
+                        order_key,
+                        0
+                    ),
+                    0
+                )
+
+                order_work_set = (
+                    work_nums_by_order.get(
+                        order_key,
+                        set()
+                    )
+                )
+
+
+                if current_waiting_send_qty > 0:
+
+                    if "B109" in order_work_set:
+
+                        qty1 = (
+                            current_waiting_send_qty
+                        )
+
+
+                    if "B110" in order_work_set:
+
+                        qty2 = (
+                            current_waiting_send_qty
+                        )
+
+
+                    if "B106" in order_work_set:
+
+                        qty3 = (
+                            current_waiting_send_qty
+                        )
+
+
+                temp_show2_ok_str = (
+                    f"{qty1}/"
+                    f"{qty2}/"
+                    f"{qty3}"
+                )
+
+                show1_code = 2
+
+                show3_code = 9
+
+                show3_text = (
+                    '等待送出'
+                )
+
+
+                print(
+                    "[Information]"
+                    "[WAITING SEND PROGRESS]"
+                    "[20260914]",
+                    {
+                        "order_num":
+                            order_key,
+
+                        "waiting_send_qty":
+                            current_waiting_send_qty,
+
+                        "work_nums":
+                            sorted(
+                                order_work_set
+                            ),
+
+                        "qty1":
+                            qty1,
+
+                        "qty2":
+                            qty2,
+
+                        "qty3":
+                            qty3,
+                    }
+                )
+
+
+            # --------------------------------------------------------
             # 6. 部分已完成入庫
             #
-            # 關鍵修改：
+            # 例如：
             #
-            # 5 / 20
-            # 39 / 42
+            #   5 / 20
+            #   39 / 42
             #
             # 只有 completed Product，
             # 沒有 active type31，
-            #
             # 不可叫「入庫進行中」。
             # --------------------------------------------------------
             elif (
@@ -28391,7 +28631,6 @@ def list_informations():
                 in waiting_b109_orders
             ):
 
-                # 現況進度保留數量
                 temp_show2_ok_str = (
                     f"{qty1}/"
                     f"{qty2}/"
@@ -28421,7 +28660,551 @@ def list_informations():
                     )
                     else ''
                 )
+            '''
 
+            #
+            # ========================================================
+            # 20260915版
+            # order-level 現況優先順序
+            #
+            # 核心規則：
+            # 「目前仍存在的有效流程」
+            # 必須優先於
+            # 「歷史已完成入庫」
+            #
+            # 例如：
+            #   121100020631
+            #
+            #   material 118：
+            #       已經 Product 入庫 34
+            #
+            #   material 123：
+            #       copy / 補料流程
+            #       目前 B110 已完成 34，仍停在 End waiting_send
+            #
+            # 此時雖然：
+            #   stockin_done_orders = True
+            #
+            # 但因為：
+            #   waiting_send_orders = True
+            #
+            # 所以不可顯示「入庫完成」，
+            # 應顯示目前真正狀態：
+            #
+            #   34/34/0
+            #   等待送出
+            #
+            # --------------------------------------------------------
+            # 優先順序：
+            #
+            # 1. 真正入庫 Process 進行中
+            # 2. Warehouse 等待入庫
+            # 3. 真正組裝 / 檢驗 / 雷射 Process
+            # 4. End 等待送出
+            # 5. B109 等待組裝
+            # 6. 全部入庫完成
+            # 7. 部分已完成入庫
+            # 8. Material 原始狀態
+            # ========================================================
+
+
+            # --------------------------------------------------------
+            # 1. 真正入庫進行中
+            #
+            # 一定要存在尚未結束的 process_type = 31。
+            # --------------------------------------------------------
+            '''
+            if (
+                order_key
+                in active_stockin_orders
+            ):
+
+                temp_show2_ok = 11
+
+                temp_show2_ok_str = (
+                    '入庫進行中'
+                )
+
+                show1_code = 3
+
+                show3_code = 12
+
+                show3_text = (
+                    '入庫進行中'
+                )
+            '''
+            # 20260915
+            # --------------------------------------------------------
+            # 1. 本次流程已完成入庫
+            #
+            # Process 31 已經有 begin_time + end_time，
+            # 代表目前這次流程真的完成。
+            #
+            # 必須優先於：
+            #   Warehouse 殘留
+            #   End waiting_send 殘留
+            #   B109/B110 舊狀態
+            # --------------------------------------------------------
+            if has_completed_stockin_process:
+
+                temp_show2_ok = 12
+
+                temp_show2_ok_str = (
+                    '入庫完成'
+                )
+
+                show1_code = 3
+
+                show3_code = 13
+
+                show3_text = (
+                    '入庫完成'
+                )
+
+
+            # --------------------------------------------------------
+            # 2. 真正入庫進行中
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in active_stockin_orders
+            ):
+
+                temp_show2_ok = 11
+
+                temp_show2_ok_str = (
+                    '入庫進行中'
+                )
+
+                show1_code = 3
+
+                show3_code = 12
+
+                show3_text = (
+                    '入庫進行中'
+                )
+            #
+
+            # --------------------------------------------------------
+            # 2. Warehouse 等待入庫
+            #
+            # 已經由 End 送出，
+            # 目前停在 Warehouse。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in waiting_warehouse_orders
+            ):
+
+                temp_show2_ok = 10
+
+                temp_show2_ok_str = (
+                    '等待入庫作業'
+                )
+
+                show1_code = 3
+
+                show3_code = 11
+
+                if current_stockin_qty > 0:
+
+                    show3_text = (
+                        f'已入庫 '
+                        f'{current_stockin_qty}/'
+                        f'{current_required_qty}'
+                    )
+
+                else:
+
+                    show3_text = (
+                        '等待入庫作業'
+                    )
+
+
+            # --------------------------------------------------------
+            # 3. 真正 Process 正在執行
+            #
+            # 21 = 組裝
+            # 22 = 檢驗
+            # 23 = 雷射
+            #
+            # Active Process 必須優先於歷史 waiting_send。
+            #
+            # 例如：
+            #   999900018843
+            #
+            # 若 DB 有舊 waiting_send，
+            # 但目前真正正在執行 21/22/23，
+            # Information 必須顯示目前 Process。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in active_process_by_order
+            ):
+
+                active_type = (
+                    active_process_by_order[
+                        order_key
+                    ]
+                )
+
+
+                # ----------------------------------------------------
+                # 組裝
+                # ----------------------------------------------------
+                if active_type == 21:
+
+                    temp_show2_ok = 4
+
+                    temp_show2_ok_str = (
+                        '組裝進行中'
+                    )
+
+                    show1_code = 2
+
+                    show3_code = 4
+
+                    show3_text = (
+                        '組裝進行中'
+                    )
+
+
+                # ----------------------------------------------------
+                # 檢驗
+                # ----------------------------------------------------
+                elif active_type == 22:
+
+                    temp_show2_ok = 6
+
+                    temp_show2_ok_str = (
+                        '檢驗進行中'
+                    )
+
+                    show1_code = 2
+
+                    show3_code = 6
+
+                    show3_text = (
+                        '檢驗進行中'
+                    )
+
+
+                # ----------------------------------------------------
+                # 雷射
+                # ----------------------------------------------------
+                elif active_type == 23:
+
+                    temp_show2_ok = 8
+
+                    temp_show2_ok_str = (
+                        '雷射進行中'
+                    )
+
+                    show1_code = 2
+
+                    show3_code = 8
+
+                    show3_text = (
+                        '雷射進行中'
+                    )
+
+
+                else:
+
+                    show3_text = (
+                        str3[show3_code]
+                        if (
+                            0
+                            <= show3_code
+                            < len(str3)
+                        )
+                        else ''
+                    )
+
+
+            # --------------------------------------------------------
+            # 4. End 完成，等待送出
+            #
+            # 只有沒有 active 21 / 22 / 23，
+            # 且沒有進入 Warehouse / StockIn 時，
+            # 才會進入這裡。
+            #
+            # waiting_send_qty_by_order：
+            #
+            #   terminal
+            #   + abnormal leaf
+            #   + copy material 去重
+            #
+            # 後得到真正 physical completed qty。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in waiting_send_orders
+            ):
+
+                temp_show2_ok = 9
+
+                current_waiting_send_qty = safe_int(
+                    waiting_send_qty_by_order.get(
+                        order_key,
+                        0
+                    ),
+                    0
+                )
+
+                order_work_set = (
+                    work_nums_by_order.get(
+                        order_key,
+                        set()
+                    )
+                )
+
+
+                # ----------------------------------------------------
+                # End 真正完成數量
+                #
+                # 有哪些工序，就把真正 physical completed qty
+                # 放到對應欄位。
+                # ----------------------------------------------------
+                if current_waiting_send_qty > 0:
+
+                    if "B109" in order_work_set:
+
+                        qty1 = (
+                            current_waiting_send_qty
+                        )
+
+
+                    if "B110" in order_work_set:
+
+                        qty2 = (
+                            current_waiting_send_qty
+                        )
+
+
+                    if "B106" in order_work_set:
+
+                        qty3 = (
+                            current_waiting_send_qty
+                        )
+
+
+                temp_show2_ok_str = (
+                    f"{qty1}/"
+                    f"{qty2}/"
+                    f"{qty3}"
+                )
+                '''
+                show1_code = 2
+
+                show3_code = 9
+
+                show3_text = (
+                    '等待送出'
+                )
+                '''
+                #
+                show1_code = 2
+
+
+                # ----------------------------------------------------
+                # 20260915
+                # End waiting_send 的現況備註
+                #
+                # 依訂單最後實際工序顯示：
+                #
+                # B106 → 雷射已結束
+                # B110 → 檢驗已結束
+                # B109 → 組裝已結束
+                #
+                # 優先順序：
+                # B106 > B110 > B109
+                # ----------------------------------------------------
+                if "B106" in order_work_set:
+
+                    show3_code = 9
+
+                    show3_text = (
+                        '雷射已結束'
+                    )
+
+
+                elif "B110" in order_work_set:
+
+                    show3_code = 7
+
+                    show3_text = (
+                        '檢驗已結束'
+                    )
+
+
+                elif "B109" in order_work_set:
+
+                    show3_code = 5
+
+                    show3_text = (
+                        '組裝已結束'
+                    )
+
+
+                else:
+
+                    # 舊資料 fallback
+                    show3_code = 9
+
+                    show3_text = (
+                        '等待送出'
+                    )
+                #
+
+
+                print(
+                    "[Information]"
+                    "[WAITING SEND PROGRESS]"
+                    "[20260915]",
+                    {
+                        "order_num":
+                            order_key,
+
+                        "waiting_send_qty":
+                            current_waiting_send_qty,
+
+                        "work_nums":
+                            sorted(
+                                order_work_set
+                            ),
+
+                        "qty1":
+                            qty1,
+
+                        "qty2":
+                            qty2,
+
+                        "qty3":
+                            qty3,
+
+                        "stockin_done":
+                            order_key
+                            in stockin_done_orders,
+
+                        "stockin_qty":
+                            current_stockin_qty,
+
+                        "required_qty":
+                            current_required_qty,
+                    }
+                )
+
+
+            # --------------------------------------------------------
+            # 5. 還有 B109 等待組裝
+            #
+            # 有新的有效組裝流程時，
+            # 也不可被歷史 Product 的「入庫完成」蓋掉。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in waiting_b109_orders
+            ):
+
+                temp_show2_ok_str = (
+                    f"{qty1}/"
+                    f"{qty2}/"
+                    f"{qty3}"
+                )
+
+                show1_code = 2
+
+                show3_code = 3
+
+                show3_text = (
+                    '等待組裝作業'
+                )
+
+
+            # --------------------------------------------------------
+            # 6. 全部入庫完成
+            #
+            # 注意：
+            #
+            # 只有前面：
+            #   active stockin
+            #   Warehouse
+            #   active 21/22/23
+            #   End waiting_send
+            #   B109 waiting
+            #
+            # 全部都沒有命中，
+            # 才能使用歷史 Product 判定「入庫完成」。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in stockin_done_orders
+            ):
+
+                temp_show2_ok = 12
+
+                temp_show2_ok_str = (
+                    '入庫完成'
+                )
+
+                show1_code = 3
+
+                show3_code = 13
+
+                show3_text = (
+                    '入庫完成'
+                )
+
+
+            # --------------------------------------------------------
+            # 7. 部分已完成入庫
+            #
+            # 例如：
+            #   5 / 20
+            #   39 / 42
+            #
+            # 只有 completed Product，
+            # 沒有 active type31，
+            # 不可叫「入庫進行中」。
+            # --------------------------------------------------------
+            elif (
+                order_key
+                in stockin_partial_orders
+            ):
+
+                temp_show2_ok = 10
+
+                temp_show2_ok_str = (
+                    '等待入庫作業'
+                )
+
+                show1_code = 3
+
+                show3_code = 11
+
+                show3_text = (
+                    f'已入庫 '
+                    f'{current_stockin_qty}/'
+                    f'{current_required_qty}'
+                )
+
+
+            # --------------------------------------------------------
+            # 8. Material 原始狀態
+            # --------------------------------------------------------
+            else:
+
+                show3_text = (
+                    str3[show3_code]
+                    if (
+                        0
+                        <= show3_code
+                        < len(str3)
+                    )
+                    else ''
+                )
+                        #
 
             # ========================================================
             # show1 顯示
@@ -28438,32 +29221,138 @@ def list_informations():
                 else ''
             )
 
-            # 20260909版 add
+            '''
             # ============================================================
-            # 20260909
+            # 20260914
             # Information 現況數量
             #
             # 優先順序：
             #
-            # 已入庫 / 入庫中 / Warehouse
-            #     -> 實際已入庫數量
+            # 1. 已入庫 / 入庫中 / Warehouse
+            #       -> 實際已入庫數量
             #
-            # End 等待送出
-            #     -> 目前 End B110 待送出完成量
+            # 2. 真正 active process
+            #       -> 不可被 waiting_send 舊數量覆蓋
             #
-            # 其他狀態
-            #     -> 維持原本 0
+            # 3. End waiting_send
+            #       -> waiting_send completed qty
+            #
+            # 4. 其他狀態
+            #       -> 維持 current_stockin_qty
             # ============================================================
-            current_display_qty = current_stockin_qty
 
+            current_display_qty = (
+                current_stockin_qty
+            )
+
+
+            # ------------------------------------------------------------
+            # 只有「沒有真正 active process」時，
+            # waiting_send 才可以決定 Information 現況數量。
+            #
+            # 999900018843：
+            #
+            # active process 存在時，
+            # 不可再被舊 B109_DIRECT_WAIT_SEND=56
+            # 把 current_display_qty 覆蓋成 56。
+            # ------------------------------------------------------------
             if (
-                order_key in waiting_send_orders
-                and current_waiting_send_qty > 0
+                order_key
+                not in active_process_by_order
+
+                and
+
+                order_key
+                in waiting_send_orders
+
+                and
+
+                current_waiting_send_qty > 0
             ):
+
+                current_display_qty = (
+                    current_waiting_send_qty
+                )
+            '''
+            #
+            # ============================================================
+            # 20260915
+            # Information 現況數量
+            # ============================================================
+
+            current_display_qty = (
+                current_stockin_qty
+            )
+
+
+            # ------------------------------------------------------------
+            # 1. 已完成 Process31
+            #
+            # 代表這次訂單已正式完成入庫。
+            # Information 現況數量應顯示整張訂單完成數量。
+            #
+            # 999900018640：
+            #   current_stockin_qty 可能仍是 30
+            #   current_required_qty = 39
+            #
+            # 最終應顯示：
+            #   現況數量 = 39
+            # ------------------------------------------------------------
+            if (
+                has_completed_stockin_process
+                and current_required_qty > 0
+            ):
+
+                current_display_qty = (
+                    current_required_qty
+                )
+
+
+            # ------------------------------------------------------------
+            # 2. End waiting_send
+            #
+            # 只有尚未：
+            #   - 完成入庫
+            #   - 入庫進行中
+            #   - 進入 Warehouse
+            #   - 有 active 21/22/23
+            #
+            # 才允許 waiting_send qty 覆蓋現況數量。
+            # ------------------------------------------------------------
+            if (
+                not has_completed_stockin_process
+
+                and
+
+                order_key
+                not in active_stockin_orders
+
+                and
+
+                order_key
+                not in waiting_warehouse_orders
+
+                and
+
+                order_key
+                not in active_process_by_order
+
+                and
+
+                order_key
+                in waiting_send_orders
+
+                and
+
+                current_waiting_send_qty > 0
+            ):
+
                 current_display_qty = (
                     current_waiting_send_qty
                 )
             #
+            #
+
 
             # ========================================================
             # Response row
@@ -29696,7 +30585,7 @@ def list_assemble_informations():
 
     temp_len = len(_results)
 
-    print("listInformations, 總數: ", temp_len)
+    print("listAssembleInformations, 總數: ", temp_len)
     if (temp_len == 0):
         return_value = False
 

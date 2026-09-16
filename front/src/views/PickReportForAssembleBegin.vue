@@ -2120,6 +2120,7 @@ function checkShowTimer(row) {
   return !!(t && t.processId.value && (t.hasStarted.value || !t.isPaused.value))
 }
 
+/*
 async function onClickBegin(row) {
   console.log('onClickBegin(), row', row);
 
@@ -2257,6 +2258,268 @@ async function onClickBegin(row) {
       row._showMyTimer = false;
       row.show_timer = false;
     }
+
+    showSnackbar(
+      `開始失敗：${
+        error?.response?.data?.message ||
+        error?.message ||
+        '系統錯誤'
+      }`,
+      'red-darken-2'
+    );
+  }
+}
+*/
+async function onClickBegin(row) {
+  console.log(
+    'onClickBegin(), row',
+    row
+  );
+
+  const me = String(
+    safeUserId.value || ''
+  ).trim();
+
+
+  if (!me) {
+    showSnackbar(
+      '使用者資料尚未載入，請稍後再試!',
+      'red-darken-2'
+    );
+    return;
+  }
+
+
+  if (
+    !row?.id ||
+    !row?.assemble_id
+  ) {
+    showSnackbar(
+      '資料異常，缺少工單或工序資料!',
+      'red-darken-2'
+    );
+    return;
+  }
+
+
+  const t = getT(row);
+
+  if (!t) {
+    showSnackbar(
+      '計時器尚未準備好!',
+      'red-darken-2'
+    );
+    return;
+  }
+
+
+  const processType = processTypeOf(row);
+
+  if (!processType) {
+    showSnackbar(
+      '無法判斷製程類型!',
+      'red-darken-2'
+    );
+    return;
+  }
+
+
+  // ============================================================
+  // 20260914
+  // 只禁止「本人」重複開始
+  //
+  // 注意：
+  // 其他人正在同工序作業，不在這裡直接禁止。
+  // 是否允許多人同時作業，仍由後端規則控制。
+  // ============================================================
+  if (
+    hasCurrentUserStarted(row)
+  ) {
+    showSnackbar(
+      '您已經開始此工序，不可重複開始!',
+      'orange-darken-2'
+    );
+
+    return;
+  }
+
+
+  selectedAsmId.value = row.index;
+
+
+  // 先顯示目前登入者自己的 timer component
+  row._showMyTimer = true;
+  row.show_name = me;
+
+  await nextTick();
+
+  let processCreated = false;
+
+
+  try {
+
+    // ------------------------------------------------------------
+    // 目前使用者尚無自己的 process，才建立
+    // ------------------------------------------------------------
+    if (
+      !Number(
+        t.processId.value || 0
+      )
+    ) {
+
+      const result =
+        await t.startProcess(
+          row.id,
+          processType,
+          me,
+          row.assemble_id
+        );
+
+
+      console.log(
+        '[onClickBegin] startProcess result:',
+        result
+      );
+
+
+      const processId =
+        typeof result === 'object'
+          ? Number(
+              result?.process_id ??
+              result?.id ??
+              t.processId.value ??
+              0
+            )
+          : Number(
+              result ??
+              t.processId.value ??
+              0
+            );
+
+
+      const success =
+        typeof result === 'object'
+          ? result?.success !== false
+          : processId > 0;
+
+
+      if (
+        !success ||
+        processId <= 0
+      ) {
+        throw new Error(
+          result?.message ||
+          '無法建立個人報工流程'
+        );
+      }
+
+
+      t.processId.value =
+        processId;
+
+      row.my_process_id =
+        processId;
+
+      processCreated = true;
+    }
+
+
+    // ------------------------------------------------------------
+    // process 是暫停狀態才啟動
+    // ------------------------------------------------------------
+    if (
+      t.isPaused.value
+    ) {
+      await t.toggleTimer();
+    }
+
+
+    t.isPaused.value = false;
+
+
+    // ------------------------------------------------------------
+    // 啟動成功後才設定畫面狀態
+    // ------------------------------------------------------------
+    row._showMyTimer = true;
+    row.show_timer = true;
+    row.show_name = me;
+
+    row.hasStarted = true;
+    row.startStatus = true;
+    row.isOpen = true;
+    row.isOpenEmpId = me;
+
+
+    // 20260809
+    markSameMaterialProcessLocked(
+      row
+    );
+
+
+    socket.value?.emit(
+      'assemble-started',
+      {
+        assemble_id:
+          row.assemble_id,
+
+        material_id:
+          row.id,
+
+        order_num:
+          row.order_num,
+
+        user_id:
+          me,
+
+        user_name:
+          currentUser.value?.name || '',
+      }
+    );
+
+
+    socket.value?.emit(
+      'icon-disable',
+      {
+        material_id:
+          row.material_id || row.id,
+
+        assemble_id:
+          row.assemble_id,
+
+        order_num:
+          row.order_num,
+      }
+    );
+
+
+    await nextTick();
+
+
+    showSnackbar(
+      '開始計時!',
+      'green-darken-2'
+    );
+
+  }
+  catch (error) {
+
+    console.error(
+      '[onClickBegin] start failed:',
+      error
+    );
+
+
+    if (
+      !processCreated
+      &&
+      !Number(
+        t.processId.value || 0
+      )
+    ) {
+      row._showMyTimer = false;
+      row.show_timer = false;
+    }
+
 
     showSnackbar(
       `開始失敗：${
@@ -4652,6 +4915,7 @@ const handleSchedulingDialogLocks = (locks) => {
   })
 }
 
+
 const isStartButtonDisabled = (item) => {
   const row = item?.raw || item || {}
   if (!row) return true
@@ -4684,6 +4948,131 @@ const isStartButtonDisabled = (item) => {
   return false
 }
 
+
+/*
+// 20260914
+const isStartButtonDisabled = (item) => {
+  const row = item?.raw || item || {}
+
+  if (!row) return true
+
+
+  // ------------------------------------------------------------
+  // 1. 沒有有效工序，不可開始
+  // ------------------------------------------------------------
+  if (!(Number(row.schedule_id) > 0)) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 2. 已完成，不可再開始
+  // ------------------------------------------------------------
+  if (row.currentEndTime) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 3. 20260914
+  // 目前這一筆已經有 active process
+  //
+  // 不論：
+  // - 自己正在計時
+  // - refresh 後由後端 restore 回來
+  // - Process 已存在但前端 hook 尚未完全同步
+  //
+  // 「開始」都必須 disable。
+  // ------------------------------------------------------------
+
+  const timer = getT(row)
+
+  const hookHasActiveProcess = (
+    Number(
+      timer?.processId?.value || 0
+    ) > 0
+    &&
+    (
+      timer?.hasStarted?.value === true
+      ||
+      timer?.isPaused?.value === false
+    )
+  )
+
+
+  const backendHasMyActiveProcess = (
+    Number(
+      row.my_process_id || 0
+    ) > 0
+  )
+
+
+  const backendHasActiveProcess = (
+    Number(
+      row.active_process_id || 0
+    ) > 0
+  )
+
+
+  const rowIsRunning = (
+    row.is_current_running === true ||
+    row.is_current_running === 1 ||
+    row.is_current_running === '1'
+  )
+
+
+  const rowShowTimer = (
+    row.show_timer === true ||
+    row.show_timer === 1 ||
+    row.show_timer === '1'
+  )
+
+
+  if (
+    hookHasActiveProcess
+    ||
+    backendHasMyActiveProcess
+    ||
+    backendHasActiveProcess
+    ||
+    rowIsRunning
+    ||
+    rowShowTimer
+    ||
+    checkShowTimer(row)
+  ) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 4. show2_ok 不允許開始
+  // ------------------------------------------------------------
+  if (
+    row.show2_ok !== undefined &&
+    row.show2_ok !== null &&
+    row.show2_ok !== '' &&
+    ![3, '3'].includes(row.show2_ok)
+  ) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 5. 後端明確禁止輸入
+  // ------------------------------------------------------------
+  if (
+    row.input_disable === true ||
+    row.input_disable === 1 ||
+    row.input_disable === '1'
+  ) {
+    return true
+  }
+
+
+  return false
+}
+*/
 const isProcessChecked = (step) => {
   return (
     step?.checked === true ||
@@ -4997,6 +5386,105 @@ const isAddProcessDialogBlocked = (item) => {
     Number(row.active_process_id || 0) > 0 ||
     Number(row.my_process_id || 0) > 0
   )
+}
+
+const hasCurrentUserStarted = (row) => {
+  const r = row?.raw || row || {}
+
+  const me = String(
+    safeUserId.value || ''
+  ).trim()
+
+  if (!me) return false
+
+
+  // ------------------------------------------------------------
+  // 1. 後端已明確提供本人 active process
+  // ------------------------------------------------------------
+  if (
+    Number(r.my_process_id || 0) > 0
+  ) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 2. begin_records 裡已有本人未結束 process
+  // ------------------------------------------------------------
+  const hasMyBeginRecord =
+    Array.isArray(r.begin_records)
+    &&
+    r.begin_records.some(record => {
+
+      const userId = String(
+        record?.user_id ??
+        record?.process_user_id ??
+        ''
+      ).trim()
+
+      const processId = Number(
+        record?.process_id ??
+        record?.id ??
+        0
+      )
+
+      return (
+        userId === me
+        &&
+        processId > 0
+      )
+    })
+
+  if (hasMyBeginRecord) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 3. 前端 timer hook 已經是 active
+  // ------------------------------------------------------------
+  const t = getT(r)
+
+  if (
+    Number(
+      t?.processId?.value || 0
+    ) > 0
+    &&
+    (
+      t?.hasStarted?.value === true
+      ||
+      t?.isPaused?.value === false
+    )
+  ) {
+    return true
+  }
+
+
+  // ------------------------------------------------------------
+  // 4. 相容前端目前顯示中的本人 timer
+  // ------------------------------------------------------------
+  const timerOwner = String(
+    r.show_name ??
+    r.process_user_id ??
+    r.user_id ??
+    ''
+  ).trim()
+
+  const showTimer =
+    r.show_timer === true ||
+    r.show_timer === 1 ||
+    r.show_timer === '1'
+
+  if (
+    showTimer
+    &&
+    timerOwner === me
+  ) {
+    return true
+  }
+
+
+  return false
 }
 
 </script>

@@ -455,11 +455,16 @@
 >
 -->
 <!--20260820版-->
+<!--
+  item.is_lack_batch_order === true &&
+    item.all_batches_end_finished !== true
+-->
 <div
   v-if="
     item.waiting_send &&
     item.input_end_disable &&
-    item.bom_all_ready === false
+
+    item.bom_all_ready !== true
   "
   style="
     color: blue;
@@ -1099,6 +1104,37 @@ async function handleSyncKey(syncKey) {
 
   // ✅ 1) 先重撈，讓 b 出現在 End 清單
   await getMaterialsAndAssemblesByUser({ user_id: u })
+
+  console.log(
+  '[121100020631][END DEBUG]',
+  materials_and_assembles_by_user.value
+    ?.filter(row => String(row.order_num) === '121100020631')
+    ?.map(row => ({
+      order_num: row.order_num,
+      material_id: row.material_id,
+      assemble_id: row.assemble_id,
+
+      waiting_send: row.waiting_send,
+
+      is_lack_batch_order: row.is_lack_batch_order,
+      all_batches_end_finished: row.all_batches_end_finished,
+
+      batch_count: row.batch_count,
+      end_finished_batch_count: row.end_finished_batch_count,
+
+      bom_all_ready_raw: row.bom_all_ready_raw,
+      bom_all_ready: row.bom_all_ready,
+
+      has_pending_assem: row.has_pending_assem,
+      can_send_to_warehouse: row.can_send_to_warehouse,
+
+      checkbox_disable: row.checkbox_disable,
+      select_disable: row.select_disable,
+      send_disable: row.send_disable,
+
+      waiting_message: row.waiting_message,
+    }))
+)
 
   await nextTick()
 
@@ -3369,6 +3405,39 @@ const initialize = async () => {
 
     await getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID });
 
+    //
+    console.log(
+  '[121100020631][END DEBUG]',
+  materials_and_assembles_by_user.value
+    ?.filter(row => String(row.order_num) === '121100020631')
+    ?.map(row => ({
+      order_num: row.order_num,
+      material_id: row.material_id,
+      assemble_id: row.assemble_id,
+
+      waiting_send: row.waiting_send,
+
+      is_lack_batch_order: row.is_lack_batch_order,
+      all_batches_end_finished: row.all_batches_end_finished,
+
+      batch_count: row.batch_count,
+      end_finished_batch_count: row.end_finished_batch_count,
+
+      bom_all_ready_raw: row.bom_all_ready_raw,
+      bom_all_ready: row.bom_all_ready,
+
+      has_pending_assem: row.has_pending_assem,
+      can_send_to_warehouse: row.can_send_to_warehouse,
+
+      checkbox_disable: row.checkbox_disable,
+      select_disable: row.select_disable,
+      send_disable: row.send_disable,
+
+      waiting_message: row.waiting_message,
+    }))
+)
+    //
+
     // 為materials_and_assembles_by_user每個物件增加 pickEnd 屬性，初始為空陣列 []
     materials_and_assembles_by_user.value.forEach(item => {
       item.pickEnd = [];
@@ -5014,6 +5083,37 @@ const reloadEndRowsAndRestoreTimers = async () => {
     user_id: currentUser.value?.empID
   })
 
+  console.log(
+  '[121100020631][END DEBUG]',
+  materials_and_assembles_by_user.value
+    ?.filter(row => String(row.order_num) === '121100020631')
+    ?.map(row => ({
+      order_num: row.order_num,
+      material_id: row.material_id,
+      assemble_id: row.assemble_id,
+
+      waiting_send: row.waiting_send,
+
+      is_lack_batch_order: row.is_lack_batch_order,
+      all_batches_end_finished: row.all_batches_end_finished,
+
+      batch_count: row.batch_count,
+      end_finished_batch_count: row.end_finished_batch_count,
+
+      bom_all_ready_raw: row.bom_all_ready_raw,
+      bom_all_ready: row.bom_all_ready,
+
+      has_pending_assem: row.has_pending_assem,
+      can_send_to_warehouse: row.can_send_to_warehouse,
+
+      checkbox_disable: row.checkbox_disable,
+      select_disable: row.select_disable,
+      send_disable: row.send_disable,
+
+      waiting_message: row.waiting_message,
+    }))
+)
+
   await nextTick()
 
   const rows = materials_and_assembles_by_user.value || []
@@ -5247,6 +5347,37 @@ const onClickAbnormal = async (rawItem) => {
       getMaterialsAndAssemblesByUser({ user_id: currentUser.value?.empID }),
     ])
 
+    console.log(
+  '[121100020631][END DEBUG]',
+  materials_and_assembles_by_user.value
+    ?.filter(row => String(row.order_num) === '121100020631')
+    ?.map(row => ({
+      order_num: row.order_num,
+      material_id: row.material_id,
+      assemble_id: row.assemble_id,
+
+      waiting_send: row.waiting_send,
+
+      is_lack_batch_order: row.is_lack_batch_order,
+      all_batches_end_finished: row.all_batches_end_finished,
+
+      batch_count: row.batch_count,
+      end_finished_batch_count: row.end_finished_batch_count,
+
+      bom_all_ready_raw: row.bom_all_ready_raw,
+      bom_all_ready: row.bom_all_ready,
+
+      has_pending_assem: row.has_pending_assem,
+      can_send_to_warehouse: row.can_send_to_warehouse,
+
+      checkbox_disable: row.checkbox_disable,
+      select_disable: row.select_disable,
+      send_disable: row.send_disable,
+
+      waiting_message: row.waiting_message,
+    }))
+)
+
     await nextTick();
 
     abnormal_qty_alarm.value = '提交異常失敗，請稍後再試或聯絡系統管理員。'
@@ -5452,6 +5583,37 @@ const onAssembleBatchReleased = async (payload) => {
   await getMaterialsAndAssemblesByUser({
     user_id: currentUser.value?.empID
   })
+
+  console.log(
+  '[121100020631][END DEBUG]',
+  materials_and_assembles_by_user.value
+    ?.filter(row => String(row.order_num) === '121100020631')
+    ?.map(row => ({
+      order_num: row.order_num,
+      material_id: row.material_id,
+      assemble_id: row.assemble_id,
+
+      waiting_send: row.waiting_send,
+
+      is_lack_batch_order: row.is_lack_batch_order,
+      all_batches_end_finished: row.all_batches_end_finished,
+
+      batch_count: row.batch_count,
+      end_finished_batch_count: row.end_finished_batch_count,
+
+      bom_all_ready_raw: row.bom_all_ready_raw,
+      bom_all_ready: row.bom_all_ready,
+
+      has_pending_assem: row.has_pending_assem,
+      can_send_to_warehouse: row.can_send_to_warehouse,
+
+      checkbox_disable: row.checkbox_disable,
+      select_disable: row.select_disable,
+      send_disable: row.send_disable,
+
+      waiting_message: row.waiting_message,
+    }))
+)
 }
 
 const onAssembleEnded = async (payload) => {

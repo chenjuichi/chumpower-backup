@@ -802,6 +802,114 @@
 
 
 <v-card-text>
+  <!-- 20260914：流程圖切換按鍵 -->
+  <div class="process-flow-toolbar">
+    <v-btn
+      size="small"
+      :color="showProcessFlow ? 'blue-grey-darken-1' : 'primary'"
+      variant="tonal"
+      @click="showProcessFlow = !showProcessFlow"
+    >
+      <v-icon start>
+        {{ showProcessFlow ? 'mdi-eye-off-outline' : 'mdi-family-tree' }}
+      </v-icon>
+      {{ showProcessFlow ? '隱藏流程' : '顯示流程' }}
+    </v-btn>
+
+    <span v-if="showProcessFlow" class="process-flow-hint">
+      主流程依報工紀錄整理；返工/異常不重複計入實體數量
+    </span>
+  </div>
+
+  <!-- 20260914：主流程圖 -->
+  <v-expand-transition>
+    <div
+      v-if="showProcessFlow"
+      class="process-flow-panel"
+    >
+      <div class="process-flow-order-summary">
+        <span>訂單：{{ current_order_num }}</span>
+        <span v-if="processFlowOrderQty > 0">
+          訂單數量：{{ processFlowOrderQty }}
+        </span>
+      </div>
+
+      <div
+        v-if="processFlowSteps.length === 0"
+        class="process-flow-empty"
+      >
+        目前沒有可建立流程圖的報工資料
+      </div>
+
+      <div
+        v-for="(step, stepIndex) in processFlowSteps"
+        :key="`${step.no}-${step.title}`"
+        class="process-flow-step-wrap"
+      >
+        <div
+          class="process-flow-node"
+          :class="`process-flow-node--${step.type}`"
+        >
+          <div class="process-flow-node-title">
+            【{{ step.no }}. {{ step.title }}】
+          </div>
+
+          <div
+            v-if="step.qty > 0"
+            class="process-flow-total"
+          >
+            {{ step.qtyLabel || '總數' }}：{{ step.qty }}
+          </div>
+
+          <div
+            v-if="step.normalLabel && step.normalQty > 0"
+            class="process-flow-branch process-flow-branch--normal"
+          >
+            <span class="process-flow-branch-line">├───────────────</span>
+            <span>{{ step.normalLabel }}：{{ step.normalQty }}</span>
+          </div>
+
+          <div
+            v-if="step.abnormalLabel && step.abnormalQty > 0"
+            class="process-flow-branch process-flow-branch--abnormal"
+          >
+            <div>
+              <span class="process-flow-branch-line">└───────────────</span>
+              <span>{{ step.abnormalLabel }}：{{ step.abnormalQty }}</span>
+            </div>
+
+            <div
+              v-if="step.abnormalDetail"
+              class="process-flow-abnormal-detail"
+            >
+              （{{ step.abnormalDetail }}）
+            </div>
+          </div>
+
+          <template v-if="step.subLines && step.subLines.length">
+            <div
+              v-for="(line, lineIndex) in step.subLines"
+              :key="`${step.no}-sub-${lineIndex}`"
+              class="process-flow-subline"
+            >
+              <span class="process-flow-sub-arrow">↓</span>
+              <span>{{ line }}</span>
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-if="stepIndex < processFlowSteps.length - 1"
+          class="process-flow-arrow"
+        >
+          ↓
+        </div>
+      </div>
+    </div>
+  </v-expand-transition>
+
+  <v-divider class="my-3" />
+
   <v-alert
     v-if="!processGroups || processGroups.length === 0"
     type="info"
@@ -1538,6 +1646,9 @@ const currentUser = ref({});
 const current_order_num = ref('');
 
 const process_dialog = ref(false);
+
+// 20260914：Information 詳情流程圖 顯示 / 隱藏
+const showProcessFlow = ref(false);
 
 const pagination = reactive({
   itemsPerPage: 5,                    // 預設值, rows/per page
@@ -2637,6 +2748,328 @@ const handleVisibilityChange = () => {
   }
 };
 
+// ============================================================
+// 20260914 Information 詳情流程圖
+//
+// 規則：
+// 1. 主流程只保留：備料 / 使用者設定的 schedule_name / Warehouse / 入庫。
+// 2. 同一製程的異常報工不另外畫成主節點，而掛在該製程旁邊。
+// 3. 組裝返工若後續又進入檢驗，視為同一批件的返工鏈，不重複加總。
+// 4. 例如：
+//    組立：正常40 + 第1次返工5 + 第2次返工5 = 50
+//    檢驗：正常35 + 鎖緊返工後重新檢驗5 = 40
+//    左右螺母：正常40 + 第1次異常處理5 + 第2次異常處理5 = 50
+// ============================================================
+const safeFlowQty = (value) => {
+  const n = Number(value ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+const flowProcessQty = (row) => {
+  return Math.max(
+    safeFlowQty(row?.process_work_time_qty),
+    safeFlowQty(row?.completed_qty),
+    safeFlowQty(row?.allOk_qty),
+    0
+  )
+}
+
+const normalizeAbnormalText = (value) => {
+  return String(value ?? '')
+    .replace(/^\s*-?\s*異常\s*/u, '')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+const processFlowRows = computed(() => {
+  const rows = []
+
+  ;(processGroups.value || []).forEach((group, groupIndex) => {
+    ;(group?.processes || []).forEach((row, rowIndex) => {
+      rows.push({
+        ...row,
+        __groupIndex: groupIndex,
+        __rowIndex: rowIndex,
+        __materialQty: safeFlowQty(group?.material_qty),
+      })
+    })
+  })
+
+  return rows
+})
+
+const processFlowOrderQty = computed(() => {
+  const groupQty = Math.max(
+    0,
+    ...(processGroups.value || []).map(g => safeFlowQty(g?.material_qty))
+  )
+
+  const rowQty = Math.max(
+    0,
+    ...processFlowRows.value.map(flowProcessQty)
+  )
+
+  return Math.max(groupQty, rowQty)
+})
+
+const processFlowSteps = computed(() => {
+  const rows = processFlowRows.value
+  if (!rows.length) return []
+
+  const orderQty = processFlowOrderQty.value
+  const steps = []
+
+  const processText = row => String(row?.process_type || '').trim()
+  const scheduleText = row => String(row?.schedule_name || '').trim()
+  const abnormalText = row => normalizeAbnormalText(row?.abnormal_message)
+  const isAbnormalRow = row => Boolean(abnormalText(row))
+  const isAssemblyRow = row => processText(row).includes('組裝')
+  const isInspectionRow = row => processText(row).includes('檢驗')
+
+  // ---------- 1. 備料 / 搬運 ----------
+  const prepareRows = rows.filter(row => {
+    const t = processText(row)
+    const code = Number(row?.process_type_code || 0)
+    return (
+      code === 1 || code === 19 || code === 2 || code === 5 ||
+      t.includes('備料') ||
+      t.includes('等待AGV(備料') ||
+      t.includes('備料區->組裝區') ||
+      t.includes('備料區→組裝區')
+    )
+  })
+
+  if (prepareRows.length) {
+    const qty = Math.max(0, ...prepareRows.map(flowProcessQty), orderQty)
+    steps.push({
+      type: 'prepare',
+      title: '備料',
+      qty,
+      normalLabel: '',
+      normalQty: 0,
+      abnormalLabel: '',
+      abnormalQty: 0,
+      abnormalDetail: '',
+      subLines: ['等待 AGV（備料區）', 'AGV（備料區 → 組裝區）'],
+    })
+  }
+
+  // ---------- 找出「組裝返工 -> 後續檢驗」的共用異常 ----------
+  // 這類異常應掛在檢驗節點，避免在「鎖緊」主節點再算一次。
+  const inspectionAbnormalTexts = new Set(
+    rows
+      .filter(row => isInspectionRow(row) && isAbnormalRow(row))
+      .map(abnormalText)
+      .filter(Boolean)
+  )
+
+  const delegatedAssemblyAbnormal = new Map()
+  rows.forEach(row => {
+    if (!isAssemblyRow(row) || !isAbnormalRow(row)) return
+    const msg = abnormalText(row)
+    if (!inspectionAbnormalTexts.has(msg)) return
+    if (!delegatedAssemblyAbnormal.has(msg)) {
+      delegatedAssemblyAbnormal.set(msg, [])
+    }
+    delegatedAssemblyAbnormal.get(msg).push(row)
+  })
+
+  // ---------- 2...N. schedule_name 主製程 ----------
+  const scheduleOrder = []
+  const scheduleMap = new Map()
+
+  rows.forEach(row => {
+    const schedule = scheduleText(row)
+    if (!schedule) return
+
+    const t = processText(row)
+    if (
+      t.includes('等待AGV') ||
+      t.includes('AGV運行') ||
+      t.includes('堆高機運行') ||
+      t.includes('成品入庫')
+    ) {
+      return
+    }
+
+    if (!scheduleMap.has(schedule)) {
+      scheduleMap.set(schedule, [])
+      scheduleOrder.push(schedule)
+    }
+    scheduleMap.get(schedule).push(row)
+  })
+
+  scheduleOrder.forEach(schedule => {
+    const scheduleRows = scheduleMap.get(schedule) || []
+    if (!scheduleRows.length) return
+
+    const normalRows = scheduleRows.filter(row => !isAbnormalRow(row))
+    const abnormalRowsAll = scheduleRows.filter(isAbnormalRow)
+
+    // 若「組裝異常」後面有同樣異常文字的檢驗紀錄，
+    // 代表這批返工件最後重新進入檢驗；組裝節點不重複顯示異常支線。
+    const abnormalRows = abnormalRowsAll.filter(row => {
+      if (!isAssemblyRow(row)) return true
+      const msg = abnormalText(row)
+      return !inspectionAbnormalTexts.has(msg)
+    })
+
+    const normalQty = Math.max(0, ...normalRows.map(flowProcessQty))
+    const abnormalQtySum = abnormalRows.reduce(
+      (sum, row) => sum + flowProcessQty(row),
+      0
+    )
+
+    const hasAssemblyNormal = normalRows.some(isAssemblyRow)
+    const hasInspectionNormal = normalRows.some(isInspectionRow)
+
+    // 組裝主工序（例如組立、鎖緊）以訂單數量為總數。
+    // 檢驗主工序則以「正常 + 異常處理完成」呈現實際流過該站的數量。
+    let totalQty = normalQty + abnormalQtySum
+    if (hasAssemblyNormal && orderQty > 0) {
+      totalQty = orderQty
+    }
+    if (totalQty <= 0) totalQty = orderQty
+
+    let abnormalLabel = ''
+    let abnormalQty = 0
+    let abnormalDetail = ''
+
+    // A. 檢驗節點承接前一個「組裝異常返工」
+    const inspectionCurrentAbnormal = abnormalRowsAll.find(row => {
+      if (!isInspectionRow(row)) return false
+      return delegatedAssemblyAbnormal.has(abnormalText(row))
+    })
+
+    if (inspectionCurrentAbnormal) {
+      const msg = abnormalText(inspectionCurrentAbnormal)
+      const qty = flowProcessQty(inspectionCurrentAbnormal)
+      const assemblyReworkRows = delegatedAssemblyAbnormal.get(msg) || []
+      const assemblyDoneQty = assemblyReworkRows.length
+        ? Math.min(
+            qty,
+            Math.max(...assemblyReworkRows.map(flowProcessQty))
+          )
+        : qty
+
+      abnormalLabel = msg.includes('鎖緊') ? '鎖緊異常' : '前工序異常'
+      abnormalQty = qty
+      abnormalDetail = `組裝－異常處理完成 ${assemblyDoneQty} → 檢驗－異常處理完成 ${qty}`
+
+      // 檢驗總數 = 正常檢驗 + 返工後重新檢驗完成
+      totalQty = normalQty + qty
+    }
+    // B. 一般異常：同 schedule 內的多次異常處理都算「完成量」，
+    //    但不把它們當成新的主流程節點。
+    else if (abnormalRows.length) {
+      abnormalQty = abnormalQtySum
+      abnormalLabel = '異常'
+
+      const perAttemptQty = abnormalRows.map(flowProcessQty).filter(q => q > 0)
+      if (perAttemptQty.length === 1) {
+        const label = hasAssemblyNormal ? '返工完成' : '異常處理完成'
+        abnormalDetail = `${label} ${perAttemptQty[0]}`
+      }
+      else if (perAttemptQty.length > 1) {
+        const label = hasAssemblyNormal ? '返工完成' : '異常處理完成'
+        abnormalDetail = perAttemptQty
+          .map((q, idx) => `第${idx + 1}次${label} ${q}`)
+          .join(' + ')
+      }
+    }
+
+    let processCategory = '製程'
+    if (hasAssemblyNormal || scheduleRows.some(isAssemblyRow)) {
+      processCategory = '組裝'
+    }
+    else if (hasInspectionNormal || scheduleRows.some(isInspectionRow)) {
+      processCategory = '檢驗'
+    }
+
+    steps.push({
+      type: processCategory === '組裝' ? 'assembly' : 'inspection',
+      title: `${processCategory}－${schedule}`,
+      qty: totalQty,
+      normalLabel:
+        normalQty > 0 && (abnormalLabel || abnormalQty > 0)
+          ? (processCategory === '檢驗' ? '正常檢驗完成' : '正常完成')
+          : '',
+      normalQty,
+      abnormalLabel,
+      abnormalQty,
+      abnormalDetail,
+      subLines: [],
+    })
+  })
+
+  // ---------- Warehouse ----------
+  const warehouseRows = rows.filter(row => {
+    const t = processText(row)
+    const code = Number(row?.process_type_code || 0)
+    return (
+      code === 29 || code === 3 || code === 6 ||
+      t.includes('等待AGV(組裝') ||
+      t.includes('組裝區->成品區') ||
+      t.includes('組裝區→成品區')
+    )
+  })
+
+  const stockinRows = rows.filter(row => {
+    const t = processText(row)
+    const code = Number(row?.process_type_code || 0)
+    return code === 31 || t.includes('成品入庫')
+  })
+
+  if (warehouseRows.length || stockinRows.length) {
+    const warehouseQty = Math.max(
+      orderQty,
+      0,
+      ...warehouseRows.map(flowProcessQty),
+      ...stockinRows.map(flowProcessQty)
+    )
+
+    steps.push({
+      type: 'warehouse',
+      title: 'Warehouse',
+      qty: warehouseQty,
+      qtyLabel: '到庫數量',
+      normalLabel: '',
+      normalQty: 0,
+      abnormalLabel: '',
+      abnormalQty: 0,
+      abnormalDetail: '',
+      subLines: ['等待 AGV（組裝區）', 'AGV（組裝區 → 成品區）'],
+    })
+  }
+
+  // ---------- 成品入庫 ----------
+  if (stockinRows.length) {
+    const stockinQty = Math.max(
+      0,
+      ...stockinRows.map(flowProcessQty),
+      orderQty
+    )
+
+    steps.push({
+      type: 'stockin',
+      title: '成品入庫',
+      qty: stockinQty,
+      qtyLabel: '入庫數量',
+      normalLabel: '',
+      normalQty: 0,
+      abnormalLabel: '',
+      abnormalQty: 0,
+      abnormalDetail: '',
+      subLines: [],
+    })
+  }
+
+  return steps.map((step, index) => ({
+    ...step,
+    no: index + 1,
+  }))
+})
+
 /*
 const toggleExpand = async (item) => {
   console.log("toggleExpand(),", item.order_num);
@@ -2659,6 +3092,7 @@ const toggleExpand = async (item) => {
   );
 
   current_order_num.value = item.order_num;
+  showProcessFlow.value = false;
 
   // 避免先看到上一張訂單資料
   processes.value = [];
@@ -3296,9 +3730,18 @@ const formatParallelTime = (value) => {
   top: -20px;
 }
 
+/*
 :deep(.v-overlay__content) {
   border-radius: 0px !important;
   max-height: 320px !important;
+  overflow-y: auto !important;
+
+  --v-scrollbar-offset: 0px !important;
+  border-radius: 5px !important;
+}
+*/
+:deep(.v-overlay__content) {
+  max-height: calc(100vh - 80px) !important;
   overflow-y: auto !important;
 
   --v-scrollbar-offset: 0px !important;
@@ -3747,6 +4190,175 @@ const formatParallelTime = (value) => {
   color: #1565c0;
   font-weight: 600;
   padding-left: 8px;
+}
+
+
+
+// ============================================================
+// 20260914 Information 詳情流程圖
+// ============================================================
+.process-flow-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.process-flow-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: #607d8b;
+}
+/*
+.process-flow-panel {
+  margin-bottom: 18px;
+  padding: 16px 20px 20px;
+  border: 1px solid #cfd8dc;
+  border-radius: 10px;
+  background: #fafcfd;
+}
+*/
+.process-flow-panel {
+  width: 100%;
+
+  /* 流程短：依內容自動高度 */
+  height: auto;
+
+  /* 流程太長：最高到畫面高度，之後才出現 scrollbar */
+  max-height: calc(100vh - 260px);
+
+  /* 只有超過 max-height 才出現垂直 scrollbar */
+  overflow-y: auto;
+
+  /* 不要水平 scrollbar */
+  overflow-x: hidden;
+
+  box-sizing: border-box;
+}
+
+.process-flow-order-summary {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #263238;
+}
+
+.process-flow-empty {
+  padding: 16px;
+  text-align: center;
+  color: #777;
+}
+
+.process-flow-step-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.process-flow-node {
+  width: min(760px, 96%);
+  padding: 12px 18px;
+  border: 1px solid #b0bec5;
+  border-radius: 9px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-family: 'cwTeXYen', sans-serif;
+}
+
+.process-flow-node--prepare {
+  border-left: 5px solid #78909c;
+}
+
+.process-flow-node--assembly {
+  border-left: 5px solid #1976d2;
+}
+
+.process-flow-node--inspection {
+  border-left: 5px solid #7b1fa2;
+}
+
+.process-flow-node--warehouse {
+  border-left: 5px solid #00897b;
+}
+
+.process-flow-node--stockin {
+  border-left: 5px solid #2e7d32;
+}
+
+.process-flow-node-title {
+  margin-bottom: 5px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #263238;
+}
+
+.process-flow-total {
+  margin-bottom: 5px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #37474f;
+}
+
+.process-flow-branch {
+  margin-top: 4px;
+  padding-left: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.process-flow-branch--normal {
+  color: #263238;
+  font-weight: 700;
+}
+
+.process-flow-branch--abnormal {
+  color: #c62828;
+  font-weight: 800;
+}
+
+.process-flow-branch-line {
+  display: inline-block;
+  min-width: 150px;
+  color: #90a4ae;
+  font-family: Consolas, monospace;
+}
+
+.process-flow-abnormal-detail {
+  margin-left: 154px;
+  padding-top: 2px;
+  color: #d84315;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.process-flow-subline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-left: 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #455a64;
+}
+
+.process-flow-sub-arrow {
+  width: 18px;
+  text-align: center;
+  color: #78909c;
+  font-size: 18px;
+}
+
+.process-flow-arrow {
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+  font-size: 25px;
+  font-weight: 800;
+  color: #78909c;
 }
 
 </style>

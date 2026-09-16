@@ -18256,6 +18256,7 @@ def create_product():
 """
 
 
+# 20260914版
 # 20260912版
 # 20260909版
 # 20260831版
@@ -19133,7 +19134,7 @@ def create_product():
                 }
             )
 
-
+            '''
             # ----------------------------------------------------
             # representative material
             #
@@ -19156,7 +19157,102 @@ def create_product():
                 representative_material_id = (
                     material_id
                 )
+            '''
+            #
+            # ====================================================
+            # 20260915
+            # representative material
+            #
+            # group/copy lineage 不可再固定 min(material_id)。
+            #
+            # 因為最小 id 很可能只是歷史 root。
+            #
+            # 優先順序：
+            #
+            # 1. 前端目前 Warehouse representative material_id
+            # 2. 若該 material 不在 group，找目前仍有
+            #    isWarehouseStationShow=True 的最新 material
+            # 3. 最後才 fallback group 第一筆
+            # ====================================================
 
+            if is_group_stockin:
+
+                if material_id in group_material_ids:
+
+                    representative_material_id = (
+                        material_id
+                    )
+
+                else:
+
+                    current_warehouse_material_id = (
+                        s.query(
+                            Assemble.material_id
+                        )
+                        .filter(
+                            Assemble.material_id.in_(
+                                group_material_ids
+                            )
+                        )
+                        .filter(
+                            Assemble.isWarehouseStationShow
+                            .is_(True)
+                        )
+                        .filter(
+                            Assemble.process_step_code == 0
+                        )
+                        .filter(
+                            Assemble.completed_qty > 0
+                        )
+                        .order_by(
+                            Assemble.id.desc()
+                        )
+                        .limit(1)
+                        .scalar()
+                    )
+
+
+                    representative_material_id = (
+                        safe_int(
+                            current_warehouse_material_id
+                        )
+                    )
+
+
+                    if (
+                        representative_material_id
+                        not in group_material_ids
+                    ):
+                        representative_material_id = (
+                            group_material_ids[-1]
+                        )
+
+            else:
+
+                representative_material_id = (
+                    material_id
+                )
+
+
+            print(
+                "[createProduct]"
+                "[REPRESENTATIVE MATERIAL]"
+                "[20260915]",
+                {
+                    "order_num":
+                        order_num,
+
+                    "request_material_id":
+                        material_id,
+
+                    "group_material_ids":
+                        group_material_ids,
+
+                    "representative_material_id":
+                        representative_material_id,
+                }
+            )
+            #
 
             material = (
                 group_material_map.get(
@@ -19883,7 +19979,7 @@ def create_product():
                             assemble_record.id
                         )
 
-
+            '''
             # ====================================================
             # 4-3. 計算 old_total
             # ====================================================
@@ -19918,7 +20014,201 @@ def create_product():
                     ]
                     or [0]
                 )
+            '''
+            #
+            # ====================================================
+            # 20260915
+            # 4-3. 計算「目前 Warehouse flow」已入庫數量
+            #
+            # 重要：
+            #
+            # 不可再使用：
+            #
+            #   max(group material.total_allOk_qty)
+            #
+            # 因為 copy lineage 中可能包含「上一輪已入庫完成」的
+            # 歷史 material。
+            #
+            # 例如：
+            #
+            #   121100020631
+            #
+            #   material 118
+            #       total_allOk_qty = 34
+            #       isAllOk = True
+            #       ← 上一輪歷史入庫
+            #
+            #   material 123
+            #       assemble 662
+            #       isWarehouseStationShow = True
+            #       ← 目前這一輪 Warehouse
+            #
+            # 此時目前 flow：
+            #
+            #   old_total = 0
+            #
+            # 而不是 34。
+            #
+            # 判斷方式：
+            #
+            #   只統計目前 Warehouse backing assemble
+            #   所對應 material_id + assemble_id 的 type=31。
+            # ====================================================
 
+            if not is_group_stockin:
+
+                # ------------------------------------------------
+                # 一般單筆：
+                # 維持原本 material 累計語意
+                # ------------------------------------------------
+                old_total = (
+                    _normalize_int(
+                        getattr(
+                            material,
+                            "total_allOk_qty",
+                            0
+                        ),
+                        0
+                    )
+                )
+
+            else:
+
+                # ------------------------------------------------
+                # group/copy/order-level：
+                # 只找目前真正還在 Warehouse 的 backing rows
+                # ------------------------------------------------
+                current_warehouse_rows = (
+                    s.query(
+                        Assemble
+                    )
+                    .filter(
+                        Assemble.material_id.in_(
+                            group_material_ids
+                        )
+                    )
+                    .filter(
+                        Assemble.id.in_(
+                            group_assemble_ids
+                        )
+                    )
+                    .filter(
+                        Assemble.isWarehouseStationShow
+                        .is_(True)
+                    )
+                    .filter(
+                        Assemble.process_step_code == 0
+                    )
+                    .filter(
+                        Assemble.completed_qty > 0
+                    )
+                    .order_by(
+                        Assemble.id.asc()
+                    )
+                    .with_for_update()
+                    .all()
+                )
+
+
+                current_warehouse_stockin_qty = 0
+
+
+                for current_warehouse_row in (
+                    current_warehouse_rows
+                ):
+
+                    current_material_id = (
+                        safe_int(
+                            current_warehouse_row.material_id
+                        )
+                    )
+
+                    current_assemble_id = (
+                        safe_int(
+                            current_warehouse_row.id
+                        )
+                    )
+
+
+                    current_row_stockin_qty = (
+                        s.query(
+                            func.coalesce(
+                                func.sum(
+                                    Process.process_work_time_qty
+                                ),
+                                0
+                            )
+                        )
+                        .filter(
+                            Process.material_id
+                            == current_material_id
+                        )
+                        .filter(
+                            Process.assemble_id
+                            == current_assemble_id
+                        )
+                        .filter(
+                            Process.process_type == 31
+                        )
+                        .filter(
+                            Process.end_time.isnot(None)
+                        )
+                        .scalar()
+                    ) or 0
+
+
+                    current_warehouse_stockin_qty += (
+                        safe_int(
+                            current_row_stockin_qty
+                        )
+                    )
+
+
+                old_total = (
+                    current_warehouse_stockin_qty
+                )
+
+
+                print(
+                    "[createProduct]"
+                    "[CURRENT FLOW STOCKIN]"
+                    "[20260915]",
+                    {
+                        "order_num":
+                            order_num,
+
+                        "group_material_ids":
+                            group_material_ids,
+
+                        "group_assemble_ids":
+                            group_assemble_ids,
+
+                        "current_warehouse_rows": [
+                            {
+                                "material_id":
+                                    safe_int(
+                                        r.material_id
+                                    ),
+
+                                "assemble_id":
+                                    safe_int(
+                                        r.id
+                                    ),
+
+                                "completed_qty":
+                                    safe_int(
+                                        r.completed_qty
+                                    ),
+                            }
+                            for r
+                            in current_warehouse_rows
+                        ],
+
+                        "old_total":
+                            old_total,
+                    }
+                )
+            #
 
             # ====================================================
             # 4-3-1. must_qty
@@ -20200,7 +20490,7 @@ def create_product():
                 }
             )
 
-
+            '''
             # ====================================================
             # 防止重複 / 超量
             # ====================================================
@@ -20228,7 +20518,37 @@ def create_product():
                         f"order_num="
                         f"{material.order_num}"
                     )
+            '''
+            #
+            # ====================================================
+            # 20260915
+            # 防止目前 Warehouse flow 重複入庫
+            #
+            # 不可使用：
+            #
+            #   any(material.isAllOk)
+            #
+            # 因為 copy lineage 可能包含歷史已完成 material。
+            #
+            # old_total 已經是「目前 Warehouse flow」實際 type31
+            # 入庫量，所以直接用 old_total 判斷即可。
+            # ====================================================
+            if (
+                must_qty > 0
+                and old_total >= must_qty
+            ):
 
+                raise ValueError(
+                    "目前 Warehouse 流程已全數入庫，"
+                    "不可重複入庫；"
+                    f"order_num="
+                    f"{material.order_num}，"
+                    f"應入庫="
+                    f"{must_qty}，"
+                    f"目前流程已入庫="
+                    f"{old_total}"
+                )
+            #
 
             if (
                 must_qty > 0
@@ -20250,6 +20570,224 @@ def create_product():
                     f"本次輸入={add_qty}"
                 )
 
+            # 20260914版
+            # ====================================================
+            # 20260914
+            # 4-3-2. 入庫前檢查「異常返工 leaf」是否完成
+            #
+            # 規則：
+            #
+            #   原始 B110
+            #       ↓ 異常 20
+            #   abnormal B109
+            #       ↓
+            #   abnormal B110   ← leaf
+            #
+            # 只檢查最後 leaf，不可把整條 chain 的數量 SUM。
+            #
+            # 例如：
+            #   1845 normal B110
+            #       ↓
+            #   1856 abnormal B109 20
+            #       ↓
+            #   1857 abnormal B110 20 ← 真正要確認
+            #
+            # 若 leaf 應完成 20，但 completed_qty=0，
+            # 則不可建立 process_type=31。
+            # ====================================================
+
+            # ----------------------------------------------------
+            # A. 找出所有異常返工 row
+            # ----------------------------------------------------
+            abnormal_rework_rows = (
+                s.query(
+                    Assemble
+                )
+                .filter(
+                    Assemble.material_id.in_(
+                        group_material_ids
+                    )
+                )
+                .filter(
+                    Assemble.reason
+                    == "異常返工"
+                )
+                .order_by(
+                    Assemble.material_id.asc(),
+                    Assemble.id.asc()
+                )
+                .with_for_update()
+                .all()
+            )
+
+
+            # ----------------------------------------------------
+            # B. 找出哪些 assemble 已經是其他異常 row 的 parent
+            #
+            # 例如：
+            #
+            #   1856
+            #       ↓
+            #   1857.is_copied_from_id = 1856
+            #
+            # 則 1856 不是 leaf。
+            # ----------------------------------------------------
+            abnormal_parent_ids = {
+                safe_int(
+                    abnormal_row.is_copied_from_id
+                )
+                for abnormal_row
+                in abnormal_rework_rows
+                if safe_int(
+                    abnormal_row.is_copied_from_id
+                ) > 0
+            }
+
+
+            # ----------------------------------------------------
+            # C. leaf = 自己沒有再被下一個異常返工 row 接續
+            # ----------------------------------------------------
+            abnormal_leaf_rows = [
+                abnormal_row
+                for abnormal_row
+                in abnormal_rework_rows
+                if safe_int(
+                    abnormal_row.id
+                )
+                not in abnormal_parent_ids
+            ]
+
+
+            pending_abnormal_leaf_rows = []
+
+
+            for abnormal_leaf in abnormal_leaf_rows:
+
+                required_qty = max(
+                    safe_int(
+                        abnormal_leaf.must_receive_qty
+                    ),
+                    safe_int(
+                        abnormal_leaf.must_receive_end_qty
+                    ),
+                    safe_int(
+                        abnormal_leaf.ask_qty
+                    ),
+                    safe_int(
+                        abnormal_leaf.total_ask_qty
+                    ),
+                )
+
+
+                finished_qty = max(
+                    safe_int(
+                        abnormal_leaf.completed_qty
+                    ),
+                    safe_int(
+                        abnormal_leaf.total_completed_qty
+                    ),
+                    safe_int(
+                        abnormal_leaf.allOk_qty
+                    ),
+                )
+
+
+                # 沒有有效需求量的歷史資料不列入
+                if required_qty <= 0:
+                    continue
+
+
+                if finished_qty < required_qty:
+
+                    pending_abnormal_leaf_rows.append({
+                        "assemble_id":
+                            safe_int(
+                                abnormal_leaf.id
+                            ),
+
+                        "material_id":
+                            safe_int(
+                                abnormal_leaf.material_id
+                            ),
+
+                        "work_num":
+                            str(
+                                abnormal_leaf.work_num
+                                or ""
+                            ),
+
+                        "schedule_id":
+                            safe_int(
+                                abnormal_leaf.schedule_id
+                            ),
+
+                        "required_qty":
+                            required_qty,
+
+                        "finished_qty":
+                            finished_qty,
+
+                        "remaining_qty":
+                            max(
+                                required_qty
+                                - finished_qty,
+                                0
+                            ),
+
+                        "parent_id":
+                            safe_int(
+                                abnormal_leaf
+                                .is_copied_from_id
+                            ),
+                    })
+
+
+            # ----------------------------------------------------
+            # D. 尚有異常返工 leaf 未完成 → 禁止入庫
+            # ----------------------------------------------------
+            if pending_abnormal_leaf_rows:
+
+                print(
+                    "[createProduct]"
+                    "[PENDING ABNORMAL REWORK]",
+                    {
+                        "order_num":
+                            material.order_num,
+
+                        "group_material_ids":
+                            group_material_ids,
+
+                        "pending":
+                            pending_abnormal_leaf_rows,
+                    }
+                )
+
+
+                pending_text = ", ".join(
+                    [
+                        (
+                            f"assemble_id="
+                            f"{row['assemble_id']}"
+                            f"({row['work_num']})"
+                            f" 應完成="
+                            f"{row['required_qty']}"
+                            f" 已完成="
+                            f"{row['finished_qty']}"
+                            f" 剩餘="
+                            f"{row['remaining_qty']}"
+                        )
+                        for row
+                        in pending_abnormal_leaf_rows
+                    ]
+                )
+
+
+                raise ValueError(
+                    "尚有異常返工未完成，不可入庫；"
+                    f"order_num={material.order_num}；"
+                    f"{pending_text}"
+                )
+            #
 
             # ====================================================
             # 4-4. process_type = 31

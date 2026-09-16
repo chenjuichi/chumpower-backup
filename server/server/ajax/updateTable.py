@@ -11275,6 +11275,7 @@ def update_assemble_process_step():
 """
 
 
+# 20260914版
 # 20260910版
 # 20260909版
 # 20260907版
@@ -11380,6 +11381,111 @@ def update_assemble_process_step():
                 and x.get("id") is not None
                 for x in (steps.get("check") or [])
             )
+
+        #
+        # ============================================================
+        # 20260914
+        # 同 order_num 是否還有其他 material / copy material
+        # 設定了有效 B110 工序
+        #
+        # 用途：
+        # material 635 自己沒有 B110，
+        # 但同 order 的 material 650 還有 B110 防鏽，
+        # 此時 635 絕對不可建立 B109_DIRECT_WAIT_SEND。
+        # ============================================================
+        def order_has_checked_b110_steps():
+
+            import json
+
+            order_num = str(
+                getattr(
+                    material_record,
+                    'order_num',
+                    ''
+                )
+                or ''
+            ).strip()
+
+            if not order_num:
+                return False
+
+
+            order_materials = (
+                s.query(Material)
+                .filter(
+                    Material.order_num == order_num,
+                    Material.move_by_process_type == 2,
+                    Material.isShow == 1,
+                )
+                .order_by(
+                    Material.id.asc()
+                )
+                .all()
+            )
+
+
+            for current_material in order_materials:
+
+                process_steps = getattr(
+                    current_material,
+                    'process_steps',
+                    None
+                )
+
+                if isinstance(process_steps, str):
+                    try:
+                        process_steps = json.loads(
+                            process_steps
+                        )
+                    except Exception:
+                        process_steps = {}
+
+
+                if not isinstance(
+                    process_steps,
+                    dict
+                ):
+                    process_steps = {}
+
+
+                checked_b110 = any(
+                    isinstance(step, dict)
+                    and bool(
+                        step.get(
+                            'checked',
+                            False
+                        )
+                    )
+                    and not bool(
+                        step.get(
+                            'deleted',
+                            False
+                        )
+                    )
+                    and int(
+                        step.get(
+                            'id',
+                            0
+                        )
+                        or 0
+                    ) > 0
+
+                    for step
+                    in (
+                        process_steps.get(
+                            'check'
+                        )
+                        or []
+                    )
+                )
+
+
+                if checked_b110:
+                    return True
+
+
+            return False
+        #
 
         def create_b109_direct_waiting_send(qty, total_done=None):
             qty = to_int(qty)
@@ -13990,13 +14096,114 @@ def update_assemble_process_step():
             #
             # 不應建立 35
             # --------------------------------------------------------
-
+            '''
             if has_checked_b110_steps():
                 release_result = release_b109_to_b110_batch(
                     session=s,
                     material_id=material_id
                 )
             else:
+            '''
+            # 20260914版
+            # ========================================================
+            # 20260914
+            #
+            # current_has_b110：
+            #     目前 material 自己有 B110
+            #
+            # order_has_b110：
+            #     同 order_num 任一有效 material/copy 有 B110
+            #
+            # 注意：
+            # 若目前 material 沒 B110，
+            # 但同 order 的另一個 material 有 B110，
+            # 不可：
+            #   1. 在目前 material release B110
+            #   2. 建立 B109_DIRECT_WAIT_SEND
+            #
+            # 只需把目前 B109 收掉，
+            # 讓真正有 B110 的 material 繼續流程。
+            # ========================================================
+
+            current_has_b110 = (
+                has_checked_b110_steps()
+            )
+
+            order_has_b110 = (
+                order_has_checked_b110_steps()
+            )
+
+
+            print(
+                "[B109 ORDER B110 CHECK][20260914]",
+                {
+                    "order_num":
+                        current_order_num,
+
+                    "material_id":
+                        material_id,
+
+                    "current_has_b110":
+                        current_has_b110,
+
+                    "order_has_b110":
+                        order_has_b110,
+
+                    "all_order_b109_done":
+                        all_order_b109_done,
+                }
+            )
+
+
+            if current_has_b110:
+
+                release_result = (
+                    release_b109_to_b110_batch(
+                        session=s,
+                        material_id=material_id
+                    )
+                )
+
+
+            elif order_has_b110:
+
+                # ----------------------------------------------------
+                # 目前 material 是前段歷史 material。
+                #
+                # 同 order 的其他 copy material 還有 B110，
+                # 因此絕對不可建立 B109_DIRECT_WAIT_SEND。
+                # ----------------------------------------------------
+
+                release_result = {
+                    "released": False,
+                    "release_qty": 0,
+                    "created_ids": [],
+                    "min_done_qty": final_total,
+                    "released_total":
+                        previous_total,
+
+                    "message": (
+                        "same order has downstream B110; "
+                        "skip B109 direct waiting send"
+                    )
+                }
+
+
+                assemble_record.isAssembleStationShow = (
+                    False
+                )
+
+                assemble_record.isWarehouseStationShow = (
+                    False
+                )
+
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 7
+                assemble_record.show3_ok = 7
+
+
+            else:
+            #
                 waiting_row = None
                 done_copy_row = None
                 release_qty = 0
@@ -14240,6 +14447,8 @@ def update_assemble_process_step():
                     if (r.reason or '').strip()
                     != '異常返工'
                 ]
+
+            '''
             # 20260910版
             # ============================================================
             # 20260910
@@ -14627,7 +14836,273 @@ def update_assemble_process_step():
                 # end if next_step
 
             # end if current_is_abnormal
-                        # end
+            '''
+            # 20260914版
+            # ============================================================
+            # 20260914
+            # B110 異常返工完成
+            #
+            # 新規則：
+            #
+            #   正常 B110 發生異常
+            #       ↓
+            #   B109 異常返工
+            #       ↓
+            #   回原 B110 重新檢驗
+            #       ↓
+            #   完成後直接 End 待送出
+            #
+            # 不可再沿後續 B110 工序建立：
+            #
+            #   檢驗-異常
+            #       ↓
+            #   防鏽-異常
+            #
+            # 例如 999900018843：
+            #
+            #   B110 檢驗-異常 20
+            #       ↓ 完成
+            #   End 待送出 20
+            #
+            # 同時正常 B110 防鏽 36
+            # 仍可繼續在 Begin / End 計時。
+            # ============================================================
+            if current_is_abnormal:
+
+                abnormal_done_qty = max(
+                    to_int(
+                        current_total_qty
+                    ),
+                    to_int(
+                        current_done_qty
+                    ),
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'total_completed_qty',
+                            0
+                        )
+                    ),
+                    to_int(
+                        getattr(
+                            assemble_record,
+                            'completed_qty',
+                            0
+                        )
+                    ),
+                    0
+                )
+
+
+                # --------------------------------------------------------
+                # 1. 本筆 B110 異常返工完成
+                # --------------------------------------------------------
+                assemble_record.process_step_code = 0
+
+                assemble_record.completed_qty = (
+                    abnormal_done_qty
+                )
+
+                assemble_record.total_completed_qty = (
+                    abnormal_done_qty
+                )
+
+                assemble_record.allOk_qty = (
+                    abnormal_done_qty
+                )
+
+
+                # --------------------------------------------------------
+                # 2. 保持這筆是「異常返工」
+                #
+                # End 才能顯示：
+                #
+                #   B110(檢驗) [檢驗]-異常
+                # --------------------------------------------------------
+                assemble_record.reason = (
+                    '異常返工'
+                )
+
+
+                # --------------------------------------------------------
+                # 3. 直接變成 End 待送出
+                # --------------------------------------------------------
+                assemble_record.isAssembleStationShow = True
+                assemble_record.isWarehouseStationShow = False
+
+                assemble_record.input_disable = True
+                assemble_record.input_end_disable = True
+                assemble_record.input_abnormal_disable = True
+
+                # 待送出狀態
+                assemble_record.input_allOk_disable = False
+
+                assemble_record.currentStartTime = None
+                assemble_record.currentEndTime = None
+
+                assemble_record.show1_ok = 1
+                assemble_record.show2_ok = 9
+                assemble_record.show3_ok = 9
+
+
+                # --------------------------------------------------------
+                # 4. 關閉這筆 B110 的 Process
+                # --------------------------------------------------------
+                finish_all_process_logs(
+                    22
+                )
+
+
+                # --------------------------------------------------------
+                # 5. 檢查同 material 是否還有其他真正進行中的工序
+                #
+                # 999900018843：
+                #
+                #   防鏽 36 還在進行
+                #
+                # 因此 Material 不可以整張直接改成 waiting_send=9。
+                # --------------------------------------------------------
+                other_active_assemble_rows = (
+                    s.query(Assemble)
+                    .filter(
+                        Assemble.material_id
+                        == material_id
+                    )
+                    .filter(
+                        Assemble.id
+                        != assemble_record.id
+                    )
+                    .filter(
+                        Assemble.process_step_code
+                        > 0
+                    )
+                    .filter(
+                        Assemble.isAssembleStationShow
+                        .is_(True)
+                    )
+                    .all()
+                )
+
+
+                has_other_active_process = (
+                    len(
+                        other_active_assemble_rows
+                    )
+                    > 0
+                )
+
+
+                # --------------------------------------------------------
+                # 還有其他 active 工序：
+                #
+                # Material 繼續維持組裝區進行中。
+                #
+                # 不然 Begin 的正常「防鏽36」可能被整張工單狀態影響。
+                # --------------------------------------------------------
+                if has_other_active_process:
+
+                    material_record.isAssembleStationShow = True
+                    material_record.isAssembleStation3TakeOk = False
+                    material_record.whichStation = 2
+
+                    material_record.show1_ok = 3
+                    material_record.show2_ok = 5
+                    material_record.show3_ok = 5
+
+
+                # --------------------------------------------------------
+                # 沒有其他 active：
+                #
+                # 才可以把 Material 提升成等待送出。
+                # --------------------------------------------------------
+                else:
+
+                    material_record.isAssembleStationShow = True
+                    material_record.isAssembleStation3TakeOk = True
+                    material_record.whichStation = 2
+
+                    material_record.show1_ok = 3
+                    material_record.show2_ok = 9
+                    material_record.show3_ok = 9
+
+
+                release_material_lock(
+                    material_record
+                )
+
+
+                print(
+                    "[B110 ABNORMAL DIRECT WAIT SEND]"
+                    "[20260914]",
+                    {
+                        "material_id":
+                            material_id,
+
+                        "assemble_id":
+                            assemble_record.id,
+
+                        "schedule_id":
+                            assemble_record.schedule_id,
+
+                        "completed_qty":
+                            abnormal_done_qty,
+
+                        "has_other_active_process":
+                            has_other_active_process,
+
+                        "other_active_ids":
+                            [
+                                row.id
+                                for row
+                                in other_active_assemble_rows
+                            ],
+                    }
+                )
+
+
+                s.commit()
+
+
+                return jsonify({
+                    "status":
+                        True,
+
+                    "material_done":
+                        False,
+
+                    "waiting_send":
+                        True,
+
+                    "abnormal_rework":
+                        True,
+
+                    "released_next_group":
+                        False,
+
+                    "released_count":
+                        abnormal_done_qty,
+
+                    "current_assemble_id":
+                        assemble_record.id,
+
+                    "created_ids":
+                        [],
+
+                    "next_work_num":
+                        None,
+
+                    "completed_qty":
+                        abnormal_done_qty,
+
+                    "message":
+                        (
+                            "B110 abnormal rework finished, "
+                            "direct waiting send"
+                        ),
+                }), 200
+
+            # end if current_is_abnormal
+            # end
 
             if not b110_rows:
                 s.rollback()
